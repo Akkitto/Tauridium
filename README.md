@@ -231,8 +231,8 @@ before tagging:
 3. Tag and push:
 
 ```text
-git tag -a v0.3.5 -m "Tauridium 0.3.5"
-git push origin v0.3.5
+git tag -a v0.3.6 -m "Tauridium 0.3.6"
+git push origin v0.3.6
 ```
 
 If no matching `CHANGELOG.md` section exists, the workflow falls back to generic

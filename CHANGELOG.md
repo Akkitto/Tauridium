@@ -12,6 +12,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-08-17
+
+### Fixed
+- Replaced the false-positive runtime scan for the configured Tauri development URL with an executable build-provenance probe.
+- Production runtime packaging now executes the freshly built binary with `--build-info-file` and requires `buildMode` to be `production`.
+- Added compile-time Tauri build-mode metadata from `build.rs` so packaging validates the mode that actually controls startup behavior.
+- Kept the raw Cargo release guard while allowing valid Tauri production executables to contain inert `build.devUrl` configuration bytes.
+- Preserved the English-only tracked-source release gate and full Git-history source archives.
+
 ## [0.3.5] - 2026-08-17
 
 ### Fixed
