@@ -12,6 +12,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-08-17
+
+### Changed
+
+- Runtime ZIP names now include a short suffix derived from the binary's actual Rust compilation target, for example `tauridium-0.3.7-run-win-x64.zip`, `tauridium-0.3.7-run-linux-x64.zip`, or `tauridium-0.3.7-run-macos-arm64.zip`.
+- Runtime target identity is recorded at compile time and exposed through the existing non-GUI build-information probe; packaging does not infer the target from the host OS.
+- Multiple explicitly supplied runtime binaries are grouped by compilation target and emitted as separate run ZIPs, allowing target artifacts to coexist in one release directory without collisions.
+- Documentation checksums include every target-specific run ZIP produced by a multi-runtime packaging invocation.
+
+### Tests
+
+- Added coverage for Windows, Linux, musl, and macOS target suffixes, missing target provenance, and multi-target runtime grouping.
+
+
 ## [0.3.6] - 2026-08-17
 
 ### Fixed

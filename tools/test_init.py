@@ -132,7 +132,7 @@ class DependencyDetectionTests(unittest.TestCase):
 
 class ReleaseIdentityTests(unittest.TestCase):
   def test_release_identity_matches_package_version(self) -> None:
-    self.assertEqual(INIT.INIT_VERSION, "0.3.6")
+    self.assertEqual(INIT.INIT_VERSION, "0.3.7")
     INIT.validate_release_identity()
 
   def test_release_identity_rejects_stale_overlay(self) -> None:

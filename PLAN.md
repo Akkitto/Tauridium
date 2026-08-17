@@ -133,3 +133,10 @@ Key finding: WKWebView ignores `data_directory`; use `data_store_identifier` on 
 - Ferdium server — https://github.com/ferdium/ferdium-server
 - Ferdium recipes — https://github.com/ferdium/ferdium-recipes
 - Tauri — https://v2.tauri.app/
+
+### Phase 7 — Target-qualified runtime artifacts ✅ COMPLETE (0.3.7)
+
+- Record the actual Rust compilation target in runtime build provenance.
+- Name run ZIPs with short target suffixes so Windows, Linux, and macOS artifacts coexist.
+- Group multiple supplied runtimes by target during packaging.
+- Keep source/documentation artifact names target-neutral.
