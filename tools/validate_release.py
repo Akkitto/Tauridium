@@ -116,8 +116,12 @@ def main() -> int:
     fail("release workflow must not mutate Rust source with cargo fmt")
   if "git status" not in check_clean or "--porcelain" not in check_clean:
     fail("release clean-worktree checker is incomplete")
-  if "test_release_uses_non_mutating_format_check_and_clean_gates" not in release_workflow_test:
-    fail("release workflow regression coverage is missing")
+  for test_marker in (
+    "test_release_uses_non_mutating_format_check_and_clean_gates",
+    "test_committed_rust_sources_match_native_rustfmt_baseline",
+  ):
+    if test_marker not in release_workflow_test:
+      fail(f"release workflow regression coverage is missing: {test_marker}")
 
   if f'$InitVersion = "{version}"' not in init_ps1:
     fail("PowerShell initializer release identity differs from release version")

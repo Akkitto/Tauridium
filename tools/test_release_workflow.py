@@ -34,6 +34,30 @@ class ReleaseWorkflowTests(unittest.TestCase):
     ):
       self.assertIn(marker, justfile)
 
+  def test_committed_rust_sources_match_native_rustfmt_baseline(self) -> None:
+    main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+    recipes = (ROOT / "src-tauri/src/recipes.rs").read_text(encoding="utf-8")
+
+    # These are the exact forms emitted by rustfmt 1.94.0 on Windows for the
+    # recipe code added in 0.3.x. Keep this lightweight guard so artifact
+    # packaging environments without Rust still reject the known drift.
+    self.assertIn(
+      "async fn recipe_config(app: &AppHandle, app_data: &Path, recipe_id: &str) -> Result<Value, String> {",
+      main,
+    )
+    self.assertIn(
+      "async fn recipe_webview_js(app: &AppHandle, app_data: &Path, recipe_id: &str) -> Option<String> {",
+      main,
+    )
+    self.assertIn(
+      'let Some(id) = recipe.get("id").and_then(Value::as_str).map(str::to_owned) else {',
+      recipes,
+    )
+    self.assertNotIn(
+      'let Some(id) = recipe\n                .get("id")',
+      recipes,
+    )
+
   def test_clean_checker_reports_exact_dirty_path(self) -> None:
     with tempfile.TemporaryDirectory() as temp:
       root = Path(temp)
