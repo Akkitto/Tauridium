@@ -218,7 +218,10 @@ fn custom_recipe_package(app: &AppHandle, recipe_id: &str) -> Result<Option<Valu
     read_package(&path).map(Some)
 }
 
-pub(crate) fn local_recipe_config(app: &AppHandle, recipe_id: &str) -> Result<Option<Value>, String> {
+pub(crate) fn local_recipe_config(
+    app: &AppHandle,
+    recipe_id: &str,
+) -> Result<Option<Value>, String> {
     if let Some(bundled) = bundled_recipe(recipe_id) {
         return Ok(Some(bundled));
     }
@@ -404,7 +407,9 @@ fn recipe_id_from_import(package: &Value, source_dir: &Path) -> Result<String, S
     let id = source_dir
         .file_name()
         .and_then(|name| name.to_str())
-        .ok_or_else(|| "Imported recipe needs an id field or a valid parent folder name".to_string())?
+        .ok_or_else(|| {
+            "Imported recipe needs an id field or a valid parent folder name".to_string()
+        })?
         .to_ascii_lowercase();
     validate_recipe_id(&id)?;
     Ok(id)
@@ -509,9 +514,18 @@ mod tests {
         });
         save_recipe_files(&root, "test-local", &package, "<svg></svg>", "console.log('ok');")
             .unwrap();
-        assert_eq!(read_package(&root.join("test-local/package.json")).unwrap()["name"], "Test Local");
-        assert_eq!(fs::read_to_string(root.join("test-local/icon.svg")).unwrap(), "<svg></svg>");
-        assert_eq!(fs::read_to_string(root.join("test-local/webview.js")).unwrap(), "console.log('ok');");
+        assert_eq!(
+            read_package(&root.join("test-local/package.json")).unwrap()["name"],
+            "Test Local"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("test-local/icon.svg")).unwrap(),
+            "<svg></svg>"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("test-local/webview.js")).unwrap(),
+            "console.log('ok');"
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

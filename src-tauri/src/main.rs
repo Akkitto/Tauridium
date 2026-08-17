@@ -1770,8 +1770,11 @@ fn start_badge_poller(app: AppHandle) {
                             .unwrap_or(false);
                         if let Some(arr) = v.get("n").and_then(|x| x.as_array()) {
                             for notif in arr {
-                                let title =
-                                    notif.get("title").and_then(|x| x.as_str()).unwrap_or("").trim();
+                                let title = notif
+                                    .get("title")
+                                    .and_then(|x| x.as_str())
+                                    .unwrap_or("")
+                                    .trim();
                                 let body = notif.get("body").and_then(|x| x.as_str()).unwrap_or("");
                                 if title.is_empty() && body.is_empty() {
                                     continue;
