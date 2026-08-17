@@ -504,11 +504,7 @@ async fn get_workspaces(state: State<'_, AppState>) -> Result<Value, String> {
 // --- Recipes & résolution d'URL ----------------------------------------
 
 // Récupère le package.json du recipe (cache disque), depuis le repo ferdium-recipes.
-async fn recipe_config(
-    app: &AppHandle,
-    app_data: &Path,
-    recipe_id: &str,
-) -> Result<Value, String> {
+async fn recipe_config(app: &AppHandle, app_data: &Path, recipe_id: &str) -> Result<Value, String> {
     validate_recipe_id(recipe_id)?;
     if let Some(local) = recipes::local_recipe_config(app, recipe_id)? {
         return Ok(local);
@@ -661,11 +657,7 @@ const RECIPE_SUFFIX: &str = r#"
 })();"#;
 
 // Récupère (et cache) le webview.js d'un recipe ; None s'il n'en a pas.
-async fn recipe_webview_js(
-    app: &AppHandle,
-    app_data: &Path,
-    recipe_id: &str,
-) -> Option<String> {
+async fn recipe_webview_js(app: &AppHandle, app_data: &Path, recipe_id: &str) -> Option<String> {
     if validate_recipe_id(recipe_id).is_err() {
         return None;
     }

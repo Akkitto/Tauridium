@@ -233,7 +233,10 @@ pub(crate) fn local_webview_js(app: &AppHandle, recipe_id: &str) -> Option<Strin
     if is_bundled_recipe(recipe_id) {
         return None;
     }
-    let path = custom_recipes_dir(app).ok()?.join(recipe_id).join(WEBVIEW_FILE);
+    let path = custom_recipes_dir(app)
+        .ok()?
+        .join(recipe_id)
+        .join(WEBVIEW_FILE);
     fs::read_to_string(path).ok()
 }
 
@@ -247,7 +250,10 @@ pub(crate) fn local_icon_url(app: &AppHandle, recipe_id: &str) -> Option<String>
     {
         return Some(svg_data_uri(&generic_icon(recipe.1)));
     }
-    let path = custom_recipes_dir(app).ok()?.join(recipe_id).join(ICON_FILE);
+    let path = custom_recipes_dir(app)
+        .ok()?
+        .join(recipe_id)
+        .join(ICON_FILE);
     if let Ok(svg) = fs::read_to_string(path) {
         return Some(svg_data_uri(&svg));
     }
@@ -285,7 +291,9 @@ fn custom_previews(app: &AppHandle) -> Result<Vec<Value>, String> {
             continue;
         };
         let icon_path = entry.path().join(ICON_FILE);
-        let icon = fs::read_to_string(icon_path).ok().map(|svg| svg_data_uri(&svg));
+        let icon = fs::read_to_string(icon_path)
+            .ok()
+            .map(|svg| svg_data_uri(&svg));
         previews.push(preview_from_package(&id, &package, "custom", icon));
     }
     previews.sort_by(|left, right| {
@@ -300,11 +308,7 @@ pub(crate) fn merge_catalog(app: &AppHandle, remote: Option<Value>) -> Result<Va
     let mut merged = BTreeMap::<String, Value>::new();
     if let Some(Value::Array(recipes)) = remote {
         for recipe in recipes {
-            let Some(id) = recipe
-                .get("id")
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-            else {
+            let Some(id) = recipe.get("id").and_then(Value::as_str).map(str::to_owned) else {
                 continue;
             };
             if validate_recipe_id(&id).is_err() {
@@ -359,8 +363,12 @@ fn save_recipe_files(
     }
     validate_package(package)?;
     let dir = root.join(recipe_id);
-    fs::create_dir_all(&dir)
-        .map_err(|error| format!("Unable to create recipe directory {}: {error}", dir.display()))?;
+    fs::create_dir_all(&dir).map_err(|error| {
+        format!(
+            "Unable to create recipe directory {}: {error}",
+            dir.display()
+        )
+    })?;
 
     // Companion files are committed first; package.json is the discovery marker and is
     // written last so a partially written new recipe is never listed as valid.
@@ -462,7 +470,9 @@ mod tests {
         for id in ["custom-website", "opencode"] {
             let recipe = bundled_recipe(id).unwrap();
             assert_eq!(
-                recipe.pointer("/config/hasCustomUrl").and_then(Value::as_bool),
+                recipe
+                    .pointer("/config/hasCustomUrl")
+                    .and_then(Value::as_bool),
                 Some(true)
             );
         }
@@ -502,18 +512,22 @@ mod tests {
 
     #[test]
     fn save_recipe_files_round_trips_companion_files() {
-        let root = std::env::temp_dir().join(format!(
-            "tauridium-recipe-test-{}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("tauridium-recipe-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let package = json!({
             "id": "test-local",
             "name": "Test Local",
             "config": { "serviceURL": "https://example.com", "hasCustomUrl": true }
         });
-        save_recipe_files(&root, "test-local", &package, "<svg></svg>", "console.log('ok');")
-            .unwrap();
+        save_recipe_files(
+            &root,
+            "test-local",
+            &package,
+            "<svg></svg>",
+            "console.log('ok');",
+        )
+        .unwrap();
         assert_eq!(
             read_package(&root.join("test-local/package.json")).unwrap()["name"],
             "Test Local"
