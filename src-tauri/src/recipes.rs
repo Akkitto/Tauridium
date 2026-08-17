@@ -297,13 +297,19 @@ pub(crate) fn merge_catalog(app: &AppHandle, remote: Option<Value>) -> Result<Va
     let mut merged = BTreeMap::<String, Value>::new();
     if let Some(Value::Array(recipes)) = remote {
         for recipe in recipes {
-            if let Some(id) = recipe.get("id").and_then(Value::as_str) {
-                if validate_recipe_id(id).is_ok() {
-                    let mut recipe = recipe;
-                    recipe["source"] = Value::String("remote".into());
-                    merged.insert(id.to_string(), recipe);
-                }
+            let Some(id) = recipe
+                .get("id")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+            else {
+                continue;
+            };
+            if validate_recipe_id(&id).is_err() {
+                continue;
             }
+            let mut recipe = recipe;
+            recipe["source"] = Value::String("remote".into());
+            merged.insert(id, recipe);
         }
     }
     for recipe in bundled_previews() {
