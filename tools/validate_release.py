@@ -175,6 +175,9 @@ def main() -> int:
     "source-manifest checksum mismatch",
     "context.manifest_bytes",
     '["git", "ls-files", "--stage", "-z"]',
+    'def git_metadata_files()',
+    'prefix + ".git/" + archive_path',
+    'requires a real Git checkout',
     'mode=0o755',
   ):
     if package_marker not in package_release:
@@ -184,6 +187,7 @@ def main() -> int:
     "test_extracted_source_rejects_modified_source",
     "test_extracted_source_requires_manifest_when_git_is_absent",
     "test_source_zip_preserves_manifest_and_manifest_file_set",
+    "test_source_zip_requires_git_history",
     "test_docs_use_manifest_git_log_without_git_repository",
     "test_git_index_modes_are_used_instead_of_host_filesystem_modes",
   ):

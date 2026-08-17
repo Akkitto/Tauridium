@@ -34,6 +34,15 @@ class CustomRecipeReleaseTests(unittest.TestCase):
     self.assertLess(body.index("bundled_recipe(recipe_id)"), body.index("custom_recipe_package"))
     self.assertIn("if is_bundled_recipe(recipe_id)", self.recipes)
 
+  def test_remote_catalog_id_is_owned_before_recipe_move(self) -> None:
+    body = self.recipes.split("pub(crate) fn merge_catalog", 1)[1].split(
+      "fn write_optional_file", 1
+    )[0]
+    self.assertIn(".map(str::to_owned)", body)
+    self.assertIn("validate_recipe_id(&id)", body)
+    self.assertIn("merged.insert(id, recipe)", body)
+    self.assertNotIn("merged.insert(id.to_string(), recipe)", body)
+
   def test_recipe_files_use_configuration_directory(self) -> None:
     self.assertIn("app_config_dir()", self.recipes)
     self.assertIn('const CUSTOM_RECIPE_DIR: &str = "recipes"', self.recipes)
@@ -85,10 +94,10 @@ class CustomRecipeReleaseTests(unittest.TestCase):
   def test_release_versions_are_consistent(self) -> None:
     package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
     tauri = json.loads((ROOT / "src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
-    self.assertEqual(package["version"], "0.3.0")
-    self.assertEqual(tauri["version"], "0.3.0")
+    self.assertEqual(package["version"], "0.3.1")
+    self.assertEqual(tauri["version"], "0.3.1")
     cargo = (ROOT / "src-tauri/Cargo.toml").read_text(encoding="utf-8")
-    self.assertRegex(cargo, r'(?m)^version = "0\.3\.0"$')
+    self.assertRegex(cargo, r'(?m)^version = "0\.3\.1"$')
 
 
 if __name__ == "__main__":
