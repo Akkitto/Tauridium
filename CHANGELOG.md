@@ -12,6 +12,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-08-17
+
+### Fixed
+
+- Committed the exact Rust formatting required by native `rustfmt 1.94.0`, fixing `just release` failing at `fmt-check` immediately after extracting the 0.3.2 source release.
+- Corrected formatting in the local-recipe additions in `src-tauri/src/main.rs` and `src-tauri/src/recipes.rs` without changing runtime behavior.
+
+### Tests
+
+- Added an offline regression for the exact native-rustfmt forms that drifted in 0.3.2, so packaging environments without a Rust toolchain still catch this known formatting regression.
+- `just release` continues to enforce a real non-mutating `cargo fmt -- --check` gate when run in a Rust development environment.
+- Source ZIP packaging continues to include the complete `.git` repository and validates extracted Git history, tags, clean status, and object integrity.
+
 ## [0.3.2] - 2026-08-17
 
 ### Fixed
