@@ -118,7 +118,7 @@ struct AppState {
     settings: Mutex<Value>,          // app settings cache (read by the poller, etc.)
     sidebar_w: Mutex<f64>,           // sidebar width (initialized during setup, default 240)
     desired_active: Mutex<Option<String>>, // last requested service (prevents focus stealing during switches)
-    inflight: Mutex<HashSet<String>>, // webviews being created (prevents duplicate add_child)
+    inflight: Mutex<HashSet<String>>,      // webviews being created (prevents duplicate add_child)
 }
 
 #[derive(Clone, Copy)]
@@ -1103,9 +1103,7 @@ async fn show_service(
         dark,
     } = request;
     let dark = dark.and_then(DarkSettings::into_opts);
-    let win = app
-        .get_window("main")
-        .ok_or("Main window not found")?;
+    let win = app.get_window("main").ok_or("Main window not found")?;
     let label = format!("svc-{service_id}");
     let sw = *state.sidebar_w.lock().unwrap();
     let (pos, size) = service_rect(&win, sw)?;
