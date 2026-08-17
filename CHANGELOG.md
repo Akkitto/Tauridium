@@ -12,6 +12,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-08-17
+
+### Fixed
+
+- Fixed Windows release executables opening the development URL and failing with `ERR_CONNECTION_REFUSED` when no Vite development server is running.
+- Production runtime builds now use `cargo tauri build --no-bundle --ci`, which packages the configured `frontendDist` instead of relying on `devUrl`.
+- Added a release-profile build-script guard that rejects raw Cargo release builds when Tauri is still in development/custom-protocol-disabled mode.
+- Translated all remaining non-English project prose, comments, UI labels, diagnostics, workflow text, and tests in the current tracked source tree to English.
+
+### Tests
+
+- Runtime packaging rejects binaries containing the configured development localhost URL.
+- Added release regressions for the production Tauri build path and raw-release build guard.
+- Added an English-only tracked-source audit and regression coverage; the gate includes vendored tracked text while preserving historical Git objects unchanged.
+- Source ZIPs continue to include the complete `.git` repository and are validated after extraction.
+
 ## [0.3.3] - 2026-08-17
 
 ### Fixed
@@ -283,7 +299,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   fields (Discord's channel search) inserted every character twice. The
   duplicate is now de-duplicated (at most one insertion per keydown).
 - **Doubled accented characters in Discord's message composer.** Dead keys /
-  IME composition (é, ê, à…) inserted the character twice in the Slate composer.
+  IME composition with accented characters inserted the character twice in the Slate composer.
   The redundant legacy `textInput` is now neutralized in Slate editors only, so
   Draft.js accent input (search) keeps working.
 ### Added

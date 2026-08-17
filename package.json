@@ -1,7 +1,7 @@
 {
   "name": "tauridium",
-  "version": "0.3.3",
-  "description": "Tauridium — lightweight Tauri client for Ferdium",
+  "version": "0.3.4",
+  "description": "Tauridium \u2014 lightweight Tauri client for Ferdium",
   "type": "module",
   "private": true,
   "license": "MIT",
