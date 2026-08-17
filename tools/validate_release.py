@@ -108,7 +108,7 @@ def main() -> int:
     "--all-targets --all-features --locked -- -D warnings",
     "--all-targets --all-features --locked",
     "--all-features --locked",
-    "--release --all-features --locked",
+    "cargo tauri build --no-bundle --ci",
   ):
     if marker not in justfile:
       fail(f"release workflow is missing non-mutating/locked gate: {marker}")
@@ -118,6 +118,7 @@ def main() -> int:
     fail("release clean-worktree checker is incomplete")
   for test_marker in (
     "test_release_uses_non_mutating_format_check_and_clean_gates",
+    "test_production_runtime_uses_tauri_cli_and_raw_release_is_guarded",
     "test_committed_rust_sources_match_native_rustfmt_baseline",
   ):
     if test_marker not in release_workflow_test:
@@ -205,6 +206,8 @@ def main() -> int:
     'requires a real Git checkout',
     'changed paths:',
     'mode=0o755',
+    'FORBIDDEN_RUNTIME_MARKERS',
+    'validate_runtime(runtime)',
   ):
     if package_marker not in package_release:
       fail(f"release packager is missing source-ZIP fallback protection: {package_marker}")
@@ -217,6 +220,8 @@ def main() -> int:
     "test_dirty_git_source_error_names_changed_path",
     "test_docs_use_manifest_git_log_without_git_repository",
     "test_git_index_modes_are_used_instead_of_host_filesystem_modes",
+    "test_runtime_rejects_development_localhost_url",
+    "test_runtime_accepts_production_binary_without_development_url",
   ):
     if test_marker not in package_release_test:
       fail(f"release packager regression coverage is missing: {test_marker}")
@@ -242,6 +247,14 @@ def main() -> int:
   ):
     if xdo_probe_marker not in init_py:
       fail(f"initializer is missing robust libxdo detection: {xdo_probe_marker}")
+
+  build_rs = read("src-tauri/build.rs")
+  if "build:\n  cargo tauri build --no-bundle --ci" not in justfile:
+    fail("production runtime build does not use the Tauri CLI")
+  if 'std::env::var("PROFILE")' not in build_rs or "tauri_build::is_dev()" not in build_rs:
+    fail("build script does not reject development-mode release binaries")
+  if "Refusing a development-mode release binary" not in build_rs:
+    fail("build script lacks an actionable development-mode release failure")
 
   main_rs = read("src-tauri/src/main.rs")
   api_ts = read("src/lib/api.ts")
@@ -325,6 +338,10 @@ def main() -> int:
     fail("CI does not target master")
   if "-D warnings" not in ci or "--all-features" not in ci:
     fail("CI Rust gates are weaker than release policy")
+  if "cargo tauri build --no-bundle --ci" not in ci:
+    fail("CI does not exercise a production Tauri runtime build")
+  if "cargo build --manifest-path src-tauri/Cargo.toml --release --all-features" in ci:
+    fail("CI still creates a raw Cargo release binary instead of a Tauri production runtime")
   if "windows-native:" not in ci or "shell: pwsh" not in ci:
     fail("CI does not exercise the native Windows PowerShell workflow")
   for command in ("just init-native", "just check", "just test", "just build", "just package"):
@@ -337,6 +354,18 @@ def main() -> int:
     fail("release version synchronization still forces Bash on Windows jobs")
   if 'node tools/sync_version.mjs "${{ github.ref_name }}"' not in sync_block:
     fail("release version synchronization is not cross-platform")
+
+  english = subprocess.run(
+    [sys.executable, "tools/check_english.py"],
+    cwd=ROOT,
+    text=True,
+    capture_output=True,
+    check=False,
+  )
+  if english.returncode:
+    sys.stderr.write(english.stdout)
+    sys.stderr.write(english.stderr)
+    fail("English-only tracked-source audit failed")
 
   changelog = read("CHANGELOG.md")
   if f"## [{version}]" not in changelog:

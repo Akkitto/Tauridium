@@ -61,7 +61,7 @@ class CustomRecipeReleaseTests(unittest.TestCase):
 
   def test_custom_website_is_created_locally_with_url_in_one_command(self) -> None:
     command = self.main.split("fn create_custom_website_service", 1)[1].split(
-      "// Supprime un service", 1
+      "// Delete a service", 1
     )[0]
     self.assertIn('"custom-website".into()', command)
     self.assertIn('serde_json::json!({ "customUrl": url })', command)
@@ -94,10 +94,10 @@ class CustomRecipeReleaseTests(unittest.TestCase):
   def test_release_versions_are_consistent(self) -> None:
     package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
     tauri = json.loads((ROOT / "src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
-    self.assertEqual(package["version"], "0.3.3")
-    self.assertEqual(tauri["version"], "0.3.3")
+    self.assertEqual(package["version"], "0.3.4")
+    self.assertEqual(tauri["version"], "0.3.4")
     cargo = (ROOT / "src-tauri/Cargo.toml").read_text(encoding="utf-8")
-    self.assertRegex(cargo, r'(?m)^version = "0\.3\.3"$')
+    self.assertRegex(cargo, r'(?m)^version = "0\.3\.4"$')
 
 
 if __name__ == "__main__":

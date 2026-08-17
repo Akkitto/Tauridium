@@ -199,6 +199,22 @@ class PackageReleaseTests(unittest.TestCase):
 
     self.assertEqual(entries["script.ps1"].mode, 0o755)
 
+  def test_runtime_rejects_development_localhost_url(self) -> None:
+    runtime = self.root / "tauridium.exe"
+    runtime.write_bytes(b"MZ\x00production-prefix http://localhost:1420 production-suffix")
+
+    with self.assertRaisesRegex(SystemExit, "contains development URL"):
+      PACKAGE.build_runtime(self.root / "run.zip", "0.2.0", [runtime])
+
+  def test_runtime_accepts_production_binary_without_development_url(self) -> None:
+    runtime = self.root / "tauridium.exe"
+    runtime.write_bytes(b"MZ\x00production-runtime")
+
+    PACKAGE.build_runtime(self.root / "run.zip", "0.2.0", [runtime])
+
+    with zipfile.ZipFile(self.root / "run.zip") as archive:
+      self.assertIn("tauridium-0.2.0/tauridium.exe", archive.namelist())
+
   def test_docs_use_manifest_git_log_without_git_repository(self) -> None:
     self.write_manifest()
     context = PACKAGE.source_context("0.2.0")

@@ -30,9 +30,17 @@ class ReleaseWorkflowTests(unittest.TestCase):
       "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings",
       "cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked",
       "cargo test --manifest-path src-tauri/Cargo.toml --all-features --locked",
-      "cargo build --manifest-path src-tauri/Cargo.toml --release --all-features --locked",
+      "cargo tauri build --no-bundle --ci",
     ):
       self.assertIn(marker, justfile)
+
+  def test_production_runtime_uses_tauri_cli_and_raw_release_is_guarded(self) -> None:
+    justfile = (ROOT / "justfile").read_text(encoding="utf-8")
+    build_rs = (ROOT / "src-tauri/build.rs").read_text(encoding="utf-8")
+    self.assertIn("build:\n  cargo tauri build --no-bundle --ci", justfile)
+    self.assertIn('std::env::var("PROFILE")', build_rs)
+    self.assertIn("tauri_build::is_dev()", build_rs)
+    self.assertIn("Refusing a development-mode release binary", build_rs)
 
   def test_committed_rust_sources_match_native_rustfmt_baseline(self) -> None:
     main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
