@@ -1040,7 +1040,7 @@ async fn create_service_webview(
                     .notification()
                     .builder()
                     .title("Tauridium")
-                    .body(format!("Downloaded "{}"", download_filename(&url)))
+                    .body(format!("Downloaded \"{}\"", download_filename(&url)))
                     .show();
             }
             _ => {}
