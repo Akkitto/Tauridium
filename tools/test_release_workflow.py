@@ -65,6 +65,22 @@ class ReleaseWorkflowTests(unittest.TestCase):
       'let Some(id) = recipe\n                .get("id")',
       recipes,
     )
+    self.assertIn(
+      '    inflight: Mutex<HashSet<String>>,      // webviews being created (prevents duplicate add_child)',
+      main,
+    )
+    self.assertIn(
+      '    let win = app.get_window("main").ok_or("Main window not found")?;',
+      main,
+    )
+
+  def test_download_notification_uses_valid_quoted_format_string(self) -> None:
+    main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+    self.assertIn(
+      '.body(format!("Downloaded \\"{}\\"", download_filename(&url)))',
+      main,
+    )
+    self.assertNotIn('format!("Downloaded "{}""', main)
 
   def test_clean_checker_reports_exact_dirty_path(self) -> None:
     with tempfile.TemporaryDirectory() as temp:

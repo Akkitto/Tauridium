@@ -120,6 +120,7 @@ def main() -> int:
     "test_release_uses_non_mutating_format_check_and_clean_gates",
     "test_production_runtime_uses_tauri_cli_and_raw_release_is_guarded",
     "test_committed_rust_sources_match_native_rustfmt_baseline",
+    "test_download_notification_uses_valid_quoted_format_string",
   ):
     if test_marker not in release_workflow_test:
       fail(f"release workflow regression coverage is missing: {test_marker}")
