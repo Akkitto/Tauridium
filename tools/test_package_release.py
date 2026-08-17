@@ -9,6 +9,7 @@ import sys
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 from pathlib import Path
 
@@ -199,21 +200,54 @@ class PackageReleaseTests(unittest.TestCase):
 
     self.assertEqual(entries["script.ps1"].mode, 0o755)
 
-  def test_runtime_rejects_development_localhost_url(self) -> None:
-    runtime = self.root / "tauridium.exe"
-    runtime.write_bytes(b"MZ\x00production-prefix http://localhost:1420 production-suffix")
+  def test_validate_build_info_rejects_development_mode(self) -> None:
+    with self.assertRaisesRegex(SystemExit, "not compiled in Tauri production mode"):
+      PACKAGE.validate_build_info(
+        {"name": "Tauridium", "version": "0.2.0", "buildMode": "development"},
+        "0.2.0",
+      )
 
-    with self.assertRaisesRegex(SystemExit, "contains development URL"):
+  def test_validate_build_info_accepts_production_mode_even_with_configured_dev_url(self) -> None:
+    # The configured devUrl can remain as inert bytes in a production executable;
+    # acceptance is based on the executable's compile-time Tauri mode instead.
+    PACKAGE.validate_build_info(
+      {"name": "Tauridium", "version": "0.2.0", "buildMode": "production"},
+      "0.2.0",
+    )
+
+  def test_runtime_probe_executes_binary_and_validates_production_mode(self) -> None:
+    runtime = self.root / "tauridium.exe"
+    runtime.write_bytes(b"MZ\x00http://localhost:1420 may be embedded configuration")
+
+    def fake_run(command, **_kwargs):
+      self.assertEqual(command[0], str(runtime))
+      self.assertEqual(command[1], PACKAGE.BUILD_INFO_ARGUMENT)
+      Path(command[2]).write_text(
+        json.dumps({"name": "Tauridium", "version": "0.2.0", "buildMode": "production"}),
+        encoding="utf-8",
+      )
+      return subprocess.CompletedProcess(command, 0, "", "")
+
+    with mock.patch.object(PACKAGE.subprocess, "run", side_effect=fake_run):
       PACKAGE.build_runtime(self.root / "run.zip", "0.2.0", [runtime])
-
-  def test_runtime_accepts_production_binary_without_development_url(self) -> None:
-    runtime = self.root / "tauridium.exe"
-    runtime.write_bytes(b"MZ\x00production-runtime")
-
-    PACKAGE.build_runtime(self.root / "run.zip", "0.2.0", [runtime])
 
     with zipfile.ZipFile(self.root / "run.zip") as archive:
       self.assertIn("tauridium-0.2.0/tauridium.exe", archive.namelist())
+
+  def test_runtime_probe_rejects_development_binary(self) -> None:
+    runtime = self.root / "tauridium.exe"
+    runtime.write_bytes(b"MZ")
+
+    def fake_run(command, **_kwargs):
+      Path(command[2]).write_text(
+        json.dumps({"name": "Tauridium", "version": "0.2.0", "buildMode": "development"}),
+        encoding="utf-8",
+      )
+      return subprocess.CompletedProcess(command, 0, "", "")
+
+    with mock.patch.object(PACKAGE.subprocess, "run", side_effect=fake_run):
+      with self.assertRaisesRegex(SystemExit, "not compiled in Tauri production mode"):
+        PACKAGE.build_runtime(self.root / "run.zip", "0.2.0", [runtime])
 
   def test_docs_use_manifest_git_log_without_git_repository(self) -> None:
     self.write_manifest()

@@ -207,8 +207,9 @@ def main() -> int:
     'requires a real Git checkout',
     'changed paths:',
     'mode=0o755',
-    'FORBIDDEN_RUNTIME_MARKERS',
-    'validate_runtime(runtime)',
+    'BUILD_INFO_ARGUMENT = "--build-info-file"',
+    'def validate_build_info(',
+    'validate_runtime(runtime, release_version)',
   ):
     if package_marker not in package_release:
       fail(f"release packager is missing source-ZIP fallback protection: {package_marker}")
@@ -221,8 +222,10 @@ def main() -> int:
     "test_dirty_git_source_error_names_changed_path",
     "test_docs_use_manifest_git_log_without_git_repository",
     "test_git_index_modes_are_used_instead_of_host_filesystem_modes",
-    "test_runtime_rejects_development_localhost_url",
-    "test_runtime_accepts_production_binary_without_development_url",
+    "test_validate_build_info_rejects_development_mode",
+    "test_validate_build_info_accepts_production_mode_even_with_configured_dev_url",
+    "test_runtime_probe_executes_binary_and_validates_production_mode",
+    "test_runtime_probe_rejects_development_binary",
   ):
     if test_marker not in package_release_test:
       fail(f"release packager regression coverage is missing: {test_marker}")
@@ -254,10 +257,16 @@ def main() -> int:
     fail("production runtime build does not use the Tauri CLI")
   if 'std::env::var("PROFILE")' not in build_rs or "tauri_build::is_dev()" not in build_rs:
     fail("build script does not reject development-mode release binaries")
+  if "cargo:rustc-env=TAURIDIUM_BUILD_MODE" not in build_rs:
+    fail("build script does not expose compile-time Tauri build provenance")
   if "Refusing a development-mode release binary" not in build_rs:
     fail("build script lacks an actionable development-mode release failure")
 
   main_rs = read("src-tauri/src/main.rs")
+  if 'env!("TAURIDIUM_BUILD_MODE")' not in main_rs or '"--build-info-file"' not in main_rs:
+    fail("runtime does not expose compile-time Tauri build information")
+  if "FORBIDDEN_RUNTIME_MARKERS" in package_release:
+    fail("release packager still rejects inert configured devUrl bytes")
   api_ts = read("src/lib/api.ts")
   api_test_ts = read("src/lib/api.test.ts")
   app = read("src/App.svelte")
