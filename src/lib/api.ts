@@ -42,14 +42,33 @@ export interface Service {
   userAgentPref?: string;
   order?: number;
   workspaces?: string[];
+  isLocalRecipe?: boolean;
   [k: string]: unknown;
 }
 
 export interface RecipePreview {
   id: string;
   name: string;
+  description?: string;
+  source?: "bundled" | "custom" | "remote";
   icons?: { svg?: string };
   [k: string]: unknown;
+}
+
+export interface RecipeDraft {
+  id: string;
+  name: string;
+  serviceUrl: string;
+  description: string;
+  hasCustomUrl: boolean;
+  hasTeamId: boolean;
+  iconSvg: string;
+  webviewJs: string;
+}
+
+export interface RecipeStorageInfo {
+  configDir: string;
+  recipesDir: string;
 }
 
 export interface Workspace {
@@ -158,6 +177,10 @@ export function createService(name: string, recipeId: string): Promise<unknown> 
   return invoke("create_service", { name, recipeId });
 }
 
+export function createCustomWebsiteService(name: string, url: string): Promise<unknown> {
+  return invoke("create_custom_website_service", { name, url });
+}
+
 export function deleteService(serviceId: string): Promise<void> {
   return invoke("delete_service", { serviceId });
 }
@@ -169,6 +192,18 @@ export function clearServiceCache(serviceId: string): Promise<void> {
 
 export function listRecipes(): Promise<RecipePreview[]> {
   return invoke("list_recipes");
+}
+
+export function getRecipeStorageInfo(): Promise<RecipeStorageInfo> {
+  return invoke("get_recipe_storage_info");
+}
+
+export function saveCustomRecipe(draft: RecipeDraft): Promise<unknown> {
+  return invoke("save_custom_recipe", { draft });
+}
+
+export function importCustomRecipe(path: string): Promise<RecipePreview> {
+  return invoke("import_custom_recipe", { path });
 }
 
 export function createWorkspace(name: string): Promise<Workspace> {

@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod local_profile;
+mod recipes;
 
 // pakeFerdium — client Ferdium léger (Tauri v2).
 //
@@ -12,6 +13,7 @@ mod local_profile;
 
 use base64::Engine;
 use local_profile::{validate_recipe_id, LocalProfile};
+use recipes::RecipeDraft;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
@@ -344,9 +346,11 @@ async fn login(
         .to_string();
 
     {
+        let local_profile = load_local_profile(&app)?;
         *state.server.lock().unwrap() = Some(base.clone());
         *state.token.lock().unwrap() = Some(token.clone());
         *state.local_mode.lock().unwrap() = false;
+        *state.local_profile.lock().unwrap() = local_profile;
     }
     save_session(&app, &base, &token);
     api_get(&base, &token, "/v1/me").await
@@ -408,9 +412,11 @@ async fn restore_session(app: AppHandle, state: State<'_, AppState>) -> Result<V
                 .json()
                 .await
                 .map_err(|e| format!("Réponse /v1/me illisible : {e}"))?;
+            let local_profile = load_local_profile(&app)?;
             *state.server.lock().unwrap() = Some(server);
             *state.token.lock().unwrap() = Some(token);
             *state.local_mode.lock().unwrap() = false;
+            *state.local_profile.lock().unwrap() = local_profile;
             Ok(me)
         }
         Ok(r) if r.status().as_u16() == 401 || r.status().as_u16() == 403 => {
@@ -444,13 +450,46 @@ fn current(state: &State<'_, AppState>) -> Result<(String, String), String> {
     }
 }
 
+fn merge_server_and_local_services(server: Value, local: Value) -> Value {
+    let mut server_services = server.as_array().cloned().unwrap_or_default();
+    let local_services = local.as_array().cloned().unwrap_or_default();
+    let known_ids = server_services
+        .iter()
+        .filter_map(|service| service.get("id").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect::<HashSet<_>>();
+    let max_order = server_services
+        .iter()
+        .filter_map(|service| service.get("order").and_then(Value::as_i64))
+        .max()
+        .unwrap_or(-1);
+    for (index, mut service) in local_services.into_iter().enumerate() {
+        let Some(id) = service.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        if known_ids.contains(id) {
+            continue;
+        }
+        service["order"] = Value::from(max_order + 1 + index as i64);
+        service["isLocalRecipe"] = Value::Bool(true);
+        server_services.push(service);
+    }
+    Value::Array(server_services)
+}
+
 #[tauri::command]
 async fn get_services(state: State<'_, AppState>) -> Result<Value, String> {
     if is_local_mode(&state) {
         return Ok(state.local_profile.lock().unwrap().services_value());
     }
+    let local = state
+        .local_profile
+        .lock()
+        .unwrap()
+        .local_recipe_services_value();
     let (base, token) = current(&state)?;
-    api_get(&base, &token, "/v1/me/services").await
+    let server = api_get(&base, &token, "/v1/me/services").await?;
+    Ok(merge_server_and_local_services(server, local))
 }
 
 #[tauri::command]
@@ -465,8 +504,15 @@ async fn get_workspaces(state: State<'_, AppState>) -> Result<Value, String> {
 // --- Recipes & résolution d'URL ----------------------------------------
 
 // Récupère le package.json du recipe (cache disque), depuis le repo ferdium-recipes.
-async fn recipe_config(app_data: &Path, recipe_id: &str) -> Result<Value, String> {
+async fn recipe_config(
+    app: &AppHandle,
+    app_data: &Path,
+    recipe_id: &str,
+) -> Result<Value, String> {
     validate_recipe_id(recipe_id)?;
+    if let Some(local) = recipes::local_recipe_config(app, recipe_id)? {
+        return Ok(local);
+    }
 
     let dir = app_data.join("recipes");
     let _ = std::fs::create_dir_all(&dir);
@@ -615,8 +661,22 @@ const RECIPE_SUFFIX: &str = r#"
 })();"#;
 
 // Récupère (et cache) le webview.js d'un recipe ; None s'il n'en a pas.
-async fn recipe_webview_js(app_data: &Path, recipe_id: &str) -> Option<String> {
+async fn recipe_webview_js(
+    app: &AppHandle,
+    app_data: &Path,
+    recipe_id: &str,
+) -> Option<String> {
     if validate_recipe_id(recipe_id).is_err() {
+        return None;
+    }
+    if let Some(local) = recipes::local_webview_js(app, recipe_id) {
+        return Some(local);
+    }
+    if recipes::local_recipe_config(app, recipe_id)
+        .ok()
+        .flatten()
+        .is_some()
+    {
         return None;
     }
     let dir = app_data.join("recipes");
@@ -897,12 +957,12 @@ async fn create_service_webview(
     pos: LogicalPosition<f64>,
     size: LogicalSize<f64>,
 ) -> Result<(), String> {
-    let cfg = recipe_config(app_data, recipe_id).await?;
+    let cfg = recipe_config(win.app_handle(), app_data, recipe_id).await?;
     let url_str = resolve_url(&cfg, custom_url, team)?;
     let url = Url::parse(&url_str).map_err(|e| format!("URL invalide « {url_str} » : {e}"))?;
     let host = url.host_str().unwrap_or("").to_ascii_lowercase();
     // Runtime du recipe (scraping DOM des non-lus -> __pakeUnread) — best effort.
-    let runtime = recipe_webview_js(app_data, recipe_id)
+    let runtime = recipe_webview_js(win.app_handle(), app_data, recipe_id)
         .await
         .map(|js| format!("{RECIPE_PREAMBLE}{js}{RECIPE_SUFFIX}"));
     let label = format!("svc-{service_id}");
@@ -1273,7 +1333,12 @@ async fn update_service(
     service_id: String,
     patch: Value,
 ) -> Result<Value, String> {
-    if is_local_mode(&state) {
+    let local_service = state
+        .local_profile
+        .lock()
+        .unwrap()
+        .has_local_recipe_service(&service_id);
+    if is_local_mode(&state) || local_service {
         let mut profile = state.local_profile.lock().unwrap();
         let mut next = profile.clone();
         let updated = next.update_service(&service_id, &patch)?;
@@ -1305,10 +1370,16 @@ async fn create_service(
     name: String,
     recipe_id: String,
 ) -> Result<Value, String> {
-    if is_local_mode(&state) {
+    let local_recipe = recipes::local_recipe_config(&app, &recipe_id)?.is_some();
+    if is_local_mode(&state) || local_recipe {
+        let icon_url = if local_recipe {
+            recipes::local_icon_url(&app, &recipe_id)
+        } else {
+            None
+        };
         let mut profile = state.local_profile.lock().unwrap();
         let mut next = profile.clone();
-        let service = next.create_service(name, recipe_id)?;
+        let service = next.create_service(name, recipe_id, icon_url, local_recipe)?;
         save_local_profile(&app, &next)?;
         *profile = next;
         return Ok(service);
@@ -1329,6 +1400,42 @@ async fn create_service(
     res.json().await.map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn create_custom_website_service(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+    url: String,
+) -> Result<Value, String> {
+    let url = ensure_scheme(url.trim());
+    let parsed = Url::parse(&url).map_err(|error| format!("Invalid website URL: {error}"))?;
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return Err("Custom websites must use http:// or https://".into());
+    }
+    let display_name = if name.trim().is_empty() {
+        parsed.host_str().unwrap_or("Custom Website").to_string()
+    } else {
+        name.trim().to_string()
+    };
+    let mut profile = state.local_profile.lock().unwrap();
+    let mut next = profile.clone();
+    let mut service = next.create_service(
+        display_name,
+        "custom-website".into(),
+        recipes::local_icon_url(&app, "custom-website"),
+        true,
+    )?;
+    let service_id = service
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Created custom website service has no id".to_string())?
+        .to_string();
+    service = next.update_service(&service_id, &serde_json::json!({ "customUrl": url }))?;
+    save_local_profile(&app, &next)?;
+    *profile = next;
+    Ok(service)
+}
+
 // Supprime un service -> DELETE /v1/service/:id (+ ferme la webview).
 #[tauri::command]
 async fn delete_service(
@@ -1336,7 +1443,12 @@ async fn delete_service(
     state: State<'_, AppState>,
     service_id: String,
 ) -> Result<(), String> {
-    if is_local_mode(&state) {
+    let local_service = state
+        .local_profile
+        .lock()
+        .unwrap()
+        .has_local_recipe_service(&service_id);
+    if is_local_mode(&state) || local_service {
         let mut profile = state.local_profile.lock().unwrap();
         let mut next = profile.clone();
         next.delete_service(&service_id)?;
@@ -1416,80 +1528,51 @@ fn recipe_display_name(recipe_id: &str) -> String {
 }
 
 async fn local_recipe_catalog(app: &AppHandle) -> Result<Value, String> {
-    // Une seule requête GitHub donne les dossiers de recipes. Aucun compte ni aucune
-    // donnée utilisateur ne quitte Tauridium ; le résultat est mis en cache sur disque.
-    let result = HTTP
+    // Remote discovery is best-effort. Bundled and custom recipes remain available offline.
+    let remote = match HTTP
         .clone()
         .get("https://api.github.com/repos/ferdium/ferdium-recipes/contents/recipes?ref=main")
         .header(reqwest::header::USER_AGENT, API_UA)
         .header(reqwest::header::ACCEPT, "application/vnd.github+json")
         .send()
-        .await;
-
-    let response = match result {
-        Ok(response) if response.status().is_success() => response,
-        Ok(response) => {
-            if let Some(cached) = cached_recipe_catalog(app) {
-                return Ok(cached);
+        .await
+    {
+        Ok(response) if response.status().is_success() => match response.json::<Value>().await {
+            Ok(listing) => {
+                let recipes = listing
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter(|entry| entry.get("type").and_then(Value::as_str) == Some("dir"))
+                    .filter_map(|entry| entry.get("name").and_then(Value::as_str))
+                    .filter(|recipe_id| validate_recipe_id(recipe_id).is_ok())
+                    .map(|recipe_id| {
+                        serde_json::json!({
+                            "id": recipe_id,
+                            "name": recipe_display_name(recipe_id),
+                            "icons": {
+                                "svg": format!(
+                                    "https://raw.githubusercontent.com/ferdium/ferdium-recipes/main/recipes/{recipe_id}/icon.svg"
+                                )
+                            }
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                let catalog = Value::Array(recipes);
+                if let Ok(path) = recipe_catalog_cache_path(app) {
+                    if let Some(parent) = path.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    let _ = write_atomic(&path, &catalog.to_string());
+                }
+                Some(catalog)
             }
-            return Err(format!(
-                "Catalogue de recipes GitHub : HTTP {}",
-                response.status()
-            ));
-        }
-        Err(error) => {
-            if let Some(cached) = cached_recipe_catalog(app) {
-                return Ok(cached);
-            }
-            return Err(format!(
-                "Catalogue de recipes GitHub indisponible : {error}"
-            ));
-        }
+            Err(_) => cached_recipe_catalog(app),
+        },
+        _ => cached_recipe_catalog(app),
     };
 
-    let listing: Value = response
-        .json()
-        .await
-        .map_err(|error| format!("Catalogue de recipes GitHub illisible : {error}"))?;
-    let mut recipes = listing
-        .as_array()
-        .ok_or_else(|| "Catalogue de recipes GitHub invalide".to_string())?
-        .iter()
-        .filter(|entry| entry.get("type").and_then(Value::as_str) == Some("dir"))
-        .filter_map(|entry| entry.get("name").and_then(Value::as_str))
-        .filter(|recipe_id| validate_recipe_id(recipe_id).is_ok())
-        .map(|recipe_id| {
-            serde_json::json!({
-                "id": recipe_id,
-                "name": recipe_display_name(recipe_id),
-                "icons": {
-                    "svg": format!(
-                        "https://raw.githubusercontent.com/ferdium/ferdium-recipes/main/recipes/{recipe_id}/icon.svg"
-                    )
-                }
-            })
-        })
-        .collect::<Vec<_>>();
-    recipes.sort_by(|left, right| {
-        left.get("name")
-            .and_then(Value::as_str)
-            .cmp(&right.get("name").and_then(Value::as_str))
-    });
-    if recipes.is_empty() {
-        if let Some(cached) = cached_recipe_catalog(app) {
-            return Ok(cached);
-        }
-        return Err("Catalogue de recipes GitHub vide".into());
-    }
-
-    let catalog = Value::Array(recipes);
-    if let Ok(path) = recipe_catalog_cache_path(app) {
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let _ = write_atomic(&path, &catalog.to_string());
-    }
-    Ok(catalog)
+    recipes::merge_catalog(app, remote)
 }
 
 // Catalogue complet de recipes : serveur Ferdium en mode connecté, GitHub en mode local.
@@ -1498,19 +1581,36 @@ async fn list_recipes(app: AppHandle, state: State<'_, AppState>) -> Result<Valu
     if is_local_mode(&state) {
         return local_recipe_catalog(&app).await;
     }
-    let (base, token) = current(&state)?;
-    let res = HTTP
-        .clone()
-        .get(format!("{base}/v1/recipes"))
-        .bearer_auth(&token)
-        .header(reqwest::header::USER_AGENT, API_UA)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !res.status().is_success() {
-        return Err(format!("Catalogue de recipes : HTTP {}", res.status()));
-    }
-    res.json().await.map_err(|e| e.to_string())
+    let remote = match current(&state) {
+        Ok((base, token)) => match HTTP
+            .clone()
+            .get(format!("{base}/v1/recipes"))
+            .bearer_auth(&token)
+            .header(reqwest::header::USER_AGENT, API_UA)
+            .send()
+            .await
+        {
+            Ok(response) if response.status().is_success() => response.json::<Value>().await.ok(),
+            _ => None,
+        },
+        Err(_) => None,
+    };
+    recipes::merge_catalog(&app, remote)
+}
+
+#[tauri::command]
+fn get_recipe_storage_info(app: AppHandle) -> Result<recipes::RecipeStorageInfo, String> {
+    recipes::storage_info(&app)
+}
+
+#[tauri::command]
+fn save_custom_recipe(app: AppHandle, draft: RecipeDraft) -> Result<Value, String> {
+    recipes::save_custom_recipe(&app, draft)
+}
+
+#[tauri::command]
+fn import_custom_recipe(app: AppHandle, path: String) -> Result<Value, String> {
+    recipes::import_custom_recipe(&app, Path::new(&path))
 }
 
 // --- Workspaces -----------------------------------------------------------
@@ -2100,9 +2200,13 @@ fn main() {
             set_service_flags,
             update_service,
             create_service,
+            create_custom_website_service,
             delete_service,
             clear_service_cache,
             list_recipes,
+            get_recipe_storage_info,
+            save_custom_recipe,
+            import_custom_recipe,
             create_workspace,
             update_workspace,
             delete_workspace,
@@ -2198,6 +2302,25 @@ mod tests {
     fn resolve_url_errors_without_service_url() {
         assert!(resolve_url(&json!({ "config": {} }), None, None).is_err());
         assert!(resolve_url(&json!({}), None, None).is_err());
+    }
+
+    #[test]
+    fn server_services_merge_only_distinct_local_recipe_services_after_server_order() {
+        let server = json!([
+            { "id": "server-a", "order": 4, "name": "Server A" },
+            { "id": "same", "order": 7, "name": "Server copy" }
+        ]);
+        let local = json!([
+            { "id": "local-a", "order": 0, "name": "Local A" },
+            { "id": "same", "order": 0, "name": "Local duplicate" }
+        ]);
+
+        let merged = merge_server_and_local_services(server, local);
+        let services = merged.as_array().unwrap();
+        assert_eq!(services.len(), 3);
+        assert_eq!(services[2]["id"], "local-a");
+        assert_eq!(services[2]["order"], 8);
+        assert_eq!(services[2]["isLocalRecipe"], true);
     }
 
     #[test]

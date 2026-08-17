@@ -1,9 +1,18 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
-  import { accentFg, iconSrc, filterRecipes, snapIconSize } from "./lib/ui";
+  import {
+    accentFg,
+    iconSrc,
+    filterRecipes,
+    snapIconSize,
+    recipeIdFromName,
+    normalizeWebsiteUrl,
+    websiteName,
+    looksLikeWebsite,
+  } from "./lib/ui";
   import { appVersion, checkForUpdate, installUpdate, type Update } from "./lib/updater";
-  import { ask } from "@tauri-apps/plugin-dialog";
+  import { ask, open } from "@tauri-apps/plugin-dialog";
 
   // window.confirm() ne fonctionne pas dans WKWebView (wry n'implémente pas le panel JS)
   // -> on passe par le dialogue natif du plugin dialog.
@@ -25,9 +34,13 @@
     setServiceFlags,
     updateService,
     createService,
+    createCustomWebsiteService,
     deleteService,
     clearServiceCache,
     listRecipes,
+    getRecipeStorageInfo,
+    saveCustomRecipe,
+    importCustomRecipe,
     createWorkspace,
     updateWorkspace,
     deleteWorkspace,
@@ -39,6 +52,8 @@
     type Service,
     type Workspace,
     type RecipePreview,
+    type RecipeDraft,
+    type RecipeStorageInfo,
     type AppSettings,
   } from "./lib/api";
 
@@ -118,11 +133,28 @@
   const hibTimers = new Map<string, ReturnType<typeof setTimeout>>();
   let preloadCancelled = false; // annule la chaîne de préchargement (logout/changement de session)
 
-  // Add service: full catalog loaded once, filtered live.
+  // Add service / local recipe management.
+  type AddMode = "catalog" | "website" | "creator";
+  let addMode = $state<AddMode>("catalog");
   let recipeQuery = $state("");
   let allRecipes = $state<RecipePreview[]>([]);
   let recipesLoading = $state(false);
   let newServiceName = $state("");
+  let customWebsiteUrl = $state("");
+  let recipeStorage = $state<RecipeStorageInfo | null>(null);
+  let recipeAdvanced = $state(false);
+  let recipeIdEdited = $state(false);
+  let recipeSaving = $state(false);
+  let recipeDraft = $state<RecipeDraft>({
+    id: "",
+    name: "",
+    serviceUrl: "",
+    description: "",
+    hasCustomUrl: false,
+    hasTeamId: false,
+    iconSvg: "",
+    webviewJs: "",
+  });
 
   const activeService = $derived(
     services.find((s) => s.id === activeId) ?? null,
@@ -648,48 +680,168 @@
     }
   }
 
+  async function refreshRecipes() {
+    recipesLoading = true;
+    error = null;
+    try {
+      allRecipes = await listRecipes();
+    } catch (err) {
+      error = String(err);
+    } finally {
+      recipesLoading = false;
+    }
+  }
+
   async function openAdd() {
     error = null;
     view = "add";
+    addMode = "catalog";
     recipeQuery = "";
     newServiceName = "";
+    customWebsiteUrl = "";
     hideServices();
-    if (allRecipes.length === 0) {
-      recipesLoading = true;
-      error = null;
+    if (allRecipes.length === 0) await refreshRecipes();
+    if (!recipeStorage) {
       try {
-        allRecipes = await listRecipes();
+        recipeStorage = await getRecipeStorageInfo();
       } catch (err) {
         error = String(err);
-      } finally {
-        recipesLoading = false;
       }
     }
   }
 
   const filteredRecipes = $derived(filterRecipes(allRecipes, recipeQuery));
+  const customRecipes = $derived(allRecipes.filter((recipe) => recipe.source === "custom"));
+
+  async function activateCreated(result: unknown, recipeId: string) {
+    const res = result as { id?: string; data?: { id?: string }; service?: { id?: string } };
+    const newId = res?.id ?? res?.data?.id ?? res?.service?.id;
+    [services, workspaces] = await Promise.all([getServices(), getWorkspaces()]);
+    await Promise.all(services.map((service) => setServiceFlags(service).catch(() => {})));
+    const created =
+      (newId && services.find((service) => service.id === newId)) ??
+      [...services].reverse().find((service) => service.recipeId === recipeId) ??
+      null;
+    if (created) selectService(created);
+    else view = "service";
+  }
+
+  function openCustomWebsite(prefill = "") {
+    addMode = "website";
+    error = null;
+    const candidate = prefill || (looksLikeWebsite(recipeQuery) ? recipeQuery : "");
+    customWebsiteUrl = candidate ? normalizeWebsiteUrl(candidate) : "";
+    if (!newServiceName.trim() && candidate) newServiceName = websiteName(candidate);
+  }
+
+  async function createWebsite() {
+    const url = normalizeWebsiteUrl(customWebsiteUrl);
+    if (!url) {
+      error = "Website URL is required.";
+      return;
+    }
+    try {
+      error = null;
+      const result = await createCustomWebsiteService(
+        newServiceName.trim() || websiteName(url),
+        url,
+      );
+      await activateCreated(result, "custom-website");
+    } catch (err) {
+      error = String(err);
+    }
+  }
+
+  function resetRecipeDraft() {
+    recipeDraft = {
+      id: "",
+      name: "",
+      serviceUrl: "",
+      description: "",
+      hasCustomUrl: false,
+      hasTeamId: false,
+      iconSvg: "",
+      webviewJs: "",
+    };
+    recipeIdEdited = false;
+    recipeAdvanced = false;
+  }
+
+  function openRecipeCreator() {
+    addMode = "creator";
+    error = null;
+    resetRecipeDraft();
+  }
+
+  function setRecipeName(name: string) {
+    recipeDraft.name = name;
+    if (!recipeIdEdited) recipeDraft.id = recipeIdFromName(name);
+  }
+
+  async function saveRecipe(addService: boolean) {
+    const draft: RecipeDraft = {
+      ...recipeDraft,
+      id: recipeDraft.id.trim().toLowerCase(),
+      name: recipeDraft.name.trim(),
+      serviceUrl: normalizeWebsiteUrl(recipeDraft.serviceUrl),
+      description: recipeDraft.description.trim(),
+    };
+    if (!draft.name || !draft.id || !draft.serviceUrl) {
+      error = "Recipe name, id, and service URL are required.";
+      return;
+    }
+    recipeSaving = true;
+    error = null;
+    try {
+      await saveCustomRecipe(draft);
+      await refreshRecipes();
+      if (addService) {
+        const result = await createService(newServiceName.trim() || draft.name, draft.id);
+        await activateCreated(result, draft.id);
+      } else {
+        addMode = "catalog";
+        recipeQuery = draft.id;
+      }
+    } catch (err) {
+      error = String(err);
+    } finally {
+      recipeSaving = false;
+    }
+  }
+
+  async function importRecipe(directory: boolean) {
+    try {
+      const selected = await open(
+        directory
+          ? { directory: true, multiple: false, title: "Select recipe folder" }
+          : {
+              directory: false,
+              multiple: false,
+              title: "Select recipe package.json",
+              filters: [{ name: "Recipe package", extensions: ["json"] }],
+            },
+      );
+      const path = Array.isArray(selected) ? selected[0] : selected;
+      if (!path) return;
+      error = null;
+      const imported = await importCustomRecipe(path);
+      await refreshRecipes();
+      addMode = "catalog";
+      recipeQuery = imported.id;
+    } catch (err) {
+      error = String(err);
+    }
+  }
 
   async function pickRecipe(r: RecipePreview) {
+    if (r.id === "custom-website") {
+      openCustomWebsite();
+      return;
+    }
     try {
-      // On récupère l'id du service créé pour ouvrir LE bon (pas un ancien du même recipe).
-      const res = (await createService(newServiceName.trim() || r.name, r.id)) as {
-        id?: string;
-        data?: { id?: string };
-        service?: { id?: string };
-      };
-      const newId = res?.id ?? res?.data?.id ?? res?.service?.id;
-      [services, workspaces] = await Promise.all([
-        getServices(),
-        getWorkspaces(),
-      ]);
-      await Promise.all(services.map((s) => setServiceFlags(s).catch(() => {})));
-      const created =
-        (newId && services.find((s) => s.id === newId)) ??
-        sorted.find((s) => s.recipeId === r.id) ??
-        sorted.at(-1) ??
-        null;
-      if (created) selectService(created);
-      else view = "service";
+      error = null;
+      const result = await createService(newServiceName.trim() || r.name, r.id);
+      await activateCreated(result, r.id);
     } catch (err) {
       error = String(err);
     }
@@ -989,31 +1141,98 @@
             <button class="link" onclick={backToService}>✕ close</button>
           </div>
           <p class="notice">⚠️ Passkey / biometric sign-in (Touch ID, security keys) isn't supported in the embedded webview. On a service's login screen, choose "try another way" and use a password + authenticator code (TOTP) or a phone prompt instead.</p>
-          <label class="block">
-            Name (optional)
-            <input bind:value={newServiceName} placeholder="leave empty = recipe name" />
-          </label>
-          <input
-            class="filter"
-            bind:value={recipeQuery}
-            placeholder="Filter among {allRecipes.length} services…"
-          />
+
+          <div class="add-tabs" role="tablist" aria-label="Add service method">
+            <button class:active={addMode === "catalog"} onclick={() => (addMode = "catalog")}>Recipes</button>
+            <button class:active={addMode === "website"} onclick={() => openCustomWebsite()}>Custom website</button>
+            <button class:active={addMode === "creator"} onclick={openRecipeCreator}>Recipe creator</button>
+          </div>
+
           {#if error}<p class="error">{error}</p>{/if}
-          {#if recipesLoading}
-            <p class="sub">Loading catalog…</p>
+
+          {#if addMode === "catalog"}
+            <label class="block">
+              Name (optional)
+              <input bind:value={newServiceName} placeholder="leave empty = recipe name" />
+            </label>
+            <input class="filter" bind:value={recipeQuery} placeholder="Filter among {allRecipes.length} services…" />
+            <div class="recipe-tools">
+              <button class="secondary sm" onclick={refreshRecipes} disabled={recipesLoading}>Refresh</button>
+              <button class="secondary sm" onclick={() => importRecipe(true)}>Import folder…</button>
+              <button class="secondary sm" onclick={() => importRecipe(false)}>Import package.json…</button>
+            </div>
+            {#if recipeStorage}
+              <p class="recipe-path">Local recipes: <code>{recipeStorage.recipesDir}</code></p>
+            {/if}
+            {#if recipesLoading}
+              <p class="sub">Loading catalog…</p>
+            {:else}
+              <div class="results">
+                {#each filteredRecipes as r (r.id)}
+                  <button class="result" onclick={() => pickRecipe(r)}>
+                    {#if r.icons?.svg}<img class="result-icon" src={r.icons.svg} alt="" />{/if}
+                    <span class="result-main">
+                      <span class="result-name">{r.name}</span>
+                      {#if r.description}<span class="result-desc">{r.description}</span>{/if}
+                    </span>
+                    <span class="result-meta">
+                      {#if r.source && r.source !== "remote"}<span class="source-badge">{r.source}</span>{/if}
+                      <span class="result-id">{r.id}</span>
+                    </span>
+                  </button>
+                {:else}
+                  <div class="empty-recipe">
+                    <strong>No preset recipe matches.</strong>
+                    <p class="sub">You can still add the site directly or create a reusable local recipe.</p>
+                    <div class="recipe-tools">
+                      <button class="primary sm" onclick={() => openCustomWebsite(recipeQuery)}>Add a custom website</button>
+                      <button class="secondary sm" onclick={openRecipeCreator}>Create a recipe</button>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          {:else if addMode === "website"}
+            <div class="creator-card">
+              <h3>Custom Website</h3>
+              <p class="sub">A local service backed by Tauridium's built-in Custom Website recipe. It stays on this device and does not require a Ferdium server recipe.</p>
+              <label class="block">Website URL<input bind:value={customWebsiteUrl} placeholder="https://example.com" /></label>
+              <label class="block">Name (optional)<input bind:value={newServiceName} placeholder="derived from the hostname" /></label>
+              <div class="recipe-actions">
+                <button class="primary" onclick={createWebsite}>Add website</button>
+                <button class="secondary" onclick={() => (addMode = "catalog")}>Back to recipes</button>
+              </div>
+            </div>
           {:else}
-            <div class="results">
-              {#each filteredRecipes as r (r.id)}
-                <button class="result" onclick={() => pickRecipe(r)}>
-                  {#if r.icons?.svg}
-                    <img class="result-icon" src={r.icons.svg} alt="" />
-                  {/if}
-                  <span class="result-name">{r.name}</span>
-                  <span class="result-id">{r.id}</span>
-                </button>
-              {:else}
-                <p class="sub">No service matches.</p>
-              {/each}
+            <div class="creator-card">
+              <h3>Local recipe creator</h3>
+              <p class="sub">Creates a reusable recipe under Tauridium's configuration folder. Name, id, and URL are enough for a basic recipe.</p>
+              <div class="creator-grid">
+                <label class="block">Recipe name<input value={recipeDraft.name} oninput={(e) => setRecipeName(e.currentTarget.value)} placeholder="My AI Service" /></label>
+                <label class="block">Recipe id<input value={recipeDraft.id} oninput={(e) => { recipeIdEdited = true; recipeDraft.id = e.currentTarget.value.toLowerCase(); }} placeholder="my-ai-service" /></label>
+              </div>
+              <label class="block">Service URL<input bind:value={recipeDraft.serviceUrl} placeholder="https://example.com" /></label>
+              <label class="block">Description (optional)<input bind:value={recipeDraft.description} placeholder="What this recipe opens" /></label>
+              <div class="creator-options">
+                <label class="row-toggle compact"><span>Allow a per-service custom URL</span><input type="checkbox" bind:checked={recipeDraft.hasCustomUrl} /></label>
+                <label class="row-toggle compact"><span>Use a teamId placeholder in the URL</span><input type="checkbox" bind:checked={recipeDraft.hasTeamId} /></label>
+              </div>
+              <button class="link" onclick={() => (recipeAdvanced = !recipeAdvanced)}>{recipeAdvanced ? "Hide advanced files" : "Advanced: icon.svg / webview.js"}</button>
+              {#if recipeAdvanced}
+                <label class="block">icon.svg (optional)<textarea class="code-input" bind:value={recipeDraft.iconSvg} rows="5" placeholder="<svg …>…</svg>"></textarea></label>
+                <label class="block">webview.js (optional)<textarea class="code-input" bind:value={recipeDraft.webviewJs} rows="8" placeholder="Optional Ferdium-compatible recipe integration script"></textarea></label>
+                <p class="notice security-note">A recipe webview.js runs inside the loaded website and can access that page's DOM. Only import or write scripts you trust.</p>
+              {/if}
+              <label class="block">Service name after “Save & add” (optional)<input bind:value={newServiceName} placeholder="leave empty = recipe name" /></label>
+              <div class="recipe-actions">
+                <button class="primary" disabled={recipeSaving} onclick={() => saveRecipe(true)}>{recipeSaving ? "Saving…" : "Save & add"}</button>
+                <button class="secondary" disabled={recipeSaving} onclick={() => saveRecipe(false)}>Save recipe</button>
+                <button class="secondary" onclick={() => importRecipe(true)}>Import folder…</button>
+              </div>
+              {#if recipeStorage}
+                <p class="recipe-path">Saved under <code>{recipeStorage.recipesDir}</code> as <code>&lt;recipe-id&gt;/package.json</code>. You can also place compatible recipe folders there manually and press Refresh.</p>
+              {/if}
+              {#if customRecipes.length > 0}<p class="sub">{customRecipes.length} custom recipe{customRecipes.length === 1 ? "" : "s"} currently loaded.</p>{/if}
             </div>
           {/if}
         </div>
@@ -1506,4 +1725,31 @@
   .result-icon { width: 22px; height: 22px; border-radius: 5px; flex: none; }
   .result-name { flex: 1; }
   .result-id { color: var(--muted2); font-size: 12px; }
+  .secondary { padding: 9px 12px; border: 1px solid var(--border2); border-radius: 8px; background: var(--input); color: var(--text2); font-weight: 600; cursor: pointer; }
+  .secondary:hover { background: var(--hover); border-color: var(--accent); }
+  .secondary:disabled { opacity: 0.55; cursor: default; }
+  .secondary.sm { padding: 6px 10px; font-size: 12px; }
+  .add-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .add-tabs button { padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--input); color: var(--muted); cursor: pointer; }
+  .add-tabs button.active { border-color: var(--accent); color: var(--text); background: var(--hover); }
+  .recipe-tools, .recipe-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .recipe-path { margin: -4px 0 2px; color: var(--muted2); font-size: 11px; line-height: 1.45; word-break: break-all; }
+  .result { gap: 10px; }
+  .result-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .result-name { font-weight: 600; }
+  .result-desc { color: var(--muted); font-size: 11px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .result-meta { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+  .source-badge { padding: 2px 6px; border-radius: 999px; background: var(--hover); color: var(--accent-soft); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+  .empty-recipe { padding: 14px; border: 1px dashed var(--border2); border-radius: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .empty-recipe .sub { margin: 0; }
+  .creator-card { display: flex; flex-direction: column; gap: 12px; }
+  .creator-card h3 { margin: 0; font-size: 16px; }
+  .creator-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .creator-options { display: flex; flex-direction: column; gap: 6px; }
+  .row-toggle.compact { flex-direction: row; justify-content: space-between; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--input); }
+  textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--border2); background: var(--input); color: var(--text); font-size: 13px; }
+  .code-input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1.4; }
+  .security-note { margin-top: -4px; }
+  @media (max-width: 760px) { .creator-grid { grid-template-columns: 1fr; } }
+
 </style>

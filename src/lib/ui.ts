@@ -43,3 +43,35 @@ export function snapIconSize(size: number): number {
   if (sizes.includes(size)) return size;
   return sizes.reduce((a, b) => (Math.abs(b - size) < Math.abs(a - size) ? b : a));
 }
+
+
+// Produit un identifiant de recipe local stable et sûr à partir d'un nom lisible.
+export function recipeIdFromName(name: string): string {
+  const id = name
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+  return id || "custom-recipe";
+}
+
+export function normalizeWebsiteUrl(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+export function websiteName(value: string): string {
+  try {
+    return new URL(normalizeWebsiteUrl(value)).hostname.replace(/^www\./, "") || "Custom Website";
+  } catch {
+    return "Custom Website";
+  }
+}
+
+export function looksLikeWebsite(value: string): boolean {
+  const candidate = value.trim();
+  return /^https?:\/\//i.test(candidate) || /^[^\s]+\.[^\s]+/.test(candidate);
+}

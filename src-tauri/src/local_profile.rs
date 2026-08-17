@@ -77,6 +77,21 @@ impl LocalProfile {
         Value::Array(self.services.clone())
     }
 
+    pub(crate) fn local_recipe_services_value(&self) -> Value {
+        Value::Array(
+            self.services
+                .iter()
+                .filter(|service| {
+                    service
+                        .get("isLocalRecipe")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false)
+                })
+                .cloned()
+                .collect(),
+        )
+    }
+
     pub(crate) fn workspaces_value(&self) -> Value {
         Value::Array(self.workspaces.clone())
     }
@@ -85,6 +100,8 @@ impl LocalProfile {
         &mut self,
         name: String,
         recipe_id: String,
+        icon_url: Option<String>,
+        is_local_recipe: bool,
     ) -> Result<Value, String> {
         validate_recipe_id(&recipe_id)?;
         let order = self
@@ -95,9 +112,11 @@ impl LocalProfile {
             .unwrap_or(-1)
             + 1;
         let id = new_id();
-        let icon_url = format!(
-            "https://raw.githubusercontent.com/ferdium/ferdium-recipes/main/recipes/{recipe_id}/icon.svg"
-        );
+        let icon_url = icon_url.unwrap_or_else(|| {
+            format!(
+                "https://raw.githubusercontent.com/ferdium/ferdium-recipes/main/recipes/{recipe_id}/icon.svg"
+            )
+        });
         let service = json!({
             "id": id,
             "name": name,
@@ -128,10 +147,21 @@ impl LocalProfile {
             "team": "",
             "userAgentPref": "",
             "order": order,
-            "workspaces": []
+            "workspaces": [],
+            "isLocalRecipe": is_local_recipe
         });
         self.services.push(service.clone());
         Ok(service)
+    }
+
+    pub(crate) fn has_local_recipe_service(&self, service_id: &str) -> bool {
+        self.services.iter().any(|service| {
+            service.get("id").and_then(Value::as_str) == Some(service_id)
+                && service
+                    .get("isLocalRecipe")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+        })
     }
 
     pub(crate) fn update_service(
@@ -294,7 +324,7 @@ mod tests {
         let path = root.join("profile.json");
         let mut profile = LocalProfile::default();
         let service = profile
-            .create_service("Example".into(), "franz-custom-website".into())
+            .create_service("Example".into(), "franz-custom-website".into(), None, false)
             .unwrap();
         let service_id = service["id"].as_str().unwrap().to_string();
         let workspace = profile.create_workspace("Work".into());
@@ -330,7 +360,7 @@ mod tests {
         let backup = path.with_extension("bak");
         let mut profile = LocalProfile::default();
         profile
-            .create_service("Recovered".into(), "gmail".into())
+            .create_service("Recovered".into(), "gmail".into(), None, false)
             .unwrap();
         fs::write(&backup, serde_json::to_string(&profile).unwrap()).unwrap();
 
@@ -349,12 +379,12 @@ mod tests {
         let path = root.join("profile.json");
         let mut profile = LocalProfile::default();
         profile
-            .create_service("First".into(), "gmail".into())
+            .create_service("First".into(), "gmail".into(), None, false)
             .unwrap();
         profile.save(&path).unwrap();
 
         profile
-            .create_service("Second".into(), "discord".into())
+            .create_service("Second".into(), "discord".into(), None, false)
             .unwrap();
         profile.save(&path).unwrap();
 
@@ -368,7 +398,7 @@ mod tests {
     fn service_crud_preserves_identity_and_removes_workspace_membership() {
         let mut profile = LocalProfile::default();
         let service = profile
-            .create_service("Old".into(), "gmail".into())
+            .create_service("Old".into(), "gmail".into(), None, false)
             .unwrap();
         let id = service["id"].as_str().unwrap().to_string();
         let workspace = profile.create_workspace("Inbox".into());
@@ -400,7 +430,7 @@ mod tests {
     fn workspace_rejects_unknown_service_ids() {
         let mut profile = LocalProfile::default();
         let service = profile
-            .create_service("Mail".into(), "gmail".into())
+            .create_service("Mail".into(), "gmail".into(), None, false)
             .unwrap();
         let known = service["id"].as_str().unwrap().to_string();
         let workspace = profile.create_workspace("Work".into());
@@ -412,6 +442,29 @@ mod tests {
             )
             .unwrap();
         assert_eq!(updated["services"], json!([known]));
+    }
+
+    #[test]
+    fn local_recipe_services_are_filtered_from_ordinary_local_services() {
+        let mut profile = LocalProfile::default();
+        let ordinary = profile
+            .create_service("Mail".into(), "gmail".into(), None, false)
+            .unwrap();
+        let local = profile
+            .create_service(
+                "NanoGPT".into(),
+                "nanogpt".into(),
+                Some("data:image/svg+xml;base64,PHN2Zy8+".into()),
+                true,
+            )
+            .unwrap();
+
+        let filtered = profile.local_recipe_services_value();
+        assert_eq!(filtered.as_array().unwrap().len(), 1);
+        assert_eq!(filtered[0]["id"], local["id"]);
+        assert!(profile.has_local_recipe_service(local["id"].as_str().unwrap()));
+        assert!(!profile.has_local_recipe_service(ordinary["id"].as_str().unwrap()));
+        assert_eq!(local["iconUrl"], "data:image/svg+xml;base64,PHN2Zy8+");
     }
 
     #[test]

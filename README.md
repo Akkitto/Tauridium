@@ -40,6 +40,9 @@ uses the Ferdium REST API; accountless mode keeps service/workspace state local.
 ## Features
 
 - **Accountless local mode** — no Ferdium account, server, or token required
+- **Local custom recipes** — add folders manually, import them through the GUI, or create them with the built-in lightweight recipe creator
+- **Custom Website** fallback — add any HTTP(S) site even when no preset recipe exists
+- Bundled AI recipes for **NanoGPT**, **Chutes**, and **OpenCode Web**
 - Optional Ferdium server sign-in — account, services and workspaces stay synced
 - Each service in an **isolated, persistent session** (native WebView)
 - **Native notifications** + dock unread badges
@@ -58,10 +61,47 @@ On the sign-in screen, choose **Use Tauridium without an account**. Tauridium
 stores services and workspaces in `local_profile.json` under its OS application-data
 directory and restores that local session without contacting a Ferdium server.
 
-Recipe discovery and recipe configuration still come from the public
+Remote recipe discovery still uses the public
 [`ferdium/ferdium-recipes`](https://github.com/ferdium/ferdium-recipes) repository
-and are cached locally. Service websites, updates, and uncached recipes therefore still
-need network access; accountless mode is serverless, not a fully offline mode.
+and is cached locally. Tauridium's bundled recipes and user-owned local recipes remain
+available without that catalog, so accountless mode can add those recipes offline; the
+actual service website still needs whatever network connectivity that site requires.
+
+## Local recipes
+
+Open **Add a service** to use any of these paths:
+
+- search the normal recipe catalog; when nothing matches, choose **Add a custom website**;
+- choose **Custom website** directly and enter any HTTP(S) URL;
+- choose **Recipe creator** to save a reusable local recipe;
+- choose **Import folder…** for an existing recipe folder;
+- choose **Import package.json…** for a recipe package file;
+- place recipe folders manually in the local recipe directory shown by the Add Service UI, then press **Refresh**.
+
+The on-disk layout is deliberately small and Ferdium-compatible at its core:
+
+```text
+<Tauridium OS config>/recipes/<recipe-id>/
+  package.json     # required; config.serviceURL must be HTTP(S)
+  icon.svg         # optional
+  webview.js       # optional
+```
+
+`package.json` needs a `config.serviceURL`; `config.hasCustomUrl` and
+`config.hasTeamId` are optional booleans. Tauridium validates recipe ids before
+filesystem access, reserves its bundled recipe ids, and writes GUI-created recipes
+atomically. A local `webview.js` runs inside the service page and can access its DOM,
+so only use scripts you trust.
+
+Bundled local recipes include **Custom Website**, **NanoGPT**, **Chutes**, and
+**OpenCode Web**. OpenCode Web defaults to `http://127.0.0.1:4096`; start OpenCode
+with a stable web port such as `opencode web --port 4096`, or override the URL in
+the service because that recipe allows custom URLs.
+
+Local recipes are owned by Tauridium even during a Ferdium-server session. They are
+therefore not sent to the server as unknown recipe ids and are merged into the service
+list locally. Ordinary accountless-mode services are not implicitly overlaid after a
+server login.
 
 ## Tech stack
 
@@ -191,8 +231,8 @@ before tagging:
 3. Tag and push:
 
 ```text
-git tag -a v0.2.5 -m "Tauridium 0.2.5"
-git push origin v0.2.5
+git tag -a v0.3.0 -m "Tauridium 0.3.0"
+git push origin v0.3.0
 ```
 
 If no matching `CHANGELOG.md` section exists, the workflow falls back to generic

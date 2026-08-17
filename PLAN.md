@@ -107,6 +107,15 @@ Livrable : l'app se logge et liste tes services synchronisés. Le « pipe » ser
 - Édition de services/workspaces (PUT/POST) répercutée serveur, dark mode, raccourcis,
   démarrage au login, résilience hors-ligne.
 
+### Phase 5 — Recipes locaux ✅ FAIT (0.3.0)
+- Recipe intégré **Custom Website** comme voie de secours quand aucun preset ne correspond.
+- Catalogue fusionné : recipes distants + recipes intégrés + recipes utilisateur.
+- Dossier local `recipes/<id>/package.json` sous la configuration OS de Tauridium.
+- Import GUI par dossier ou `package.json`, plus créateur léger avec `icon.svg` / `webview.js` optionnels.
+- Recipes intégrés NanoGPT, Chutes et OpenCode Web.
+- Les services issus de recipes Tauridium-locaux restent locaux même pendant une session serveur,
+  afin de ne jamais dépendre de l'acceptation d'un id de recipe inconnu par l'API Ferdium.
+
 ## 7. Points durs identifiés (honnêteté)
 
 | Point dur | Approche |
