@@ -257,12 +257,37 @@ def source_context(release_version: str) -> SourceContext:
   return load_source_manifest(release_version)
 
 
+def git_metadata_files() -> tuple[Path, ...]:
+  repository_root = git_repository_root()
+  if repository_root is None:
+    raise SystemExit(
+      "error: source ZIP packaging requires a real Git checkout so the complete .git "
+      "history can be included"
+    )
+  git_dir = repository_root / ".git"
+  if not git_dir.is_dir():
+    raise SystemExit("error: source ZIP packaging requires a .git directory")
+  files = tuple(
+    sorted(
+      (path for path in git_dir.rglob("*") if path.is_file()),
+      key=lambda path: path.as_posix(),
+    )
+  )
+  if not files:
+    raise SystemExit("error: .git directory contains no files")
+  return files
+
+
 def build_source(output: Path, release_version: str, context: SourceContext) -> None:
   prefix = f"tauridium-{release_version}/"
+  git_dir = ROOT / ".git"
   with zipfile.ZipFile(output, "w") as zf:
     for entry in context.entries:
       add_file(zf, entry.path, prefix + entry.archive_path, mode=entry.mode)
     add_bytes(zf, context.manifest_bytes, prefix + SOURCE_MANIFEST_NAME)
+    for source in git_metadata_files():
+      archive_path = source.relative_to(git_dir).as_posix()
+      add_file(zf, source, prefix + ".git/" + archive_path, mode=0o644)
 
 
 def default_runtimes() -> list[Path]:

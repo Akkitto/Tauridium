@@ -17,3 +17,4 @@
 # Python release tooling
 __pycache__/
 *.pyc
+.tauridium-source-manifest.json
