@@ -6,13 +6,13 @@ on:
   pull_request:
     branches: [master]
 
-# Annule les runs précédents sur la même ref (évite d'empiler les builds).
+# Cancel previous runs on the same ref to avoid stacking redundant builds.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Tait les DeprecationWarning de Node (punycode / url.parse) émis par les actions
-# tierces (rust-cache, setup-node) sur Node 24 — non corrigeables de notre côté.
+# Silence Node deprecation warnings (punycode / url.parse) emitted by third-party actions
+# such as rust-cache/setup-node on Node 24; they are outside this project.
 env:
   NODE_OPTIONS: --no-deprecation
 
@@ -39,6 +39,11 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
       - name: Install Linux WebView deps
         run: |
           sudo apt-get update
@@ -57,13 +62,15 @@ jobs:
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
       - name: Unit tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --all-features
-      - name: Release build
-        run: cargo build --manifest-path src-tauri/Cargo.toml --release --all-features
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --locked --version "^2"
+      - name: Production release build
+        run: cargo tauri build --no-bundle --ci
 
-  # Le job `rust` ci-dessus tourne sur Ubuntu : il NE compile PAS les blocs
-  # #[cfg(target_os = "macos" | "windows")] (data_store_identifier, tray…). Une
-  # régression de compilation propre à ces plateformes ne se verrait qu'au tag de
-  # release. Ce job `cargo check` matriciel l'attrape dès le push.
+  # The Rust job above runs on Ubuntu, so it does NOT compile platform-specific
+  # #[cfg(target_os = "macos" | "windows")] blocks such as data_store_identifier and tray.
+  # Platform-specific compile regressions would otherwise only appear during a tagged
+  # release. This matrix cargo-check job catches them on every push.
   rust-cross:
     name: Rust check (${{ matrix.os }})
     strategy:

@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ZIP_TIME = (2026, 1, 1, 0, 0, 0)
 SOURCE_MANIFEST_NAME = ".tauridium-source-manifest.json"
 SOURCE_MANIFEST_SCHEMA = 1
+FORBIDDEN_RUNTIME_MARKERS = (b"http://localhost:1420", b"https://localhost:1420")
 
 
 @dataclass(frozen=True)
@@ -314,11 +315,23 @@ def default_runtimes() -> list[Path]:
   return [runtime]
 
 
+def validate_runtime(runtime: Path) -> None:
+  data = runtime.read_bytes()
+  for marker in FORBIDDEN_RUNTIME_MARKERS:
+    if marker in data:
+      rendered = marker.decode("ascii")
+      raise SystemExit(
+        f"error: runtime artifact contains development URL {rendered}; "
+        "build distributable runtimes with the Tauri production build command"
+      )
+
+
 def build_runtime(output: Path, release_version: str, runtimes: list[Path]) -> None:
   with zipfile.ZipFile(output, "w") as zf:
     for runtime in sorted(runtimes, key=lambda path: path.name.lower()):
       if not runtime.is_file():
         raise SystemExit(f"error: runtime artifact not found: {runtime}")
+      validate_runtime(runtime)
       add_file(zf, runtime, f"tauridium-{release_version}/{runtime.name}", mode=0o755)
     readme = (
       f"Tauridium {release_version}\n\n"

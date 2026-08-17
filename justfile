@@ -63,8 +63,7 @@ test:
   cargo test --manifest-path src-tauri/Cargo.toml --all-features --locked
 
 build:
-  npm run build
-  cargo build --manifest-path src-tauri/Cargo.toml --release --all-features --locked
+  cargo tauri build --no-bundle --ci
 
 bundle:
   cargo tauri build
