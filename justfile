@@ -32,36 +32,39 @@ init-self-test:
 fmt:
   cargo fmt --manifest-path src-tauri/Cargo.toml --all
 
+fmt-check:
+  cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+
 lint:
-  cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+  cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings
 
 [unix]
 check:
   npm run check
-  cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features
+  cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked
   python3 tools/validate_release.py
 
 [windows]
 check:
   npm run check
-  cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features
+  cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/validate_release.py
 
 [unix]
 test:
   python3 -m unittest discover -s tools -p 'test_*.py'
   npm test
-  cargo test --manifest-path src-tauri/Cargo.toml --all-features
+  cargo test --manifest-path src-tauri/Cargo.toml --all-features --locked
 
 [windows]
 test:
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 -m unittest discover -s tools -p "test_*.py"
   npm test
-  cargo test --manifest-path src-tauri/Cargo.toml --all-features
+  cargo test --manifest-path src-tauri/Cargo.toml --all-features --locked
 
 build:
   npm run build
-  cargo build --manifest-path src-tauri/Cargo.toml --release --all-features
+  cargo build --manifest-path src-tauri/Cargo.toml --release --all-features --locked
 
 bundle:
   cargo tauri build
@@ -74,7 +77,15 @@ audit:
   cargo audit
 
 doc:
-  cargo doc --manifest-path src-tauri/Cargo.toml --no-deps --all-features
+  cargo doc --manifest-path src-tauri/Cargo.toml --no-deps --all-features --locked
+
+[unix]
+release-clean:
+  python3 tools/check_clean.py
+
+[windows]
+release-clean:
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/check_clean.py
 
 [unix]
 package:
@@ -84,7 +95,7 @@ package:
 package:
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/package_release.py
 
-release: fmt lint check test build package
+release: release-clean fmt-check lint check test build release-clean package
 
 [unix]
 clean:

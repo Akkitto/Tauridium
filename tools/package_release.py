@@ -154,7 +154,11 @@ def exact_release_tag(release_version: str) -> str | None:
 def git_source_context(release_version: str) -> SourceContext:
   dirty = git_output("status", "--porcelain", "--untracked-files=all")
   if dirty:
-    raise SystemExit("error: release packaging requires a clean Git worktree")
+    details = "\n".join(f"  {line}" for line in dirty.splitlines())
+    raise SystemExit(
+      "error: release packaging requires a clean Git worktree; changed paths:\n"
+      + details
+    )
 
   entries = tracked_entries()
   manifest: dict[str, Any] = {
