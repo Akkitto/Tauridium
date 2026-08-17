@@ -203,17 +203,71 @@ class PackageReleaseTests(unittest.TestCase):
   def test_validate_build_info_rejects_development_mode(self) -> None:
     with self.assertRaisesRegex(SystemExit, "not compiled in Tauri production mode"):
       PACKAGE.validate_build_info(
-        {"name": "Tauridium", "version": "0.2.0", "buildMode": "development"},
+        {
+          "name": "Tauridium",
+          "version": "0.2.0",
+          "buildMode": "development",
+          "target": "x86_64-pc-windows-msvc",
+        },
         "0.2.0",
       )
 
   def test_validate_build_info_accepts_production_mode_even_with_configured_dev_url(self) -> None:
     # The configured devUrl can remain as inert bytes in a production executable;
     # acceptance is based on the executable's compile-time Tauri mode instead.
-    PACKAGE.validate_build_info(
-      {"name": "Tauridium", "version": "0.2.0", "buildMode": "production"},
+    target, suffix = PACKAGE.validate_build_info(
+      {
+        "name": "Tauridium",
+        "version": "0.2.0",
+        "buildMode": "production",
+        "target": "x86_64-pc-windows-msvc",
+      },
       "0.2.0",
     )
+    self.assertEqual(target, "x86_64-pc-windows-msvc")
+    self.assertEqual(suffix, "win-x64")
+
+
+  def test_runtime_target_suffixes_are_short_and_distinct(self) -> None:
+    expected = {
+      "x86_64-pc-windows-msvc": "win-x64",
+      "aarch64-pc-windows-msvc": "win-arm64",
+      "x86_64-unknown-linux-gnu": "linux-x64",
+      "aarch64-unknown-linux-gnu": "linux-arm64",
+      "x86_64-unknown-linux-musl": "linux-x64-musl",
+      "aarch64-apple-darwin": "macos-arm64",
+      "x86_64-apple-darwin": "macos-x64",
+    }
+    for target, suffix in expected.items():
+      with self.subTest(target=target):
+        self.assertEqual(PACKAGE.target_suffix(target), suffix)
+        self.assertEqual(
+          PACKAGE.runtime_zip_name("0.3.7", suffix),
+          f"tauridium-0.3.7-run-{suffix}.zip",
+        )
+
+  def test_multiple_runtime_targets_are_grouped_into_separate_run_archives(self) -> None:
+    windows = PACKAGE.RuntimeArtifact(
+      path=self.root / "tauridium.exe",
+      target="x86_64-pc-windows-msvc",
+      suffix="win-x64",
+    )
+    linux = PACKAGE.RuntimeArtifact(
+      path=self.root / "tauridium",
+      target="x86_64-unknown-linux-gnu",
+      suffix="linux-x64",
+    )
+    groups = PACKAGE.group_runtimes_by_target([windows, linux])
+    self.assertEqual(set(groups), {"win-x64", "linux-x64"})
+    self.assertEqual(groups["win-x64"], [windows])
+    self.assertEqual(groups["linux-x64"], [linux])
+
+  def test_build_info_requires_compilation_target(self) -> None:
+    with self.assertRaisesRegex(SystemExit, "no Rust target triple"):
+      PACKAGE.validate_build_info(
+        {"name": "Tauridium", "version": "0.2.0", "buildMode": "production"},
+        "0.2.0",
+      )
 
   def test_runtime_probe_executes_binary_and_validates_production_mode(self) -> None:
     runtime = self.root / "tauridium.exe"
@@ -223,16 +277,29 @@ class PackageReleaseTests(unittest.TestCase):
       self.assertEqual(command[0], str(runtime))
       self.assertEqual(command[1], PACKAGE.BUILD_INFO_ARGUMENT)
       Path(command[2]).write_text(
-        json.dumps({"name": "Tauridium", "version": "0.2.0", "buildMode": "production"}),
+        json.dumps({
+          "name": "Tauridium",
+          "version": "0.2.0",
+          "buildMode": "production",
+          "target": "x86_64-pc-windows-msvc",
+        }),
         encoding="utf-8",
       )
       return subprocess.CompletedProcess(command, 0, "", "")
 
     with mock.patch.object(PACKAGE.subprocess, "run", side_effect=fake_run):
-      PACKAGE.build_runtime(self.root / "run.zip", "0.2.0", [runtime])
+      artifact = PACKAGE.inspect_runtime(runtime, "0.2.0")
+
+    self.assertEqual(artifact.target, "x86_64-pc-windows-msvc")
+    self.assertEqual(artifact.suffix, "win-x64")
+    PACKAGE.build_runtime(self.root / "run.zip", "0.2.0", [artifact])
 
     with zipfile.ZipFile(self.root / "run.zip") as archive:
       self.assertIn("tauridium-0.2.0/tauridium.exe", archive.namelist())
+      self.assertIn(
+        "Rust target: x86_64-pc-windows-msvc",
+        archive.read("tauridium-0.2.0/README.txt").decode(),
+      )
 
   def test_runtime_probe_rejects_development_binary(self) -> None:
     runtime = self.root / "tauridium.exe"
@@ -240,29 +307,39 @@ class PackageReleaseTests(unittest.TestCase):
 
     def fake_run(command, **_kwargs):
       Path(command[2]).write_text(
-        json.dumps({"name": "Tauridium", "version": "0.2.0", "buildMode": "development"}),
+        json.dumps({
+          "name": "Tauridium",
+          "version": "0.2.0",
+          "buildMode": "development",
+          "target": "x86_64-pc-windows-msvc",
+        }),
         encoding="utf-8",
       )
       return subprocess.CompletedProcess(command, 0, "", "")
 
     with mock.patch.object(PACKAGE.subprocess, "run", side_effect=fake_run):
       with self.assertRaisesRegex(SystemExit, "not compiled in Tauri production mode"):
-        PACKAGE.build_runtime(self.root / "run.zip", "0.2.0", [runtime])
+        PACKAGE.inspect_runtime(runtime, "0.2.0")
 
   def test_docs_use_manifest_git_log_without_git_repository(self) -> None:
     self.write_manifest()
     context = PACKAGE.source_context("0.2.0")
     source_zip = self.root / "src.zip"
-    run_zip = self.root / "run.zip"
+    run_zip = self.root / "tauridium-0.2.0-run-win-x64.zip"
+    second_run_zip = self.root / "tauridium-0.2.0-run-linux-x64.zip"
     source_zip.write_bytes(b"source")
-    run_zip.write_bytes(b"runtime")
+    run_zip.write_bytes(b"windows runtime")
+    second_run_zip.write_bytes(b"linux runtime")
     output = self.root / "doc.zip"
 
-    PACKAGE.build_docs(output, "0.2.0", source_zip, run_zip, context)
+    PACKAGE.build_docs(output, "0.2.0", source_zip, [run_zip, second_run_zip], context)
 
     with zipfile.ZipFile(output) as archive:
       log = archive.read("tauridium-0.2.0-doc/GIT-LOG.txt").decode()
+      checksums = archive.read("tauridium-0.2.0-doc/SHA256SUMS").decode()
       self.assertIn("Proj: Test release", log)
+      self.assertIn(run_zip.name, checksums)
+      self.assertIn(second_run_zip.name, checksums)
       self.assertIn(
         f"tauridium-0.2.0-doc/{PACKAGE.SOURCE_MANIFEST_NAME}",
         archive.namelist(),

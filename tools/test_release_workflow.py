@@ -43,10 +43,15 @@ class ReleaseWorkflowTests(unittest.TestCase):
     self.assertIn('std::env::var("PROFILE")', build_rs)
     self.assertIn("tauri_build::is_dev()", build_rs)
     self.assertIn("cargo:rustc-env=TAURIDIUM_BUILD_MODE", build_rs)
+    self.assertIn("cargo:rustc-env=TAURIDIUM_TARGET", build_rs)
     self.assertIn("Refusing a development-mode release binary", build_rs)
     self.assertIn('env!("TAURIDIUM_BUILD_MODE")', main_rs)
+    self.assertIn('env!("TAURIDIUM_TARGET")', main_rs)
     self.assertIn('"--build-info-file"', main_rs)
     self.assertIn("validate_build_info", package_release)
+    self.assertIn("runtime_zip_name", package_release)
+    self.assertIn('"win-x64"', package_release)
+    self.assertIn('"linux-x64"', package_release)
     self.assertNotIn("FORBIDDEN_RUNTIME_MARKERS", package_release)
 
   def test_committed_rust_sources_match_native_rustfmt_baseline(self) -> None:

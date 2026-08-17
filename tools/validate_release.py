@@ -209,10 +209,22 @@ def main() -> int:
     'mode=0o755',
     'BUILD_INFO_ARGUMENT = "--build-info-file"',
     'def validate_build_info(',
-    'validate_runtime(runtime, release_version)',
+    'def inspect_runtime(',
+    'def runtime_zip_name(',
+    'def target_suffix(',
+    'def group_runtimes_by_target(',
   ):
     if package_marker not in package_release:
       fail(f"release packager is missing source-ZIP fallback protection: {package_marker}")
+  for marker in (
+    'f"tauridium-{release_version}-run-{suffix}.zip"',
+    '"x86_64-pc-windows-msvc": "win-x64"',
+    '"x86_64-unknown-linux-gnu": "linux-x64"',
+    '"aarch64-apple-darwin": "macos-arm64"',
+  ):
+    if marker not in package_release:
+      fail(f"release packager is missing target-qualified runtime naming: {marker}")
+
   for test_marker in (
     "test_extracted_source_uses_manifest_without_git",
     "test_extracted_source_rejects_modified_source",
@@ -226,6 +238,9 @@ def main() -> int:
     "test_validate_build_info_accepts_production_mode_even_with_configured_dev_url",
     "test_runtime_probe_executes_binary_and_validates_production_mode",
     "test_runtime_probe_rejects_development_binary",
+    "test_runtime_target_suffixes_are_short_and_distinct",
+    "test_multiple_runtime_targets_are_grouped_into_separate_run_archives",
+    "test_build_info_requires_compilation_target",
   ):
     if test_marker not in package_release_test:
       fail(f"release packager regression coverage is missing: {test_marker}")
@@ -259,12 +274,18 @@ def main() -> int:
     fail("build script does not reject development-mode release binaries")
   if "cargo:rustc-env=TAURIDIUM_BUILD_MODE" not in build_rs:
     fail("build script does not expose compile-time Tauri build provenance")
+  if "cargo:rustc-env=TAURIDIUM_TARGET" not in build_rs:
+    fail("build script does not expose the actual Rust compilation target")
   if "Refusing a development-mode release binary" not in build_rs:
     fail("build script lacks an actionable development-mode release failure")
 
   main_rs = read("src-tauri/src/main.rs")
-  if 'env!("TAURIDIUM_BUILD_MODE")' not in main_rs or '"--build-info-file"' not in main_rs:
-    fail("runtime does not expose compile-time Tauri build information")
+  if (
+    'env!("TAURIDIUM_BUILD_MODE")' not in main_rs
+    or 'env!("TAURIDIUM_TARGET")' not in main_rs
+    or '"--build-info-file"' not in main_rs
+  ):
+    fail("runtime does not expose compile-time Tauri build and target information")
   if "FORBIDDEN_RUNTIME_MARKERS" in package_release:
     fail("release packager still rejects inert configured devUrl bytes")
   api_ts = read("src/lib/api.ts")
