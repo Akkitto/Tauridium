@@ -78,3 +78,46 @@ describe("service view commands", () => {
     });
   });
 });
+
+describe("local recipe commands", () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    mocks.invoke.mockResolvedValue(undefined);
+  });
+
+  it("creates a custom website atomically in the backend", async () => {
+    const { createCustomWebsiteService } = await import("./api");
+    await createCustomWebsiteService("Example", "https://example.com");
+    expect(mocks.invoke).toHaveBeenCalledWith("create_custom_website_service", {
+      name: "Example",
+      url: "https://example.com",
+    });
+  });
+
+  it("reads recipe storage and persists creator drafts", async () => {
+    const { getRecipeStorageInfo, saveCustomRecipe } = await import("./api");
+    await getRecipeStorageInfo();
+    expect(mocks.invoke).toHaveBeenCalledWith("get_recipe_storage_info");
+    mocks.invoke.mockClear();
+    const draft = {
+      id: "my-ai",
+      name: "My AI",
+      serviceUrl: "https://example.com",
+      description: "test",
+      hasCustomUrl: false,
+      hasTeamId: false,
+      iconSvg: "",
+      webviewJs: "",
+    };
+    await saveCustomRecipe(draft);
+    expect(mocks.invoke).toHaveBeenCalledWith("save_custom_recipe", { draft });
+  });
+
+  it("imports an existing recipe path", async () => {
+    const { importCustomRecipe } = await import("./api");
+    await importCustomRecipe("C:\\Recipes\\my-ai\\package.json");
+    expect(mocks.invoke).toHaveBeenCalledWith("import_custom_recipe", {
+      path: "C:\\Recipes\\my-ai\\package.json",
+    });
+  });
+});

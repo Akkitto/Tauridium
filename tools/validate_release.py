@@ -217,6 +217,7 @@ def main() -> int:
   api_test_ts = read("src/lib/api.test.ts")
   app = read("src/App.svelte")
   local_profile = read("src-tauri/src/local_profile.rs")
+  recipes_rs = read("src-tauri/src/recipes.rs")
 
   required_backend = (
     "start_local_session",
@@ -226,6 +227,10 @@ def main() -> int:
     "update_service",
     "delete_service",
     "list_recipes",
+    "create_custom_website_service",
+    "get_recipe_storage_info",
+    "save_custom_recipe",
+    "import_custom_recipe",
     "create_workspace",
     "update_workspace",
     "delete_workspace",
@@ -253,6 +258,35 @@ def main() -> int:
     fail("local profile does not use durable replacement")
   if "validate_recipe_id" not in local_profile:
     fail("local recipe identifiers are not validated")
+
+  for marker in (
+    'const CUSTOM_RECIPE_DIR: &str = "recipes"',
+    '"custom-website"',
+    '"https://nano-gpt.com/chat"',
+    '"https://chutes.ai/chat"',
+    '"http://127.0.0.1:4096"',
+    'Recipe id is reserved by Tauridium',
+    'package["id"] = Value::String(id.clone())',
+  ):
+    if marker not in recipes_rs:
+      fail(f"local recipe implementation is missing: {marker}")
+  for marker in (
+    'Add a custom website',
+    'Recipe creator',
+    'Import folder…',
+    'Import package.json…',
+    'A recipe webview.js runs inside the loaded website',
+  ):
+    if marker not in app:
+      fail(f"local recipe UI is missing: {marker}")
+  for marker in (
+    'invoke("create_custom_website_service"',
+    'invoke("get_recipe_storage_info"',
+    'invoke("save_custom_recipe"',
+    'invoke("import_custom_recipe"',
+  ):
+    if marker not in api_ts:
+      fail(f"frontend recipe API is missing: {marker}")
 
   ci = read(".github/workflows/ci.yml")
   release_workflow = read(".github/workflows/release.yml")

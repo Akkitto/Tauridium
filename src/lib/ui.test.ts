@@ -67,3 +67,21 @@ describe("snapIconSize", () => {
     expect(snapIconSize(100)).toBe(34);
   });
 });
+
+describe("local recipe helpers", () => {
+  it("creates safe deterministic recipe ids", async () => {
+    const { recipeIdFromName } = await import("./ui");
+    expect(recipeIdFromName("My AI Service")).toBe("my-ai-service");
+    expect(recipeIdFromName("Crème & Chat")).toBe("creme-chat");
+    expect(recipeIdFromName("***")).toBe("custom-recipe");
+  });
+
+  it("normalizes custom website URLs and names", async () => {
+    const { normalizeWebsiteUrl, websiteName, looksLikeWebsite } = await import("./ui");
+    expect(normalizeWebsiteUrl("example.com/chat")).toBe("https://example.com/chat");
+    expect(normalizeWebsiteUrl("http://localhost:4096")).toBe("http://localhost:4096");
+    expect(websiteName("https://www.example.com/a")).toBe("example.com");
+    expect(looksLikeWebsite("chat.example.com")).toBe(true);
+    expect(looksLikeWebsite("not a site")).toBe(false);
+  });
+});
