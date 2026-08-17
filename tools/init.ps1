@@ -7,7 +7,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$InitVersion = "0.2.5"
+$InitVersion = "0.3.0"
 $Root = Split-Path -Parent $PSScriptRoot
 $VsConfig = Join-Path $Root ".vsconfig"
 

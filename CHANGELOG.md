@@ -12,6 +12,38 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-17
+
+### Added
+
+- Added a built-in **Custom Website** recipe and a direct fallback action when recipe search has no match.
+- Added locally managed recipes under Tauridium's OS configuration directory in `recipes/<recipe-id>/`.
+- Added GUI import for recipe folders and individual `package.json` files.
+- Added a lightweight local recipe creator with name, stable recipe id, service URL, description, custom-URL/team options, optional `icon.svg`, and optional `webview.js`.
+- Added bundled NanoGPT, Chutes, and OpenCode Web recipes available without a Ferdium recipe catalog entry.
+- Added source labels for bundled, custom, and remote recipes in the recipe picker.
+
+### Changed
+
+- Recipe discovery now merges remote recipes with bundled and user-owned recipes, keeping local recipes available when remote discovery is offline.
+- Bundled recipe ids are reserved and cannot be shadowed by manually placed or imported custom recipes.
+- Tauridium-local recipes create locally owned service records even while signed in to a Ferdium server, so custom recipes never depend on `/v1/service` accepting an unknown recipe id.
+- Signed-in service lists overlay only explicitly local-recipe services; legacy accountless services are not duplicated into a server session.
+- Imported recipe ids are normalized to their canonical local destination id.
+
+### Security
+
+- Local recipe ids are validated before filesystem access.
+- Local recipe service URLs are restricted to HTTP(S).
+- Recipe package writes use atomic replacement, with `package.json` written last as the discovery marker.
+- The creator warns that optional `webview.js` executes inside the loaded service page and should only contain trusted code.
+
+### Tests
+
+- Added Rust unit coverage for bundled provider URLs, HTTP(S) validation, reserved ids, recipe companion-file persistence, local-service filtering, and signed-in/local service merging.
+- Added frontend tests for custom-website commands, recipe persistence/import payloads, URL normalization, website-name derivation, URL detection, and recipe-id generation.
+- Added release-invariant coverage for the local recipe commands, storage layout, no-match Custom Website UI, reserved built-in recipes, and bundled AI provider endpoints.
+
 ## [0.2.5] - 2026-08-17
 
 ### Fixed
