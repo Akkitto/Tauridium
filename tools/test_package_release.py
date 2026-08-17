@@ -116,6 +116,18 @@ class PackageReleaseTests(unittest.TestCase):
     )
     subprocess.run(["git", "tag", "v0.2.0"], cwd=self.root, check=True)
 
+
+  def test_dirty_git_source_error_names_changed_path(self) -> None:
+    self.init_git_repository()
+    (self.root / "source.txt").write_text("dirty\n", encoding="utf-8")
+
+    with self.assertRaises(SystemExit) as caught:
+      PACKAGE.source_context("0.2.0")
+
+    message = str(caught.exception)
+    self.assertIn("changed paths", message)
+    self.assertIn("source.txt", message)
+
   def test_source_zip_preserves_manifest_and_manifest_file_set(self) -> None:
     self.init_git_repository()
     context = PACKAGE.source_context("0.2.0")

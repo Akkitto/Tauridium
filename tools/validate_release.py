@@ -67,6 +67,8 @@ def main() -> int:
   windows_tests = read("tools/test_windows_workflow.py")
   package_release = read("tools/package_release.py")
   package_release_test = read("tools/test_package_release.py")
+  release_workflow_test = read("tools/test_release_workflow.py")
+  check_clean = read("tools/check_clean.py")
   if f'INIT_VERSION = "{version}"' not in init_py:
     fail("initializer release identity differs from release version")
   if "required pkg-config modules are" in init_py:
@@ -98,6 +100,24 @@ def main() -> int:
   ):
     if marker not in justfile:
       fail(f"Windows just workflow is incomplete: {marker}")
+
+  for marker in (
+    "fmt-check:\n  cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
+    "release: release-clean fmt-check lint check test build release-clean package",
+    "tools/python.ps1 tools/check_clean.py",
+    "--all-targets --all-features --locked -- -D warnings",
+    "--all-targets --all-features --locked",
+    "--all-features --locked",
+    "--release --all-features --locked",
+  ):
+    if marker not in justfile:
+      fail(f"release workflow is missing non-mutating/locked gate: {marker}")
+  if "release: fmt lint" in justfile:
+    fail("release workflow must not mutate Rust source with cargo fmt")
+  if "git status" not in check_clean or "--porcelain" not in check_clean:
+    fail("release clean-worktree checker is incomplete")
+  if "test_release_uses_non_mutating_format_check_and_clean_gates" not in release_workflow_test:
+    fail("release workflow regression coverage is missing")
 
   if f'$InitVersion = "{version}"' not in init_ps1:
     fail("PowerShell initializer release identity differs from release version")
@@ -179,6 +199,7 @@ def main() -> int:
     'prefix + ".git/" + archive_path',
     'r"(?m)^(\\s*filemode\\s*=\\s*).*$"',
     'requires a real Git checkout',
+    'changed paths:',
     'mode=0o755',
   ):
     if package_marker not in package_release:
@@ -189,6 +210,7 @@ def main() -> int:
     "test_extracted_source_requires_manifest_when_git_is_absent",
     "test_source_zip_preserves_manifest_and_manifest_file_set",
     "test_source_zip_requires_git_history",
+    "test_dirty_git_source_error_names_changed_path",
     "test_docs_use_manifest_git_log_without_git_repository",
     "test_git_index_modes_are_used_instead_of_host_filesystem_modes",
   ):
