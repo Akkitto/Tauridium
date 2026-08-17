@@ -1,0 +1,19 @@
+# Rust / Tauri
+/src-tauri/target/
+/src-tauri/gen/
+
+# Node / frontend
+/node_modules/
+/dist/
+/release/
+
+# Artefacts de build de la crate wry vendorisée (la source, elle, est versionnée)
+/vendor/**/target/
+
+# macOS
+.DS_Store
+.idea
+
+# Python release tooling
+__pycache__/
+*.pyc
