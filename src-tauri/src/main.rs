@@ -1971,6 +1971,7 @@ fn reload_app(app: &AppHandle) {
 }
 
 const TAURIDIUM_BUILD_MODE: &str = env!("TAURIDIUM_BUILD_MODE");
+const TAURIDIUM_TARGET: &str = env!("TAURIDIUM_TARGET");
 
 fn write_build_info_if_requested() -> Result<bool, String> {
     let mut args = std::env::args_os().skip(1);
@@ -1985,6 +1986,7 @@ fn write_build_info_if_requested() -> Result<bool, String> {
             "name": "Tauridium",
             "version": env!("CARGO_PKG_VERSION"),
             "buildMode": TAURIDIUM_BUILD_MODE,
+            "target": TAURIDIUM_TARGET,
         }))
         .map_err(|error| format!("Unable to serialize build information: {error}"))?;
         std::fs::write(PathBuf::from(path), payload)

@@ -231,8 +231,8 @@ before tagging:
 3. Tag and push:
 
 ```text
-git tag -a v0.3.6 -m "Tauridium 0.3.6"
-git push origin v0.3.6
+git tag -a v0.3.7 -m "Tauridium 0.3.7"
+git push origin v0.3.7
 ```
 
 If no matching `CHANGELOG.md` section exists, the workflow falls back to generic
@@ -243,11 +243,15 @@ svelte-check · Vitest · frontend build) runs on every push and pull request. A
 job executes the full local workflow under `pwsh`, including `just init-native`,
 `just check`, `just test`, `just build`, and `just package`.
 
-For a local validated release with the three source/runtime/documentation ZIPs, run:
+For a local validated release, run:
 
 ```text
 just release
 ```
+
+Runtime ZIPs are target-qualified using the binary's actual Rust compilation target, so artifacts from different native builds can coexist in the same `release/` directory. Common examples are `tauridium-0.3.7-run-win-x64.zip`, `tauridium-0.3.7-run-win-arm64.zip`, `tauridium-0.3.7-run-linux-x64.zip`, `tauridium-0.3.7-run-linux-arm64.zip`, and `tauridium-0.3.7-run-macos-arm64.zip`. Source and documentation ZIP names remain target-neutral.
+
+`tools/package_release.py` also accepts repeated `--runtime` arguments and groups supplied binaries by their reported compilation target, emitting one run ZIP per target instead of overwriting a generic runtime archive.
 
 The release recipe is deliberately non-mutating: it requires a clean Git worktree before
 validation, checks Rust formatting without rewriting source files, runs Cargo gates with the

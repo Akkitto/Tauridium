@@ -2,6 +2,8 @@ fn main() {
     let is_dev = tauri_build::is_dev();
     let build_mode = if is_dev { "development" } else { "production" };
     println!("cargo:rustc-env=TAURIDIUM_BUILD_MODE={build_mode}");
+    let target = std::env::var("TARGET").expect("Cargo TARGET is required");
+    println!("cargo:rustc-env=TAURIDIUM_TARGET={target}");
 
     // A release-profile Tauri binary built without the production custom protocol loads build.devUrl.
     // Fail fast so a raw cargo release build can never be mistaken for a distributable runtime.

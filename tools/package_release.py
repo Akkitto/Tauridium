@@ -37,6 +37,13 @@ class SourceContext:
   manifest_bytes: bytes
 
 
+@dataclass(frozen=True)
+class RuntimeArtifact:
+  path: Path
+  target: str
+  suffix: str
+
+
 def version() -> str:
   return json.loads((ROOT / "src-tauri/tauri.conf.json").read_text(encoding="utf-8"))["version"]
 
@@ -316,7 +323,35 @@ def default_runtimes() -> list[Path]:
   return [runtime]
 
 
-def validate_build_info(info: object, release_version: str) -> None:
+def runtime_zip_name(release_version: str, suffix: str) -> str:
+  return f"tauridium-{release_version}-run-{suffix}.zip"
+
+
+def target_suffix(target: str) -> str:
+  """Return a short filesystem-safe suffix for a Rust compilation target."""
+  common = {
+    "x86_64-pc-windows-msvc": "win-x64",
+    "aarch64-pc-windows-msvc": "win-arm64",
+    "i686-pc-windows-msvc": "win-x86",
+    "x86_64-pc-windows-gnu": "win-x64-gnu",
+    "aarch64-pc-windows-gnullvm": "win-arm64-gnullvm",
+    "x86_64-unknown-linux-gnu": "linux-x64",
+    "aarch64-unknown-linux-gnu": "linux-arm64",
+    "i686-unknown-linux-gnu": "linux-x86",
+    "armv7-unknown-linux-gnueabihf": "linux-armv7-gnueabihf",
+    "x86_64-unknown-linux-musl": "linux-x64-musl",
+    "aarch64-unknown-linux-musl": "linux-arm64-musl",
+    "x86_64-apple-darwin": "macos-x64",
+    "aarch64-apple-darwin": "macos-arm64",
+  }
+  if target in common:
+    return common[target]
+  if not re.fullmatch(r"[A-Za-z0-9_.+-]+(?:-[A-Za-z0-9_.+-]+)+", target):
+    raise SystemExit(f"error: runtime reported invalid Rust target triple: {target!r}")
+  return target.replace("_", "-").lower()
+
+
+def validate_build_info(info: object, release_version: str) -> tuple[str, str]:
   if not isinstance(info, dict):
     raise SystemExit("error: runtime build-information probe returned invalid JSON")
   if info.get("name") != "Tauridium":
@@ -331,12 +366,16 @@ def validate_build_info(info: object, release_version: str) -> None:
       "error: runtime was not compiled in Tauri production mode; "
       f"buildMode={info.get('buildMode')!r}"
     )
+  target = info.get("target")
+  if not isinstance(target, str) or not target:
+    raise SystemExit("error: runtime build-information probe returned no Rust target triple")
+  return target, target_suffix(target)
 
 
-def validate_runtime(runtime: Path, release_version: str) -> None:
-  # Do not scan for build.devUrl as a raw byte string. Tauri configuration can be
-  # embedded in a valid production executable even though production startup uses
-  # build.frontendDist. Probe the executable's compile-time Tauri mode instead.
+def inspect_runtime(runtime: Path, release_version: str) -> RuntimeArtifact:
+  # Do not infer the target from the packaging host. The executable reports the
+  # Rust target it was actually compiled for, which keeps native and multi-target
+  # release artifacts distinct even when they share one output directory.
   with tempfile.TemporaryDirectory(prefix="tauridium-build-info-") as temp:
     output = Path(temp) / "build-info.json"
     try:
@@ -363,18 +402,44 @@ def validate_runtime(runtime: Path, release_version: str) -> None:
       info = json.loads(output.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
       raise SystemExit(f"error: invalid runtime build-information output: {error}") from error
-    validate_build_info(info, release_version)
+    target, suffix = validate_build_info(info, release_version)
+    return RuntimeArtifact(path=runtime, target=target, suffix=suffix)
 
 
-def build_runtime(output: Path, release_version: str, runtimes: list[Path]) -> None:
+def group_runtimes_by_target(
+  runtimes: list[RuntimeArtifact],
+) -> dict[str, list[RuntimeArtifact]]:
+  groups: dict[str, list[RuntimeArtifact]] = {}
+  targets_by_suffix: dict[str, str] = {}
+  for runtime in runtimes:
+    previous = targets_by_suffix.setdefault(runtime.suffix, runtime.target)
+    if previous != runtime.target:
+      raise SystemExit(
+        "error: runtime target suffix collision: "
+        f"{previous!r} and {runtime.target!r} both map to {runtime.suffix!r}"
+      )
+    groups.setdefault(runtime.suffix, []).append(runtime)
+  return groups
+
+
+def build_runtime(
+  output: Path,
+  release_version: str,
+  runtimes: list[RuntimeArtifact],
+) -> None:
+  names: set[str] = set()
   with zipfile.ZipFile(output, "w") as zf:
-    for runtime in sorted(runtimes, key=lambda path: path.name.lower()):
-      if not runtime.is_file():
-        raise SystemExit(f"error: runtime artifact not found: {runtime}")
-      validate_runtime(runtime, release_version)
-      add_file(zf, runtime, f"tauridium-{release_version}/{runtime.name}", mode=0o755)
+    for runtime in sorted(runtimes, key=lambda item: item.path.name.lower()):
+      if not runtime.path.is_file():
+        raise SystemExit(f"error: runtime artifact not found: {runtime.path}")
+      if runtime.path.name.lower() in names:
+        raise SystemExit(f"error: duplicate runtime filename for {runtime.target}: {runtime.path.name}")
+      names.add(runtime.path.name.lower())
+      add_file(zf, runtime.path, f"tauridium-{release_version}/{runtime.path.name}", mode=0o755)
+    targets = ", ".join(sorted({runtime.target for runtime in runtimes}))
     readme = (
       f"Tauridium {release_version}\n\n"
+      f"Rust target: {targets}\n"
       "Native runtime artifacts produced from the matching release source.\n"
       "Install or execute the artifact appropriate for its platform/package format.\n"
     ).encode()
@@ -395,15 +460,14 @@ def build_docs(
   output: Path,
   release_version: str,
   source_zip: Path,
-  run_zip: Path,
+  run_zips: list[Path],
   context: SourceContext,
 ) -> None:
   prefix = f"tauridium-{release_version}-doc/"
   evidence = ROOT / "release" / "evidence"
-  checksums = (
-    f"{sha256(source_zip)}  {source_zip.name}\n"
-    f"{sha256(run_zip)}  {run_zip.name}\n"
-  ).encode()
+  checksum_lines = [f"{sha256(source_zip)}  {source_zip.name}"]
+  checksum_lines.extend(f"{sha256(run_zip)}  {run_zip.name}" for run_zip in run_zips)
+  checksums = ("\n".join(checksum_lines) + "\n").encode()
   with zipfile.ZipFile(output, "w") as zf:
     for name in ("README.md", "CHANGELOG.md", "LICENSE"):
       add_file(zf, ROOT / name, prefix + name)
@@ -427,14 +491,20 @@ def main() -> int:
   output_dir = args.output_dir.resolve()
   output_dir.mkdir(parents=True, exist_ok=True)
   src = output_dir / f"tauridium-{release_version}-src.zip"
-  run = output_dir / f"tauridium-{release_version}-run.zip"
   doc = output_dir / f"tauridium-{release_version}-doc.zip"
   build_source(src, release_version, context)
-  runtimes = [path.resolve() for path in args.runtime] if args.runtime else default_runtimes()
-  build_runtime(run, release_version, runtimes)
-  build_docs(doc, release_version, src, run, context)
+  runtime_paths = [path.resolve() for path in args.runtime] if args.runtime else default_runtimes()
+  runtime_artifacts = [inspect_runtime(path, release_version) for path in runtime_paths]
+  grouped_runtimes = group_runtimes_by_target(runtime_artifacts)
+  run_zips: list[Path] = []
+  for suffix, target_runtimes in sorted(grouped_runtimes.items()):
+    run = output_dir / runtime_zip_name(release_version, suffix)
+    build_runtime(run, release_version, target_runtimes)
+    run_zips.append(run)
+  build_docs(doc, release_version, src, run_zips, context)
   print(src)
-  print(run)
+  for run in run_zips:
+    print(run)
   print(doc)
   return 0
 
