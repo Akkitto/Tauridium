@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-// Modèles calqués sur l'API serveur Ferdium (/v1).
+// Models mirror the Ferdium server API (/v1).
 export interface MeUser {
   email: string;
   firstname: string;
@@ -81,7 +81,7 @@ export interface Workspace {
 
 export const DEFAULT_SERVER = "https://api.ferdium.org";
 
-// Toutes les requêtes HTTP partent du côté Rust (pas de CORS, token gardé hors du JS).
+// All HTTP requests originate from Rust (no CORS issue; the token stays outside JavaScript).
 export function login(
   server: string,
   email: string,
@@ -102,7 +102,7 @@ export function getWorkspaces(): Promise<Workspace[]> {
   return invoke("get_workspaces");
 }
 
-// Restaure une session enregistrée (rejette s'il n'y en a pas / token expiré).
+// Restore a saved session (rejects when missing or expired).
 export function restoreSession(): Promise<MeUser> {
   return invoke("restore_session");
 }
@@ -111,8 +111,8 @@ export function logout(): Promise<void> {
   return invoke("logout");
 }
 
-// Phase 2 : affiche le service actif dans une webview enfant isolée.
-// Réglages dark mode envoyés au backend (null si désactivé -> pas d'injection Dark Reader).
+// Phase 2: show the active service in an isolated child webview.
+// Dark-mode settings sent to the backend (null when disabled, so Dark Reader is not injected).
 function darkArg(s: Service) {
   return s.isDarkModeEnabled
     ? {
@@ -139,7 +139,7 @@ export function showService(s: Service): Promise<void> {
   return invoke("show_service", { request: serviceViewRequest(s) });
 }
 
-// Précharge un service en arrière-plan (webview hors-écran) pour une bascule instantanée.
+// Preload a service off-screen for near-instant switching.
 export function preloadService(s: Service): Promise<void> {
   return invoke("preload_service", { request: serviceViewRequest(s) });
 }
@@ -156,7 +156,7 @@ export function hideServices(): Promise<void> {
   return invoke("hide_all_services");
 }
 
-// Pousse les réglages d'un service (notif/mute/badge) que le poller Rust respecte.
+// Push service notification/mute/badge settings respected by the Rust poller.
 export function setServiceFlags(s: Service): Promise<void> {
   return invoke("set_service_flags", {
     serviceId: s.id,
@@ -185,7 +185,7 @@ export function deleteService(serviceId: string): Promise<void> {
   return invoke("delete_service", { serviceId });
 }
 
-// Vide le cache/la session d'un service (ferme sa webview + purge son stockage disque).
+// Clear a service cache/session by closing its webview and purging persistent storage.
 export function clearServiceCache(serviceId: string): Promise<void> {
   return invoke("clear_service_cache", { serviceId });
 }

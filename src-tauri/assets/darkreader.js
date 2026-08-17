@@ -1,4 +1,4 @@
-/* Dark Reader v4.9.128 — build UMD standalone (https://github.com/darkreader/darkreader). Vendorisé, embarqué via include_str! pour le dark mode par service. */
+/* Dark Reader v4.9.128 — standalone UMD build (https://github.com/darkreader/darkreader). Vendored and embedded with include_str! for per-service dark mode. */
 /**
  * Dark Reader v4.9.128
  * https://darkreader.org/

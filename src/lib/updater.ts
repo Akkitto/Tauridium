@@ -4,17 +4,17 @@ import { getVersion } from "@tauri-apps/api/app";
 
 export type { Update };
 
-// Version courante de l'app (depuis tauri.conf.json / Cargo.toml).
+// Current application version from tauri.conf.json / Cargo.toml.
 export function appVersion(): Promise<string> {
   return getVersion();
 }
 
-// Vérifie l'endpoint de mise à jour ; renvoie null si l'app est à jour.
+// Check the update endpoint; return null when the application is current.
 export function checkForUpdate(): Promise<Update | null> {
   return check();
 }
 
-// Télécharge + installe la mise à jour, puis relance l'app.
+// Download and install the update, then relaunch the application.
 export async function installUpdate(update: Update): Promise<void> {
   await update.downloadAndInstall();
   await relaunch();

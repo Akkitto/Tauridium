@@ -1,135 +1,135 @@
-# pakeFerdium — Plan de conception
+# Tauridium — Design Plan
 
-> Objectif : un **client Ferdium alternatif, léger** (Tauri v2, Rust + webview natif)
-> en remplacement du client Electron — **qui reste connecté au serveur Ferdium**
-> (api.ferdium.org ou self-hosted) : même compte, mêmes services/workspaces synchronisés.
-> Cible principale : **macOS** (darwin).
+> Goal: a **lightweight alternative Ferdium client** (Tauri v2, Rust + native webview)
+> replacing the Electron client while **remaining connected to the Ferdium server**
+> (`api.ferdium.org` or self-hosted): same account and synchronized services/workspaces.
+> Primary original target: **macOS** (Darwin), with Windows now supported as a first-class platform.
 
-## 1. Principe : on NE réinvente pas Ferdium, on en fait un client plus léger
+## 1. Principle: do not reinvent Ferdium; provide a lighter client
 
-- On garde **le serveur Ferdium** (la source de vérité : compte, services, workspaces, recipes).
-- On remplace **uniquement le client Electron** par un client **Tauri** (~10 Mo vs ~200 Mo).
-- Réutilisation maximale (licences OK) :
-  - **ferdium-app** = **Apache-2.0** → on *porte* sa couche API serveur + ses modèles
-    (service, recipe, workspace, calcul d'URL) de TS-Electron vers notre client TS. Attribution requise.
-  - **ferdium-recipes** = **MIT** (par recipe) → on réutilise le catalogue (URL, user-agent, icône)
-    et les `webview.js` (détection non-lus / notifs) via un **shim `Ferdium`** compatible.
-- Ce qu'on NE garde pas : le runtime Electron, le serveur *local interne* embarqué (on parle
-  directement au serveur distant en JWT), les dépendances lourdes (MobX/React si on veut + léger).
+- Keep the **Ferdium server** as the source of truth for accounts, services, workspaces, and recipes.
+- Replace only the **Electron client** with a **Tauri** client.
+- Maximize reuse where licensing permits:
+  - **ferdium-app** is **Apache-2.0**: port the relevant server API and model logic
+    (service, recipe, workspace, URL calculation) from TS/Electron into Tauridium.
+  - **ferdium-recipes** recipes are **MIT**: reuse the catalog metadata and `webview.js`
+    integrations through a compatible **`Ferdium` shim**.
+- Do not retain the Electron runtime or the embedded local Node server; Tauridium talks
+  directly to the remote Ferdium server with JWT authentication.
 
-## 2. API serveur Ferdium (surface vérifiée)
+## 2. Ferdium server API surface
 
-Base : `https://<serveur>/v1/`. Auth : `POST /v1/auth/login` → **JWT**, renvoyé ensuite en
-en-tête `Authorization: Bearer <jwt>` (middleware `auth:jwt`).
+Base: `https://<server>/v1/`. Authentication: `POST /v1/auth/login` returns a **JWT**,
+which is then sent as `Authorization: Bearer <jwt>`.
 
-| Méthode | Route | Usage |
+| Method | Route | Use |
 |---|---|---|
 | POST | `/v1/auth/login` | login (email/password) → JWT |
-| GET/PUT | `/v1/me` | compte utilisateur |
-| GET | `/v1/me/services` | **liste des services de l'utilisateur** |
-| POST / PUT | `/v1/service[/:id]` | créer / modifier un service |
-| GET | `/v1/icon/:id` | icône d'un service |
-| GET | `/v1/workspace` | **liste des workspaces** |
-| POST / PUT | `/v1/workspace[/:id]` | créer / modifier un workspace |
-| GET | `/v1/recipes/download/:recipe` | télécharger un recipe (paquet) |
-| GET | `/v1/recipes/search` · `/recipes/popular` | rechercher / populaires |
+| GET/PUT | `/v1/me` | user account |
+| GET | `/v1/me/services` | user service list |
+| POST / PUT | `/v1/service[/:id]` | create/update a service |
+| GET | `/v1/icon/:id` | service icon |
+| GET | `/v1/workspace` | workspace list |
+| POST / PUT | `/v1/workspace[/:id]` | create/update a workspace |
+| GET | `/v1/recipes/download/:recipe` | download a recipe package |
+| GET | `/v1/recipes/search` · `/recipes/popular` | search/popular recipes |
 
-> NB archi : le client Electron passe par un mini-serveur node *local* (en-tête
-> `X-Ferdium-Local-Token`) qui proxifie le serveur distant. **Nous, on court-circuite** ce
-> détour et on parle directement au serveur distant en JWT — plus simple, plus léger.
+Architecture note: the Electron client routes through a small local Node server using
+`X-Ferdium-Local-Token`. Tauridium bypasses that hop and talks directly to the remote
+server using the JWT.
 
-## 3. Réalité technique Tauri v2 (vérifiée)
+## 3. Tauri v2 technical model
 
-| Brique | État | Implication |
+| Component | Status | Implication |
 |---|---|---|
-| Multi-webview dans 1 fenêtre (`Window::add_child`) | ✅ flag `unstable`, bugs connus (#10011) | Création séquentielle / lazy |
-| **Isolation session par service** | ✅ **VALIDÉ (Phase 0)** via `data_store_identifier` (PAS `data_directory`) | 1 UUID stable par service |
-| Notifications natives | ✅ plugin `notification` ↔ API Web `Notification` | shim qui forwarde depuis le recipe |
-| Badge dock / unread unifié | ⚠️ pas natif | custom (agrégation + badge macOS) |
-| Recipe `webview.js` (nodeIntegration Electron) | ⚠️ pas de Node dans webview Tauri | shim `Ferdium` + adaptation (cas par cas) |
+| Multiple webviews in one window (`Window::add_child`) | ✅ `unstable` API | Create sequentially/lazily |
+| Per-service session isolation | ✅ via `data_store_identifier` | One stable UUID per service |
+| Native notifications | ✅ notification plugin | Recipe shim forwards notifications |
+| Unified dock badge / unread count | custom | Aggregate service counts |
+| Recipe `webview.js` expecting Electron integration | compatibility layer | `Ferdium` shim and per-service adaptation |
 
-## 4. Architecture cible
+## 4. Target architecture
 
-```
-┌──────────────────────────── Fenêtre Tauri (1) ─────────────────────────┐
-│  Shell (UI : sidebar workspaces + services, état non-lus)              │
+```text
+┌──────────────────────────── Tauri window ──────────────────────────────┐
+│  Shell UI: workspace/service sidebar and unread state                  │
 │  ┌──────┐  ┌───────────────────────────────────────────────────────┐   │
-│  │ side │  │  Webview du service ACTIF (recipe rendu)              │   │
-│  │ bar  │  │  - data_store_identifier = UUID(serviceId) (isolé)    │   │
-│  │      │  │  - user-agent du recipe                               │   │
-│  │      │  │  - shim Ferdium + webview.js (badges/notifs → IPC)    │   │
+│  │ side │  │ Active service webview                                │   │
+│  │ bar  │  │ - data_store_identifier = UUID(serviceId)             │   │
+│  │      │  │ - recipe user agent                                   │   │
+│  │      │  │ - Ferdium shim + webview.js (badges/notifs → IPC)     │   │
 │  └──────┘  └───────────────────────────────────────────────────────┘   │
 └────────────────────────────────────────────────────────────────────────┘
-   Core Rust : fenêtre/webviews, sessions, notifs natives, badge dock, cache disque
-   Couche sync (TS, portée de ferdium-app) : login JWT, /me/services, /workspace,
-                                             recipes/download, calcul d'URL par service
-   ▲ synchronise avec ▼
-   ╔═══════════════════ Serveur Ferdium (api.ferdium.org ou self-hosted) ═══════════════╗
+   Rust core: windows/webviews, sessions, native notifications, dock badge, disk cache
+   Sync layer: JWT login, services, workspaces, recipe download, service URL calculation
+   ▲ synchronizes with ▼
+   ╔════════════════ Ferdium server (api.ferdium.org or self-hosted) ═════════════════╗
 ```
 
 ## 5. Stack
 
-- **Backend** : Rust + **Tauri v2** (`features = ["unstable"]`), plugins `notification`, `http`.
-- **Shell UI + couche sync** : **TypeScript + Vite** (framework léger : Svelte, ou vanilla).
-  Porte les modules pertinents de ferdium-app (API serveur, modèles, URL building).
-- **Persistance** : token (keychain via plugin), cache services/workspaces/recipes sur disque
-  (résilience si serveur indispo — cf. issue ferdium #1838).
-- **Sessions** : `data_store_identifier` = UUID dérivé du `serviceId`.
+- **Backend**: Rust + **Tauri v2** (`unstable` webview support), notification and updater plugins.
+- **Shell UI + sync layer**: **TypeScript + Vite + Svelte**.
+- **Persistence**: session/settings files plus recipe and service caches; stronger credential storage
+  can be introduced where platform support warrants it.
+- **Sessions**: `data_store_identifier` derived from each `serviceId`.
 
-## 6. Plan par phases
+## 6. Delivery phases
 
-### Phase 0 — Spike de dé-risquage ✅ FAIT (GO, 2026-06-30)
-Multi-webview + isolation `data_store_identifier` + persistance : **validés sur macOS**.
-Apprentissage clé : `data_directory` ignoré par WKWebView ; utiliser `data_store_identifier`.
+### Phase 0 — Risk-reduction spike ✅ COMPLETE
+Validated multiple webviews, `data_store_identifier` isolation, and persistence.
+Key finding: WKWebView ignores `data_directory`; use `data_store_identifier` on macOS.
 
-### Phase 1 — Tranche verticale « connexion serveur » (prochaine)
-But : **prouver la connexion à TON compte Ferdium**.
-1. Écran de login (serveur URL + email/mot de passe) → `POST /v1/auth/login` → JWT stocké.
-2. `GET /v1/me`, `GET /v1/me/services`, `GET /v1/workspace`.
-3. Afficher la **vraie liste** de tes services/workspaces dans la sidebar (sans rendu webview encore).
-Livrable : l'app se logge et liste tes services synchronisés. Le « pipe » serveur est prouvé.
+### Phase 1 — Server connection vertical slice ✅ COMPLETE
+- Login using server URL + credentials.
+- Restore JWT session and query `/v1/me`, services, and workspaces.
+- Display synchronized services/workspaces in the sidebar.
 
-### Phase 2 — Rendu des services ✅ FAIT
-- Chaque service rendu dans une webview enfant isolée (`data_store_identifier` = UUID du serviceId),
-  overlay à droite de la sidebar, lazy-load + switch + repositionnement au resize.
-- URL résolue depuis le recipe (`config.serviceURL`/`hasCustomUrl`/`{teamId}`), recipes lus depuis
-  `raw.githubusercontent.com/ferdium/ferdium-recipes` (cache disque).
-- UA natif (pas de spoof Chrome). Session pakeFerdium persistée (session.json).
-- **Patch wry** (`vendor/wry`, `[patch.crates-io]`) : `window.ipc` rendu mutable + shim IPC
-  Electron injecté (no-op) pour tous les services → fait marcher Synology Chat & co.
-  (cf. §7 et mémoire). Validé sur le compte réel : WhatsApp, Telegram, Discord, ChatGPT, Synology Chat.
+### Phase 2 — Service rendering ✅ COMPLETE
+- Each service renders in an isolated child webview.
+- Resolve URLs from recipe configuration and service overrides.
+- Cache recipes from `ferdium/ferdium-recipes`.
+- Apply service/browser compatibility shims where required.
+- Vendor the necessary Wry patch for mutable IPC compatibility.
 
-### Phase 3 — Notifications & badges
-- Shim `Ferdium` (`setBadge`, `injectCSS`, `setDialogTitle`, `safeParseInt`, `loop`) + `webview.js`.
-- Notifs natives (plugin) + badge dock macOS = somme des non-lus.
+### Phase 3 — Notifications and badges ✅ IMPLEMENTED
+- Compatible recipe `webview.js` runtime and badge plumbing.
+- Native notifications.
+- Aggregate unread state and dock badge where supported.
 
-### Phase 4 — Parité & confort
-- Édition de services/workspaces (PUT/POST) répercutée serveur, dark mode, raccourcis,
-  démarrage au login, résilience hors-ligne.
+### Phase 4 — Parity and usability ✅ IN PROGRESS
+- Service/workspace editing.
+- Per-service dark mode.
+- Shortcuts, startup behavior, reload/debug controls, and offline resilience.
 
-### Phase 5 — Recipes locaux ✅ FAIT (0.3.0)
-- Recipe intégré **Custom Website** comme voie de secours quand aucun preset ne correspond.
-- Catalogue fusionné : recipes distants + recipes intégrés + recipes utilisateur.
-- Dossier local `recipes/<id>/package.json` sous la configuration OS de Tauridium.
-- Import GUI par dossier ou `package.json`, plus créateur léger avec `icon.svg` / `webview.js` optionnels.
-- Recipes intégrés NanoGPT, Chutes et OpenCode Web.
-- Les services issus de recipes Tauridium-locaux restent locaux même pendant une session serveur,
-  afin de ne jamais dépendre de l'acceptation d'un id de recipe inconnu par l'API Ferdium.
+### Phase 5 — Local recipes ✅ COMPLETE (0.3.0)
+- Built-in **Custom Website** fallback when no preset matches.
+- Merged remote, bundled, and user recipe catalogs.
+- Local `recipes/<id>/package.json` directory under Tauridium's OS configuration directory.
+- GUI folder/package import and lightweight recipe creator with optional `icon.svg`/`webview.js`.
+- Bundled NanoGPT, Chutes, and OpenCode Web recipes.
+- Services created from Tauridium-local recipes remain local even while signed into a server.
 
-## 7. Points durs identifiés (honnêteté)
+### Phase 6 — Production runtime integrity ✅ COMPLETE (0.3.4)
+- Production runtimes are built through `cargo tauri build`, never raw `cargo build --release`.
+- Raw release-profile Cargo builds fail fast if Tauri is in development mode.
+- Packaged release workflows use `frontendDist`, while `devUrl` remains development-only.
+- Current tracked project text is English-only and guarded by an automated audit.
 
-| Point dur | Approche |
+## 7. Known difficult areas
+
+| Area | Approach |
 |---|---|
-| `webview.js` des recipes utilisent Node (Electron) | shim `Ferdium` ; adapter au cas par cas ; commencer par tes services |
-| Calcul de l'URL finale par service (recipe + overrides) | porter la logique de ferdium-app (Apache-2.0) |
-| Multi-webview `unstable` (white screens, races) | création séquentielle + lazy-load |
-| Auth/keychain, refresh token | plugin stronghold/keychain ; re-login si expiré |
+| Recipes whose `webview.js` expects Node/Electron APIs | compatible `Ferdium` shim and targeted adaptation |
+| Final service URL calculation | port Ferdium model behavior and test overrides |
+| Multi-webview lifecycle races | sequential creation, lazy loading, in-flight guards |
+| Authentication/keychain | progressively strengthen platform credential storage |
+| External OAuth/popups | preserve shared service session and route normal external links to the system browser |
 
 ## 8. Sources
 
 - Pake — https://github.com/tw93/pake
-- Ferdium app (Apache-2.0) — https://github.com/ferdium/ferdium-app
-- Ferdium server (API) — https://github.com/ferdium/ferdium-server · routes `/v1/*`
-- Ferdium recipes (MIT) — https://github.com/ferdium/ferdium-recipes · docs/integration.md
-- Auth client — https://deepwiki.com/ferdium/ferdium-app/7.2-authentication
-- Tauri multi-webview — issues #2975 / #10011 ; isolation #11491 ; `data_store_identifier` (wry 0.55)
+- Ferdium app — https://github.com/ferdium/ferdium-app
+- Ferdium server — https://github.com/ferdium/ferdium-server
+- Ferdium recipes — https://github.com/ferdium/ferdium-recipes
+- Tauri — https://v2.tauri.app/

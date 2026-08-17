@@ -341,10 +341,10 @@
 #![allow(clippy::new_without_default)]
 #![allow(clippy::default_constructed_unit_structs)]
 #![allow(clippy::type_complexity)]
-// run_javascript est déprécié (webkit2gtk >= 2.40) mais toujours utilisé par le
-// backend WebKitGTK vendoré ; on tait le warning (code tiers, non bloquant).
+// run_javascript is deprecated (webkit2gtk >= 2.40) but is still used by the
+// vendored WebKitGTK backend; silence this non-blocking third-party warning.
 #![allow(deprecated)]
-// Blocs `unsafe` superflus dans le backend WKWebView (objc2 récent) — code tiers.
+// Redundant `unsafe` blocks in the WKWebView backend (newer objc2); third-party code.
 #![allow(unused_unsafe)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 

@@ -72,7 +72,7 @@ describe("local recipe helpers", () => {
   it("creates safe deterministic recipe ids", async () => {
     const { recipeIdFromName } = await import("./ui");
     expect(recipeIdFromName("My AI Service")).toBe("my-ai-service");
-    expect(recipeIdFromName("Crème & Chat")).toBe("creme-chat");
+    expect(recipeIdFromName("Cr\u00e8me & Chat")).toBe("creme-chat");
     expect(recipeIdFromName("***")).toBe("custom-recipe");
   });
 

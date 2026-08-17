@@ -3,13 +3,13 @@
 mod local_profile;
 mod recipes;
 
-// pakeFerdium — client Ferdium léger (Tauri v2).
+// Tauridium — lightweight Ferdium client (Tauri v2).
 //
-// Phase 1 : connexion au serveur Ferdium (login JWT, services, workspaces).
-// Phase 2 : rendu de chaque service dans une webview enfant ISOLÉE, posée en
-//           overlay sur la zone à droite de la sidebar. Isolation via
-//           `data_store_identifier` = les 16 octets de l'UUID du service
-//           (data_directory est ignoré par WKWebView sur macOS — cf. Phase 0).
+// Phase 1: connect to the Ferdium server (JWT login, services, workspaces).
+// Phase 2: render each service in an ISOLATED child webview overlaid on
+//           the area to the right of the sidebar. Isolation uses
+//           `data_store_identifier` = the 16 bytes of the service UUID
+//           (data_directory is ignored by WKWebView on macOS; see Phase 0).
 
 use base64::Engine;
 use local_profile::{validate_recipe_id, LocalProfile};
@@ -34,8 +34,8 @@ use tauri::{
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
-// Client HTTP partagé (pooling de connexions) AVEC timeouts : sans timeout, un serveur
-// qui accepte la connexion mais ne répond jamais fait pendre login/show_service à l'infini.
+// Shared HTTP client with connection pooling AND timeouts: without a timeout, a server
+// that accepts a connection but never responds can hang login/show_service indefinitely.
 static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(10))
@@ -44,22 +44,22 @@ static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
         .unwrap_or_default()
 });
 
-// User-agent pour les appels API serveur Ferdium / récupération des recipes.
+// User agent for Ferdium server API calls and recipe retrieval.
 const API_UA: &str = concat!("Tauridium/", env!("CARGO_PKG_VERSION"));
-// Largeur (logique) de la sidebar — doit coïncider avec le CSS du shell.
+// Logical sidebar width; must match the shell CSS.
 const SIDEBAR_W: f64 = 240.0;
-// UA Safari moderne AVEC le token `Version/` : WhatsApp exige Safari >= 15, or la webview
-// WKWebView native n'expose pas toujours ce token (-> "navigateur non supporté"). On reste
-// du Safari (pas Chrome) pour ne pas casser les services qui dépendent du chemin Safari
-// (ex. Synology Chat, cassé par un UA Chrome). L'override par recipe viendra plus tard.
+// Modern Safari UA WITH the `Version/` token: WhatsApp requires Safari >= 15, while the webview
+// Native WKWebView does not always expose this token (which can trigger an unsupported-browser warning). Keep
+// a Safari identity rather than Chrome to avoid breaking services that depend on the Safari path
+// (for example Synology Chat, which breaks with a Chrome UA). Per-recipe overrides can come later.
 const SERVICE_UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15";
 
-// UA « Chrome sans numéro de version » pour les hôtes Google sensibles (login, Gmail,
-// Google Chat) : contourne le « navigateur non supporté » de Google (repris de ferx).
+// Versionless Chrome UA for sensitive Google hosts (login, Gmail,
+// Google Chat); works around Google's unsupported-browser check (adapted from ferx).
 const GOOGLE_CHROMELESS_UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari/537.36";
 
-// Compat Google (spoof userAgentData / window.chrome / plugins / vendor…) injectée sur les
-// services Google non sensibles. Défensif (try/catch partout). Repris de ferx.
+// Google compatibility shim (spoof userAgentData / window.chrome / plugins / vendor, etc.) injected into
+// non-sensitive Google services. Defensive by design (try/catch throughout). Adapted from ferx.
 const GOOGLE_AUTH_COMPAT_JS: &str = r#"(function() {
   document.addEventListener('securitypolicyviolation', function(e) {
     if (e.blockedURI && (e.blockedURI.indexOf('ipc:') !== -1 || e.blockedURI.indexOf('tauri:') !== -1)) { e.stopImmediatePropagation(); }
@@ -85,7 +85,7 @@ fn host_matches(host: &str, domain: &str) -> bool {
     host == domain || host.ends_with(&format!(".{domain}"))
 }
 
-// Hôtes Google sensibles (login/Gmail/Chat) -> UA chromeless.
+// Sensitive Google hosts (login/Gmail/Chat) use the versionless Chrome UA.
 fn is_google_auth_host(host: &str) -> bool {
     [
         "gmail.com",
@@ -98,7 +98,7 @@ fn is_google_auth_host(host: &str) -> bool {
     .any(|d| host_matches(host, d))
 }
 
-// Services Google génériques -> injection du script de compat.
+// Generic Google services receive the compatibility script.
 fn is_google_host(host: &str) -> bool {
     ["google.com", "gmail.com", "youtube.com", "googlevideo.com"]
         .iter()
@@ -111,14 +111,14 @@ struct AppState {
     token: Mutex<Option<String>>,
     local_mode: Mutex<bool>,
     local_profile: Mutex<LocalProfile>,
-    created: Mutex<HashSet<String>>, // serviceId des webviews déjà créées
-    active: Mutex<Option<String>>,   // serviceId actuellement affiché
-    unread: Mutex<HashMap<String, i64>>, // non-lus par service (pour le badge dock)
-    flags: Mutex<HashMap<String, ServiceFlags>>, // réglages par service (notif/mute/badge)
-    settings: Mutex<Value>,          // cache des réglages app (lu par le poller, etc.)
-    sidebar_w: Mutex<f64>,           // largeur de la sidebar (init en setup, def. 240)
-    desired_active: Mutex<Option<String>>, // dernier service demandé (anti vol de focus au switch)
-    inflight: Mutex<HashSet<String>>, // webviews en cours de création (anti double add_child)
+    created: Mutex<HashSet<String>>, // service IDs for webviews already created
+    active: Mutex<Option<String>>,   // service ID currently displayed
+    unread: Mutex<HashMap<String, i64>>, // unread count per service (for the dock badge)
+    flags: Mutex<HashMap<String, ServiceFlags>>, // per-service settings (notification/mute/badge)
+    settings: Mutex<Value>,          // app settings cache (read by the poller, etc.)
+    sidebar_w: Mutex<f64>,           // sidebar width (initialized during setup, default 240)
+    desired_active: Mutex<Option<String>>, // last requested service (prevents focus stealing during switches)
+    inflight: Mutex<HashSet<String>>, // webviews being created (prevents duplicate add_child)
 }
 
 #[derive(Clone, Copy)]
@@ -130,7 +130,7 @@ struct ServiceFlags {
 
 impl Default for ServiceFlags {
     fn default() -> Self {
-        // Par défaut : notifications + badge activés, non muté (comme Ferdium).
+        // Defaults: notifications and badge enabled, not muted (matching Ferdium).
         ServiceFlags {
             notif: true,
             muted: false,
@@ -141,7 +141,7 @@ impl Default for ServiceFlags {
 
 // --- Auth ---------------------------------------------------------------
 
-// Le client Ferdium transmet base64(sha256(password)) (cf. ferdium-app UserApi.ts).
+// The Ferdium client sends base64(sha256(password)) (see ferdium-app UserApi.ts).
 fn ferdium_password_hash(password: &str) -> String {
     let digest = Sha256::digest(password.as_bytes());
     base64::engine::general_purpose::STANDARD.encode(digest)
@@ -151,9 +151,9 @@ fn normalize_server(server: &str) -> String {
     server.trim().trim_end_matches('/').to_string()
 }
 
-// Remplace un fichier écrit dans un chemin temporaire. Unix remplace directement la cible ;
-// Windows exige un détour lorsque la cible existe déjà. Le backup permet de restaurer la
-// dernière version si le second rename échoue.
+// Replace a file written to a temporary path. Unix can replace the target directly;
+// Windows requires an intermediate step when the target already exists. The backup can restore the
+// last version if the second rename fails.
 pub(crate) fn replace_file(tmp: &Path, path: &Path) -> std::io::Result<()> {
     #[cfg(not(windows))]
     {
@@ -184,17 +184,17 @@ pub(crate) fn replace_file(tmp: &Path, path: &Path) -> std::io::Result<()> {
     }
 }
 
-// Écriture atomique : .tmp puis remplacement. Évite un fichier tronqué si l'app crashe
-// pendant l'écriture (sinon session.json / app_settings.json peuvent devenir illisibles).
+// Atomic write: write .tmp, then replace. Prevents a truncated file if the app crashes
+// during the write (otherwise session.json / app_settings.json could become unreadable).
 fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
     let tmp = path.with_extension("tmp");
     std::fs::write(&tmp, contents)?;
     replace_file(&tmp, path)
 }
 
-// Lit un fichier persistant et restaure un backup Windows laissé par une interruption
-// entre les deux renommages de replace_file. Sur les autres plateformes ce chemin ne
-// sert normalement jamais, mais reste sans danger.
+// Read a persistent file and restore a Windows backup left by an interruption
+// between the two renames in replace_file. On other platforms this path is normally
+// never used, but remains safe.
 fn read_persistent(path: &Path) -> std::io::Result<String> {
     match std::fs::read_to_string(path) {
         Ok(text) => Ok(text),
@@ -202,7 +202,7 @@ fn read_persistent(path: &Path) -> std::io::Result<String> {
             let backup = path.with_extension("bak");
             let text = std::fs::read_to_string(&backup)?;
             if std::fs::rename(&backup, path).is_err() {
-                // Le backup reste lisible même si sa restauration atomique est refusée.
+                // The backup remains readable even if atomic restoration is denied.
                 return Ok(text);
             }
             Ok(text)
@@ -219,17 +219,17 @@ async fn api_get(base: &str, token: &str, path: &str) -> Result<Value, String> {
         .header(reqwest::header::USER_AGENT, API_UA)
         .send()
         .await
-        .map_err(|e| format!("Requête {path} échouée : {e}"))?;
+        .map_err(|e| format!("Request {path} failed: {e}"))?;
     if !res.status().is_success() {
         return Err(format!("{path} : HTTP {}", res.status()));
     }
     res.json()
         .await
-        .map_err(|e| format!("Réponse {path} illisible : {e}"))
+        .map_err(|e| format!("Unable to parse response from {path}: {e}"))
 }
 
-// Persistance de session dans app_data_dir/session.json (perms 600).
-// Durcissement Keychain macOS prévu pour le build signé (Phase 4).
+// Persist the session in app_data_dir/session.json (permissions 600).
+// macOS Keychain hardening is planned for the signed build (Phase 4).
 fn save_session(app: &AppHandle, server: &str, token: &str) {
     let Ok(dir) = app.path().app_data_dir() else {
         return;
@@ -251,7 +251,7 @@ fn local_profile_path(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_data_dir()
         .map(|dir| dir.join("local_profile.json"))
-        .map_err(|error| format!("Dossier de données local indisponible : {error}"))
+        .map_err(|error| format!("Local data directory unavailable: {error}"))
 }
 
 fn load_local_profile(app: &AppHandle) -> Result<LocalProfile, String> {
@@ -321,28 +321,28 @@ async fn login(
         .header(reqwest::header::USER_AGENT, API_UA)
         .send()
         .await
-        // Erreur réseau -> transitoire (préfixe reconnu par l'UI pour retenter).
-        .map_err(|e| format!("transient: serveur injoignable ({e})"))?;
+        // Network error: transient (the UI recognizes the prefix and retries).
+        .map_err(|e| format!("transient: server unreachable ({e})"))?;
 
     let status = res.status();
     if !status.is_success() {
-        // 401/403 = vrais identifiants refusés (on n'insiste pas) ; le reste (5xx, serveur
-        // qui répond mal…) = transitoire, l'UI retentera.
+        // 401/403 means credentials were genuinely rejected (do not retry); everything else (5xx, server
+        // malfunction, etc.) is transient and the UI will retry.
         if status.as_u16() == 401 || status.as_u16() == 403 {
             let body = res.text().await.unwrap_or_default();
-            return Err(format!("Identifiants refusés. {body}"));
+            return Err(format!("Credentials rejected. {body}"));
         }
-        return Err(format!("transient: serveur en erreur (HTTP {status})"));
+        return Err(format!("transient: server error (HTTP {status})"));
     }
 
     let body: Value = res
         .json()
         .await
-        .map_err(|e| format!("Réponse de login illisible : {e}"))?;
+        .map_err(|e| format!("Unable to parse login response: {e}"))?;
     let token = body
         .get("token")
         .and_then(Value::as_str)
-        .ok_or("Réponse de login sans token")?
+        .ok_or("Login response did not contain a token")?
         .to_string();
 
     {
@@ -369,13 +369,13 @@ fn start_local_session(app: AppHandle, state: State<'_, AppState>) -> Result<Val
     Ok(local_user())
 }
 
-// Restaure une session enregistrée au démarrage. Le mode local ne contacte aucun serveur ;
-// le mode serveur valide toujours son token via /v1/me.
+// Restore a saved session at startup. Local mode does not contact any server;
+// server mode always validates its token through /v1/me.
 #[tauri::command]
 async fn restore_session(app: AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let path = dir.join("session.json");
-    let text = read_persistent(&path).map_err(|_| "Aucune session".to_string())?;
+    let text = read_persistent(&path).map_err(|_| "No saved session".to_string())?;
     let v: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
     if v.get("mode").and_then(Value::as_str) == Some("local") {
         let profile = load_local_profile(&app)?;
@@ -388,17 +388,17 @@ async fn restore_session(app: AppHandle, state: State<'_, AppState>) -> Result<V
     let server = v
         .get("server")
         .and_then(Value::as_str)
-        .ok_or("Session invalide")?
+        .ok_or("Invalid session")?
         .to_string();
     let token = v
         .get("token")
         .and_then(Value::as_str)
-        .ok_or("Session invalide")?
+        .ok_or("Invalid session")?
         .to_string();
 
-    // On valide le token, mais on ne supprime la session QUE si le serveur la refuse
-    // vraiment (401/403). Une erreur réseau ou serveur transitoire (5xx, blip au reload)
-    // NE DOIT PAS déconnecter — sinon un simple reload peut effacer une session valide.
+    // Validate the token, but delete the session ONLY if the server rejects it
+    // only genuine authentication failures (401/403) invalidate it. A transient network/server error (5xx, reload blip)
+    // MUST NOT sign the user out, otherwise a simple reload could erase a valid session.
     let res = HTTP
         .clone()
         .get(format!("{server}/v1/me"))
@@ -411,7 +411,7 @@ async fn restore_session(app: AppHandle, state: State<'_, AppState>) -> Result<V
             let me: Value = r
                 .json()
                 .await
-                .map_err(|e| format!("Réponse /v1/me illisible : {e}"))?;
+                .map_err(|e| format!("Unable to parse /v1/me response: {e}"))?;
             let local_profile = load_local_profile(&app)?;
             *state.server.lock().unwrap() = Some(server);
             *state.token.lock().unwrap() = Some(token);
@@ -420,33 +420,33 @@ async fn restore_session(app: AppHandle, state: State<'_, AppState>) -> Result<V
             Ok(me)
         }
         Ok(r) if r.status().as_u16() == 401 || r.status().as_u16() == 403 => {
-            // Token réellement invalide/expiré -> on nettoie la session.
+            // Genuinely invalid or expired token: clear the session.
             let _ = std::fs::remove_file(&path);
-            Err("expired: session refusée par le serveur".into())
+            Err("expired: session rejected by server".into())
         }
         Ok(r) => {
-            // Erreur serveur transitoire -> on GARDE la session (retry côté UI).
+            // Transient server error: KEEP the session (retry in the UI).
             Err(format!(
-                "transient: serveur injoignable (HTTP {})",
+                "transient: server unreachable (HTTP {})",
                 r.status()
             ))
         }
         Err(e) => {
-            // Erreur réseau -> on GARDE la session.
-            Err(format!("transient: réseau indisponible ({e})"))
+            // Network error: KEEP the session.
+            Err(format!("transient: network unavailable ({e})"))
         }
     }
 }
 
 fn current(state: &State<'_, AppState>) -> Result<(String, String), String> {
     if is_local_mode(state) {
-        return Err("Mode local actif".into());
+        return Err("Local mode is active".into());
     }
     let base = state.server.lock().unwrap().clone();
     let token = state.token.lock().unwrap().clone();
     match (base, token) {
         (Some(b), Some(t)) => Ok((b, t)),
-        _ => Err("Non connecté".into()),
+        _ => Err("Not signed in".into()),
     }
 }
 
@@ -501,9 +501,9 @@ async fn get_workspaces(state: State<'_, AppState>) -> Result<Value, String> {
     api_get(&base, &token, "/v1/workspace").await
 }
 
-// --- Recipes & résolution d'URL ----------------------------------------
+// --- Recipes and URL resolution -----------------------------------------
 
-// Récupère le package.json du recipe (cache disque), depuis le repo ferdium-recipes.
+// Retrieve a recipe package.json (disk-cached) from the ferdium-recipes repository.
 async fn recipe_config(app: &AppHandle, app_data: &Path, recipe_id: &str) -> Result<Value, String> {
     validate_recipe_id(recipe_id)?;
     if let Some(local) = recipes::local_recipe_config(app, recipe_id)? {
@@ -529,19 +529,19 @@ async fn recipe_config(app: &AppHandle, app_data: &Path, recipe_id: &str) -> Res
         .header(reqwest::header::USER_AGENT, API_UA)
         .send()
         .await
-        .map_err(|e| format!("Téléchargement du recipe {recipe_id} échoué : {e}"))?;
+        .map_err(|e| format!("Recipe {recipe_id} download failed: {e}"))?;
     if !res.status().is_success() {
         return Err(format!(
-            "Recipe {recipe_id} introuvable (HTTP {})",
+            "Recipe {recipe_id} not found (HTTP {})",
             res.status()
         ));
     }
     let text = res
         .text()
         .await
-        .map_err(|e| format!("Recipe {recipe_id} illisible : {e}"))?;
+        .map_err(|e| format!("Unable to parse recipe {recipe_id}: {e}"))?;
     let _ = write_atomic(&cache, &text);
-    serde_json::from_str(&text).map_err(|e| format!("package.json {recipe_id} invalide : {e}"))
+    serde_json::from_str(&text).map_err(|e| format!("Invalid package.json for {recipe_id}: {e}"))
 }
 
 fn ensure_scheme(u: &str) -> String {
@@ -552,13 +552,13 @@ fn ensure_scheme(u: &str) -> String {
     }
 }
 
-// Réplique le getter `url` du modèle Service de ferdium-app.
+// Replicate the `url` getter from ferdium-app's Service model.
 fn resolve_url(
     cfg: &Value,
     custom_url: Option<&str>,
     team: Option<&str>,
 ) -> Result<String, String> {
-    let config = cfg.get("config").ok_or("Recipe sans bloc config")?;
+    let config = cfg.get("config").ok_or("Recipe has no config block")?;
     let service_url = config
         .get("serviceURL")
         .and_then(Value::as_str)
@@ -583,22 +583,22 @@ fn resolve_url(
         }
     }
     if service_url.is_empty() {
-        return Err("Recipe sans serviceURL".into());
+        return Err("Recipe has no serviceURL".into());
     }
     Ok(service_url.to_string())
 }
 
-// --- Runtime des recipes (webview.js -> non-lus) ------------------------
+// --- Recipe runtime (webview.js -> unread counts) -------------------------
 
-// Shim minimal de l'API `Ferdium` exposée aux webview.js des recipes. Exécute le
-// code de scraping DOM du recipe ; `setBadge` alimente window.__pakeUnread (lu par le
-// poller). injectCSS/notifs viendront plus tard ; tout est encapsulé dans un try/catch
-// pour qu'un recipe incompatible ne casse jamais la page.
-// Dark Reader (build UMD standalone, vendoré) — injecté par service quand le dark mode
-// est activé, pour vraiment assombrir la page (avant : la case ne faisait rien localement).
+// Minimal `Ferdium` API shim exposed to recipe webview.js files. It executes the
+// recipe DOM-scraping code; `setBadge` updates window.__pakeUnread (read by the
+// poller). injectCSS/notifications can come later; everything is wrapped in try/catch
+// so an incompatible recipe can never break the page.
+// Dark Reader (vendored standalone UMD build), injected per service when dark mode
+// is enabled so the page is actually darkened (previously the option had no local effect).
 const DARK_READER_JS: &str = include_str!("../assets/darkreader.js");
 
-// Options Dark Reader d'un service (valeurs par défaut alignées sur l'UI : 100/90/10).
+// Per-service Dark Reader options (defaults aligned with the UI: 100/90/10).
 #[derive(Clone, Copy)]
 struct DarkOpts {
     brightness: i64,
@@ -606,7 +606,7 @@ struct DarkOpts {
     sepia: i64,
 }
 
-// Réglages dark mode reçus du frontend (via showService/preloadService).
+// Dark-mode settings received from the frontend (via showService/preloadService).
 #[derive(serde::Deserialize)]
 struct DarkSettings {
     enabled: bool,
@@ -628,7 +628,7 @@ impl DarkSettings {
     }
 }
 
-// Script d'activation Dark Reader : charge la lib puis applique le thème sombre.
+// Dark Reader activation script: load the library, then apply the dark theme.
 fn dark_reader_init(o: DarkOpts) -> String {
     format!(
         "{DARK_READER_JS}\ntry{{DarkReader.enable({{brightness:{},contrast:{},sepia:{}}});}}catch(e){{}}",
@@ -656,7 +656,7 @@ const RECIPE_SUFFIX: &str = r#"
   } catch(e){ console.warn('[pakeFerdium] recipe runtime error', e); }
 })();"#;
 
-// Récupère (et cache) le webview.js d'un recipe ; None s'il n'en a pas.
+// Retrieve and cache a recipe's webview.js; return None if it has none.
 async fn recipe_webview_js(app: &AppHandle, app_data: &Path, recipe_id: &str) -> Option<String> {
     if validate_recipe_id(recipe_id).is_err() {
         return None;
@@ -695,9 +695,9 @@ async fn recipe_webview_js(app: &AppHandle, app_data: &Path, recipe_id: &str) ->
     Some(text)
 }
 
-// --- Webviews de services ----------------------------------------------
+// --- Service webviews ----------------------------------------------------
 
-// Les 16 octets de l'UUID du service -> identifiant de data store WKWebView.
+// The service UUID's 16 bytes become the WKWebView data-store identifier.
 #[cfg(any(target_os = "macos", test))]
 fn uuid_to_bytes(s: &str) -> Option<[u8; 16]> {
     let hex: String = s.chars().filter(|c| *c != '-').collect();
@@ -711,9 +711,9 @@ fn uuid_to_bytes(s: &str) -> Option<[u8; 16]> {
     Some(out)
 }
 
-// Purge le stockage persistant (cookies, localStorage, session) d'un service. À appeler
-// APRÈS avoir fermé sa webview. macOS : suppression du WKWebsiteDataStore par identifiant
-// (API wry, thread principal requis) ; ailleurs : suppression du dossier data_directory.
+// Purge a service's persistent storage (cookies, localStorage, session). Call this
+// AFTER closing its webview. macOS: delete the WKWebsiteDataStore by identifier
+// (wry API, main thread required); elsewhere delete the data_directory folder.
 #[cfg(target_os = "macos")]
 fn purge_service_storage(app: &AppHandle, service_id: &str) {
     use wry::WebViewExtDarwin;
@@ -731,7 +731,7 @@ fn purge_service_storage(app: &AppHandle, service_id: &str) {
     }
 }
 
-// Rectangle (logique) de la zone service = tout à droite de la sidebar.
+// Logical rectangle for the service area: everything to the right of the sidebar.
 fn service_rect(
     win: &tauri::window::Window<Wry>,
     sidebar_w: f64,
@@ -746,21 +746,21 @@ fn service_rect(
     ))
 }
 
-// Certains services (ex. Synology Chat) lisent le global `ipc` (= window.ipc) et
-// appellent l'API IPC d'Electron (ipc.on / ipc.sendToHost). Or `window.ipc` est défini
-// par wry pour SON propre IPC ({postMessage}) — sans .on/.sendToHost → ces services
-// crashent. wry posait window.ipc gelé/non-configurable : on a patché wry
-// (vendor/wry) pour le rendre mutable, et on l'AUGMENTE ici (ajout des méthodes
-// Electron en no-op, sans toucher postMessage). Le pont complet (sendToHost routé vers
-// le natif pour badges/notifs + recipe webview.js) viendra en Phase 3.
+// Some services (for example Synology Chat) read the global `ipc` (= window.ipc) and
+// call Electron's IPC API (ipc.on / ipc.sendToHost). However, `window.ipc` is defined
+// by wry for ITS own IPC ({postMessage}) without .on/.sendToHost, causing those services
+// crash. wry created window.ipc as frozen/non-configurable, so Tauridium patches wry
+// (vendor/wry) to make it mutable, then AUGMENTS it here by adding Electron
+// methods as no-ops without changing postMessage. The full bridge (sendToHost routed to
+// native badge/notification routing plus recipe webview.js support comes in Phase 3.
 const IPC_SHIM_JS: &str = r#"(function(){
   window.__PAKE_SHIM__ = (window.__PAKE_SHIM__ || 0) + 1;
   window.__pakeUnread = window.__pakeUnread || 0;
-  // NB : Telegram Web A est une app Tauri qui appelle l'IPC bas niveau (fetch ipc:// +
-  // postMessage) ; impossible à neutraliser proprement depuis du JS injecté. Ses erreurs
-  // console sont du bruit non bloquant (Telegram fonctionne). Badge Telegram non géré.
-  // Intercepte l'API web Notification (WKWebView ne la gère pas vraiment) : on empile
-  // les notifs des services, drainées par le poller Rust -> notif système native.
+  // Note: Telegram Web A is a Tauri app that calls low-level IPC (fetch ipc:// +
+  // postMessage); it cannot be cleanly disabled from injected JavaScript. Its console errors
+  // are harmless noise (Telegram still works). Telegram badge support is not implemented.
+  // Intercept the web Notification API (WKWebView does not fully support it): queue
+  // service notifications for the Rust poller to drain into native system notifications.
   (function(){
     window.__pakeNotifQueue = window.__pakeNotifQueue || [];
     function N(title, options){
@@ -781,7 +781,7 @@ const IPC_SHIM_JS: &str = r#"(function(){
     try { window.Notification = N; } catch(e){}
   })();
   var noop = function(){};
-  // Capte les non-lus que les services Electron-aware émettent via sendToHost.
+  // Capture unread counts emitted through sendToHost by Electron-aware services.
   function captureUnread(channel){
     try {
       if (channel === 'updateUnread' || channel === 'message-counts' || channel === 'updateBadge') {
@@ -802,10 +802,10 @@ const IPC_SHIM_JS: &str = r#"(function(){
   };
   function augment(v){
     if (!v || typeof v.on === 'function') return v;
-    // 1) tente de muter l'objet en place
+    // 1) try to mutate the object in place
     try { for (var k in extra) if (typeof v[k] !== 'function') v[k] = extra[k]; } catch(e){}
     if (typeof v.on === 'function') return v;
-    // 2) objet verrouillé : on reconstruit en préservant postMessage (IPC de Tauri)
+    // 2) locked object: rebuild it while preserving postMessage (Tauri IPC)
     var out = {};
     try { for (var k in v) out[k] = v[k]; } catch(e){}
     try { if (v.postMessage) out.postMessage = v.postMessage.bind(v); } catch(e){}
@@ -814,7 +814,7 @@ const IPC_SHIM_JS: &str = r#"(function(){
   }
   var real = augment(window.ipc);
   try {
-    // intercepte l'affectation de Tauri : on augmente pile quand il pose window.ipc
+    // intercept Tauri's assignment so the shim augments window.ipc exactly when Tauri sets it
     Object.defineProperty(window, 'ipc', {
       configurable: true,
       get: function(){ return real; },
@@ -829,8 +829,8 @@ const IPC_SHIM_JS: &str = r#"(function(){
   }
 })();"#;
 
-// Ouvre une URL dans le navigateur par défaut du système (hors app). Best effort : on
-// ignore l'échec (pas de navigateur, spawn refusé…). L'appelant filtre déjà le schéma.
+// Open a URL in the system's default browser outside the app. Best effort:
+// ignore failure (no browser, spawn denied, etc.). The caller already filters the scheme.
 fn open_external(url: &str) {
     #[cfg(target_os = "macos")]
     let _ = std::process::Command::new("open").arg(url).spawn();
@@ -842,8 +842,8 @@ fn open_external(url: &str) {
     let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }
 
-// Nom de fichier pour un téléchargement, dérivé de l'URL (dernier segment de chemin, la
-// query est ignorée). Nettoie les séparateurs pour éviter toute traversée de dossier.
+// Download filename derived from the URL (last path segment; the
+// query is ignored). Sanitize separators to prevent path traversal.
 fn download_filename(url: &Url) -> String {
     let raw = url
         .path_segments()
@@ -859,8 +859,8 @@ fn download_filename(url: &Url) -> String {
     }
 }
 
-// Chemin de destination non existant dans `dir` (WKDownload échoue si le fichier existe) :
-// ajoute « (1) », « (2) »… avant l'extension en cas de collision.
+// Choose a non-existing destination path in `dir` (WKDownload fails if the file exists):
+// append (1), (2), etc. before the extension when a collision occurs.
 fn unique_download_path(dir: &Path, name: &str) -> PathBuf {
     let candidate = dir.join(name);
     if !candidate.exists() {
@@ -882,22 +882,22 @@ fn unique_download_path(dir: &Path, name: &str) -> PathBuf {
     dir.join(name)
 }
 
-// Correctif frappes doublées (macOS/WKWebView, webviews enfants) : WebKit dispatche des
-// évènements `textInput` legacy REDONDANTS avec l'insertion réelle. Deux cas observés dans
+// Duplicate-keystroke fix (macOS/WKWebView child webviews): WebKit dispatches legacy
+// `textInput` events REDUNDANT with the real insertion. Two cases were observed in
 // Discord :
-//  a) frappe normale -> DEUX `textInput` identiques pour une frappe (recherche Draft.js) ;
-//  b) composition (touche morte / accent) -> un `textInput` legacy EN PLUS du
+//  a) normal keystroke -> TWO identical `textInput` events for one keystroke (Draft.js search);
+//  b) composition (dead key / accent) -> one legacy `textInput` IN ADDITION to the
 //     `beforeinput[insertFromComposition]` standard (compositeur Slate).
-// Les deux -> caractère doublé.
+// Both produce a duplicated character.
 //
-// Subtilité : Draft.js (recherche) S'APPUIE sur le `textInput` de composition (le neutraliser
-// perdrait l'accent), alors que Slate (compositeur) le double. Besoins opposés sur le MÊME
-// évènement -> on discrimine par l'éditeur cible :
-//  - hors composition : on supprime le 2ᵉ `textInput` identique de la frappe (cas a) ;
-//  - en composition : on ne neutralise le `textInput` legacy que dans un éditeur **Slate**
-//    (`[data-slate-editor]`), jamais dans Draft.js (cas b).
-// Interrupteurs de diagnostic : `window.__pakeDedup=false` (tout), `__pakeDedupComp=false`
-// (partie composition seulement).
+// Important detail: Draft.js search RELIES on composition `textInput` (suppressing it
+// would lose the accented character), while Slate composer duplicates it. Opposite needs for the SAME
+// event mean behavior must depend on the target editor:
+//  - outside composition: suppress the second identical `textInput` for the keystroke (case a);
+//  - during composition: suppress legacy `textInput` only inside a **Slate** editor
+//    (`[data-slate-editor]`), never in Draft.js (case b).
+// Diagnostic switches: `window.__pakeDedup=false` (all), `__pakeDedupComp=false`
+// (composition handling only).
 const KEY_DEDUP_JS: &str = r#"(function(){
   var token = 0, seenTok = -1, seenData = null, composing = false;
   document.addEventListener('keydown', function(){ token++; }, true);
@@ -905,7 +905,7 @@ const KEY_DEDUP_JS: &str = r#"(function(){
   document.addEventListener('compositionend', function(){ composing = false; }, true);
   function targetEl(e){
     var t = e.target;
-    if (t && t.nodeType === 3) t = t.parentElement;   // node texte -> élément parent
+    if (t && t.nodeType === 3) t = t.parentElement;   // text node -> parent element
     return (t && t.closest) ? t : null;
   }
   document.addEventListener('textInput', function(e){
@@ -913,7 +913,7 @@ const KEY_DEDUP_JS: &str = r#"(function(){
     if (!e.isTrusted || typeof e.data !== 'string' || e.data.length !== 1) return;
     if (composing) {
       if (window.__pakeDedupComp === false) return;
-      // Uniquement dans un éditeur Slate (compositeur), jamais dans Draft.js (recherche).
+      // Only inside a Slate editor (composer), never in Draft.js (search).
       var el = targetEl(e);
       if (el && el.closest('[data-slate-editor="true"]') && !el.closest('[class*="DraftEditor"]')) {
         e.preventDefault();
@@ -921,7 +921,7 @@ const KEY_DEDUP_JS: &str = r#"(function(){
       }
       return;
     }
-    // Hors composition : 2ᵉ `textInput` identique pour la MÊME frappe -> doublon natif.
+    // Outside composition: a second identical `textInput` for the SAME keystroke is a native duplicate.
     if (seenTok === token && seenData === e.data) {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -933,8 +933,8 @@ const KEY_DEDUP_JS: &str = r#"(function(){
 })();"#;
 
 #[tauri::command]
-// Crée (si absente) la webview d'un service à la position/taille données. Les fetchs de
-// recette (config + webview.js) ne sont faits QU'ICI (création) — plus à chaque bascule.
+// Create a service webview if absent at the requested position/size. Recipe fetches for
+// config + webview.js happen ONLY HERE during creation, not on every switch.
 #[allow(clippy::too_many_arguments)]
 async fn create_service_webview(
     state: &State<'_, AppState>,
@@ -951,15 +951,15 @@ async fn create_service_webview(
 ) -> Result<(), String> {
     let cfg = recipe_config(win.app_handle(), app_data, recipe_id).await?;
     let url_str = resolve_url(&cfg, custom_url, team)?;
-    let url = Url::parse(&url_str).map_err(|e| format!("URL invalide « {url_str} » : {e}"))?;
+    let url = Url::parse(&url_str).map_err(|e| format!("Invalid URL {url_str}: {e}"))?;
     let host = url.host_str().unwrap_or("").to_ascii_lowercase();
-    // Runtime du recipe (scraping DOM des non-lus -> __pakeUnread) — best effort.
+    // Recipe runtime (DOM unread-count scraping -> __pakeUnread), best effort.
     let runtime = recipe_webview_js(win.app_handle(), app_data, recipe_id)
         .await
         .map(|js| format!("{RECIPE_PREAMBLE}{js}{RECIPE_SUFFIX}"));
     let label = format!("svc-{service_id}");
 
-    // UA : override par service, sinon global, sinon chromeless Google, sinon SERVICE_UA.
+    // User agent precedence: per-service override, global setting, Google compatibility UA, then SERVICE_UA.
     let ua = {
         let per_service = user_agent_pref.map(str::trim).filter(|s| !s.is_empty());
         if let Some(p) = per_service {
@@ -984,17 +984,17 @@ async fn create_service_webview(
         }
     };
 
-    // Shim IPC injecté pour TOUS les services (Synology Chat… en dépendent).
+    // IPC shim injected into ALL services (Synology Chat and others depend on it).
     let mut builder = WebviewBuilder::new(label, WebviewUrl::External(url))
         .user_agent(&ua)
         .initialization_script(IPC_SHIM_JS)
-        // Anti-doublement de frappe (double `textInput` natif WKWebView, cf. recherche Discord).
+        // Prevent duplicated keystrokes caused by duplicate native WKWebView `textInput` events (see Discord search).
         .initialization_script(KEY_DEDUP_JS)
-        // Liens `target="_blank"` / `window.open` : sans handler, WKWebView les ignore
-        // silencieusement (le clic ne fait « rien »). On reproduit le comportement Ferdium :
-        //  - popup dimensionné (window.open avec width/height, typiquement un login OAuth)
-        //    -> vraie fenêtre in-app (session/cookies partagés) pour ne pas casser le flow ;
-        //  - lien de contenu (sans dimensions) -> navigateur système, webview inchangée.
+        // `target="_blank"` links / `window.open`: without a handler WKWebView ignores them
+        // silently (the click appears to do nothing). Reproduce Ferdium behavior:
+        //  - sized popup (window.open with width/height, typically an OAuth login)
+        //    -> real in-app window with shared session/cookies so the flow is not broken;
+        //  - content link (without dimensions) -> system browser, webview unchanged.
         .on_new_window(
             |url: Url, features: NewWindowFeatures| -> NewWindowResponse<Wry> {
                 if features.size().is_some() {
@@ -1006,7 +1006,7 @@ async fn create_service_webview(
                 NewWindowResponse::Deny
             },
         );
-    // Émet l'état de chargement vers le shell (spinner « loading » -> « ready »).
+    // Emit loading state to the shell (spinner transitions from loading to ready).
     let sid_evt = service_id.to_string();
     builder = builder.on_page_load(move |wv, payload| {
         let status = match payload.event() {
@@ -1018,9 +1018,9 @@ async fn create_service_webview(
             serde_json::json!({ "id": sid_evt, "status": status }),
         );
     });
-    // Téléchargements (clic droit « Download », liens `download`…) : WKWebView n'a pas de
-    // gestion par défaut -> rien ne se passe. On enregistre dans le dossier Téléchargements
-    // et on notifie à la fin (sur macOS le chemin final n'est pas exposé par l'API).
+    // Downloads (Download context action, `download` links, etc.): WKWebView has no
+    // default handler, so otherwise nothing happens. Save into the Downloads directory
+    // and notify when complete (on macOS the API does not expose the final path).
     builder = builder.on_download(|webview, event| {
         match event {
             DownloadEvent::Requested { url, destination } => {
@@ -1040,18 +1040,18 @@ async fn create_service_webview(
                     .notification()
                     .builder()
                     .title("Tauridium")
-                    .body(format!("« {} » téléchargé", download_filename(&url)))
+                    .body(format!("Downloaded "{}"", download_filename(&url)))
                     .show();
             }
             _ => {}
         }
-        true // autorise le téléchargement
+        true // Allow the download.
     });
-    // Isolation du stockage par service : macOS -> data_store_identifier (data_directory
-    // ignoré) ; Windows/Linux -> data_directory dédié (sinon sessions partagées).
+    // Per-service storage isolation: macOS -> data_store_identifier (data_directory
+    // ignored); Windows/Linux use a dedicated data_directory to avoid shared sessions.
     #[cfg(target_os = "macos")]
     {
-        let store = uuid_to_bytes(service_id).ok_or("serviceId n'est pas un UUID")?;
+        let store = uuid_to_bytes(service_id).ok_or("serviceId is not a UUID")?;
         builder = builder.data_store_identifier(store);
     }
     #[cfg(not(target_os = "macos"))]
@@ -1060,19 +1060,19 @@ async fn create_service_webview(
         let _ = std::fs::create_dir_all(&dir);
         builder = builder.data_directory(dir);
     }
-    // Compat Google (userAgentData / window.chrome…) sur les services Google génériques.
+    // Google compatibility (userAgentData / window.chrome, etc.) for generic Google services.
     if is_google_host(&host) && !is_google_auth_host(&host) {
         builder = builder.initialization_script(GOOGLE_AUTH_COMPAT_JS);
     }
     if let Some(rt) = runtime {
         builder = builder.initialization_script(rt);
     }
-    // Dark mode par service : injecte Dark Reader + l'active (best effort).
+    // Per-service dark mode: inject and enable Dark Reader (best effort).
     if let Some(o) = dark {
         builder = builder.initialization_script(dark_reader_init(o));
     }
     win.add_child(builder, pos, size)
-        .map_err(|e| format!("Création de la webview du service échouée : {e}"))?;
+        .map_err(|e| format!("Failed to create service webview: {e}"))?;
     state.created.lock().unwrap().insert(service_id.to_string());
     Ok(())
 }
@@ -1105,25 +1105,25 @@ async fn show_service(
     let dark = dark.and_then(DarkSettings::into_opts);
     let win = app
         .get_window("main")
-        .ok_or("Fenêtre principale introuvable")?;
+        .ok_or("Main window not found")?;
     let label = format!("svc-{service_id}");
     let sw = *state.sidebar_w.lock().unwrap();
     let (pos, size) = service_rect(&win, sw)?;
 
-    // Mémorise le service demandé AVANT tout await : sert de garde anti « vol de focus »
-    // si une bascule plus récente arrive pendant le chargement de celui-ci.
+    // Record the requested service BEFORE any await so it guards against focus stealing
+    // if a newer switch arrives while this service is loading.
     *state.desired_active.lock().unwrap() = Some(service_id.clone());
 
     let exists = state.created.lock().unwrap().contains(&service_id);
     if exists {
-        // Déjà chargé (ou préchargé) : simple repositionnement, aucun fetch réseau.
+        // Already loaded (or preloaded): only reposition it; no network fetch.
         if let Some(wv) = app.get_webview(&label) {
             let _ = wv.set_position(pos);
             let _ = wv.set_size(size);
         }
     } else {
-        // Réserve la création : deux bascules rapides vers le même service neuf feraient
-        // deux add_child avec le même label (erreur). Si déjà en cours, on n'en relance pas.
+        // Reserve creation: two rapid switches to the same new service would otherwise perform
+        // two add_child calls with the same label (an error). If already in progress, do not restart it.
         let claim = {
             let mut infl = state.inflight.lock().unwrap();
             if infl.contains(&service_id) {
@@ -1154,13 +1154,13 @@ async fn show_service(
         }
     }
 
-    // Une bascule plus récente a pu superseder celle-ci pendant le chargement : dans ce cas
-    // on n'affiche PAS ce service (sinon il volerait le focus au service désormais demandé).
+    // A newer switch may have superseded this one while loading; in that case
+    // do NOT display this service, or it would steal focus from the currently requested service.
     if state.desired_active.lock().unwrap().as_deref() != Some(service_id.as_str()) {
         return Ok(());
     }
 
-    // Affiche le service demandé, masque les autres.
+    // Display the requested service and hide the others.
     let created: Vec<String> = state.created.lock().unwrap().iter().cloned().collect();
     for sid in created {
         if let Some(wv) = app.get_webview(&format!("svc-{sid}")) {
@@ -1175,8 +1175,8 @@ async fn show_service(
     Ok(())
 }
 
-// Précharge un service EN ARRIÈRE-PLAN : crée sa webview hors-écran (elle charge la page)
-// sans devenir active. Le passage ultérieur à ce service est alors quasi instantané.
+// Preload a service IN THE BACKGROUND: create its webview off-screen so it loads the page
+// without becoming active. Switching to it later is then nearly instantaneous.
 #[tauri::command]
 async fn preload_service(
     app: AppHandle,
@@ -1195,8 +1195,8 @@ async fn preload_service(
     if state.created.lock().unwrap().contains(&service_id) {
         return Ok(());
     }
-    // Réserve la création (voir show_service) : évite préchargement + bascule qui créent
-    // deux fois la même webview. Si déjà en cours, on laisse l'autre finir.
+    // Reserve creation (see show_service) to prevent preload + switch from creating
+    // the same webview twice. If creation is already in progress, let the other operation finish.
     {
         let mut infl = state.inflight.lock().unwrap();
         if infl.contains(&service_id) {
@@ -1208,7 +1208,7 @@ async fn preload_service(
         Some(w) => w,
         None => {
             state.inflight.lock().unwrap().remove(&service_id);
-            return Err("Fenêtre principale introuvable".into());
+            return Err("Main window not found".into());
         }
     };
     let sw = *state.sidebar_w.lock().unwrap();
@@ -1226,7 +1226,7 @@ async fn preload_service(
             return Err(e.to_string());
         }
     };
-    // Hors-écran : la webview charge la page sans jamais recouvrir le service actif.
+    // Off-screen: the webview loads the page without covering the active service.
     let offscreen = LogicalPosition::new(-30000.0, 0.0);
     let res = create_service_webview(
         &state,
@@ -1250,7 +1250,7 @@ async fn preload_service(
     Ok(())
 }
 
-// Masque toutes les webviews de services (pour afficher un panneau plein écran du shell).
+// Hide all service webviews so the shell can display a full-screen panel.
 #[tauri::command]
 fn hide_all_services(app: AppHandle, state: State<'_, AppState>) {
     let created: Vec<String> = state.created.lock().unwrap().iter().cloned().collect();
@@ -1262,7 +1262,7 @@ fn hide_all_services(app: AppHandle, state: State<'_, AppState>) {
     *state.active.lock().unwrap() = None;
 }
 
-// Ferme la webview d'UN service (pour la recréer avec de nouveaux paramètres).
+// Close ONE service webview so it can be recreated with new parameters.
 #[tauri::command]
 fn close_service(app: AppHandle, state: State<'_, AppState>, service_id: String) {
     if let Some(wv) = app.get_webview(&format!("svc-{service_id}")) {
@@ -1275,7 +1275,7 @@ fn close_service(app: AppHandle, state: State<'_, AppState>, service_id: String)
     }
 }
 
-// Change la largeur de la sidebar et repositionne la webview du service actif.
+// Change the sidebar width and reposition the active service webview.
 #[tauri::command]
 fn set_sidebar_width(app: AppHandle, state: State<'_, AppState>, width: f64) {
     *state.sidebar_w.lock().unwrap() = width.clamp(160.0, 420.0);
@@ -1297,7 +1297,7 @@ fn close_services(app: AppHandle, state: State<'_, AppState>) {
     }
 }
 
-// Enregistre les réglages d'un service (notif/mute/badge) respectés par le poller.
+// Save per-service settings (notification/mute/badge) used by the poller.
 #[tauri::command]
 fn set_service_flags(
     state: State<'_, AppState>,
@@ -1316,8 +1316,8 @@ fn set_service_flags(
     );
 }
 
-// Modifie un service. En mode local, la mutation est persistée dans local_profile.json ;
-// en mode serveur elle reste synchronisée via PUT /v1/service/:id.
+// Update a service. In local mode, persist the mutation in local_profile.json;
+// in server mode keep it synchronized via PUT /v1/service/:id.
 #[tauri::command]
 async fn update_service(
     app: AppHandle,
@@ -1349,12 +1349,12 @@ async fn update_service(
         .await
         .map_err(|e| e.to_string())?;
     if !res.status().is_success() {
-        return Err(format!("Modification du service : HTTP {}", res.status()));
+        return Err(format!("Service update failed: HTTP {}", res.status()));
     }
     res.json().await.map_err(|e| e.to_string())
 }
 
-// Crée un service localement ou via POST /v1/service selon le mode de session.
+// Create a service locally or through POST /v1/service depending on session mode.
 #[tauri::command]
 async fn create_service(
     app: AppHandle,
@@ -1387,7 +1387,7 @@ async fn create_service(
         .await
         .map_err(|e| e.to_string())?;
     if !res.status().is_success() {
-        return Err(format!("Création du service : HTTP {}", res.status()));
+        return Err(format!("Service creation failed: HTTP {}", res.status()));
     }
     res.json().await.map_err(|e| e.to_string())
 }
@@ -1428,7 +1428,7 @@ fn create_custom_website_service(
     Ok(service)
 }
 
-// Supprime un service -> DELETE /v1/service/:id (+ ferme la webview).
+// Delete a service -> DELETE /v1/service/:id and close its webview.
 #[tauri::command]
 async fn delete_service(
     app: AppHandle,
@@ -1457,7 +1457,7 @@ async fn delete_service(
             .await
             .map_err(|e| e.to_string())?;
         if !res.status().is_success() {
-            return Err(format!("Suppression du service : HTTP {}", res.status()));
+            return Err(format!("Service deletion failed: HTTP {}", res.status()));
         }
     }
     if let Some(wv) = app.get_webview(&format!("svc-{service_id}")) {
@@ -1466,13 +1466,13 @@ async fn delete_service(
     state.created.lock().unwrap().remove(&service_id);
     state.unread.lock().unwrap().remove(&service_id);
     state.flags.lock().unwrap().remove(&service_id);
-    // Purge la session/cookies du service sur disque (fuite disque + vie privée sinon).
+    // Purge the service session/cookies from disk to avoid stale data and privacy leakage.
     purge_service_storage(&app, &service_id);
     Ok(())
 }
 
-// Vide le cache/la session d'un service SANS le supprimer du serveur : ferme sa webview
-// et purge son stockage. Le service se rouvrira « propre » (déconnecté) au prochain accès.
+// Clear a service cache/session WITHOUT deleting it from the server: close its webview
+// and purge its storage. The service will reopen cleanly and signed out on next access.
 #[tauri::command]
 fn clear_service_cache(app: AppHandle, state: State<'_, AppState>, service_id: String) {
     if let Some(wv) = app.get_webview(&format!("svc-{service_id}")) {
@@ -1493,7 +1493,7 @@ fn recipe_catalog_cache_path(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_data_dir()
         .map(|dir| dir.join("recipe_catalog.json"))
-        .map_err(|error| format!("Dossier de cache des recipes indisponible : {error}"))
+        .map_err(|error| format!("Recipe cache directory unavailable: {error}"))
 }
 
 fn cached_recipe_catalog(app: &AppHandle) -> Option<Value> {
@@ -1567,7 +1567,7 @@ async fn local_recipe_catalog(app: &AppHandle) -> Result<Value, String> {
     recipes::merge_catalog(app, remote)
 }
 
-// Catalogue complet de recipes : serveur Ferdium en mode connecté, GitHub en mode local.
+// Complete recipe catalog: Ferdium server in connected mode, GitHub in local mode.
 #[tauri::command]
 async fn list_recipes(app: AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
     if is_local_mode(&state) {
@@ -1632,7 +1632,7 @@ async fn create_workspace(
         .await
         .map_err(|e| e.to_string())?;
     if !res.status().is_success() {
-        return Err(format!("Création du workspace : HTTP {}", res.status()));
+        return Err(format!("Workspace creation failed: HTTP {}", res.status()));
     }
     res.json().await.map_err(|e| e.to_string())
 }
@@ -1664,7 +1664,7 @@ async fn update_workspace(
         .await
         .map_err(|e| e.to_string())?;
     if !res.status().is_success() {
-        return Err(format!("Modification du workspace : HTTP {}", res.status()));
+        return Err(format!("Workspace update failed: HTTP {}", res.status()));
     }
     res.json().await.map_err(|e| e.to_string())
 }
@@ -1693,7 +1693,7 @@ async fn delete_workspace(
         .await
         .map_err(|e| e.to_string())?;
     if !res.status().is_success() {
-        return Err(format!("Suppression du workspace : HTTP {}", res.status()));
+        return Err(format!("Workspace deletion failed: HTTP {}", res.status()));
     }
     Ok(())
 }
@@ -1707,7 +1707,7 @@ fn logout(app: AppHandle, state: State<'_, AppState>) {
     clear_session(&app);
 }
 
-// Repositionne la webview active sur la zone service (appelé au resize).
+// Reposition the active webview over the service area (called on resize).
 fn reposition_active(app: &AppHandle) {
     let st = app.state::<AppState>();
     let active = st.active.lock().unwrap().clone();
@@ -1724,8 +1724,8 @@ fn reposition_active(app: &AppHandle) {
     }
 }
 
-// Poller du badge dock : lit window.__pakeUnread de chaque webview de service,
-// agrège les non-lus et met à jour le badge dock macOS (set_badge_count).
+// Dock-badge poller: read window.__pakeUnread from each service webview,
+// aggregate unread counts and update the macOS dock badge (set_badge_count).
 fn start_badge_poller(app: AppHandle) {
     std::thread::spawn(move || loop {
         std::thread::sleep(std::time::Duration::from_secs(2));
@@ -1751,7 +1751,7 @@ fn start_badge_poller(app: AppHandle) {
                     let st = app2.state::<AppState>();
                     let flags = st.flags.lock().unwrap().get(&sid).copied().unwrap_or_default();
 
-                    // Notifications : on respecte mute / notifications désactivées.
+                    // Notifications: honor mute and disabled-notification settings.
                     if flags.notif && !flags.muted {
                         let private = st
                             .settings
@@ -1783,11 +1783,11 @@ fn start_badge_poller(app: AppHandle) {
                         }
                     }
 
-                    // Stocke le brut par service (pour la sidebar), calcule le total dock
-                    // (flags appliqués) et émet la carte des non-lus vers le shell.
-                    // Le service a pu être fermé/hiberné/supprimé entre le snapshot et ce
-                    // callback async : dans ce cas on ne le (ré)insère PAS (sinon il resterait
-                    // dans le total pour toujours = badge dock fantôme).
+                    // Store raw counts per service for the sidebar and calculate the dock total
+                    // with flags applied and emit the unread-count map to the shell.
+                    // The service may have been closed/hibernated/deleted between the snapshot and this
+                    // async callback; in that case do NOT reinsert it, otherwise it would remain
+                    // in the total forever and create a phantom dock badge.
                     let still_exists = st.created.lock().unwrap().contains(&sid);
                     let (map, total) = {
                         let mut m = st.unread.lock().unwrap();
@@ -1820,7 +1820,7 @@ fn start_badge_poller(app: AppHandle) {
     });
 }
 
-// --- Réglages app (app_settings.json) -----------------------------------
+// --- App settings (app_settings.json) ------------------------------------
 
 fn app_settings_path(app: &AppHandle) -> Option<PathBuf> {
     app.path()
@@ -1866,7 +1866,7 @@ fn read_app_settings_value(app: &AppHandle) -> Value {
 #[tauri::command]
 fn get_app_settings(app: AppHandle) -> Value {
     let mut v = read_app_settings_value(&app);
-    // Reflète l'état réel de l'autostart (géré par le plugin).
+    // Reflect the actual autostart state managed by the plugin.
     if let Ok(enabled) = app.autolaunch().is_enabled() {
         if let Some(o) = v.as_object_mut() {
             o.insert("autostart".into(), Value::Bool(enabled));
@@ -1881,7 +1881,7 @@ fn set_app_settings(
     state: State<'_, AppState>,
     patch: Value,
 ) -> Result<Value, String> {
-    // Effet de bord : autostart via le plugin.
+    // Side effect: apply autostart through the plugin.
     if let Some(enabled) = patch.get("autostart").and_then(Value::as_bool) {
         let res = if enabled {
             app.autolaunch().enable()
@@ -1925,9 +1925,9 @@ fn toggle_main(app: &AppHandle) {
     }
 }
 
-// Ouvre/ferme les devtools sur la webview du service actif (debug), puis repose le layout.
+// Open/close devtools on the active service webview for debugging, then reapply the layout.
 fn toggle_devtools(app: &AppHandle) {
-    // Disponible en release grâce à la feature `devtools` de Tauri (cf. Cargo.toml).
+    // Available in release builds through Tauri's `devtools` feature (see Cargo.toml).
     let active = app.state::<AppState>().active.lock().unwrap().clone();
     if let Some(sid) = active {
         if let Some(wv) = app.get_webview(&format!("svc-{sid}")) {
@@ -1941,7 +1941,7 @@ fn toggle_devtools(app: &AppHandle) {
     reposition_active(app);
 }
 
-// Recharge la webview du service actif (comme « Reload service » de Ferdium).
+// Reload the active service webview, equivalent to Ferdium's Reload service action.
 fn reload_active_service(app: &AppHandle) {
     let active = app.state::<AppState>().active.lock().unwrap().clone();
     if let Some(sid) = active {
@@ -1951,8 +1951,8 @@ fn reload_active_service(app: &AppHandle) {
     }
 }
 
-// Recharge le shell (l'UI de l'app) — comme « Reload Ferdium ». On masque d'abord les
-// services (le shell se réaffiche puis re-sélectionne le service actif au montage).
+// Reload the shell (the app UI), equivalent to Reload Ferdium. First hide the
+// services (the shell reappears and then reselects the active service on mount).
 fn reload_app(app: &AppHandle) {
     let created: Vec<String> = app
         .state::<AppState>()
@@ -1984,7 +1984,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .setup(|app| {
-            // Cache des réglages app en mémoire (lu par le poller, la fermeture, etc.).
+            // Cache app settings in memory for the poller, shutdown handling, and related logic.
             *app.state::<AppState>().settings.lock().unwrap() =
                 read_app_settings_value(app.handle());
             {
@@ -1996,7 +1996,7 @@ fn main() {
                     .get("sidebarWidth")
                     .and_then(Value::as_f64)
                     .unwrap_or(SIDEBAR_W)
-                    .clamp(160.0, 420.0); // évite qu'un réglage corrompu masque le service
+                    .clamp(160.0, 420.0); // Prevent corrupted settings from hiding the service.
                 *st.sidebar_w.lock().unwrap() = w;
             }
 
@@ -2004,12 +2004,12 @@ fn main() {
             if let Some(win) = app.get_window("main") {
                 win.on_window_event(move |event| match event {
                     WindowEvent::Resized(_) => reposition_active(&handle),
-                    // Au retour de focus (ex. après fermeture des devtools), on repose le
-                    // layout : la webview du service peut avoir été redimensionnée et
-                    // recouvert la sidebar.
+                    // When focus returns (for example after closing devtools), reapply the
+                    // layout because the service webview may have been resized and
+                    // overlapped the sidebar.
                     WindowEvent::Focused(true) => reposition_active(&handle),
                     WindowEvent::CloseRequested { api, .. } => {
-                        // « close to tray » : on cache au lieu de quitter (sinon on quitte).
+                        // Close to tray: hide instead of quitting; otherwise quit.
                         let close_to_tray = handle
                             .state::<AppState>()
                             .settings
@@ -2029,9 +2029,9 @@ fn main() {
                 });
             }
 
-            // Icône menubar (tray) : afficher / quitter ; clic gauche = toggle fenêtre.
-            let show = MenuItem::with_id(app, "show", "Afficher Tauridium", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Quitter", true, None::<&str>)?;
+            // Menu-bar/tray icon: show/quit; left click toggles the window.
+            let show = MenuItem::with_id(app, "show", "Show Tauridium", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
             let mut tray = TrayIconBuilder::new()
                 .tooltip("Tauridium")
@@ -2057,7 +2057,7 @@ fn main() {
             }
             tray.build(app)?;
 
-            // Menu natif macOS : App / Edit / View (Toggle Developer Tools).
+            // Native macOS menu: App / Edit / View (Toggle Developer Tools).
             {
                 let app_sub = Submenu::with_items(
                     app,
@@ -2119,8 +2119,8 @@ fn main() {
                         &devtools,
                     ],
                 )?;
-                // Sous-menu Services : ⌘1..9 pour basculer (accélérateurs natifs -> fonctionnent
-                // même quand une webview de service a le focus, contrairement à un keydown JS).
+                // Services submenu: Command+1..9 switches services (native accelerators work
+                // even when a service webview has focus, unlike a JavaScript keydown handler).
                 let mut goto_items: Vec<MenuItem<Wry>> = Vec::new();
                 for i in 1..=9u32 {
                     goto_items.push(MenuItem::with_id(
@@ -2145,7 +2145,7 @@ fn main() {
                         "reload-service" => reload_active_service(app),
                         "reload-app" => reload_app(app),
                         _ => {
-                            // goto-svc-N -> demande au shell d'afficher le Nᵉ service visible.
+                            // goto-svc-N asks the shell to display the Nth visible service.
                             if let Some(n) = id
                                 .strip_prefix("goto-svc-")
                                 .and_then(|s| s.parse::<usize>().ok())
@@ -2157,15 +2157,15 @@ fn main() {
                 });
             }
 
-            // Demande l'autorisation de notifier au lancement.
-            // NB : no-op sur macOS desktop (l'OS gère l'autorisation lui-même) ; réel
-            // sur mobile / Windows / build .app signée.
+            // Request notification permission at startup.
+            // Note: no-op on macOS desktop (the OS manages permission itself); effective
+            // on mobile, Windows, and signed .app builds.
             if let Ok(state) = app.notification().permission_state() {
                 if state != PermissionState::Granted {
                     let _ = app.notification().request_permission();
                 }
             }
-            // « Démarrer en arrière-plan » : on cache la fenêtre au lancement.
+            // Start in background: hide the window at launch.
             if read_app_settings_value(app.handle())
                 .get("startMinimized")
                 .and_then(Value::as_bool)
@@ -2209,10 +2209,10 @@ fn main() {
             set_app_settings
         ])
         .build(tauri::generate_context!())
-        .expect("erreur au lancement de l'application tauri")
+        .expect("failed to launch the Tauri application")
         .run(|_app, _event| {
-            // Clic sur l'icône du dock (macOS) -> réafficher la fenêtre.
-            // RunEvent::Reopen n'existe que sur macOS -> gate pour compiler ailleurs.
+            // Clicking the dock icon on macOS shows the window again.
+            // RunEvent::Reopen exists only on macOS, so gate it to compile elsewhere.
             #[cfg(target_os = "macos")]
             if let RunEvent::Reopen { .. } = _event {
                 show_main(_app);
@@ -2227,14 +2227,14 @@ mod tests {
 
     #[test]
     fn password_hash_is_base64_of_sha256() {
-        // sha256("password") encodé en base64 (cf. UserApi.ts de ferdium-app).
+        // sha256("password") encoded as base64 (see ferdium-app UserApi.ts).
         assert_eq!(
             ferdium_password_hash("password"),
             "XohImNooBHFR0OVvjcYpJ3NgPQ1qq73WKhHvch0VQtg="
         );
-        // 32 octets -> 44 caractères base64, quel que soit l'input.
+        // 32 bytes become 44 base64 characters regardless of input.
         assert_eq!(ferdium_password_hash("").len(), 44);
-        assert_eq!(ferdium_password_hash("é&@ 123").len(), 44);
+        assert_eq!(ferdium_password_hash("\u{e9}&@ 123").len(), 44);
     }
 
     #[test]
@@ -2270,12 +2270,12 @@ mod tests {
             resolve_url(&cfg, Some("chat.example.fr"), None).unwrap(),
             "https://chat.example.fr"
         );
-        // URL custom vide -> retombe sur serviceURL.
+        // Empty custom URL falls back to serviceURL.
         assert_eq!(
             resolve_url(&cfg, Some(""), None).unwrap(),
             "https://default"
         );
-        // Recipe sans hasCustomUrl -> l'URL custom est ignorée.
+        // A recipe without hasCustomUrl ignores the custom URL.
         let cfg2 = json!({ "config": { "serviceURL": "https://default" } });
         assert_eq!(
             resolve_url(&cfg2, Some("chat.example.fr"), None).unwrap(),
@@ -2324,9 +2324,9 @@ mod tests {
         assert_eq!(b[0], 0x00);
         assert_eq!(b[1], 0x11);
         assert_eq!(b[15], 0xff);
-        // 32 hex sans tirets accepté aussi.
+        // 32 hexadecimal characters without hyphens are accepted too.
         assert!(uuid_to_bytes("00112233445566778899aabbccddeeff").is_some());
-        // mauvaise longueur / hex invalide.
+        // wrong length / invalid hexadecimal.
         assert!(uuid_to_bytes("abc").is_none());
         assert!(uuid_to_bytes("zz112233-4455-6677-8899-aabbccddeeff").is_none());
     }

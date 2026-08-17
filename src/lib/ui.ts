@@ -1,7 +1,6 @@
-// Helpers d'UI purs — isolés ici pour être testables unitairement (vitest).
+// Pure UI helpers kept here for isolated Vitest coverage.
 
-// Couleur de texte lisible sur une couleur d'accent : noir si l'accent est clair
-// (jaune…), blanc sinon. Basé sur la luminance perçue.
+// Use a dark foreground for bright colors and white otherwise, based on perceived luminance.
 export function accentFg(hex: string): string {
   const h = hex.replace("#", "");
   if (h.length < 6) return "#ffffff";
@@ -12,17 +11,17 @@ export function accentFg(hex: string): string {
   return lum > 0.6 ? "#1f2230" : "#ffffff";
 }
 
-// URL de l'icône d'une recette (repo ferdium-recipes).
+// Recipe icon URL from the ferdium-recipes repository.
 export function recipeIcon(recipeId: string): string {
   return `https://raw.githubusercontent.com/ferdium/ferdium-recipes/main/recipes/${recipeId}/icon.svg`;
 }
 
-// Icône d'un service : icône custom du serveur sinon celle de la recette.
+// Service icon: use the server-provided custom icon, otherwise the recipe icon.
 export function iconSrc(s: { iconUrl?: string | null; recipeId: string }): string {
   return s.iconUrl || recipeIcon(s.recipeId);
 }
 
-// Filtre + tri du catalogue de recettes (écran d'ajout de service).
+// Filter and sort the recipe catalog used by the add-service screen.
 export function filterRecipes<T extends { id: string; name: string }>(
   recipes: T[],
   query: string,
@@ -37,7 +36,7 @@ export function filterRecipes<T extends { id: string; name: string }>(
   return [...list].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-// Ramène une taille d'icône sur le niveau Ferdium valide le plus proche.
+// Clamp an icon size to the nearest valid Ferdium size level.
 export function snapIconSize(size: number): number {
   const sizes = [18, 21, 24, 28, 34];
   if (sizes.includes(size)) return size;
@@ -45,7 +44,7 @@ export function snapIconSize(size: number): number {
 }
 
 
-// Produit un identifiant de recipe local stable et sûr à partir d'un nom lisible.
+// Produce a stable, safe local recipe ID from a human-readable name.
 export function recipeIdFromName(name: string): string {
   const id = name
     .normalize("NFKD")

@@ -14,8 +14,8 @@
   import { appVersion, checkForUpdate, installUpdate, type Update } from "./lib/updater";
   import { ask, open } from "@tauri-apps/plugin-dialog";
 
-  // window.confirm() ne fonctionne pas dans WKWebView (wry n'implémente pas le panel JS)
-  // -> on passe par le dialogue natif du plugin dialog.
+  // window.confirm() does not work in WKWebView (wry does not implement the JavaScript panel).
+  // Use the native dialog provided by the dialog plugin instead.
   function confirmAsk(message: string): Promise<boolean> {
     return ask(message, { title: "Tauridium", kind: "warning" });
   }
@@ -66,7 +66,7 @@
   let loading = $state(false);
   let error = $state<string | null>(null);
 
-  // Reconnexion auto quand le serveur est injoignable (panne Ferdium, réseau…).
+  // Automatically reconnect when the server is unreachable (Ferdium outage, network issue, etc.).
   const RECONNECT_SECS = 30;
   let reconnecting = $state(false);
   let reconnectIn = $state(RECONNECT_SECS);
@@ -82,11 +82,11 @@
   let activeId = $state<string | null>(null);
   let unreadMap = $state<Record<string, number>>({});
   let failedIcons = $state<Set<string>>(new Set());
-  // État de chargement par service (émis par le backend via on_page_load).
+  // Per-service loading state emitted by the backend through on_page_load.
   let statusMap = $state<Record<string, "loading" | "ready">>({});
-  // Erreur d'ouverture du service actif (showService a rejeté : recette KO, URL invalide…).
+  // Error opening the active service (showService rejected it: broken recipe, invalid URL, etc.).
   let serviceLoadError = $state<string | null>(null);
-  // Réordonnancement des services par glisser-déposer.
+  // Reorder services with drag and drop.
   let dragId = $state<string | null>(null);
   let dragOverId = $state<string | null>(null);
   let activeWorkspace = $state<string | null>(null);
@@ -94,14 +94,14 @@
   type View = "service" | "svcSettings" | "add" | "appSettings" | "workspaces";
   let view = $state<View>("service");
   let settingsSvc = $state<Service | null>(null);
-  let svcDirty = $state(false); // réglages service modifiés mais pas encore sauvés
-  let svcReload = $state(false); // un champ nécessitant un reload (URL/team/UA) a changé
+  let svcDirty = $state(false); // Service settings changed but not saved yet.
+  let svcReload = $state(false); // A field requiring reload (URL/team/UA) changed.
   let newWorkspaceName = $state("");
 
   type Tab = "general" | "services" | "appearance" | "privacy" | "advanced" | "updates";
   let settingsTab = $state<Tab>("general");
 
-  // Mises à jour (auto-updater).
+  // Updates (automatic updater).
   let appVer = $state("");
   let updateInfo = $state<Update | null>(null);
   let updChecking = $state(false);
@@ -128,10 +128,10 @@
     preloadServices: true,
   });
 
-  // Hibernation : services mis en veille (webview fermée, session conservée).
+  // Hibernation: suspended services have their webview closed while retaining the session.
   let hibernated = $state<Set<string>>(new Set());
   const hibTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  let preloadCancelled = false; // annule la chaîne de préchargement (logout/changement de session)
+  let preloadCancelled = false; // Cancels the preload chain on logout or session change.
 
   // Add service / local recipe management.
   type AddMode = "catalog" | "website" | "creator";
@@ -180,7 +180,7 @@
       ? window.matchMedia("(prefers-color-scheme: dark)")
       : null;
 
-  // Formulations adaptées à l'OS (les descriptions de réglages en dépendent).
+  // OS-specific wording used by settings descriptions.
   const osKind: "mac" | "win" | "linux" = /Mac|iPhone|iPad/.test(
     navigator.userAgent,
   )
@@ -206,19 +206,19 @@
     });
     listen<{ id: string; status: "loading" | "ready" }>("svc-status", (e) => {
       statusMap = { ...statusMap, [e.payload.id]: e.payload.status };
-      // Le service demandé a chargé -> on efface une éventuelle erreur d'ouverture.
+      // The requested service loaded, so clear any previous opening error.
       if (e.payload.status === "ready" && e.payload.id === activeId) {
         serviceLoadError = null;
       }
     });
-    // ⌘1..9 (menu natif) -> bascule sur le Nᵉ service visible.
+    // Command+1..9 from the native menu switches to the Nth visible service.
     listen<number>("select-index", (e) => {
       const s = visibleServices[e.payload - 1];
       if (s) selectService(s);
     });
     try {
       appSettings = await getAppSettings();
-      // Snap iconSize sur un niveau valide (anciennes valeurs improvisées).
+      // Snap iconSize to a valid level for compatibility with older arbitrary values.
       const snapped = snapIconSize(appSettings.iconSize);
       if (snapped !== appSettings.iconSize) {
         appSettings.iconSize = snapped;
@@ -229,15 +229,15 @@
     } catch {
       /* defaults */
     }
-    // Restaure la session. Si le serveur est injoignable (panne Ferdium, réseau…), on
-    // n'affiche PAS le login : un écran « reconnexion » retente tout seul toutes les 30s.
+    // Restore the session. If the server is unreachable (Ferdium outage, network issue, etc.),
+    // do NOT show login; a reconnect screen retries automatically every 30 seconds.
     const restored = await attemptRestore();
     booting = false;
     if (!restored) startReconnect(attemptRestore);
     appVersion()
       .then((v) => (appVer = v))
       .catch(() => {});
-    checkUpdates(true); // vérif silencieuse au démarrage
+    checkUpdates(true); // Silent startup check.
   });
 
   function applyTheme() {
@@ -249,13 +249,13 @@
     document.body.style.setProperty("--accent-fg", accentFg(appSettings.accentColor));
   }
 
-  // Customisation sidebar : largeur, taille des icônes, gris + dim, position.
+  // Sidebar customization: width, icon size, grayscale/dimming, and position.
   function applyLayout() {
     const b = document.body;
     b.style.setProperty("--sidebar-w", `${appSettings.sidebarWidth}px`);
     b.style.setProperty("--icon-size", `${appSettings.iconSize}px`);
     b.classList.toggle("grayscale", !!appSettings.grayscaleServices);
-    // dim 0..100 -> opacité des icônes en gris (100 = très estompé)
+    // dim 0..100 controls grayscale icon opacity (100 = heavily faded).
     const op = Math.max(0.2, 1 - (appSettings.grayscaleDim ?? 50) / 130);
     b.style.setProperty("--gray-op", String(op));
     b.dataset.svcloc = appSettings.sidebarServicesLocation ?? "top";
@@ -273,9 +273,9 @@
     preloadRest(first?.id);
   }
 
-  // Précharge (webviews hors-écran) les autres services actifs, en douceur (échelonné),
-  // pour que la bascule vers l'un d'eux soit quasi instantanée. On saute ceux voués à
-  // l'hibernation (ils seraient déchargés) et on respecte le réglage.
+  // Gradually preload other active services in off-screen webviews,
+  // making later switches nearly instantaneous. Skip services destined for
+  // hibernation because they would be unloaded, and respect the setting.
   function preloadRest(firstId: string | undefined) {
     if (!appSettings.preloadServices) return;
     preloadCancelled = false;
@@ -287,14 +287,14 @@
     );
     let i = 0;
     const step = () => {
-      if (preloadCancelled) return; // logout/changement de session -> on arrête
+      if (preloadCancelled) return; // Stop after logout or session change.
       const s = list[i++];
       if (!s) return;
       preloadService(s)
         .catch(() => {})
         .finally(() => setTimeout(step, 700));
     };
-    setTimeout(step, 1500); // laisse le service actif se charger d'abord
+    setTimeout(step, 1500); // Let the active service load first.
   }
 
   function stopReconnect() {
@@ -306,9 +306,9 @@
     reconnecting = false;
   }
 
-  // Lance une boucle de reconnexion : rappelle `attempt` toutes les RECONNECT_SECS.
-  // `attempt` renvoie true quand c'est terminé (succès OU erreur définitive) -> stop ;
-  // false -> serveur toujours injoignable -> on retentera.
+  // Start a reconnection loop that calls attempt every RECONNECT_SECS.
+  // attempt returns true when finished (success OR definitive error), so stop;
+  // false means the server is still unreachable, so retry later.
   function startReconnect(attempt: () => Promise<boolean>) {
     stopReconnect();
     reconnectAttempt = attempt;
@@ -335,8 +335,8 @@
     stopReconnect();
   }
 
-  // Tente de restaurer la session. true = terminé (connecté OU session expirée ->
-  // écran login) ; false = serveur injoignable (on retentera).
+  // Try to restore the session. true = finished (connected OR expired session ->
+  // login screen); false = server unreachable (retry later).
   async function attemptRestore(): Promise<boolean> {
     try {
       me = await restoreSession();
@@ -347,7 +347,7 @@
     }
   }
 
-  // Tente le login avec les identifiants en attente. false = serveur injoignable.
+  // Try login with pending credentials. false means the server is unreachable.
   async function attemptLogin(): Promise<boolean> {
     if (!pendingCreds) return true;
     try {
@@ -359,7 +359,7 @@
       return true;
     } catch (e) {
       if (String(e).startsWith("transient:")) return false;
-      error = String(e); // identifiants refusés -> on arrête et on affiche l'erreur
+      error = String(e); // Rejected credentials: stop and display the error.
       pendingCreds = null;
       return true;
     }
@@ -372,7 +372,7 @@
     pendingCreds = { server, email, password };
     const done = await attemptLogin();
     loading = false;
-    if (!done) startReconnect(attemptLogin); // serveur injoignable -> reconnexion auto
+    if (!done) startReconnect(attemptLogin); // Server unreachable: reconnect automatically.
   }
 
   async function handleLocalSession() {
@@ -400,7 +400,7 @@
     }
   }
 
-  // Programme la mise en veille d'un service inactif éligible.
+  // Schedule hibernation for an eligible inactive service.
   function scheduleHibernation(sid: string) {
     clearHibTimer(sid);
     const secs = appSettings.hibernationTimer;
@@ -410,11 +410,11 @@
       sid,
       setTimeout(() => {
         hibTimers.delete(sid);
-        if (activeId === sid) return; // redevenu actif entre-temps
+        if (activeId === sid) return; // It became active again in the meantime.
         closeService(sid)
           .then(() => {
             hibernated = new Set(hibernated).add(sid);
-            // Webview détruite -> son statut n'est plus valable (spinner au réveil).
+            // The webview was destroyed, so its status is stale (show spinner on wake).
             const { [sid]: _, ...rest } = statusMap;
             statusMap = rest;
           })
@@ -437,7 +437,7 @@
     }
     if (prev && prev !== s.id) scheduleHibernation(prev);
     showService(s).catch((err) => {
-      // N'affiche l'erreur que si ce service est toujours celui à l'écran.
+      // Display the error only if this service is still on screen.
       if (activeId === s.id) serviceLoadError = `${err}`;
     });
   }
@@ -450,7 +450,7 @@
     }
   }
 
-  // --- Réordonnancement des services (glisser-déposer) ------------------------
+  // --- Service reordering (drag and drop) --------------------------------------
   function onDragStart(e: DragEvent, s: Service) {
     dragId = s.id;
     if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
@@ -480,7 +480,7 @@
     const [moved] = list.splice(fromIdx, 1);
     list.splice(toIdx, 0, moved);
     const orderById = new Map(list.map((s, i) => [s.id, i]));
-    // Persiste chaque service dont l'ordre a changé (best effort).
+    // Persist each service whose order changed (best effort).
     const updates: Promise<unknown>[] = [];
     for (const s of services) {
       const ord = orderById.get(s.id);
@@ -497,7 +497,7 @@
 
   function openServiceSettings(s: Service) {
     error = null;
-    settingsSvc = { ...s }; // copie éditable ; appliquée au serveur au Save
+    settingsSvc = { ...s }; // Editable copy; applied to the server on Save.
     svcDirty = false;
     svcReload = false;
     view = "svcSettings";
@@ -548,8 +548,8 @@
     }
   }
 
-  // Les handlers ne modifient QUE l'état local ; le Save persiste tout d'un coup.
-  // Champs dont le changement exige de recréer la webview (script injecté à la création).
+  // Handlers modify ONLY local state; Save persists everything at once.
+  // Fields whose changes require recreating the webview (script injected at creation).
   const RELOAD_FIELDS = new Set<keyof Service>([
     "isDarkModeEnabled",
     "darkReaderBrightness",
@@ -589,7 +589,7 @@
     if (!(await confirmAsk(`Delete service "${s.name}"?`))) return;
     try {
       await deleteService(s.id);
-      clearHibTimer(s.id); // évite qu'un timer d'hibernation ré-ajoute un service supprimé
+      clearHibTimer(s.id); // Prevent a hibernation timer from re-adding a deleted service.
       const { [s.id]: _, ...rest } = statusMap;
       statusMap = rest;
       services = services.filter((x) => x.id !== s.id);
@@ -612,7 +612,7 @@
       const { [s.id]: _, ...rest } = statusMap;
       statusMap = rest;
       hibernated = new Set([...hibernated].filter((id) => id !== s.id));
-      backToService(); // se rouvrira « propre » (déconnecté)
+      backToService(); // Reopens cleanly in a signed-out state.
     } catch (err) {
       error = String(err);
     }
@@ -871,7 +871,7 @@
     updInstalling = true;
     updStatus = "Downloading…";
     try {
-      await installUpdate(updateInfo); // télécharge, installe, relance
+      await installUpdate(updateInfo); // Download, install, and restart.
     } catch (e) {
       updStatus = `Update failed: ${e}`;
       updInstalling = false;
@@ -902,8 +902,8 @@
   }
 
   async function handleLogout() {
-    // Nettoyage : sinon des timers d'hibernation / le préchargement / la reconnexion de
-    // l'ancienne session continuent de tourner et recréent des webviews après coup.
+    // Cleanup prevents hibernation timers, preloading, or reconnection from the
+    // previous session from continuing and recreating webviews afterward.
     preloadCancelled = true;
     for (const id of [...hibTimers.keys()]) clearHibTimer(id);
     hibernated = new Set();

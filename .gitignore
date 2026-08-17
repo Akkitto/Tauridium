@@ -7,7 +7,7 @@
 /dist/
 /release/
 
-# Artefacts de build de la crate wry vendorisée (la source, elle, est versionnée)
+# Build artifacts from the vendored Wry crate (its source remains version-controlled)
 /vendor/**/target/
 
 # macOS

@@ -36,16 +36,16 @@ impl LocalProfile {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 return Ok(Self::default())
             }
-            Err(error) => return Err(format!("Lecture du profil local impossible : {error}")),
+            Err(error) => return Err(format!("Unable to read local profile: {error}")),
         };
         let mut profile: Self = serde_json::from_str(&text)
-            .map_err(|error| format!("Profil local illisible : {error}"))?;
+            .map_err(|error| format!("Unable to parse local profile: {error}"))?;
         if profile.version == 0 {
             profile.version = PROFILE_VERSION;
         }
         if profile.version > PROFILE_VERSION {
             return Err(format!(
-                "Profil local version {} non pris en charge (maximum {PROFILE_VERSION})",
+                "Unsupported local profile version {} (maximum {PROFILE_VERSION})",
                 profile.version
             ));
         }
@@ -55,21 +55,21 @@ impl LocalProfile {
     pub(crate) fn save(&self, path: &Path) -> Result<(), String> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
-                .map_err(|error| format!("Création du dossier local impossible : {error}"))?;
+                .map_err(|error| format!("Unable to create local directory: {error}"))?;
         }
         let text = serde_json::to_string_pretty(self)
-            .map_err(|error| format!("Sérialisation du profil local impossible : {error}"))?;
+            .map_err(|error| format!("Unable to serialize local profile: {error}"))?;
         let tmp = path.with_extension("tmp");
         fs::write(&tmp, format!("{text}\n"))
-            .map_err(|error| format!("Écriture du profil local impossible : {error}"))?;
+            .map_err(|error| format!("Unable to write local profile: {error}"))?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600))
-                .map_err(|error| format!("Permissions du profil local impossibles : {error}"))?;
+                .map_err(|error| format!("Unable to set local profile permissions: {error}"))?;
         }
         replace_file(&tmp, path)
-            .map_err(|error| format!("Finalisation du profil local impossible : {error}"))?;
+            .map_err(|error| format!("Unable to finalize local profile: {error}"))?;
         Ok(())
     }
 
@@ -171,15 +171,15 @@ impl LocalProfile {
     ) -> Result<Value, String> {
         let patch = patch
             .as_object()
-            .ok_or_else(|| "Réglages de service locaux invalides".to_string())?;
+            .ok_or_else(|| "Invalid local service settings".to_string())?;
         let service = self
             .services
             .iter_mut()
             .find(|service| service.get("id").and_then(Value::as_str) == Some(service_id))
-            .ok_or_else(|| format!("Service local introuvable : {service_id}"))?;
+            .ok_or_else(|| format!("Local service not found: {service_id}"))?;
         let object = service
             .as_object_mut()
-            .ok_or_else(|| format!("Service local invalide : {service_id}"))?;
+            .ok_or_else(|| format!("Invalid local service: {service_id}"))?;
         merge_service_patch(object, patch);
         Ok(service.clone())
     }
@@ -189,7 +189,7 @@ impl LocalProfile {
         self.services
             .retain(|service| service.get("id").and_then(Value::as_str) != Some(service_id));
         if self.services.len() == before {
-            return Err(format!("Service local introuvable : {service_id}"));
+            return Err(format!("Local service not found: {service_id}"));
         }
         for workspace in &mut self.workspaces {
             if let Some(services) = workspace.get_mut("services").and_then(Value::as_array_mut) {
@@ -238,10 +238,10 @@ impl LocalProfile {
             .workspaces
             .iter_mut()
             .find(|workspace| workspace.get("id").and_then(Value::as_str) == Some(workspace_id))
-            .ok_or_else(|| format!("Workspace local introuvable : {workspace_id}"))?;
+            .ok_or_else(|| format!("Local workspace not found: {workspace_id}"))?;
         let object = workspace
             .as_object_mut()
-            .ok_or_else(|| format!("Workspace local invalide : {workspace_id}"))?;
+            .ok_or_else(|| format!("Invalid local workspace: {workspace_id}"))?;
         object.insert("name".into(), Value::String(name));
         object.insert("services".into(), Value::Array(services));
         Ok(workspace.clone())
@@ -252,7 +252,7 @@ impl LocalProfile {
         self.workspaces
             .retain(|workspace| workspace.get("id").and_then(Value::as_str) != Some(workspace_id));
         if self.workspaces.len() == before {
-            return Err(format!("Workspace local introuvable : {workspace_id}"));
+            return Err(format!("Local workspace not found: {workspace_id}"));
         }
         Ok(())
     }
@@ -264,7 +264,7 @@ pub(crate) fn validate_recipe_id(recipe_id: &str) -> Result<(), String> {
             character.is_ascii_alphanumeric() || character == '-' || character == '_'
         })
     {
-        return Err(format!("Identifiant de recipe invalide : {recipe_id}"));
+        return Err(format!("Invalid recipe ID: {recipe_id}"));
     }
     Ok(())
 }

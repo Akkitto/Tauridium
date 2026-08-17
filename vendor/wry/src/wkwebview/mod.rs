@@ -634,7 +634,7 @@ impl InnerWebView {
       };
 
       // Initialize scripts
-      // [pakeFerdium] window.ipc rendu mutable (configurable + non gelé) pour permettre
+      // [Tauridium] Make window.ipc mutable (configurable and not frozen) so the compatibility shim can extend it.
       // l'injection d'un shim IPC Electron (ipc.on/sendToHost) requis par certains services
       // (ex. Synology Chat). postMessage de l'IPC Tauri reste intact.
       w.init(
