@@ -9,6 +9,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -18,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ZIP_TIME = (2026, 1, 1, 0, 0, 0)
 SOURCE_MANIFEST_NAME = ".tauridium-source-manifest.json"
 SOURCE_MANIFEST_SCHEMA = 1
-FORBIDDEN_RUNTIME_MARKERS = (b"http://localhost:1420", b"https://localhost:1420")
+BUILD_INFO_ARGUMENT = "--build-info-file"
 
 
 @dataclass(frozen=True)
@@ -315,15 +316,54 @@ def default_runtimes() -> list[Path]:
   return [runtime]
 
 
-def validate_runtime(runtime: Path) -> None:
-  data = runtime.read_bytes()
-  for marker in FORBIDDEN_RUNTIME_MARKERS:
-    if marker in data:
-      rendered = marker.decode("ascii")
-      raise SystemExit(
-        f"error: runtime artifact contains development URL {rendered}; "
-        "build distributable runtimes with the Tauri production build command"
+def validate_build_info(info: object, release_version: str) -> None:
+  if not isinstance(info, dict):
+    raise SystemExit("error: runtime build-information probe returned invalid JSON")
+  if info.get("name") != "Tauridium":
+    raise SystemExit("error: runtime build-information probe belongs to a different application")
+  if info.get("version") != release_version:
+    raise SystemExit(
+      "error: runtime version differs from the release source; "
+      f"expected {release_version}, found {info.get('version')!r}"
+    )
+  if info.get("buildMode") != "production":
+    raise SystemExit(
+      "error: runtime was not compiled in Tauri production mode; "
+      f"buildMode={info.get('buildMode')!r}"
+    )
+
+
+def validate_runtime(runtime: Path, release_version: str) -> None:
+  # Do not scan for build.devUrl as a raw byte string. Tauri configuration can be
+  # embedded in a valid production executable even though production startup uses
+  # build.frontendDist. Probe the executable's compile-time Tauri mode instead.
+  with tempfile.TemporaryDirectory(prefix="tauridium-build-info-") as temp:
+    output = Path(temp) / "build-info.json"
+    try:
+      result = subprocess.run(
+        [str(runtime), BUILD_INFO_ARGUMENT, str(output)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=15,
       )
+    except (OSError, subprocess.TimeoutExpired) as error:
+      raise SystemExit(f"error: unable to probe runtime build information: {error}") from error
+
+    if result.returncode != 0:
+      details = (result.stderr or result.stdout).strip()
+      suffix = f": {details}" if details else ""
+      raise SystemExit(
+        f"error: runtime build-information probe failed with exit code {result.returncode}{suffix}"
+      )
+    if not output.is_file():
+      raise SystemExit("error: runtime build-information probe produced no output file")
+    try:
+      info = json.loads(output.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+      raise SystemExit(f"error: invalid runtime build-information output: {error}") from error
+    validate_build_info(info, release_version)
 
 
 def build_runtime(output: Path, release_version: str, runtimes: list[Path]) -> None:
@@ -331,7 +371,7 @@ def build_runtime(output: Path, release_version: str, runtimes: list[Path]) -> N
     for runtime in sorted(runtimes, key=lambda path: path.name.lower()):
       if not runtime.is_file():
         raise SystemExit(f"error: runtime artifact not found: {runtime}")
-      validate_runtime(runtime)
+      validate_runtime(runtime, release_version)
       add_file(zf, runtime, f"tauridium-{release_version}/{runtime.name}", mode=0o755)
     readme = (
       f"Tauridium {release_version}\n\n"

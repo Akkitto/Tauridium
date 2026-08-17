@@ -1970,7 +1970,40 @@ fn reload_app(app: &AppHandle) {
     }
 }
 
+const TAURIDIUM_BUILD_MODE: &str = env!("TAURIDIUM_BUILD_MODE");
+
+fn write_build_info_if_requested() -> Result<bool, String> {
+    let mut args = std::env::args_os().skip(1);
+    while let Some(arg) = args.next() {
+        if arg.as_os_str() != std::ffi::OsStr::new("--build-info-file") {
+            continue;
+        }
+        let path = args
+            .next()
+            .ok_or_else(|| "--build-info-file requires an output path".to_string())?;
+        let payload = serde_json::to_vec(&serde_json::json!({
+            "name": "Tauridium",
+            "version": env!("CARGO_PKG_VERSION"),
+            "buildMode": TAURIDIUM_BUILD_MODE,
+        }))
+        .map_err(|error| format!("Unable to serialize build information: {error}"))?;
+        std::fs::write(PathBuf::from(path), payload)
+            .map_err(|error| format!("Unable to write build information: {error}"))?;
+        return Ok(true);
+    }
+    Ok(false)
+}
+
 fn main() {
+    match write_build_info_if_requested() {
+        Ok(true) => return,
+        Ok(false) => {}
+        Err(error) => {
+            eprintln!("{error}");
+            std::process::exit(2);
+        }
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
