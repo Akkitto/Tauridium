@@ -12,6 +12,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-08-17
+
+### Fixed
+
+- Fixed `just release` invalidating its own clean-worktree packaging gate by replacing the mutating release-time `cargo fmt` step with `cargo fmt -- --check`.
+- Added explicit clean-worktree checks before and after release validation/build gates so packaging failures identify source changes at the point they occur.
+- Release packaging now reports the exact dirty Git paths instead of only a generic clean-worktree error.
+- Normalized Rust formatting in source areas that were rewritten by `cargo fmt` during the 0.3.1 Windows release attempt.
+
+### Changed
+
+- Cargo Clippy, check, test, build, and documentation recipes now use `--locked` so release validation cannot silently rewrite `Cargo.lock`.
+- `just fmt` remains the explicit source-mutating formatter; `just release` is intentionally non-mutating.
+- Source ZIPs continue to include the complete `.git` directory and are validated after extraction as clean Git repositories with release history and tags intact.
+
+### Tests
+
+- Added regression coverage for non-mutating release orchestration, locked Cargo gates, clean-worktree diagnostics, and exact dirty-path reporting.
+- Preserved source-ZIP extraction checks for Git history, exact tag resolution, clean status, and `git fsck --full`.
+
 ## [0.3.1] - 2026-08-17
 
 ### Fixed

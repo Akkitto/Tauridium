@@ -231,15 +231,15 @@ before tagging:
 3. Tag and push:
 
 ```text
-git tag -a v0.3.1 -m "Tauridium 0.3.1"
-git push origin v0.3.1
+git tag -a v0.3.2 -m "Tauridium 0.3.2"
+git push origin v0.3.2
 ```
 
 If no matching `CHANGELOG.md` section exists, the workflow falls back to generic
 notes (and logs a warning).
 
-Continuous integration (`cargo fmt` · Clippy · Rust tests · release build · svelte-check ·
-Vitest · frontend build) runs on every push and pull request. A dedicated Windows
+Continuous integration (`cargo fmt -- --check` · Clippy · Rust tests · release build ·
+svelte-check · Vitest · frontend build) runs on every push and pull request. A dedicated Windows
 job executes the full local workflow under `pwsh`, including `just init-native`,
 `just check`, `just test`, `just build`, and `just package`.
 
@@ -248,6 +248,11 @@ For a local validated release with the three source/runtime/documentation ZIPs, 
 ```text
 just release
 ```
+
+The release recipe is deliberately non-mutating: it requires a clean Git worktree before
+validation, checks Rust formatting without rewriting source files, runs Cargo gates with the
+existing lockfile, verifies the worktree is still clean after the build, then packages the
+release. Use `just fmt` separately when source formatting should actually be changed.
 
 Official source ZIPs include both the complete `.git` directory and
 `.tauridium-source-manifest.json`. Extracting a source ZIP therefore yields a normal Git
