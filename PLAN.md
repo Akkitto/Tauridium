@@ -110,7 +110,7 @@ Key finding: WKWebView ignores `data_directory`; use `data_store_identifier` on 
 - Bundled NanoGPT, Chutes, and OpenCode Web recipes.
 - Services created from Tauridium-local recipes remain local even while signed into a server.
 
-### Phase 6 — Production runtime integrity ✅ COMPLETE (0.3.4)
+### Phase 6 — Production runtime integrity ✅ COMPLETE (0.3.5)
 - Production runtimes are built through `cargo tauri build`, never raw `cargo build --release`.
 - Raw release-profile Cargo builds fail fast if Tauri is in development mode.
 - Packaged release workflows use `frontendDist`, while `devUrl` remains development-only.

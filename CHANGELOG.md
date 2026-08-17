@@ -12,6 +12,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-08-17
+
+### Fixed
+
+- Fixed the Windows compile failure in the download-completion notification caused by an invalid Rust format string.
+- Committed the exact remaining Rust formatting required by native `rustfmt 1.94.0` for `AppState` field alignment and the main-window lookup.
+- Restored `just check` and the non-mutating `just release` formatting gate on the extracted Windows source release.
+
+### Tests
+
+- Added regression coverage for the valid quoted download-notification format string.
+- Extended the offline native-rustfmt baseline guard with the exact formatting that failed in 0.3.4.
+- Source ZIP packaging continues to include and validate the complete `.git` repository.
+
 ## [0.3.4] - 2026-08-17
 
 ### Fixed
