@@ -231,8 +231,8 @@ before tagging:
 3. Tag and push:
 
 ```text
-git tag -a v0.3.0 -m "Tauridium 0.3.0"
-git push origin v0.3.0
+git tag -a v0.3.1 -m "Tauridium 0.3.1"
+git push origin v0.3.1
 ```
 
 If no matching `CHANGELOG.md` section exists, the workflow falls back to generic
@@ -249,10 +249,11 @@ For a local validated release with the three source/runtime/documentation ZIPs, 
 just release
 ```
 
-Official source ZIPs include `.tauridium-source-manifest.json`. This lets the same
-`just release` command run after extracting a source ZIP without `.git`: the packager
-verifies every packaged source file against its SHA-256 digest before producing a
-release. A Git checkout still requires a clean worktree.
+Official source ZIPs include both the complete `.git` directory and
+`.tauridium-source-manifest.json`. Extracting a source ZIP therefore yields a normal Git
+checkout with the release commit/tag/history available to `git log`, while the manifest
+independently verifies every packaged tracked source file by SHA-256. Source packaging
+requires a real, clean Git checkout so release archives cannot silently omit history.
 
 ## Install
 

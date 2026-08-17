@@ -177,6 +177,7 @@ def main() -> int:
     '["git", "ls-files", "--stage", "-z"]',
     'def git_metadata_files()',
     'prefix + ".git/" + archive_path',
+    'r"(?m)^(\\s*filemode\\s*=\\s*).*$"',
     'requires a real Git checkout',
     'mode=0o755',
   ):

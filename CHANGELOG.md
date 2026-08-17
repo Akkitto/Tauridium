@@ -12,6 +12,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-17
+
+### Fixed
+
+- Fixed Rust `E0505` in remote recipe catalog merging by owning the validated recipe id before mutating and moving the recipe value.
+- Restored `cargo check`/Clippy compilability for the local-recipe feature introduced in 0.3.0.
+
+### Changed
+
+- Source release ZIPs now include the complete `.git` directory from the release checkout, including commit objects, refs, tags, index, and Git metadata needed for an immediately usable checkout after extraction.
+- Source ZIP creation now requires a real Git checkout instead of silently producing a history-less source archive.
+- `.tauridium-source-manifest.json` is ignored by Git so extracted official source ZIPs retain a clean worktree while preserving manifest verification.
+- Packaged Git configuration normalizes `core.filemode=false` so extracted source ZIPs remain clean on Windows and extractors/filesystems that do not preserve Unix executable bits.
+
+### Tests
+
+- Added a regression for the remote-recipe borrow/move pattern that caused `E0505`.
+- Added source-package regression coverage that extracts the ZIP and verifies Git commit history, exact release tag resolution, clean status, and `git fsck --full`.
+- Added a release invariant requiring `.git` history packaging support.
+
 ## [0.3.0] - 2026-08-17
 
 ### Added

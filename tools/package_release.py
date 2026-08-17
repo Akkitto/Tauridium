@@ -287,7 +287,16 @@ def build_source(output: Path, release_version: str, context: SourceContext) -> 
     add_bytes(zf, context.manifest_bytes, prefix + SOURCE_MANIFEST_NAME)
     for source in git_metadata_files():
       archive_path = source.relative_to(git_dir).as_posix()
-      add_file(zf, source, prefix + ".git/" + archive_path, mode=0o644)
+      if archive_path == "config":
+        config = source.read_text(encoding="utf-8")
+        config = re.sub(
+          r"(?m)^(\s*filemode\s*=\s*).*$",
+          r"\g<1>false",
+          config,
+        )
+        add_bytes(zf, config.encode(), prefix + ".git/" + archive_path)
+      else:
+        add_file(zf, source, prefix + ".git/" + archive_path, mode=0o644)
 
 
 def default_runtimes() -> list[Path]:

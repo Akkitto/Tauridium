@@ -101,7 +101,11 @@ class PackageReleaseTests(unittest.TestCase):
     subprocess.run(
       ["git", "config", "user.email", "test@example.invalid"], cwd=self.root, check=True
     )
+    executable = self.root / "script.ps1"
+    executable.write_text("Write-Host 'ok'\n", encoding="utf-8")
+    executable.chmod(0o755)
     subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+    subprocess.run(["git", "update-index", "--chmod=+x", "script.ps1"], cwd=self.root, check=True)
     subprocess.run(
       ["git", "commit", "-q", "-m", "Proj: Initial test history"], cwd=self.root, check=True
     )
@@ -131,6 +135,8 @@ class PackageReleaseTests(unittest.TestCase):
       self.assertTrue(
         any(name.startswith("tauridium-0.2.0/.git/objects/") for name in names)
       )
+      config = archive.read("tauridium-0.2.0/.git/config").decode()
+      self.assertIn("filemode = false", config)
       self.assertNotIn("tauridium-0.2.0/source.zip", names)
       archive.extractall(extract_root)
 
