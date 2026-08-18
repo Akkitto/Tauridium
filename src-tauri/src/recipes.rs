@@ -158,10 +158,13 @@ fn bundled_previews() -> Vec<Value> {
 }
 
 pub(crate) fn custom_recipes_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    app.path()
+    let root = app
+        .path()
         .app_config_dir()
         .map(|dir| dir.join(CUSTOM_RECIPE_DIR))
-        .map_err(|error| format!("Custom recipe configuration directory unavailable: {error}"))
+        .map_err(|error| format!("Custom recipe configuration directory unavailable: {error}"))?;
+    recover_interrupted_recipe_restore(&root)?;
+    Ok(root)
 }
 
 pub(crate) fn backup_custom_recipes(app: &AppHandle) -> Result<Vec<CustomRecipeBackup>, String> {
@@ -213,9 +216,13 @@ fn prepared_backup_recipes(
     backups: &[CustomRecipeBackup],
 ) -> Result<Vec<(String, Value, String, String)>, String> {
     let mut prepared = Vec::with_capacity(backups.len());
+    let mut seen = BTreeMap::<String, ()>::new();
     for backup in backups {
         let id = backup.id.trim().to_ascii_lowercase();
         validate_recipe_id(&id)?;
+        if seen.insert(id.clone(), ()).is_some() {
+            return Err(format!("Backup contains duplicate custom recipe id: {id}"));
+        }
         if is_bundled_recipe(&id) {
             return Err(format!("Backup recipe id is reserved by Tauridium: {id}"));
         }
@@ -236,16 +243,101 @@ pub(crate) fn validate_custom_recipe_backups(backups: &[CustomRecipeBackup]) -> 
     prepared_backup_recipes(backups).map(|_| ())
 }
 
-pub(crate) fn restore_custom_recipes(
+pub(crate) fn merge_custom_recipe_backups(
+    current: &[CustomRecipeBackup],
+    incoming: &[CustomRecipeBackup],
+) -> Result<Vec<CustomRecipeBackup>, String> {
+    validate_custom_recipe_backups(current)?;
+    validate_custom_recipe_backups(incoming)?;
+    let mut merged = BTreeMap::<String, CustomRecipeBackup>::new();
+    for backup in current.iter().chain(incoming.iter()) {
+        merged.insert(backup.id.trim().to_ascii_lowercase(), backup.clone());
+    }
+    Ok(merged.into_values().collect())
+}
+
+fn recipe_swap_paths(root: &Path) -> Result<(PathBuf, PathBuf), String> {
+    let parent = root
+        .parent()
+        .ok_or_else(|| "Custom recipe directory has no parent".to_string())?;
+    let name = root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "Custom recipe directory name is invalid".to_string())?;
+    Ok((
+        parent.join(format!(".{name}.restore-tmp")),
+        parent.join(format!(".{name}.restore-bak")),
+    ))
+}
+
+fn recover_interrupted_recipe_restore(root: &Path) -> Result<(), String> {
+    let (staging, rollback) = recipe_swap_paths(root)?;
+    if !root.exists() && rollback.exists() {
+        fs::rename(&rollback, root)
+            .map_err(|error| format!("Unable to recover interrupted recipe restore: {error}"))?;
+    }
+    if root.exists() && staging.exists() {
+        fs::remove_dir_all(&staging).map_err(|error| {
+            format!("Unable to clear interrupted recipe restore staging: {error}")
+        })?;
+    }
+    if root.exists() && rollback.exists() {
+        fs::remove_dir_all(&rollback)
+            .map_err(|error| format!("Unable to clear completed recipe restore backup: {error}"))?;
+    }
+    Ok(())
+}
+
+pub(crate) fn replace_custom_recipes_exact(
     app: &AppHandle,
     backups: &[CustomRecipeBackup],
 ) -> Result<usize, String> {
     let prepared = prepared_backup_recipes(backups)?;
     let root = custom_recipes_dir(app)?;
-    for (id, package, icon_svg, webview_js) in &prepared {
-        save_recipe_files(&root, id, package, icon_svg, webview_js)?;
+    let parent = root
+        .parent()
+        .ok_or_else(|| "Custom recipe directory has no parent".to_string())?;
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("Unable to create recipe configuration directory: {error}"))?;
+    let (staging, rollback) = recipe_swap_paths(&root)?;
+
+    if staging.exists() {
+        fs::remove_dir_all(&staging)
+            .map_err(|error| format!("Unable to clear stale recipe restore staging: {error}"))?;
     }
-    Ok(prepared.len())
+    if rollback.exists() {
+        fs::remove_dir_all(&rollback)
+            .map_err(|error| format!("Unable to clear stale recipe restore backup: {error}"))?;
+    }
+    fs::create_dir_all(&staging)
+        .map_err(|error| format!("Unable to create recipe restore staging: {error}"))?;
+    for (id, package, icon_svg, webview_js) in &prepared {
+        save_recipe_files(&staging, id, package, icon_svg, webview_js)?;
+    }
+
+    let had_root = root.exists();
+    if had_root {
+        fs::rename(&root, &rollback)
+            .map_err(|error| format!("Unable to stage existing custom recipes: {error}"))?;
+    }
+    match fs::rename(&staging, &root) {
+        Ok(()) => {
+            if rollback.exists() {
+                fs::remove_dir_all(&rollback).map_err(|error| {
+                    format!(
+                        "Custom recipes restored but old recipe backup could not be removed: {error}"
+                    )
+                })?;
+            }
+            Ok(prepared.len())
+        }
+        Err(error) => {
+            if had_root && rollback.exists() {
+                let _ = fs::rename(&rollback, &root);
+            }
+            Err(format!("Unable to commit custom recipe restore: {error}"))
+        }
+    }
 }
 
 pub(crate) fn storage_info(app: &AppHandle) -> Result<RecipeStorageInfo, String> {
@@ -653,6 +745,84 @@ mod tests {
         let prepared = prepared_backup_recipes(&backups).unwrap();
         assert_eq!(prepared[0].0, "local-ai");
         assert_eq!(prepared[0].1["id"], "local-ai");
+    }
+
+    #[test]
+    fn backup_recipe_preflight_rejects_duplicate_ids() {
+        let backup = CustomRecipeBackup {
+            id: "local-ai".into(),
+            package: json!({
+                "id": "local-ai",
+                "name": "Local AI",
+                "config": { "serviceURL": "https://example.com" }
+            }),
+            icon_svg: String::new(),
+            webview_js: String::new(),
+        };
+        assert!(validate_custom_recipe_backups(&[backup.clone(), backup]).is_err());
+    }
+
+    #[test]
+    fn backup_recipe_merge_preserves_unrelated_recipes_and_overrides_matching_ids() {
+        let current = vec![
+            CustomRecipeBackup {
+                id: "keep".into(),
+                package: json!({
+                    "id": "keep",
+                    "name": "Keep",
+                    "config": {"serviceURL": "https://keep.example"}
+                }),
+                icon_svg: String::new(),
+                webview_js: String::new(),
+            },
+            CustomRecipeBackup {
+                id: "replace".into(),
+                package: json!({
+                    "id": "replace",
+                    "name": "Old",
+                    "config": {"serviceURL": "https://old.example"}
+                }),
+                icon_svg: String::new(),
+                webview_js: String::new(),
+            },
+        ];
+        let incoming = vec![CustomRecipeBackup {
+            id: "replace".into(),
+            package: json!({
+                "id": "replace",
+                "name": "New",
+                "config": {"serviceURL": "https://new.example"}
+            }),
+            icon_svg: String::new(),
+            webview_js: String::new(),
+        }];
+        let merged = merge_custom_recipe_backups(&current, &incoming).unwrap();
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].id, "keep");
+        assert_eq!(merged[1].package["name"], "New");
+    }
+
+    #[test]
+    fn interrupted_recipe_restore_recovers_or_cleans_transaction_artifacts() {
+        let root = std::env::temp_dir().join(format!(
+            "tauridium-recipe-recovery-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        let (staging, rollback) = recipe_swap_paths(&root).unwrap();
+        fs::create_dir_all(&rollback).unwrap();
+        fs::write(rollback.join("marker"), "old").unwrap();
+        recover_interrupted_recipe_restore(&root).unwrap();
+        assert!(root.join("marker").exists());
+        assert!(!rollback.exists());
+
+        fs::create_dir_all(&staging).unwrap();
+        fs::write(staging.join("marker"), "partial").unwrap();
+        fs::create_dir_all(&rollback).unwrap();
+        recover_interrupted_recipe_restore(&root).unwrap();
+        assert!(!staging.exists());
+        assert!(!rollback.exists());
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

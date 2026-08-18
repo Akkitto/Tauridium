@@ -46,7 +46,59 @@ impl LocalProfile {
     pub(crate) fn from_value(value: Value) -> Result<Self, String> {
         let profile: Self = serde_json::from_value(value)
             .map_err(|error| format!("Unable to parse local profile: {error}"))?;
-        Self::validate_version(profile)
+        let profile = Self::validate_version(profile)?;
+        profile.validate_backup_integrity()?;
+        Ok(profile)
+    }
+
+    fn validate_backup_integrity(&self) -> Result<(), String> {
+        let mut service_ids = std::collections::HashSet::new();
+        for service in &self.services {
+            let id = service
+                .get("id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+                .ok_or_else(|| "Backup local service is missing a valid id".to_string())?;
+            if !service_ids.insert(id.to_string()) {
+                return Err(format!("Backup contains duplicate local service id: {id}"));
+            }
+        }
+
+        let mut workspace_ids = std::collections::HashSet::new();
+        for workspace in &self.workspaces {
+            let id = workspace
+                .get("id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+                .ok_or_else(|| "Backup local workspace is missing a valid id".to_string())?;
+            if !workspace_ids.insert(id.to_string()) {
+                return Err(format!("Backup contains duplicate local workspace id: {id}"));
+            }
+            let mut members = std::collections::HashSet::new();
+            for service_id in workspace
+                .get("services")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                let service_id = service_id
+                    .as_str()
+                    .ok_or_else(|| format!("Workspace {id} contains a non-string service id"))?;
+                if !service_ids.contains(service_id) {
+                    return Err(format!(
+                        "Workspace {id} references unknown local service id: {service_id}"
+                    ));
+                }
+                if !members.insert(service_id) {
+                    return Err(format!(
+                        "Workspace {id} contains duplicate service id: {service_id}"
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     pub(crate) fn load(path: &Path) -> Result<Self, String> {
@@ -500,6 +552,28 @@ mod tests {
             "version": PROFILE_VERSION + 1,
             "services": [],
             "workspaces": []
+        }))
+        .is_err());
+    }
+
+    #[test]
+    fn backup_profile_rejects_duplicate_ids_and_broken_workspace_membership() {
+        assert!(LocalProfile::from_value(json!({
+            "version": PROFILE_VERSION,
+            "services": [{"id": "dup"}, {"id": "dup"}],
+            "workspaces": []
+        }))
+        .is_err());
+        assert!(LocalProfile::from_value(json!({
+            "version": PROFILE_VERSION,
+            "services": [{"id": "known"}],
+            "workspaces": [{"id": "work", "services": ["missing"]}]
+        }))
+        .is_err());
+        assert!(LocalProfile::from_value(json!({
+            "version": PROFILE_VERSION,
+            "services": [{"id": "known"}],
+            "workspaces": [{"id": "work", "services": ["known", "known"]}]
         }))
         .is_err());
     }

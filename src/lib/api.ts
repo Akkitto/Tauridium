@@ -244,6 +244,8 @@ export interface AppSettings {
   sidebarServicesLocation: "top" | "center" | "bottom";
   hibernationTimer: number;
   preloadServices: boolean;
+  serviceOrder: string[];
+  workspaceOrder: string[];
   [k: string]: unknown;
 }
 
@@ -255,6 +257,24 @@ export function getAppSettings(): Promise<AppSettings> {
   return invoke("get_app_settings");
 }
 
+export function setServiceOrder(serviceIds: string[]): Promise<AppSettings> {
+  return invoke("set_service_order", { serviceIds });
+}
+
+export function setWorkspaceOrder(workspaceIds: string[]): Promise<AppSettings> {
+  return invoke("set_workspace_order", { workspaceIds });
+}
+
+export interface NativeServiceMenuEntry {
+  id: string;
+  name: string;
+  enabled: boolean;
+}
+
+export function syncServicesMenu(services: NativeServiceMenuEntry[]): Promise<void> {
+  return invoke("sync_services_menu", { services });
+}
+
 export function setAppSettings(
   patch: Partial<AppSettings>,
 ): Promise<AppSettings> {
@@ -263,9 +283,13 @@ export function setAppSettings(
 
 export interface BackupSummary {
   path: string;
+  schema: number;
+  sourceSchema: number;
+  integrityVerified: boolean;
   customRecipeCount: number;
   serviceCount: number;
   workspaceCount: number;
+  recoveryBackupPath?: string;
 }
 
 export function exportBackup(path: string): Promise<BackupSummary> {

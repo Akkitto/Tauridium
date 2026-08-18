@@ -74,3 +74,48 @@ export function looksLikeWebsite(value: string): boolean {
   const candidate = value.trim();
   return /^https?:\/\//i.test(candidate) || /^[^\s]+\.[^\s]+/.test(candidate);
 }
+
+// Apply a persisted id order while preserving a deterministic fallback for newly discovered items.
+export function orderedBySavedIds<T extends { id: string; order?: number }>(
+  items: T[],
+  savedIds: string[] | undefined,
+): T[] {
+  const rank = new Map((savedIds ?? []).map((id, index) => [id, index]));
+  const fallbackBase = rank.size + 1;
+  return [...items].sort((a, b) => {
+    const aRank = rank.get(a.id);
+    const bRank = rank.get(b.id);
+    if (aRank !== undefined || bRank !== undefined) {
+      if (aRank === undefined) return 1;
+      if (bRank === undefined) return -1;
+      return aRank - bRank;
+    }
+    const byOrder = (a.order ?? fallbackBase) - (b.order ?? fallbackBase);
+    return byOrder || a.id.localeCompare(b.id);
+  });
+}
+
+// Reorder only the currently visible subset while leaving hidden/filter-excluded slots stable.
+export function reorderVisibleSubset(
+  fullIds: string[],
+  visibleIds: string[],
+  fromId: string,
+  toId: string,
+): string[] {
+  const subset = visibleIds.filter((id) => fullIds.includes(id));
+  const fromIndex = subset.indexOf(fromId);
+  const toIndex = subset.indexOf(toId);
+  if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return [...fullIds];
+  const [moved] = subset.splice(fromIndex, 1);
+  subset.splice(toIndex, 0, moved);
+  const visibleSet = new Set(subset);
+  let nextVisible = 0;
+  return fullIds.map((id) => (visibleSet.has(id) ? subset[nextVisible++] : id));
+}
+
+export function serviceLabel(service: { name?: string | null; recipeId?: string | null }): string {
+  const name = service.name?.trim();
+  if (name) return name;
+  const recipeId = service.recipeId?.trim();
+  return recipeId || "Unnamed service";
+}

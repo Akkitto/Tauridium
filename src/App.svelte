@@ -11,6 +11,9 @@
     normalizeWebsiteUrl,
     websiteName,
     looksLikeWebsite,
+    orderedBySavedIds,
+    reorderVisibleSubset,
+    serviceLabel,
   } from "./lib/ui";
   import { appVersion, checkForUpdate, installUpdate, type Update } from "./lib/updater";
   import { ask, open, save as saveDialog } from "@tauri-apps/plugin-dialog";
@@ -47,6 +50,9 @@
     deleteWorkspace,
     getAppSettings,
     setAppSettings,
+    setServiceOrder,
+    setWorkspaceOrder,
+    syncServicesMenu,
     setSidebarWidth,
     exportBackup,
     restoreBackup,
@@ -135,6 +141,8 @@
     sidebarServicesLocation: "top",
     hibernationTimer: 0,
     preloadServices: true,
+    serviceOrder: [],
+    workspaceOrder: [],
   });
 
   // Hibernation: suspended services have their webview closed while retaining the session.
@@ -168,8 +176,9 @@
   const activeService = $derived(
     services.find((s) => s.id === activeId) ?? null,
   );
-  const sorted = $derived(
-    [...services].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+  const sorted = $derived(orderedBySavedIds(services, appSettings.serviceOrder));
+  const sortedWorkspaces = $derived(
+    orderedBySavedIds(workspaces, appSettings.workspaceOrder),
   );
   const visibleServices = $derived.by(() => {
     let list = sorted;
@@ -220,12 +229,15 @@
         serviceLoadError = null;
       }
     });
-    // Command+1..9 from the native menu switches to the Nth visible service.
-    listen<number>("select-index", (e) => {
-      const s = visibleServices[e.payload - 1];
-      if (s) selectService(s);
+    // Native Services menu events use stable IDs so filtering/workspace changes cannot
+    // make a numbered menu item select the wrong service.
+    listen<string>("select-service-id", (e) => {
+      const service = services.find((candidate) => candidate.id === e.payload);
+      if (service) selectService(service);
     });
-    // The native About menu opens the same deterministic in-app About section on every OS.
+    // Native menu actions always route through the shell so service webviews cannot cover them.
+    listen("open-settings", openAppSettings);
+    listen("open-add-service", openAdd);
     listen("open-about", openAbout);
     try {
       appSettings = await getAppSettings();
@@ -276,8 +288,43 @@
     failedIcons = new Set(failedIcons).add(id);
   }
 
+  function sameIds(left: string[], right: string[]): boolean {
+    return left.length === right.length && left.every((id, index) => id === right[index]);
+  }
+
+  async function refreshNativeServicesMenu() {
+    try {
+      await syncServicesMenu(
+        orderedBySavedIds(services, appSettings.serviceOrder).map((service) => ({
+          id: service.id,
+          name: serviceLabel(service),
+          enabled: service.isEnabled !== false,
+        })),
+      );
+    } catch (err) {
+      error = `Unable to refresh the native Services menu: ${err}`;
+    }
+  }
+
+  async function reconcileSavedOrders() {
+    const serviceOrder = orderedBySavedIds(services, appSettings.serviceOrder).map((service) => service.id);
+    const workspaceOrder = orderedBySavedIds(workspaces, appSettings.workspaceOrder).map((workspace) => workspace.id);
+    if (sameIds(serviceOrder, appSettings.serviceOrder) && sameIds(workspaceOrder, appSettings.workspaceOrder)) return;
+    try {
+      const persisted = await setAppSettings({ serviceOrder, workspaceOrder });
+      if (!sameIds(persisted.serviceOrder, serviceOrder) || !sameIds(persisted.workspaceOrder, workspaceOrder)) {
+        throw new Error("Tauridium could not verify the reconciled service/workspace order");
+      }
+      appSettings = persisted;
+    } catch (err) {
+      error = `Unable to reconcile saved service/workspace order: ${err}`;
+    }
+  }
+
   async function loadAfterAuth() {
     [services, workspaces] = await Promise.all([getServices(), getWorkspaces()]);
+    await reconcileSavedOrders();
+    await refreshNativeServicesMenu();
     await Promise.all(services.map((s) => setServiceFlags(s).catch(() => {})));
     const first = sorted.find((s) => s.isEnabled) ?? sorted[0] ?? null;
     if (first) selectService(first);
@@ -461,14 +508,41 @@
     }
   }
 
-  // --- Service reordering (drag and drop) --------------------------------------
+  // --- Service reordering ------------------------------------------------------
+  async function persistServiceIds(nextIds: string[], previousIds: string[]) {
+    appSettings = { ...appSettings, serviceOrder: nextIds };
+    try {
+      appSettings = await setServiceOrder(nextIds);
+      const persisted = appSettings.serviceOrder ?? [];
+      if (persisted.length !== nextIds.length || persisted.some((id, i) => id !== nextIds[i])) {
+        throw new Error("Tauridium could not verify the saved service order");
+      }
+      await refreshNativeServicesMenu();
+    } catch (err) {
+      appSettings = { ...appSettings, serviceOrder: previousIds };
+      error = `Unable to save service order: ${err}`;
+      throw err;
+    }
+  }
+
+
+  async function moveService(serviceId: string, delta: number) {
+    const previousIds = sorted.map((service) => service.id);
+    const index = previousIds.indexOf(serviceId);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= previousIds.length) return;
+    const nextIds = [...previousIds];
+    [nextIds[index], nextIds[target]] = [nextIds[target], nextIds[index]];
+    await persistServiceIds(nextIds, previousIds).catch(() => {});
+  }
+
   function onDragStart(e: DragEvent, s: Service) {
     dragId = s.id;
     if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
   }
   function onDragOver(e: DragEvent, s: Service) {
     if (!dragId || dragId === s.id) return;
-    e.preventDefault(); // autorise le drop
+    e.preventDefault();
     dragOverId = s.id;
   }
   function onDragLeave(s: Service) {
@@ -484,26 +558,11 @@
     dragId = null;
     dragOverId = null;
     if (!from || from === target.id) return;
-    const list = [...sorted];
-    const fromIdx = list.findIndex((s) => s.id === from);
-    const toIdx = list.findIndex((s) => s.id === target.id);
-    if (fromIdx < 0 || toIdx < 0) return;
-    const [moved] = list.splice(fromIdx, 1);
-    list.splice(toIdx, 0, moved);
-    const orderById = new Map(list.map((s, i) => [s.id, i]));
-    // Persist each service whose order changed (best effort).
-    const updates: Promise<unknown>[] = [];
-    for (const s of services) {
-      const ord = orderById.get(s.id);
-      if (ord !== undefined && s.order !== ord) {
-        updates.push(updateService(s.id, { order: ord }).catch(() => {}));
-      }
-    }
-    services = services.map((s) => ({
-      ...s,
-      order: orderById.get(s.id) ?? s.order,
-    }));
-    await Promise.all(updates);
+    const previousIds = sorted.map((service) => service.id);
+    const visibleIds = visibleServices.map((service) => service.id);
+    const nextIds = reorderVisibleSubset(previousIds, visibleIds, from, target.id);
+    if (nextIds.every((id, index) => id === previousIds[index])) return;
+    await persistServiceIds(nextIds, previousIds).catch(() => {});
   }
 
   function openServiceSettings(s: Service) {
@@ -549,6 +608,7 @@
         userAgentPref: s.userAgentPref ?? "",
       });
       await setServiceFlags(s);
+      await refreshNativeServicesMenu();
       if (reload) {
         await closeService(s.id); // recreated on next open with new params
         const { [s.id]: _, ...rest } = statusMap;
@@ -604,6 +664,8 @@
       const { [s.id]: _, ...rest } = statusMap;
       statusMap = rest;
       services = services.filter((x) => x.id !== s.id);
+      await reconcileSavedOrders();
+      await refreshNativeServicesMenu();
       backToService();
     } catch (err) {
       error = String(err);
@@ -638,6 +700,32 @@
 
   async function reloadWorkspaces() {
     workspaces = await getWorkspaces();
+    await reconcileSavedOrders();
+  }
+
+  async function persistWorkspaceIds(nextIds: string[], previousIds: string[]) {
+    appSettings = { ...appSettings, workspaceOrder: nextIds };
+    try {
+      appSettings = await setWorkspaceOrder(nextIds);
+      const persisted = appSettings.workspaceOrder ?? [];
+      if (persisted.length !== nextIds.length || persisted.some((id, i) => id !== nextIds[i])) {
+        throw new Error("Tauridium could not verify the saved workspace order");
+      }
+    } catch (err) {
+      appSettings = { ...appSettings, workspaceOrder: previousIds };
+      error = `Unable to save workspace order: ${err}`;
+      throw err;
+    }
+  }
+
+  async function moveWorkspace(workspaceId: string, delta: number) {
+    const previousIds = sortedWorkspaces.map((workspace) => workspace.id);
+    const index = previousIds.indexOf(workspaceId);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= previousIds.length) return;
+    const nextIds = [...previousIds];
+    [nextIds[index], nextIds[target]] = [nextIds[target], nextIds[index]];
+    await persistWorkspaceIds(nextIds, previousIds).catch(() => {});
   }
 
   async function handleCreateWorkspace() {
@@ -728,6 +816,8 @@
     const res = result as { id?: string; data?: { id?: string }; service?: { id?: string } };
     const newId = res?.id ?? res?.data?.id ?? res?.service?.id;
     [services, workspaces] = await Promise.all([getServices(), getWorkspaces()]);
+    await reconcileSavedOrders();
+    await refreshNativeServicesMenu();
     await Promise.all(services.map((service) => setServiceFlags(service).catch(() => {})));
     const created =
       (newId && services.find((service) => service.id === newId)) ??
@@ -885,7 +975,13 @@
   }
 
   function backupSummaryText(action: string, summary: BackupSummary): string {
-    return `${action}: ${summary.customRecipeCount} custom recipes, ${summary.serviceCount} local services, ${summary.workspaceCount} local workspaces.`;
+    const integrity = summary.integrityVerified
+      ? "integrity verified"
+      : summary.sourceSchema < summary.schema
+        ? `migrated from legacy schema ${summary.sourceSchema}`
+        : "legacy integrity metadata unavailable";
+    const recovery = summary.recoveryBackupPath ? ` Recovery snapshot: ${summary.recoveryBackupPath}` : "";
+    return `${action}: schema ${summary.schema}, ${integrity}; ${summary.customRecipeCount} custom recipes, ${summary.serviceCount} local services, ${summary.workspaceCount} local workspaces.${recovery}`;
   }
 
   async function doExportBackup() {
@@ -996,6 +1092,7 @@
     me = null;
     services = [];
     workspaces = [];
+    await refreshNativeServicesMenu();
     allRecipes = [];
     activeId = null;
     view = "service";
@@ -1065,14 +1162,13 @@
         <button class="link" onclick={handleLogout}>sign out</button>
       </div>
 
-      <button class="add" onclick={openAdd}>＋ Add a service</button>
 
       <div class="wspills">
         <button
           class="pill"
           class:on={activeWorkspace === null}
           onclick={() => (activeWorkspace = null)}>All</button>
-        {#each workspaces as w (w.id)}
+        {#each sortedWorkspaces as w (w.id)}
           <button
             class="pill"
             class:on={activeWorkspace === w.id}
@@ -1087,9 +1183,6 @@
         </div>
       </div>
 
-      <button class="appcog" onclick={openAppSettings}>
-        <span class="ic">⚙</span> Settings{#if updateInfo}<span class="upddot" title="Update available"></span>{/if}
-      </button>
       <div class="count">
         {services.length} services · {workspaces.length} workspaces{#if appVer} · <span class="ver">v{appVer}</span>{/if}
       </div>
@@ -1100,7 +1193,7 @@
         {#if activeService}
           {#if serviceLoadError}
             <div class="placeholder">
-              <h2>{activeService.name}</h2>
+              <h2>{serviceLabel(activeService)}</h2>
               <p class="load-err">Couldn't load this service.</p>
               <p class="load-err-detail">{serviceLoadError}</p>
               <button class="primary" onclick={retryActiveService}>Reload</button>
@@ -1108,10 +1201,10 @@
           {:else if statusMap[activeService.id] !== "ready"}
             <div class="placeholder">
               <div class="spinner" aria-hidden="true"></div>
-              <p>Loading {activeService.name}…</p>
+              <p>Loading {serviceLabel(activeService)}…</p>
             </div>
           {:else}
-            <div class="placeholder"><h2>{activeService.name}</h2></div>
+            <div class="placeholder"><h2>{serviceLabel(activeService)}</h2></div>
           {/if}
         {:else}
           <div class="placeholder"><p>No service selected.</p></div>
@@ -1119,7 +1212,7 @@
       {:else if view === "svcSettings" && settingsSvc}
         <div class="panel">
           <div class="panel-head">
-            <h2>Settings — {settingsSvc.name}</h2>
+            <h2>Settings — {serviceLabel(settingsSvc)}</h2>
             <span class="head-actions">
               <button class="primary sm" disabled={!svcDirty} onclick={saveServiceSettings}>
                 {svcDirty ? "Save changes" : "Saved"}
@@ -1332,7 +1425,7 @@
           </div>
           {#if error}<p class="error">{error}</p>{/if}
 
-          {#each workspaces as ws (ws.id)}
+          {#each sortedWorkspaces as ws, workspaceIndex (ws.id)}
             <div class="wsedit">
               <div class="wsedit-head">
                 <input
@@ -1340,7 +1433,11 @@
                   value={ws.name}
                   onblur={(e) => renameWorkspace(ws, e.currentTarget.value)}
                 />
-                <button class="link" onclick={() => handleDeleteWorkspace(ws)}>delete</button>
+                <div class="workspace-actions">
+                  <button class="icon-button compact" disabled={workspaceIndex === 0} aria-label={`Move ${ws.name} up`} title="Move up" onclick={() => moveWorkspace(ws.id, -1)}>↑</button>
+                  <button class="icon-button compact" disabled={workspaceIndex === sortedWorkspaces.length - 1} aria-label={`Move ${ws.name} down`} title="Move down" onclick={() => moveWorkspace(ws.id, 1)}>↓</button>
+                  <button class="link danger-link" onclick={() => handleDeleteWorkspace(ws)}>delete</button>
+                </div>
               </div>
               <div class="set-title">Services in this workspace</div>
               <div class="wsservices">
@@ -1352,7 +1449,7 @@
                       onchange={(e) =>
                         toggleServiceInWorkspace(ws, s.id, e.currentTarget.checked)}
                     />
-                    <span>{s.name}</span>
+                    <span>{serviceLabel(s)}</span>
                   </label>
                 {/each}
               </div>
@@ -1395,6 +1492,39 @@
                 </div>
               </section>
             {:else if settingsTab === "services"}
+              <section class="settings-section" aria-labelledby="settings-services-configured">
+                <div class="section-heading">
+                  <h3 id="settings-services-configured">Configured services <span class="section-count">{services.length}</span></h3>
+                  <p>The list follows your actual Tauridium services. Reorder here or drag services in the sidebar; both use the same atomically persisted order.</p>
+                </div>
+                <div class="managed-list" role="list" aria-label="Configured services">
+                  {#each sorted as service, index (service.id)}
+                    <div class="managed-row" role="listitem">
+                      <div class="managed-identity">
+                        {#if failedIcons.has(service.id)}
+                          <span class="managed-icon fallback">{serviceLabel(service).slice(0, 1).toUpperCase()}</span>
+                        {:else}
+                          <img class="managed-icon" src={iconSrc(service)} alt="" onerror={() => markIconFailed(service.id)} />
+                        {/if}
+                        <div class="managed-copy">
+                          <strong>{serviceLabel(service)}</strong>
+                          <span>{service.isEnabled ? "Enabled" : "Disabled"} · {service.recipeId || "Unknown recipe"}{service.isLocalRecipe ? " · Local recipe" : ""}</span>
+                        </div>
+                      </div>
+                      <div class="managed-actions">
+                        <button class="icon-button compact" disabled={index === 0} aria-label={`Move ${serviceLabel(service)} up`} title="Move up" onclick={() => moveService(service.id, -1)}>↑</button>
+                        <button class="icon-button compact" disabled={index === sorted.length - 1} aria-label={`Move ${serviceLabel(service)} down`} title="Move down" onclick={() => moveService(service.id, 1)}>↓</button>
+                        <button class="secondary sm" onclick={() => openServiceSettings(service)}>Service settings</button>
+                      </div>
+                    </div>
+                  {:else}
+                    <div class="managed-empty">
+                      <strong>No services configured</strong>
+                      <span>Add a service from the Tauridium application menu.</span>
+                    </div>
+                  {/each}
+                </div>
+              </section>
               <section class="settings-section" aria-labelledby="settings-services-list">
                 <div class="section-heading">
                   <h3 id="settings-services-list">Service list</h3>
@@ -1512,10 +1642,10 @@
                 </div>
               </section>
               <section class="settings-section" aria-labelledby="settings-advanced-backup">
-                <div class="section-heading"><h3 id="settings-advanced-backup">Backup</h3><p>Move Tauridium-owned local configuration between installations or keep a manual recovery copy.</p></div>
+                <div class="section-heading"><h3 id="settings-advanced-backup">Backup</h3><p>Move Tauridium-owned local configuration between installations or keep a manual recovery copy. Backups use a versioned schema with integrity verification and migration support for older formats.</p></div>
                 <div class="settings-list">
                   <div class="setting-card">
-                    <div class="setting-copy"><span class="setting-label">Local Tauridium data</span><span class="setting-description">Exports app settings, local services and workspaces, and complete custom recipes. Ferdium login tokens, website cookies/storage, and remote caches are excluded.</span></div>
+                    <div class="setting-copy"><span class="setting-label">Local Tauridium data</span><span class="setting-description">Exports app settings, canonical service/workspace order, local services and workspaces, and complete custom recipes. Restore verifies integrity and validates every component before committing. Ferdium login tokens, website cookies/storage, remote caches, and machine-specific monitor geometry are excluded.</span></div>
                     <div class="setting-actions"><button class="secondary sm" disabled={backupBusy} onclick={doRestoreBackup}>Restore backup…</button><button class="primary sm" disabled={backupBusy} onclick={doExportBackup}>Export backup…</button></div>
                   </div>
                   <p class="settings-note">Backups can contain sensitive local service configuration such as proxy credentials. Store them accordingly.</p>
@@ -1611,12 +1741,12 @@
       onclick={() => selectService(s)}
     >
       {#if failedIcons.has(s.id)}
-        <span class="dot">{s.name.slice(0, 1)}</span>
+        <span class="dot">{serviceLabel(s).slice(0, 1).toUpperCase()}</span>
       {:else}
         <img class="svc-icon" src={iconSrc(s)} alt="" onerror={() => markIconFailed(s.id)} />
       {/if}
       {#if appSettings.showServiceName}
-        <span class="srow-name">{s.name}</span>
+        <span class="srow-name">{serviceLabel(s)}</span>
       {/if}
       {#if hibernated.has(s.id)}<span class="zzz" title="Hibernated">💤</span>{/if}
       {#if (unreadMap[s.id] ?? 0) > 0 && (s.isMuted !== true || appSettings.showMessageBadgeWhenMuted)}
@@ -1709,27 +1839,37 @@
 
   .shell { display: grid; grid-template-columns: var(--sidebar-w, 240px) 1fr; height: 100vh; }
   .sidebar {
-    background: var(--sidebar); padding: 12px; overflow: hidden;
-    display: flex; flex-direction: column; gap: 12px;
+    background: var(--sidebar); padding: 10px 10px 8px; overflow: hidden;
+    display: flex; flex-direction: column; gap: 8px;
   }
-  .svcarea { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
-  :global(body[data-svcloc="center"]) .svcarea { justify-content: center; }
-  :global(body[data-svcloc="bottom"]) .svcarea { justify-content: flex-end; }
+  .svcarea {
+    flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto;
+    overscroll-behavior: contain; scrollbar-gutter: stable;
+  }
+  :global(body[data-svcloc="center"]) .svclist { margin-block: auto; }
+  :global(body[data-svcloc="bottom"]) .svclist { margin-top: auto; }
   .account { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
   .link { background: none; border: none; color: var(--link); cursor: pointer; font-size: 12px; text-decoration: underline; }
-  .add {
-    background: var(--hover); border: 1px dashed var(--border2); color: var(--accent-soft);
-    border-radius: 8px; padding: 8px; cursor: pointer; font-size: 13px;
+  .wspills {
+    display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; overflow-x: auto;
+    min-height: 32px; padding: 3px; border: 1px solid var(--border); border-radius: 10px;
+    background: color-mix(in srgb, var(--input) 72%, transparent); scrollbar-width: thin;
   }
-  .add:hover { filter: brightness(1.1); }
-  .wspills { display: flex; flex-wrap: wrap; gap: 5px; }
   .pill {
-    background: var(--hover); border: none; color: var(--muted);
-    border-radius: 999px; padding: 3px 10px; cursor: pointer; font-size: 12px;
+    flex: none; background: transparent; border: 1px solid transparent; color: var(--muted);
+    border-radius: 7px; padding: 5px 9px; cursor: pointer; font-size: 12px; font-weight: 600;
+    line-height: 1.2; transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
   }
-  .pill.on { background: var(--accent); color: var(--accent-fg); }
-  .pill.mng { background: transparent; border: 1px dashed var(--border2); color: var(--muted); font-size: 15px; line-height: 1; padding: 2px 9px; }
-  .svclist { display: flex; flex-direction: column; gap: 2px; }
+  .pill:hover { background: var(--hover); color: var(--text2); }
+  .pill.on {
+    background: var(--accent); border-color: color-mix(in srgb, var(--accent) 70%, var(--border2));
+    color: var(--accent-fg); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.16);
+  }
+  .pill.mng {
+    background: transparent; border-color: var(--border2); color: var(--muted);
+    font-size: 14px; line-height: 1; padding: 4px 8px;
+  }
+  .svclist { display: flex; flex: none; flex-direction: column; gap: 2px; padding-right: 2px; }
 
   .srow-wrap { display: flex; align-items: center; position: relative; }
   .srow-wrap.dragging { opacity: 0.4; }
@@ -1762,14 +1902,6 @@
   .cog { background: none; border: none; color: var(--muted2); cursor: pointer; font-size: 21px; line-height: 1; opacity: 0; padding: 2px 4px; }
   .srow-wrap:hover .cog { opacity: 1; }
   .cog:hover { color: var(--accent-soft); }
-  .appcog {
-    background: var(--hover); border: 1px solid var(--border);
-    color: var(--text2); border-radius: 8px; padding: 9px; cursor: pointer; font-size: 13px;
-    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
-  }
-  .appcog .ic { font-size: 19px; line-height: 1; }
-  .upddot { width: 8px; height: 8px; border-radius: 999px; background: #22c55e; display: inline-block; margin-left: 2px; }
-  .appcog:hover { filter: brightness(1.1); }
   .count { font-size: 11px; color: var(--muted2); }
   .ver { font-weight: 700; color: var(--muted); }
 
@@ -1870,6 +2002,34 @@
   .code-input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1.4; }
   .security-note { margin-top: -4px; }
 
+  .workspace-actions { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+  .danger-link { color: #e77d8e; }
+  .icon-button.compact { width: 30px; height: 30px; border-color: var(--border); background: var(--input); }
+  .icon-button.compact:disabled { opacity: 0.35; cursor: default; }
+  .managed-list { display: flex; flex-direction: column; gap: 7px; }
+  .managed-row {
+    min-height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--input);
+  }
+  .managed-identity { min-width: 0; display: flex; align-items: center; gap: 10px; }
+  .managed-icon { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; flex: none; }
+  .managed-icon.fallback { display: grid; place-items: center; background: var(--hover); color: var(--text2); font-weight: 750; }
+  .managed-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .managed-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text2); font-size: 14px; }
+  .managed-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11.5px; }
+  .managed-actions { display: inline-flex; align-items: center; gap: 5px; flex: none; }
+  .managed-empty {
+    display: flex; flex-direction: column; gap: 4px; padding: 18px; border: 1px dashed var(--border2);
+    border-radius: 10px; color: var(--muted); text-align: center;
+  }
+  .managed-empty strong { color: var(--text2); font-size: 14px; }
+  .managed-empty span { font-size: 12px; }
+  .section-count {
+    display: inline-flex; min-width: 22px; height: 20px; align-items: center; justify-content: center;
+    margin-left: 4px; padding: 0 6px; border-radius: 999px; background: var(--hover); color: var(--muted);
+    font-size: 11px; font-weight: 700; vertical-align: middle;
+  }
+
   .settings-panel {
     width: min(820px, calc(100% - 48px)); margin: 24px auto 40px; padding: 0; gap: 0; overflow: hidden;
   }
@@ -1888,16 +2048,21 @@
     outline: 2px solid var(--accent); outline-offset: 2px;
   }
   .settings-tabs {
-    display: flex; gap: 4px; overflow-x: auto; padding: 0 18px 10px;
-    border-bottom: 1px solid var(--border); scrollbar-width: thin;
+    display: flex; gap: 4px; overflow-x: auto; margin: 0 18px 10px; padding: 4px;
+    border: 1px solid var(--border); border-radius: 11px;
+    background: color-mix(in srgb, var(--input) 76%, transparent); scrollbar-width: thin;
   }
   .setting-tab {
-    flex: none; padding: 8px 11px; border: 1px solid transparent; border-radius: 8px;
+    flex: none; min-height: 34px; padding: 7px 12px; border: 1px solid transparent; border-radius: 8px;
     background: transparent; color: var(--muted); cursor: pointer; font: inherit;
-    font-size: 13px; font-weight: 600; line-height: 1.2;
+    font-size: 13px; font-weight: 650; line-height: 1.2;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
   }
   .setting-tab:hover { background: var(--hover); color: var(--text2); }
-  .setting-tab.on { background: var(--hover); border-color: var(--border); color: var(--text); }
+  .setting-tab.on {
+    background: var(--accent); border-color: color-mix(in srgb, var(--accent) 72%, var(--border2));
+    color: var(--accent-fg); box-shadow: 0 1px 5px rgba(0, 0, 0, 0.16);
+  }
   .settings-content { display: flex; flex-direction: column; gap: 26px; padding: 24px; min-height: 260px; }
   .settings-section { display: flex; flex-direction: column; gap: 10px; }
   .section-heading { display: flex; flex-direction: column; gap: 4px; padding: 0 2px; }
@@ -1962,12 +2127,14 @@
     .creator-grid { grid-template-columns: 1fr; }
     .settings-panel { width: calc(100% - 24px); margin: 12px auto 24px; }
     .settings-head { padding: 18px 18px 14px; }
-    .settings-tabs { padding: 0 12px 9px; }
+    .settings-tabs { margin: 0 12px 9px; padding: 4px; }
     .settings-content { padding: 18px; gap: 22px; }
     .setting-card { grid-template-columns: 1fr; gap: 10px; align-items: stretch; }
     .setting-card-toggle { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
     .setting-control { width: 100%; max-width: none; }
     .setting-actions { justify-content: flex-start; }
+    .managed-row { align-items: flex-start; flex-direction: column; }
+    .managed-actions { width: 100%; justify-content: flex-end; }
     .settings-panel .swatches { justify-content: flex-start; max-width: none; }
     .range-control { min-width: 0; }
     .settings-panel .range { flex: 1; width: auto; }

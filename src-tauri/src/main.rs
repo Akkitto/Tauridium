@@ -15,12 +15,13 @@ mod recipes;
 use base64::Engine;
 use local_profile::{validate_recipe_id, LocalProfile};
 use recipes::RecipeDraft;
+use serde::Deserialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::webview::{
@@ -121,6 +122,129 @@ struct AppState {
     sidebar_w: Mutex<f64>,           // sidebar width (initialized during setup, default 240)
     desired_active: Mutex<Option<String>>, // last requested service (prevents focus stealing during switches)
     inflight: Mutex<HashSet<String>>,      // webviews being created (prevents duplicate add_child)
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeServiceMenuEntry {
+    id: String,
+    name: String,
+    enabled: bool,
+}
+
+fn native_service_menu_label(service: &NativeServiceMenuEntry) -> String {
+    let raw = service.name.trim();
+    let raw = if raw.is_empty() { service.id.trim() } else { raw };
+    let mut label: String = raw.chars().take(80).collect();
+    if raw.chars().count() > 80 {
+        label.push('…');
+    }
+    // Native menu backends use '&' for mnemonic markers. Escape it so service names
+    // are rendered literally and cannot accidentally change keyboard navigation.
+    label.replace('&', "&&")
+}
+
+fn build_native_application_menu(
+    app: &AppHandle,
+    services: &[NativeServiceMenuEntry],
+) -> tauri::Result<Menu<Wry>> {
+    let settings_item = MenuItem::with_id(app, "open-settings", "Settings…", true, None::<&str>)?;
+    let add_service_item = MenuItem::with_id(
+        app,
+        "open-add-service",
+        "Add Service…",
+        true,
+        Some("CmdOrCtrl+N"),
+    )?;
+    let app_sub = Submenu::with_items(
+        app,
+        "Tauridium",
+        true,
+        &[
+            &settings_item,
+            &add_service_item,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, None)?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::show_all(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::quit(app, None)?,
+        ],
+    )?;
+    let edit = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )?;
+    let reload_svc = MenuItem::with_id(
+        app,
+        "reload-service",
+        "Reload Service",
+        true,
+        Some("CmdOrCtrl+R"),
+    )?;
+    let reload_app_item = MenuItem::with_id(
+        app,
+        "reload-app",
+        "Reload Tauridium",
+        true,
+        Some("CmdOrCtrl+Shift+R"),
+    )?;
+    let devtools = MenuItem::with_id(
+        app,
+        "toggle-devtools",
+        "Toggle Developer Tools",
+        true,
+        Some("CmdOrCtrl+Alt+I"),
+    )?;
+    let view = Submenu::with_items(
+        app,
+        "View",
+        true,
+        &[
+            &reload_svc,
+            &reload_app_item,
+            &PredefinedMenuItem::separator(app)?,
+            &devtools,
+        ],
+    )?;
+
+    let mut service_items: Vec<MenuItem<Wry>> = Vec::new();
+    if services.is_empty() {
+        service_items.push(MenuItem::with_id(
+            app,
+            "service-menu-empty",
+            "No services configured",
+            false,
+            None::<&str>,
+        )?);
+    } else {
+        for (index, service) in services.iter().enumerate() {
+            let accelerator = (index < 9).then(|| format!("CmdOrCtrl+{}", index + 1));
+            service_items.push(MenuItem::with_id(
+                app,
+                format!("goto-service:{}", service.id),
+                native_service_menu_label(service),
+                service.enabled,
+                accelerator,
+            )?);
+        }
+    }
+    let service_refs: Vec<&dyn IsMenuItem<Wry>> = service_items
+        .iter()
+        .map(|item| item as &dyn IsMenuItem<Wry>)
+        .collect();
+    let services_menu = Submenu::with_items(app, "Services", true, &service_refs)?;
+    Menu::with_items(app, &[&app_sub, &edit, &view, &services_menu])
 }
 
 #[derive(Clone, Copy)]
@@ -1861,8 +1985,81 @@ fn default_app_settings_value() -> Value {
         "grayscaleDim": 50,
         "sidebarServicesLocation": "top",
         "hibernationTimer": 0,
-        "preloadServices": true
+        "preloadServices": true,
+        "serviceOrder": [],
+        "workspaceOrder": []
     })
+}
+
+fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
+    let object = settings
+        .as_object()
+        .ok_or_else(|| "App settings must be a JSON object".to_string())?;
+    for key in [
+        "autostart",
+        "startMinimized",
+        "closeToSystemTray",
+        "privateNotifications",
+        "showDisabledServices",
+        "showServiceName",
+        "showMessageBadgeWhenMuted",
+        "grayscaleServices",
+        "preloadServices",
+    ] {
+        if !object.get(key).is_some_and(Value::is_boolean) {
+            return Err(format!("App setting {key} must be boolean"));
+        }
+    }
+    let theme = object.get("theme").and_then(Value::as_str).unwrap_or_default();
+    if !matches!(theme, "system" | "dark" | "light") {
+        return Err("App setting theme is invalid".into());
+    }
+    let location = object
+        .get("sidebarServicesLocation")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if !matches!(location, "top" | "center" | "bottom") {
+        return Err("App setting sidebarServicesLocation is invalid".into());
+    }
+    if !object.get("accentColor").is_some_and(Value::is_string)
+        || !object.get("userAgentPref").is_some_and(Value::is_string)
+    {
+        return Err("App string settings are invalid".into());
+    }
+    for (key, min, max) in [
+        ("sidebarWidth", 160.0, 420.0),
+        ("iconSize", 12.0, 64.0),
+        ("grayscaleDim", 0.0, 100.0),
+        ("hibernationTimer", 0.0, 86_400.0),
+    ] {
+        let number = object
+            .get(key)
+            .and_then(Value::as_f64)
+            .ok_or_else(|| format!("App setting {key} must be numeric"))?;
+        if !(min..=max).contains(&number) {
+            return Err(format!("App setting {key} is outside its supported range"));
+        }
+    }
+    for (key, label) in [
+        ("serviceOrder", "Service"),
+        ("workspaceOrder", "Workspace"),
+    ] {
+        let values = object
+            .get(key)
+            .and_then(Value::as_array)
+            .ok_or_else(|| format!("App setting {key} must be an array"))?;
+        let ids = values
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .map(str::to_string)
+                    .ok_or_else(|| format!("App setting {key} contains a non-string id"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        validate_order_ids(&ids, label)?;
+    }
+    Ok(())
 }
 
 fn merge_app_settings_value(stored: &Value) -> Result<Value, String> {
@@ -1876,6 +2073,7 @@ fn merge_app_settings_value(stored: &Value) -> Result<Value, String> {
     for (key, setting) in stored {
         base.insert(key.clone(), setting.clone());
     }
+    validate_app_settings_value(&value)?;
     Ok(value)
 }
 
@@ -1931,6 +2129,72 @@ fn get_app_settings(app: AppHandle) -> Value {
     effective_app_settings_value(&app)
 }
 
+fn validate_order_ids(ids: &[String], label: &str) -> Result<(), String> {
+    if ids.len() > 10_000 {
+        return Err(format!("Too many {label} ids in order state"));
+    }
+    let mut seen = HashSet::with_capacity(ids.len());
+    for id in ids {
+        let id = id.trim();
+        if id.is_empty() {
+            return Err(format!("{label} order contains an empty id"));
+        }
+        if !seen.insert(id) {
+            return Err(format!("{label} order contains duplicate id: {id}"));
+        }
+    }
+    Ok(())
+}
+
+fn persist_order_setting(
+    app: &AppHandle,
+    state: &AppState,
+    key: &str,
+    label: &str,
+    ids: Vec<String>,
+) -> Result<Value, String> {
+    validate_order_ids(&ids, label)?;
+    let mut settings = read_app_settings_value(app);
+    let object = settings
+        .as_object_mut()
+        .ok_or_else(|| "Internal app settings state is invalid".to_string())?;
+    object.insert(key.to_string(), serde_json::json!(ids));
+    persist_app_settings(app, state, &settings)?;
+    Ok(settings)
+}
+
+#[tauri::command]
+fn set_service_order(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    service_ids: Vec<String>,
+) -> Result<Value, String> {
+    persist_order_setting(&app, &state, "serviceOrder", "Service", service_ids)
+}
+
+#[tauri::command]
+fn set_workspace_order(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_ids: Vec<String>,
+) -> Result<Value, String> {
+    persist_order_setting(&app, &state, "workspaceOrder", "Workspace", workspace_ids)
+}
+
+#[tauri::command]
+fn sync_services_menu(
+    app: AppHandle,
+    services: Vec<NativeServiceMenuEntry>,
+) -> Result<(), String> {
+    let service_ids: Vec<String> = services.iter().map(|service| service.id.clone()).collect();
+    validate_order_ids(&service_ids, "Native service menu")?;
+    let menu = build_native_application_menu(&app, &services)
+        .map_err(|error| format!("Unable to build native application menu: {error}"))?;
+    app.set_menu(menu)
+        .map_err(|error| format!("Unable to install native application menu: {error}"))?;
+    Ok(())
+}
+
 #[tauri::command]
 fn set_app_settings(
     app: AppHandle,
@@ -1947,6 +2211,7 @@ fn set_app_settings(
     for (key, setting) in patch {
         base.insert(key.clone(), setting.clone());
     }
+    validate_app_settings_value(&value)?;
     apply_autostart_setting(&app, &value)?;
     persist_app_settings(&app, &state, &value)?;
     Ok(value)
@@ -1971,6 +2236,20 @@ fn export_backup(
     backup::save(Path::new(&path), &document)
 }
 
+fn restore_recovery_backup_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let root = app
+        .path()
+        .app_config_dir()
+        .map_err(|error| format!("Tauridium configuration directory unavailable: {error}"))?;
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    Ok(root
+        .join("backups")
+        .join(format!("pre-restore-{stamp}.json")))
+}
+
 #[tauri::command]
 fn restore_backup(
     app: AppHandle,
@@ -1979,18 +2258,70 @@ fn restore_backup(
 ) -> Result<backup::BackupSummary, String> {
     let document = backup::load(Path::new(&path))?;
 
-    // Validate every restorable component before changing any on-disk state.
+    // Phase 1: validate and prepare the complete restore without changing persistent state.
     let app_settings = merge_app_settings_value(&document.app_settings())?;
     let local_profile = LocalProfile::from_value(document.local_profile())?;
     recipes::validate_custom_recipe_backups(document.custom_recipes())?;
+    let previous_settings = effective_app_settings_value(&app);
+    let previous_profile = state.local_profile.lock().unwrap().clone();
+    let previous_recipes = recipes::backup_custom_recipes(&app)?;
+    let restored_recipes =
+        recipes::merge_custom_recipe_backups(&previous_recipes, document.custom_recipes())?;
 
-    apply_autostart_setting(&app, &app_settings)?;
-    persist_app_settings(&app, &state, &app_settings)?;
-    save_local_profile(&app, &local_profile)?;
-    recipes::restore_custom_recipes(&app, document.custom_recipes())?;
+    // Always create a validated recovery snapshot before the first persistent mutation. If this
+    // cannot be written, abort the restore without changing any Tauridium state.
+    let recovery_path = restore_recovery_backup_path(&app)?;
+    let previous_profile_value = serde_json::to_value(previous_profile.clone())
+        .map_err(|error| format!("Unable to serialize pre-restore local profile: {error}"))?;
+    let recovery_document = backup::BackupDocument::new(
+        env!("CARGO_PKG_VERSION"),
+        previous_settings.clone(),
+        previous_profile_value,
+        previous_recipes.clone(),
+    );
+    backup::save(&recovery_path, &recovery_document)
+        .map_err(|error| format!("Unable to create pre-restore safety backup: {error}"))?;
+
+    // Phase 2: commit. Each component is atomic on its own; if any later component fails,
+    // restore every prior component from the snapshot above so a backup restore is all-or-nothing.
+    let commit = (|| -> Result<(), String> {
+        recipes::replace_custom_recipes_exact(&app, &restored_recipes)?;
+        save_local_profile(&app, &local_profile)?;
+        apply_autostart_setting(&app, &app_settings)?;
+        persist_app_settings(&app, &state, &app_settings)?;
+        Ok(())
+    })();
+
+    if let Err(error) = commit {
+        let mut rollback_errors = Vec::new();
+        if let Err(rollback) = recipes::replace_custom_recipes_exact(&app, &previous_recipes) {
+            rollback_errors.push(format!("recipes: {rollback}"));
+        }
+        if let Err(rollback) = save_local_profile(&app, &previous_profile) {
+            rollback_errors.push(format!("local profile: {rollback}"));
+        }
+        if let Err(rollback) = apply_autostart_setting(&app, &previous_settings) {
+            rollback_errors.push(format!("autostart: {rollback}"));
+        }
+        if let Err(rollback) = persist_app_settings(&app, &state, &previous_settings) {
+            rollback_errors.push(format!("app settings: {rollback}"));
+        }
+        *state.local_profile.lock().unwrap() = previous_profile;
+        if rollback_errors.is_empty() {
+            return Err(format!(
+                "Backup restore failed and the previous Tauridium state was restored: {error}"
+            ));
+        }
+        return Err(format!(
+            "Backup restore failed: {error}. Rollback also reported: {}",
+            rollback_errors.join("; ")
+        ));
+    }
+
     *state.local_profile.lock().unwrap() = local_profile;
-
-    Ok(document.summary(Path::new(&path)))
+    Ok(document
+        .summary(Path::new(&path))
+        .with_recovery_backup_path(&recovery_path))
 }
 
 fn persisted_window_state_flags() -> StateFlags {
@@ -2211,113 +2542,33 @@ fn main() {
             }
             tray.build(app)?;
 
-            // Native application menu: App / Edit / View / Services.
+            // Native application menu: App / Edit / View / Services. The Services submenu
+            // starts empty and is rebuilt from the canonical ordered service list after auth.
             {
-                let about = MenuItem::with_id(
-                    app,
-                    "about-tauridium",
-                    "About Tauridium",
-                    true,
-                    None::<&str>,
-                )?;
-                let app_sub = Submenu::with_items(
-                    app,
-                    "Tauridium",
-                    true,
-                    &[
-                        &about,
-                        &PredefinedMenuItem::separator(app)?,
-                        &PredefinedMenuItem::hide(app, None)?,
-                        &PredefinedMenuItem::hide_others(app, None)?,
-                        &PredefinedMenuItem::show_all(app, None)?,
-                        &PredefinedMenuItem::separator(app)?,
-                        &PredefinedMenuItem::quit(app, None)?,
-                    ],
-                )?;
-                let edit = Submenu::with_items(
-                    app,
-                    "Edit",
-                    true,
-                    &[
-                        &PredefinedMenuItem::undo(app, None)?,
-                        &PredefinedMenuItem::redo(app, None)?,
-                        &PredefinedMenuItem::separator(app)?,
-                        &PredefinedMenuItem::cut(app, None)?,
-                        &PredefinedMenuItem::copy(app, None)?,
-                        &PredefinedMenuItem::paste(app, None)?,
-                        &PredefinedMenuItem::select_all(app, None)?,
-                    ],
-                )?;
-                let reload_svc = MenuItem::with_id(
-                    app,
-                    "reload-service",
-                    "Reload Service",
-                    true,
-                    Some("CmdOrCtrl+R"),
-                )?;
-                let reload_app_item = MenuItem::with_id(
-                    app,
-                    "reload-app",
-                    "Reload Tauridium",
-                    true,
-                    Some("CmdOrCtrl+Shift+R"),
-                )?;
-                let devtools = MenuItem::with_id(
-                    app,
-                    "toggle-devtools",
-                    "Toggle Developer Tools",
-                    true,
-                    Some("CmdOrCtrl+Alt+I"),
-                )?;
-                let view = Submenu::with_items(
-                    app,
-                    "View",
-                    true,
-                    &[
-                        &reload_svc,
-                        &reload_app_item,
-                        &PredefinedMenuItem::separator(app)?,
-                        &devtools,
-                    ],
-                )?;
-                // Services submenu: Command+1..9 switches services (native accelerators work
-                // even when a service webview has focus, unlike a JavaScript keydown handler).
-                let mut goto_items: Vec<MenuItem<Wry>> = Vec::new();
-                for i in 1..=9u32 {
-                    goto_items.push(MenuItem::with_id(
-                        app,
-                        format!("goto-svc-{i}"),
-                        format!("Service {i}"),
-                        true,
-                        Some(format!("CmdOrCtrl+{i}")),
-                    )?);
-                }
-                let goto_refs: Vec<&dyn IsMenuItem<Wry>> = goto_items
-                    .iter()
-                    .map(|m| m as &dyn IsMenuItem<Wry>)
-                    .collect();
-                let services_menu = Submenu::with_items(app, "Services", true, &goto_refs)?;
-                let menu = Menu::with_items(app, &[&app_sub, &edit, &view, &services_menu])?;
-                app.set_menu(menu)?;
+                app.set_menu(build_native_application_menu(app.handle(), &[])?)?;
                 app.on_menu_event(|app, event| {
                     let id = event.id.as_ref();
                     match id {
-                        "about-tauridium" => {
+                        "open-settings" => {
                             let state = app.state::<AppState>();
                             hide_service_webviews(app, &state);
                             show_main(app);
-                            let _ = app.emit("open-about", ());
+                            let _ = app.emit("open-settings", ());
+                        }
+                        "open-add-service" => {
+                            let state = app.state::<AppState>();
+                            hide_service_webviews(app, &state);
+                            show_main(app);
+                            let _ = app.emit("open-add-service", ());
                         }
                         "toggle-devtools" => toggle_devtools(app),
                         "reload-service" => reload_active_service(app),
                         "reload-app" => reload_app(app),
                         _ => {
-                            // goto-svc-N asks the shell to display the Nth visible service.
-                            if let Some(n) = id
-                                .strip_prefix("goto-svc-")
-                                .and_then(|s| s.parse::<usize>().ok())
-                            {
-                                let _ = app.emit("select-index", n);
+                            if let Some(service_id) = id.strip_prefix("goto-service:") {
+                                if !service_id.is_empty() {
+                                    let _ = app.emit("select-service-id", service_id.to_string());
+                                }
                             }
                         }
                     }
@@ -2373,6 +2624,9 @@ fn main() {
             update_workspace,
             delete_workspace,
             get_app_settings,
+            set_service_order,
+            set_workspace_order,
+            sync_services_menu,
             set_app_settings,
             export_backup,
             restore_backup,
@@ -2404,6 +2658,14 @@ mod tests {
         assert!(flags.contains(StateFlags::FULLSCREEN));
         assert!(!flags.contains(StateFlags::VISIBLE));
         assert!(!flags.contains(StateFlags::DECORATIONS));
+    }
+
+    #[test]
+    fn canonical_order_validation_rejects_empty_duplicate_and_excessive_ids() {
+        assert!(validate_order_ids(&["a".into(), "b".into()], "Service").is_ok());
+        assert!(validate_order_ids(&["".into()], "Service").is_err());
+        assert!(validate_order_ids(&["a".into(), "a".into()], "Service").is_err());
+        assert!(validate_order_ids(&vec!["id".into(); 10_001], "Service").is_err());
     }
 
     #[test]
