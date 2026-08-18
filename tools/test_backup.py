@@ -139,10 +139,10 @@ class BackupWorkflowTests(unittest.TestCase):
     save = self.backup.split("pub(crate) fn save", 1)[1].split("pub(crate) fn load", 1)[0]
     self.assertIn(".create_new(true)", save)
     self.assertIn("file.sync_all()", save)
-    self.assertIn("let verified = load(&staging)", save)
+    self.assertIn("let verified =\n            load(&staging)", save)
     self.assertIn("verified.payload_digest() != document.payload_digest()", save)
     self.assertIn("replace_file(&staging, path)", save)
-    self.assertLess(save.index("let verified = load(&staging)"), save.index("replace_file(&staging, path)"))
+    self.assertLess(save.index("let verified =\n            load(&staging)"), save.index("replace_file(&staging, path)"))
     self.assertIn("let _ = fs::remove_file(&staging);", save)
 
   def test_interrupted_recipe_transaction_has_startup_recovery(self) -> None:

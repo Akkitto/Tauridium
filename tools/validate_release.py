@@ -518,7 +518,7 @@ def main() -> int:
     'Backup integrity check failed; the file is corrupted or was modified',
     'replace_file(&staging, path)',
     'file.sync_all()',
-    'let verified = load(&staging)',
+    'let verified =\n            load(&staging)',
     'MAX_BACKUP_BYTES',
     'with_recovery_backup_path',
   ):

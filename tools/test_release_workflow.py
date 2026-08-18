@@ -118,6 +118,48 @@ class ReleaseWorkflowTests(unittest.TestCase):
       '    let parsed =\n        Url::parse(&url).map_err(|error| format!("Invalid external URL: {error}"))?;',
       main,
     )
+    backup = (ROOT / "src-tauri/src/backup.rs").read_text(encoding="utf-8")
+    local_profile = (ROOT / "src-tauri/src/local_profile.rs").read_text(encoding="utf-8")
+    self.assertIn(
+      '        let verified =\n            load(&staging).map_err(|error| format!("Backup write verification failed: {error}"))?;',
+      backup,
+    )
+    self.assertIn(
+      '    Ok(path.with_file_name(format!(".{name}.tauridium-tmp-{}", std::process::id())))',
+      backup,
+    )
+    self.assertIn(
+      '        assert!(\n            !migrated\n                .summary(Path::new("legacy.json"))\n                .integrity_verified\n        );',
+      backup,
+    )
+    self.assertIn(
+      '        let root =\n            std::env::temp_dir().join(format!("tauridium-backup-size-test-{}", std::process::id()));',
+      backup,
+    )
+    self.assertIn(
+      '        let summary = sample().summary(path).with_recovery_backup_path(recovery);',
+      backup,
+    )
+    self.assertIn(
+      '                return Err(format!(\n                    "Backup contains duplicate local workspace id: {id}"\n                ));',
+      local_profile,
+    )
+    self.assertIn(
+      '    let raw = if raw.is_empty() {\n        service.id.trim()\n    } else {\n        raw\n    };',
+      main,
+    )
+    self.assertIn(
+      '    let theme = object\n        .get("theme")\n        .and_then(Value::as_str)\n        .unwrap_or_default();',
+      main,
+    )
+    self.assertIn(
+      '    for (key, label) in [("serviceOrder", "Service"), ("workspaceOrder", "Workspace")] {',
+      main,
+    )
+    self.assertIn(
+      'fn sync_services_menu(app: AppHandle, services: Vec<NativeServiceMenuEntry>) -> Result<(), String> {',
+      main,
+    )
 
   def test_download_notification_uses_valid_quoted_format_string(self) -> None:
     main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
