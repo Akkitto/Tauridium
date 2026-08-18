@@ -845,8 +845,7 @@ fn open_external(url: &str) {
 
 #[tauri::command]
 fn open_external_url(url: String) -> Result<(), String> {
-    let parsed =
-        Url::parse(&url).map_err(|error| format!("Invalid external URL: {error}"))?;
+    let parsed = Url::parse(&url).map_err(|error| format!("Invalid external URL: {error}"))?;
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err("External links must use HTTP or HTTPS".to_string());
     }
