@@ -30,16 +30,7 @@ impl Default for LocalProfile {
 }
 
 impl LocalProfile {
-    pub(crate) fn load(path: &Path) -> Result<Self, String> {
-        let text = match read_persistent(path) {
-            Ok(text) => text,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(Self::default())
-            }
-            Err(error) => return Err(format!("Unable to read local profile: {error}")),
-        };
-        let mut profile: Self = serde_json::from_str(&text)
-            .map_err(|error| format!("Unable to parse local profile: {error}"))?;
+    fn validate_version(mut profile: Self) -> Result<Self, String> {
         if profile.version == 0 {
             profile.version = PROFILE_VERSION;
         }
@@ -50,6 +41,25 @@ impl LocalProfile {
             ));
         }
         Ok(profile)
+    }
+
+    pub(crate) fn from_value(value: Value) -> Result<Self, String> {
+        let profile: Self = serde_json::from_value(value)
+            .map_err(|error| format!("Unable to parse local profile: {error}"))?;
+        Self::validate_version(profile)
+    }
+
+    pub(crate) fn load(path: &Path) -> Result<Self, String> {
+        let text = match read_persistent(path) {
+            Ok(text) => text,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(Self::default())
+            }
+            Err(error) => return Err(format!("Unable to read local profile: {error}")),
+        };
+        let profile: Self = serde_json::from_str(&text)
+            .map_err(|error| format!("Unable to parse local profile: {error}"))?;
+        Self::validate_version(profile)
     }
 
     pub(crate) fn save(&self, path: &Path) -> Result<(), String> {
@@ -476,6 +486,22 @@ mod tests {
             assert_eq!(&id[14..15], "4");
             assert!(matches!(&id[19..20], "8" | "9" | "a" | "b"));
         }
+    }
+
+    #[test]
+    fn backup_value_reuses_profile_version_validation() {
+        assert!(LocalProfile::from_value(json!({
+            "version": PROFILE_VERSION,
+            "services": [],
+            "workspaces": []
+        }))
+        .is_ok());
+        assert!(LocalProfile::from_value(json!({
+            "version": PROFILE_VERSION + 1,
+            "services": [],
+            "workspaces": []
+        }))
+        .is_err());
     }
 
     #[test]

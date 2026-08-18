@@ -257,3 +257,18 @@ export function setAppSettings(
   return invoke("set_app_settings", { patch });
 }
 
+export interface BackupSummary {
+  path: string;
+  customRecipeCount: number;
+  serviceCount: number;
+  workspaceCount: number;
+}
+
+export function exportBackup(path: string): Promise<BackupSummary> {
+  return invoke("export_backup", { path });
+}
+
+export function restoreBackup(path: string): Promise<BackupSummary> {
+  return invoke("restore_backup", { path });
+}
+

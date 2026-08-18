@@ -12,7 +12,7 @@
     looksLikeWebsite,
   } from "./lib/ui";
   import { appVersion, checkForUpdate, installUpdate, type Update } from "./lib/updater";
-  import { ask, open } from "@tauri-apps/plugin-dialog";
+  import { ask, open, save as saveDialog } from "@tauri-apps/plugin-dialog";
 
   // window.confirm() does not work in WKWebView (wry does not implement the JavaScript panel).
   // Use the native dialog provided by the dialog plugin instead.
@@ -47,6 +47,8 @@
     getAppSettings,
     setAppSettings,
     setSidebarWidth,
+    exportBackup,
+    restoreBackup,
     DEFAULT_SERVER,
     type MeUser,
     type Service,
@@ -55,6 +57,7 @@
     type RecipeDraft,
     type RecipeStorageInfo,
     type AppSettings,
+    type BackupSummary,
   } from "./lib/api";
 
   let server = $state(DEFAULT_SERVER);
@@ -107,6 +110,10 @@
   let updChecking = $state(false);
   let updInstalling = $state(false);
   let updStatus = $state("");
+
+  // Portable backup/export state.
+  let backupBusy = $state(false);
+  let backupStatus = $state("");
 
   let appSettings = $state<AppSettings>({
     autostart: false,
@@ -217,10 +224,7 @@
       if (s) selectService(s);
     });
     // The native About menu opens the same deterministic in-app About section on every OS.
-    listen("open-about", () => {
-      settingsTab = "about";
-      view = "appSettings";
-    });
+    listen("open-about", openAbout);
     try {
       appSettings = await getAppSettings();
       // Snap iconSize to a valid level for compatibility with older arbitrary values.
@@ -858,6 +862,69 @@
     hideServices();
   }
 
+  function openAbout() {
+    error = null;
+    hideServices().catch(() => {});
+    settingsTab = "about";
+    view = "appSettings";
+  }
+
+  function backupFileName(): string {
+    return `tauridium-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  }
+
+  function backupSummaryText(action: string, summary: BackupSummary): string {
+    return `${action}: ${summary.customRecipeCount} custom recipes, ${summary.serviceCount} local services, ${summary.workspaceCount} local workspaces.`;
+  }
+
+  async function doExportBackup() {
+    backupBusy = true;
+    backupStatus = "";
+    error = null;
+    try {
+      const path = await saveDialog({
+        title: "Export Tauridium backup",
+        defaultPath: backupFileName(),
+        filters: [{ name: "Tauridium backup", extensions: ["json"] }],
+      });
+      if (!path) return;
+      const summary = await exportBackup(path);
+      backupStatus = backupSummaryText("Backup exported", summary);
+    } catch (err) {
+      error = `Backup export failed: ${err}`;
+    } finally {
+      backupBusy = false;
+    }
+  }
+
+  async function doRestoreBackup() {
+    backupStatus = "";
+    error = null;
+    try {
+      const selected = await open({
+        directory: false,
+        multiple: false,
+        title: "Restore Tauridium backup",
+        filters: [{ name: "Tauridium backup", extensions: ["json"] }],
+      });
+      const path = Array.isArray(selected) ? selected[0] : selected;
+      if (!path) return;
+      const confirmed = await confirmAsk(
+        "Restore this Tauridium backup? Local app settings and local services/workspaces will be replaced. Custom recipes with matching ids will be overwritten; other custom recipes are retained. Backups can contain sensitive local service configuration such as proxy credentials.",
+      );
+      if (!confirmed) return;
+      backupBusy = true;
+      await closeServices();
+      const summary = await restoreBackup(path);
+      backupStatus = backupSummaryText("Backup restored", summary);
+      window.setTimeout(() => window.location.reload(), 150);
+    } catch (err) {
+      error = `Backup restore failed: ${err}`;
+    } finally {
+      backupBusy = false;
+    }
+  }
+
   async function checkUpdates(silent = false) {
     updChecking = true;
     if (!silent) updStatus = "";
@@ -1295,7 +1362,7 @@
               <button
                 class="tab"
                 class:on={settingsTab === id}
-                onclick={() => (settingsTab = id as Tab)}>{label}</button>
+                onclick={() => (id === "about" ? openAbout() : (settingsTab = id as Tab))}>{label}</button>
             {/each}
           </div>
 
@@ -1436,6 +1503,19 @@
                 />
               </label>
               <p class="desc">Override the browser identity sent to services. Applies to newly opened services (restart to apply everywhere).</p>
+            </div>
+            <div class="set-title">Backup</div>
+            <div class="setrow">
+              <div class="row-toggle">
+                <span>Local Tauridium data</span>
+                <span class="recipe-actions">
+                  <button class="primary sm" disabled={backupBusy} onclick={doExportBackup}>Export backup…</button>
+                  <button class="secondary sm" disabled={backupBusy} onclick={doRestoreBackup}>Restore backup…</button>
+                </span>
+              </div>
+              <p class="desc">Exports app settings, local services/workspaces, and complete custom recipes to one portable JSON file. Ferdium login tokens, website cookies/storage, and remote caches are excluded.</p>
+              <p class="sub">Backups can contain sensitive local service configuration such as proxy credentials. Store them accordingly.</p>
+              {#if backupStatus}<p class="desc">{backupStatus}</p>{/if}
             </div>
             {#if me.local}
               <div class="set-title">Account</div>

@@ -39,6 +39,17 @@ pub(crate) struct RecipeStorageInfo {
     pub recipes_dir: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CustomRecipeBackup {
+    pub id: String,
+    pub package: Value,
+    #[serde(default)]
+    pub icon_svg: String,
+    #[serde(default)]
+    pub webview_js: String,
+}
+
 fn generic_icon(label: &str) -> String {
     let text = label.chars().next().unwrap_or('T');
     format!(
@@ -151,6 +162,89 @@ pub(crate) fn custom_recipes_dir(app: &AppHandle) -> Result<PathBuf, String> {
         .app_config_dir()
         .map(|dir| dir.join(CUSTOM_RECIPE_DIR))
         .map_err(|error| format!("Custom recipe configuration directory unavailable: {error}"))
+}
+
+pub(crate) fn backup_custom_recipes(app: &AppHandle) -> Result<Vec<CustomRecipeBackup>, String> {
+    let root = custom_recipes_dir(app)?;
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut backups = Vec::new();
+    let entries = fs::read_dir(&root)
+        .map_err(|error| format!("Unable to read custom recipe directory: {error}"))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("Unable to read custom recipe entry: {error}"))?;
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("Unable to inspect custom recipe entry: {error}"))?;
+        if !file_type.is_dir() {
+            continue;
+        }
+        let id = entry
+            .file_name()
+            .to_str()
+            .ok_or_else(|| "Custom recipe folder name is not valid UTF-8".to_string())?
+            .to_ascii_lowercase();
+        validate_recipe_id(&id)?;
+        if is_bundled_recipe(&id) {
+            return Err(format!("Custom recipe folder uses a reserved Tauridium id: {id}"));
+        }
+        let mut package = read_package(&entry.path().join(PACKAGE_FILE))?;
+        validate_package(&package)?;
+        package["id"] = Value::String(id.clone());
+        let icon_svg = fs::read_to_string(entry.path().join(ICON_FILE)).unwrap_or_default();
+        let webview_js = fs::read_to_string(entry.path().join(WEBVIEW_FILE)).unwrap_or_default();
+        backups.push(CustomRecipeBackup {
+            id,
+            package,
+            icon_svg,
+            webview_js,
+        });
+    }
+    backups.sort_by(|left, right| left.id.cmp(&right.id));
+    Ok(backups)
+}
+
+fn prepared_backup_recipes(
+    backups: &[CustomRecipeBackup],
+) -> Result<Vec<(String, Value, String, String)>, String> {
+    let mut prepared = Vec::with_capacity(backups.len());
+    for backup in backups {
+        let id = backup.id.trim().to_ascii_lowercase();
+        validate_recipe_id(&id)?;
+        if is_bundled_recipe(&id) {
+            return Err(format!("Backup recipe id is reserved by Tauridium: {id}"));
+        }
+        let mut package = backup.package.clone();
+        validate_package(&package)?;
+        package["id"] = Value::String(id.clone());
+        prepared.push((
+            id,
+            package,
+            backup.icon_svg.clone(),
+            backup.webview_js.clone(),
+        ));
+    }
+    Ok(prepared)
+}
+
+pub(crate) fn validate_custom_recipe_backups(
+    backups: &[CustomRecipeBackup],
+) -> Result<(), String> {
+    prepared_backup_recipes(backups).map(|_| ())
+}
+
+pub(crate) fn restore_custom_recipes(
+    app: &AppHandle,
+    backups: &[CustomRecipeBackup],
+) -> Result<usize, String> {
+    let prepared = prepared_backup_recipes(backups)?;
+    let root = custom_recipes_dir(app)?;
+    for (id, package, icon_svg, webview_js) in &prepared {
+        save_recipe_files(&root, id, package, icon_svg, webview_js)?;
+    }
+    Ok(prepared.len())
 }
 
 pub(crate) fn storage_info(app: &AppHandle) -> Result<RecipeStorageInfo, String> {
@@ -541,6 +635,34 @@ mod tests {
             "console.log('ok');"
         );
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn backup_recipe_preflight_canonicalizes_package_identity() {
+        let backups = vec![CustomRecipeBackup {
+            id: "local-ai".into(),
+            package: json!({
+                "id": "stale-id",
+                "name": "Local AI",
+                "config": { "serviceURL": "https://example.com" }
+            }),
+            icon_svg: String::new(),
+            webview_js: String::new(),
+        }];
+        let prepared = prepared_backup_recipes(&backups).unwrap();
+        assert_eq!(prepared[0].0, "local-ai");
+        assert_eq!(prepared[0].1["id"], "local-ai");
+    }
+
+    #[test]
+    fn backup_recipe_preflight_rejects_reserved_ids() {
+        let backups = vec![CustomRecipeBackup {
+            id: "nanogpt".into(),
+            package: bundled_recipe("nanogpt").unwrap(),
+            icon_svg: String::new(),
+            webview_js: String::new(),
+        }];
+        assert!(validate_custom_recipe_backups(&backups).is_err());
     }
 
     #[test]

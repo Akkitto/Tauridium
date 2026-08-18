@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod backup;
 mod local_profile;
 mod recipes;
 
@@ -1248,9 +1249,7 @@ async fn preload_service(
     Ok(())
 }
 
-// Hide all service webviews so the shell can display a full-screen panel.
-#[tauri::command]
-fn hide_all_services(app: AppHandle, state: State<'_, AppState>) {
+fn hide_service_webviews(app: &AppHandle, state: &AppState) {
     let created: Vec<String> = state.created.lock().unwrap().iter().cloned().collect();
     for sid in created {
         if let Some(wv) = app.get_webview(&format!("svc-{sid}")) {
@@ -1258,6 +1257,12 @@ fn hide_all_services(app: AppHandle, state: State<'_, AppState>) {
         }
     }
     *state.active.lock().unwrap() = None;
+}
+
+// Hide all service webviews so the shell can display a full-screen panel.
+#[tauri::command]
+fn hide_all_services(app: AppHandle, state: State<'_, AppState>) {
+    hide_service_webviews(&app, &state);
 }
 
 // Close ONE service webview so it can be recreated with new parameters.
@@ -1827,8 +1832,8 @@ fn app_settings_path(app: &AppHandle) -> Option<PathBuf> {
         .map(|d| d.join("app_settings.json"))
 }
 
-fn read_app_settings_value(app: &AppHandle) -> Value {
-    let mut v = serde_json::json!({
+fn default_app_settings_value() -> Value {
+    serde_json::json!({
         "autostart": false,
         "startMinimized": false,
         "theme": "system",
@@ -1846,31 +1851,77 @@ fn read_app_settings_value(app: &AppHandle) -> Value {
         "sidebarServicesLocation": "top",
         "hibernationTimer": 0,
         "preloadServices": true
-    });
-    if let Some(p) = app_settings_path(app) {
-        if let Ok(text) = std::fs::read_to_string(&p) {
-            if let Ok(stored) = serde_json::from_str::<Value>(&text) {
-                if let (Some(base), Some(obj)) = (v.as_object_mut(), stored.as_object()) {
-                    for (k, val) in obj {
-                        base.insert(k.clone(), val.clone());
-                    }
-                }
-            }
+    })
+}
+
+fn merge_app_settings_value(stored: &Value) -> Result<Value, String> {
+    let stored = stored
+        .as_object()
+        .ok_or_else(|| "App settings must be a JSON object".to_string())?;
+    let mut value = default_app_settings_value();
+    let base = value
+        .as_object_mut()
+        .ok_or_else(|| "Internal app settings defaults are invalid".to_string())?;
+    for (key, setting) in stored {
+        base.insert(key.clone(), setting.clone());
+    }
+    Ok(value)
+}
+
+fn read_app_settings_value(app: &AppHandle) -> Value {
+    let stored = app_settings_path(app)
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok());
+    stored
+        .as_ref()
+        .and_then(|value| merge_app_settings_value(value).ok())
+        .unwrap_or_else(default_app_settings_value)
+}
+
+fn effective_app_settings_value(app: &AppHandle) -> Value {
+    let mut value = read_app_settings_value(app);
+    if let Ok(enabled) = app.autolaunch().is_enabled() {
+        if let Some(object) = value.as_object_mut() {
+            object.insert("autostart".into(), Value::Bool(enabled));
         }
     }
-    v
+    value
+}
+
+fn apply_autostart_setting(app: &AppHandle, settings: &Value) -> Result<(), String> {
+    let Some(enabled) = settings.get("autostart").and_then(Value::as_bool) else {
+        return Ok(());
+    };
+    let result = if enabled {
+        app.autolaunch().enable()
+    } else {
+        app.autolaunch().disable()
+    };
+    result.map_err(|error| format!("Unable to update autostart: {error}"))
+}
+
+fn persist_app_settings(
+    app: &AppHandle,
+    state: &AppState,
+    settings: &Value,
+) -> Result<(), String> {
+    if let Some(path) = app_settings_path(app) {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)
+                .map_err(|error| format!("Unable to create settings directory: {error}"))?;
+        }
+        let text = serde_json::to_string_pretty(settings)
+            .map_err(|error| format!("Unable to serialize app settings: {error}"))?;
+        write_atomic(&path, &format!("{text}\n"))
+            .map_err(|error| format!("Unable to persist app settings: {error}"))?;
+    }
+    *state.settings.lock().unwrap() = settings.clone();
+    Ok(())
 }
 
 #[tauri::command]
 fn get_app_settings(app: AppHandle) -> Value {
-    let mut v = read_app_settings_value(&app);
-    // Reflect the actual autostart state managed by the plugin.
-    if let Ok(enabled) = app.autolaunch().is_enabled() {
-        if let Some(o) = v.as_object_mut() {
-            o.insert("autostart".into(), Value::Bool(enabled));
-        }
-    }
-    v
+    effective_app_settings_value(&app)
 }
 
 #[tauri::command]
@@ -1879,30 +1930,60 @@ fn set_app_settings(
     state: State<'_, AppState>,
     patch: Value,
 ) -> Result<Value, String> {
-    // Side effect: apply autostart through the plugin.
-    if let Some(enabled) = patch.get("autostart").and_then(Value::as_bool) {
-        let res = if enabled {
-            app.autolaunch().enable()
-        } else {
-            app.autolaunch().disable()
-        };
-        res.map_err(|e| format!("Autostart : {e}"))?;
+    let patch = patch
+        .as_object()
+        .ok_or_else(|| "App settings patch must be a JSON object".to_string())?;
+    let mut value = read_app_settings_value(&app);
+    let base = value
+        .as_object_mut()
+        .ok_or_else(|| "Internal app settings state is invalid".to_string())?;
+    for (key, setting) in patch {
+        base.insert(key.clone(), setting.clone());
     }
-    // Fusionne + persiste.
-    let mut v = read_app_settings_value(&app);
-    if let (Some(base), Some(obj)) = (v.as_object_mut(), patch.as_object()) {
-        for (k, val) in obj {
-            base.insert(k.clone(), val.clone());
-        }
-    }
-    if let Some(p) = app_settings_path(&app) {
-        if let Some(dir) = p.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        let _ = write_atomic(&p, &v.to_string());
-    }
-    *state.settings.lock().unwrap() = v.clone();
-    Ok(v)
+    apply_autostart_setting(&app, &value)?;
+    persist_app_settings(&app, &state, &value)?;
+    Ok(value)
+}
+
+#[tauri::command]
+fn export_backup(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<backup::BackupSummary, String> {
+    let app_settings = effective_app_settings_value(&app);
+    let local_profile = serde_json::to_value(state.local_profile.lock().unwrap().clone())
+        .map_err(|error| format!("Unable to serialize local profile for backup: {error}"))?;
+    let custom_recipes = recipes::backup_custom_recipes(&app)?;
+    let document = backup::BackupDocument::new(
+        env!("CARGO_PKG_VERSION"),
+        app_settings,
+        local_profile,
+        custom_recipes,
+    );
+    backup::save(Path::new(&path), &document)
+}
+
+#[tauri::command]
+fn restore_backup(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<backup::BackupSummary, String> {
+    let document = backup::load(Path::new(&path))?;
+
+    // Validate every restorable component before changing any on-disk state.
+    let app_settings = merge_app_settings_value(&document.app_settings())?;
+    let local_profile = LocalProfile::from_value(document.local_profile())?;
+    recipes::validate_custom_recipe_backups(document.custom_recipes())?;
+
+    apply_autostart_setting(&app, &app_settings)?;
+    persist_app_settings(&app, &state, &app_settings)?;
+    save_local_profile(&app, &local_profile)?;
+    recipes::restore_custom_recipes(&app, document.custom_recipes())?;
+    *state.local_profile.lock().unwrap() = local_profile;
+
+    Ok(document.summary(Path::new(&path)))
 }
 
 fn show_main(app: &AppHandle) {
@@ -2182,6 +2263,8 @@ fn main() {
                     let id = event.id.as_ref();
                     match id {
                         "about-tauridium" => {
+                            let state = app.state::<AppState>();
+                            hide_service_webviews(app, &state);
                             show_main(app);
                             let _ = app.emit("open-about", ());
                         }
@@ -2250,7 +2333,9 @@ fn main() {
             update_workspace,
             delete_workspace,
             get_app_settings,
-            set_app_settings
+            set_app_settings,
+            export_backup,
+            restore_backup
         ])
         .build(tauri::generate_context!())
         .expect("failed to launch the Tauri application")
