@@ -12,6 +12,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.14] - 2026-08-18
+
+### Added
+- Persist and restore the main Tauridium window's normal size, screen position, maximized state, and fullscreen state across tray hides and complete application restarts.
+- Store window state in `window-state.json` under Tauridium's OS application-config directory using the official Tauri window-state plugin.
+
+### Fixed
+- Save the current main-window state immediately before close-to-tray, tray-toggle hiding, and tray Quit so reopening reproduces the last visible window geometry reliably.
+- Restore persisted geometry before showing Tauridium again from the tray. Visibility itself is intentionally not persisted, keeping the existing start-minimized setting authoritative.
+- Scope persisted state to the main window only and rely on Tauri's monitor-aware restore behavior so stale coordinates from a removed monitor do not strand Tauridium off-screen.
+
+### Tests
+- Added regressions for the pinned window-state dependency, persisted state flags, main-window-only filtering, close-to-tray saves, tray Quit saves, and restore-before-show ordering.
+
 ## [0.3.13] - 2026-08-18
 
 ### Fixed
