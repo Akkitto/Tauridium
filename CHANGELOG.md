@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.3.16] - 2026-08-18
+
+### Changed
+
+- Rebuilt Settings → Services around the actual configured service list, with reliable names/fallback labels, live counts, service metadata, direct settings access, and explicit reorder controls.
+- Rebuilt the native Services menu from the same canonical ordered service list: it now shows the actual service names/count, has no phantom numbered entries, routes clicks by stable service id, and reserves `Ctrl/Cmd+1…9` for the first nine services only.
+- Removed the sidebar Add Service and Settings buttons to dedicate more vertical space to services. Add Service and Settings now live in the Tauridium application menu; Settings reopens on the previously selected Settings section.
+- Refined workspace and Settings tab styling into compact, rounded, scrollable controls while keeping native application-menu behavior intact.
+
+### Fixed
+
+- Made the sidebar service list dynamically scroll only when its contents exceed the available window height; larger windows continue to show the complete list without unnecessary scrolling.
+- Replaced best-effort multi-request service reordering with one Tauridium-owned canonical order persisted atomically in application settings. Workspace order now uses the same verified persistence model.
+- Reconcile saved order state against the actual service/workspace ids after load, creation, deletion, and workspace refresh so stale ids are removed and new items are appended deterministically.
+- Preserve hidden service slots when reordering inside a filtered workspace so workspace/filter views cannot corrupt the global order.
+
+### Backup reliability
+
+- Upgraded portable backups to schema 2 with SHA-256 payload integrity metadata while retaining migration support for schema-1 backups and rejecting unsupported future schemas.
+- Validate app settings, local-profile ids/workspace membership, and every custom recipe before the first restore mutation. Duplicate ids and broken workspace references are rejected.
+- Restore custom recipes through staging/rollback directories and retain unrelated existing recipes while replacing matching backup ids.
+- Create an automatic integrity-protected pre-restore recovery backup before any persistent mutation; restore aborts if that safety snapshot cannot be written.
+- Roll back recipes, local profile, autostart, app settings, and in-memory profile state if a later restore component fails.
+- Stage every backup beside its destination, flush it to durable storage, parse it back, re-run schema/SHA-256 validation, and only then atomically replace any existing backup; failed verification leaves the previous backup untouched.
+- Keep backup writes size-limited and private (`0600`) on Unix; continue excluding session credentials, website storage, remote caches, and machine-specific monitor geometry.
+
+### Tests
+
+- Added ordering/sidebar regressions for canonical persistence, filtered drag/drop, dynamic scrolling, service naming, Tauridium menu actions, and last-Settings-tab behavior.
+- Expanded backup quality gates for schema migration, SHA-256 integrity, tamper detection, unsupported schemas, oversized files, structural validation, duplicate recipes, staged restore, recovery snapshots, and all-component rollback.
+
 ## [0.3.15] - 2026-08-18
 
 ### Fixed
