@@ -300,6 +300,7 @@ def main() -> int:
     '"about-tauridium"',
     '"About Tauridium"',
     'app.emit("open-about", ())',
+    'hide_service_webviews(app, &state);',
   ):
     if marker not in main_rs:
       fail(f"native About action is incomplete: {marker}")
@@ -310,6 +311,7 @@ def main() -> int:
   app = read("src/App.svelte")
   local_profile = read("src-tauri/src/local_profile.rs")
   recipes_rs = read("src-tauri/src/recipes.rs")
+  backup_rs = read("src-tauri/src/backup.rs")
 
   required_backend = (
     "start_local_session",
@@ -326,6 +328,8 @@ def main() -> int:
     "create_workspace",
     "update_workspace",
     "delete_workspace",
+    "export_backup",
+    "restore_backup",
   )
   handler = main_rs.split("tauri::generate_handler![", 1)[-1].split("]", 1)[0]
   for command in required_backend:
@@ -341,7 +345,9 @@ def main() -> int:
   if "Use Tauridium without an account" not in app:
     fail("login UI does not expose accountless mode")
   for marker in (
-    'listen("open-about"',
+    'listen("open-about", openAbout)',
+    'function openAbout()',
+    'hideServices().catch',
     'settingsTab = "about"',
     '["about", "About"]',
     '{:else if settingsTab === "about"}',
@@ -387,6 +393,32 @@ def main() -> int:
   ):
     if marker not in api_ts:
       fail(f"frontend recipe API is missing: {marker}")
+
+  for marker in (
+    'invoke("export_backup", { path })',
+    'invoke("restore_backup", { path })',
+  ):
+    if marker not in api_ts:
+      fail(f"frontend backup API is missing: {marker}")
+  for marker in (
+    'const BACKUP_FORMAT: &str = "tauridium-backup"',
+    'contains_sensitive_data: true',
+    '"ferdiumSessionCredentials"',
+    '"websiteCookiesAndStorage"',
+    '"remoteRecipeCache"',
+    'write_atomic(path',
+    'MAX_BACKUP_BYTES',
+  ):
+    if marker not in backup_rs:
+      fail(f"portable backup implementation is missing: {marker}")
+  for marker in (
+    'Export backup…',
+    'Restore backup…',
+    'tauridium-backup-',
+    'Backups can contain sensitive local service configuration',
+  ):
+    if marker not in app:
+      fail(f"backup UI is missing: {marker}")
 
   ci = read(".github/workflows/ci.yml")
   release_workflow = read(".github/workflows/release.yml")

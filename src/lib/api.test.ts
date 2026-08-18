@@ -121,3 +121,26 @@ describe("local recipe commands", () => {
     });
   });
 });
+
+describe("backup commands", () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    mocks.invoke.mockResolvedValue(undefined);
+  });
+
+  it("exports a backup to the selected path", async () => {
+    const { exportBackup } = await import("./api");
+    await exportBackup("C:\\Backups\\tauridium-backup.json");
+    expect(mocks.invoke).toHaveBeenCalledWith("export_backup", {
+      path: "C:\\Backups\\tauridium-backup.json",
+    });
+  });
+
+  it("restores a backup from the selected path", async () => {
+    const { restoreBackup } = await import("./api");
+    await restoreBackup("/home/example/tauridium-backup.json");
+    expect(mocks.invoke).toHaveBeenCalledWith("restore_backup", {
+      path: "/home/example/tauridium-backup.json",
+    });
+  });
+});
