@@ -7,7 +7,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$InitVersion = "0.3.17"
+$InitVersion = "0.3.18"
 $Root = Split-Path -Parent $PSScriptRoot
 $VsConfig = Join-Path $Root ".vsconfig"
 
@@ -735,16 +735,12 @@ try {
       }
     }
 
-    Write-Host "+ rustup.exe default stable-msvc"
-    & rustup.exe default stable-msvc
+    Write-Host "+ rustup.exe toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy"
+    & rustup.exe toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
     if ($LASTEXITCODE -ne 0) {
-      throw ("rustup.exe default stable-msvc failed with exit code {0}" -f $LASTEXITCODE)
+      throw ("rustup.exe toolchain install 1.97.1 failed with exit code {0}" -f $LASTEXITCODE)
     }
-    Write-Host "+ rustup.exe component add rustfmt clippy"
-    & rustup.exe component add rustfmt clippy
-    if ($LASTEXITCODE -ne 0) {
-      throw ("rustup.exe component add rustfmt clippy failed with exit code {0}" -f $LASTEXITCODE)
-    }
+    Write-Host "+ Rust toolchain: pinned 1.97.1 with rustfmt and clippy"
 
     # -------------------------------------------------------------------------
     # cargo-tauri

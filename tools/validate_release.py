@@ -27,6 +27,7 @@ def main() -> int:
   lock = json.loads(read("package-lock.json"))
   cargo = read("src-tauri/Cargo.toml")
   cargo_lock = read("src-tauri/Cargo.lock")
+  rust_toolchain = read("rust-toolchain.toml")
   version = tauri["version"]
 
   if not re.fullmatch(r"\d+\.\d+\.\d+", version):
@@ -44,6 +45,10 @@ def main() -> int:
   allow_scripts = package.get("allowScripts")
   if allow_scripts != {"esbuild@0.25.12": True}:
     fail("package.json must approve exactly esbuild@0.25.12 install scripts")
+
+  for marker in ('channel = "1.97.1"', 'profile = "minimal"', 'components = ["rustfmt", "clippy"]'):
+    if marker not in rust_toolchain:
+      fail(f"pinned Rust formatter toolchain invariant is missing: {marker}")
 
   expected_frontend_fixes = {
     "node_modules/esbuild": "0.25.12",
@@ -69,6 +74,8 @@ def main() -> int:
   package_release_test = read("tools/test_package_release.py")
   release_workflow_test = read("tools/test_release_workflow.py")
   check_clean = read("tools/check_clean.py")
+  patch_0318_test = read("tools/test_patch_0318.py")
+  settings_ui_test = read("tools/test_settings_ui.py")
   if f'INIT_VERSION = "{version}"' not in init_py:
     fail("initializer release identity differs from release version")
   if "required pkg-config modules are" in init_py:
@@ -85,7 +92,7 @@ def main() -> int:
     "def ensure_tauri_cli() -> None:",
     '["cargo", "tauri", "--version"]',
     '["cargo", "install", "tauri-cli", "--locked", "--version", "^2"]',
-    "ensure_tauri_cli()\n      install_javascript_dependencies()",
+    "ensure_pinned_rust_toolchain()\n      ensure_tauri_cli()\n      install_javascript_dependencies()",
   ):
     if marker not in init_py:
       fail(f"Unix initializer is missing Tauri CLI bootstrap coverage: {marker}")
@@ -122,6 +129,16 @@ def main() -> int:
       fail(f"release workflow is missing non-mutating/locked gate: {marker}")
   if "release: fmt lint" in justfile:
     fail("release workflow must not mutate Rust source with cargo fmt")
+  for marker in (
+    "def require_pinned_rustfmt_clean() -> None:",
+    '"cargo",\n        "fmt",\n        "--manifest-path",\n        "src-tauri/Cargo.toml",\n        "--all",\n        "--",\n        "--check",',
+    "require_pinned_rustfmt_clean()",
+  ):
+    if marker not in package_release:
+      fail(f"release packager can bypass the pinned rustfmt gate: {marker}")
+  package_main = package_release.split("def main() -> int:", 1)[-1]
+  if package_main.index("require_pinned_rustfmt_clean()") > package_main.index("context = source_context(release_version)"):
+    fail("release packaging validates source context before enforcing pinned rustfmt")
   if "git status" not in check_clean or "--porcelain" not in check_clean:
     fail("release clean-worktree checker is incomplete")
   for test_marker in (
@@ -129,6 +146,7 @@ def main() -> int:
     "test_production_runtime_uses_tauri_cli_and_raw_release_is_guarded",
     "test_committed_rust_sources_match_native_rustfmt_baseline",
     "test_download_notification_uses_valid_quoted_format_string",
+    "test_release_packaging_requires_pinned_rustfmt_check",
   ):
     if test_marker not in release_workflow_test:
       fail(f"release workflow regression coverage is missing: {test_marker}")
@@ -141,7 +159,7 @@ def main() -> int:
     "Rustlang.Rustup",
     "OpenJS.NodeJS.LTS",
     "Python.Python.3.13",
-    "stable-msvc",
+    "rustup.exe toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy",
     'cargo.exe install tauri-cli --locked --version "^2"',
     "System.Management.Automation.Language.Parser",
     "[switch]$SelfTest",
@@ -404,6 +422,7 @@ def main() -> int:
     "set_workspace_order",
     "export_backup",
     "restore_backup",
+    "create_automatic_backup",
   )
   handler = main_rs.split("tauri::generate_handler![", 1)[-1].split("]", 1)[0]
   for command in required_backend:
@@ -552,6 +571,57 @@ def main() -> int:
     if marker not in restore_body and marker not in main_rs:
       fail(f"backup restore safety invariant is missing: {marker}")
   for marker in (
+    '["backup", "Backup"]',
+    '{:else if settingsTab === "backup"}',
+    'value="startup">On program startup</option>',
+    'value="daily">Daily</option>',
+    'value="weekly">Weekly</option>',
+    'value="monthly">Monthly</option>',
+    'automaticBackupRetention',
+    'createAutomaticBackup',
+  ):
+    if marker not in app:
+      fail(f"automatic/dedicated Backup settings invariant is missing: {marker}")
+  if 'invoke("create_automatic_backup", { filename })' not in api_ts:
+    fail("frontend API does not expose automatic backup creation")
+  for marker in (
+    'fn create_automatic_backup(',
+    'prune_automatic_backups(&root, retention)',
+    'backup::save(&path, &document)?',
+    'automaticBackupSchedule',
+    'automaticBackupRetention',
+    'lastAutomaticBackupAt',
+  ):
+    if marker not in main_rs:
+      fail(f"automatic backup backend invariant is missing: {marker}")
+  auto_body = main_rs.split("fn create_automatic_backup", 1)[-1].split("#[tauri::command]", 1)[0]
+  if auto_body.index("backup::save(&path, &document)?") > auto_body.index("prune_automatic_backups(&root, retention)"):
+    fail("automatic backup retention pruning can occur before verified backup save")
+  if 'let autostart_changed = patch.contains_key("autostart");' not in main_rs:
+    fail("settings persistence does not isolate autostart side effects")
+  set_settings_body = main_rs.split("fn set_app_settings", 1)[-1].split("#[tauri::command]", 1)[0]
+  if 'if autostart_changed {' not in set_settings_body or 'apply_autostart_setting(&app, &value)?;' not in set_settings_body:
+    fail("autostart updates are not conditional on an autostart patch")
+  for marker in (
+    "test_manual_backup_name_contains_local_date_time_seconds_and_milliseconds",
+    "test_automatic_backup_has_all_requested_schedules_and_retention",
+    "test_automatic_backup_serializes_and_prunes_only_after_verified_save",
+    "test_automatic_backup_scheduler_avoids_concurrent_runs",
+    "test_appearance_updates_do_not_touch_autostart",
+    "test_automatic_backup_filename_is_path_traversal_safe",
+    "test_local_only_wording_is_absent_from_current_tracked_text",
+  ):
+    if marker not in patch_0318_test:
+      fail(f"0.3.18 regression coverage is missing: {marker}")
+  for marker in (
+    "test_backup_has_its_own_settings_tab",
+    "test_service_settings_close_returns_to_services_when_opened_from_settings",
+    "test_deprecated_local_only_wording_is_absent",
+  ):
+    if marker not in settings_ui_test:
+      fail(f"0.3.18 Settings regression coverage is missing: {marker}")
+
+  for marker in (
     'Export backup…',
     'Restore backup…',
     'tauridium-backup-',
@@ -614,6 +684,15 @@ def main() -> int:
     fail("CI does not target master")
   if "-D warnings" not in ci or "--all-features" not in ci:
     fail("CI Rust gates are weaker than release policy")
+  if "dtolnay/rust-toolchain@stable" in ci + release_workflow:
+    fail("CI/release workflows must not float Rust stable; use pinned Rust 1.97.1")
+  if ci.count("dtolnay/rust-toolchain@1.97.1") < 3:
+    fail("CI does not pin every Rust job to Rust 1.97.1")
+  if release_workflow.count("dtolnay/rust-toolchain@1.97.1") < 2:
+    fail("tagged release workflow does not pin Rust 1.97.1 in test/build jobs")
+  release_test_block = release_workflow.split("test:\n", 1)[-1].split("create-release:", 1)[0]
+  if "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check" not in release_test_block:
+    fail("tagged release can be created without the pinned rustfmt check")
   if "cargo tauri build --no-bundle --ci" not in ci:
     fail("CI does not exercise a production Tauri runtime build")
   if "cargo build --manifest-path src-tauri/Cargo.toml --release --all-features" in ci:

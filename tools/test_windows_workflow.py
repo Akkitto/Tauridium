@@ -44,7 +44,7 @@ class WindowsBootstrapTests(unittest.TestCase):
       'OpenJS.NodeJS.LTS',
       'Python.Python.3.13',
       'Git.Git',
-      'stable-msvc',
+      'toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy',
       'cargo.exe install tauri-cli --locked --version "^2"',
       'cargo.exe install cargo-audit --locked',
       'VBSCRIPT',

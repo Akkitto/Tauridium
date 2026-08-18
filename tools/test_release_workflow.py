@@ -58,7 +58,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
     main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
     recipes = (ROOT / "src-tauri/src/recipes.rs").read_text(encoding="utf-8")
 
-    # These are the exact forms emitted by rustfmt 1.94.0 on Windows for the
+    # These are the exact forms emitted by rustfmt 1.97.1 on Windows for the
     # recipe code added in 0.3.x. Keep this lightweight guard so artifact
     # packaging environments without Rust still reject the known drift.
     self.assertIn(
@@ -203,7 +203,16 @@ class ReleaseWorkflowTests(unittest.TestCase):
       '["cargo", "install", "tauri-cli", "--locked", "--version", "^2"]',
       init_py,
     )
-    self.assertIn('ensure_tauri_cli()\n      install_javascript_dependencies()', init_py)
+    self.assertIn('ensure_pinned_rust_toolchain()\n      ensure_tauri_cli()\n      install_javascript_dependencies()', init_py)
+
+  def test_release_packaging_requires_pinned_rustfmt_check(self) -> None:
+    toolchain = (ROOT / "rust-toolchain.toml").read_text(encoding="utf-8")
+    package_release = (ROOT / "tools/package_release.py").read_text(encoding="utf-8")
+    self.assertIn('channel = "1.97.1"', toolchain)
+    self.assertIn('components = ["rustfmt", "clippy"]', toolchain)
+    self.assertIn('def require_pinned_rustfmt_clean() -> None:', package_release)
+    self.assertIn('\"cargo\",\n        \"fmt\",', package_release)
+    self.assertIn('require_pinned_rustfmt_clean()\n  release_version = version()', package_release)
 
   def test_clean_checker_reports_exact_dirty_path(self) -> None:
     with tempfile.TemporaryDirectory() as temp:

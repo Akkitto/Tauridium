@@ -22,7 +22,7 @@ from typing import Sequence
 ROOT = Path(__file__).resolve().parents[1]
 OS_RELEASE = Path("/etc/os-release")
 SYSTEM_DEPS_ENV = "TAURIDIUM_INIT_SYSTEM_DEPS"
-INIT_VERSION = "0.3.17"
+INIT_VERSION = "0.3.18"
 
 # Modules that Tauridium's Linux Tauri/WebKitGTK dependency graph needs at build
 # time. Checking modules instead of package names keeps init idempotent across
@@ -368,6 +368,30 @@ def command_succeeds(command: Sequence[str]) -> bool:
   return result.returncode == 0
 
 
+def ensure_pinned_rust_toolchain() -> None:
+  """Install the repository-pinned Rust toolchain and formatting/lint components."""
+  if not shutil.which("rustup"):
+    raise InitError(
+      "rustup is required to enforce Tauridium's pinned Rust 1.97.1 toolchain; "
+      "install rustup, then rerun `just init`"
+    )
+  run_checked([
+    "rustup",
+    "toolchain",
+    "install",
+    "1.97.1",
+    "--profile",
+    "minimal",
+    "--component",
+    "rustfmt",
+    "--component",
+    "clippy",
+  ])
+  if not command_succeeds(["cargo", "fmt", "--version"]):
+    raise InitError("the pinned Rust 1.97.1 rustfmt component is unavailable after installation")
+  print("+ Rust toolchain: pinned 1.97.1 with rustfmt and clippy", flush=True)
+
+
 def ensure_tauri_cli() -> None:
   """Ensure the Cargo-installed Tauri v2 CLI is available on Unix hosts."""
   if not shutil.which("cargo"):
@@ -426,6 +450,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"Tauridium initializer {INIT_VERSION}.", flush=True)
     install_linux_system_dependencies()
     if not args.native_only:
+      ensure_pinned_rust_toolchain()
       ensure_tauri_cli()
       install_javascript_dependencies()
   except subprocess.CalledProcessError as exc:

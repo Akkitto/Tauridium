@@ -132,7 +132,7 @@ class DependencyDetectionTests(unittest.TestCase):
 
 class ReleaseIdentityTests(unittest.TestCase):
   def test_release_identity_matches_package_version(self) -> None:
-    self.assertEqual(INIT.INIT_VERSION, "0.3.17")
+    self.assertEqual(INIT.INIT_VERSION, "0.3.18")
     INIT.validate_release_identity()
 
   def test_release_identity_rejects_stale_overlay(self) -> None:
@@ -148,14 +148,29 @@ class ReleaseIdentityTests(unittest.TestCase):
   @patch.object(INIT, "install_linux_system_dependencies")
   @patch.object(INIT, "validate_release_identity")
   def test_native_only_runs_identity_then_native_without_developer_tools(self, identity, native) -> None:
-    with patch.object(INIT, "ensure_tauri_cli") as tauri_cli, patch.object(
-      INIT, "install_javascript_dependencies"
-    ) as npm:
+    with patch.object(INIT, "ensure_pinned_rust_toolchain") as rust_toolchain, patch.object(
+      INIT, "ensure_tauri_cli"
+    ) as tauri_cli, patch.object(INIT, "install_javascript_dependencies") as npm:
       self.assertEqual(INIT.main(["--native-only"]), 0)
     identity.assert_called_once_with()
     native.assert_called_once_with()
+    rust_toolchain.assert_not_called()
     tauri_cli.assert_not_called()
     npm.assert_not_called()
+
+
+class PinnedRustToolchainTests(unittest.TestCase):
+  @patch.object(INIT, "command_succeeds", return_value=True)
+  @patch.object(INIT.shutil, "which", return_value="/home/test/.cargo/bin/rustup")
+  @patch.object(INIT, "run_checked")
+  def test_pinned_rust_toolchain_is_installed_with_formatter_and_clippy(
+    self, run_checked, _which, _succeeds
+  ) -> None:
+    INIT.ensure_pinned_rust_toolchain()
+    run_checked.assert_called_once_with([
+      "rustup", "toolchain", "install", "1.97.1", "--profile", "minimal",
+      "--component", "rustfmt", "--component", "clippy",
+    ])
 
 
 class TauriCliTests(unittest.TestCase):
@@ -185,12 +200,14 @@ class TauriCliTests(unittest.TestCase):
 
   @patch.object(INIT, "install_javascript_dependencies")
   @patch.object(INIT, "ensure_tauri_cli")
+  @patch.object(INIT, "ensure_pinned_rust_toolchain")
   @patch.object(INIT, "install_linux_system_dependencies")
   @patch.object(INIT, "validate_release_identity")
-  def test_full_init_ensures_tauri_cli_before_npm(
-    self, _identity, _native, tauri_cli, npm
+  def test_full_init_ensures_pinned_rust_and_tauri_cli_before_npm(
+    self, _identity, _native, rust_toolchain, tauri_cli, npm
   ) -> None:
     self.assertEqual(INIT.main([]), 0)
+    rust_toolchain.assert_called_once_with()
     tauri_cli.assert_called_once_with()
     npm.assert_called_once_with()
 

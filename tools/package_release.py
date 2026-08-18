@@ -48,6 +48,38 @@ def version() -> str:
   return json.loads((ROOT / "src-tauri/tauri.conf.json").read_text(encoding="utf-8"))["version"]
 
 
+def require_pinned_rustfmt_clean() -> None:
+  toolchain = (ROOT / "rust-toolchain.toml").read_text(encoding="utf-8")
+  if 'channel = "1.97.1"' not in toolchain or '"rustfmt"' not in toolchain:
+    raise SystemExit("error: release packaging requires the pinned Rust 1.97.1 rustfmt toolchain")
+  try:
+    result = subprocess.run(
+      [
+        "cargo",
+        "fmt",
+        "--manifest-path",
+        "src-tauri/Cargo.toml",
+        "--all",
+        "--",
+        "--check",
+      ],
+      cwd=ROOT,
+      text=True,
+      capture_output=True,
+      check=False,
+    )
+  except FileNotFoundError as error:
+    raise SystemExit(
+      "error: release packaging requires cargo/rustfmt from the pinned Rust 1.97.1 toolchain"
+    ) from error
+  if result.returncode != 0:
+    details = (result.stdout + result.stderr).strip()
+    raise SystemExit(
+      "error: release packaging refused because pinned rustfmt reports source drift"
+      + (f"\n{details}" if details else "")
+    )
+
+
 def git_repository_root() -> Path | None:
   result = subprocess.run(
     ["git", "rev-parse", "--show-toplevel"],
@@ -486,6 +518,7 @@ def main() -> int:
   parser.add_argument("--output-dir", type=Path, default=ROOT / "release")
   args = parser.parse_args()
 
+  require_pinned_rustfmt_clean()
   release_version = version()
   context = source_context(release_version)
   output_dir = args.output_dir.resolve()
