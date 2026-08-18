@@ -138,6 +138,26 @@ describe("backup scheduling helpers", () => {
     expect(automaticBackupDue("daily", day, day * 2 - 1, false, false)).toBe(false);
     expect(automaticBackupDue("daily", day, day * 2, false, false)).toBe(true);
     expect(automaticBackupDue("weekly", day, day * 8, false, false)).toBe(true);
-    expect(automaticBackupDue("monthly", day, day * 31, false, false)).toBe(true);
+    expect(automaticBackupDue("monthly", day, day * 31, false, false)).toBe(false);
+    expect(automaticBackupDue("monthly", day, day * 32, false, false)).toBe(true);
+  });
+
+  it("uses calendar-month boundaries and clamps month ends", async () => {
+    const { automaticBackupDue } = await import("./ui");
+
+    const jan15 = new Date(2026, 0, 15, 10, 30, 0, 0).getTime();
+    const feb15 = new Date(2026, 1, 15, 10, 30, 0, 0).getTime();
+    expect(automaticBackupDue("monthly", jan15, feb15 - 1, false, false)).toBe(false);
+    expect(automaticBackupDue("monthly", jan15, feb15, false, false)).toBe(true);
+
+    const jan31 = new Date(2026, 0, 31, 8, 5, 0, 0).getTime();
+    const feb28 = new Date(2026, 1, 28, 8, 5, 0, 0).getTime();
+    expect(automaticBackupDue("monthly", jan31, feb28 - 1, false, false)).toBe(false);
+    expect(automaticBackupDue("monthly", jan31, feb28, false, false)).toBe(true);
+
+    const leapJan31 = new Date(2028, 0, 31, 8, 5, 0, 0).getTime();
+    const leapFeb29 = new Date(2028, 1, 29, 8, 5, 0, 0).getTime();
+    expect(automaticBackupDue("monthly", leapJan31, leapFeb29 - 1, false, false)).toBe(false);
+    expect(automaticBackupDue("monthly", leapJan31, leapFeb29, false, false)).toBe(true);
   });
 });
