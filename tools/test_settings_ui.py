@@ -87,6 +87,17 @@ class SettingsUiReleaseTests(unittest.TestCase):
     self.assertIn("open_external(parsed.as_str())", self.main)
     self.assertIn("openExternalUrl(url)", self.app)
 
+  def test_about_link_handlers_are_complete_svelte_expressions(self) -> None:
+    about = self.app.split('{:else if settingsTab === "about"}', 1)[1].split('{/if}', 1)[0]
+    handlers = [line.strip() for line in about.splitlines() if 'onclick={() => openProjectLink(' in line]
+    self.assertEqual(len(handlers), 9)
+    for handler in handlers:
+      self.assertRegex(
+        handler,
+        r'onclick=\{\(\) => openProjectLink\("https://[^"]+"\)\s*\}',
+        msg=f"Malformed About onclick expression: {handler}",
+      )
+
   def test_about_icon_is_bundled_with_frontend(self) -> None:
     icon = ROOT / "src/assets/tauridium.svg"
     self.assertTrue(icon.is_file())
