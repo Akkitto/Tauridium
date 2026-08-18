@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.15] - 2026-08-18
+
+### Fixed
+
+- Repaired the Cargo lockfile introduced in 0.3.14: `errno` had been downgraded to 0.3.13 while retaining the checksum for 0.3.14, causing Cargo to abort before compilation with a checksum mismatch.
+- Restored the previously resolved `errno` 0.3.14 package and its matching checksum instead of carrying an unnecessary transitive-dependency downgrade.
+
+### Tests
+
+- Added lockfile regression coverage for the exact `errno` version/checksum pair so future dependency additions cannot silently recreate this corruption.
+- Kept the window-state plugin pinned to 2.4.1 and retained all 0.3.14 window-state lifecycle behavior.
+
 All notable changes to Tauridium are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project adheres to [Semantic Versioning](https://semver.org/).
