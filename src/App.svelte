@@ -1567,7 +1567,7 @@
                 </section>
                 <section class="settings-section" aria-labelledby="about-legal-heading">
                   <div class="section-heading"><h3 id="about-legal-heading">Legal</h3></div>
-                  <div class="settings-list"><button class="setting-card about-link-card" onclick={() => openProjectLink("https://github.com/Gizmo091/Tauridium/blob/master/LICENSE")"><span class="setting-copy"><span class="setting-label">MIT License</span><span class="setting-description">Copyright © 2026 Mathieu Vedie. View the complete license text.</span></span><span class="external-indicator" aria-hidden="true">View ↗</span></button></div>
+                  <div class="settings-list"><button class="setting-card about-link-card" onclick={() => openProjectLink("https://github.com/Gizmo091/Tauridium/blob/master/LICENSE")}><span class="setting-copy"><span class="setting-label">MIT License</span><span class="setting-description">Copyright © 2026 Mathieu Vedie. View the complete license text.</span></span><span class="external-indicator" aria-hidden="true">View ↗</span></button></div>
                 </section>
                 <section class="settings-section" aria-labelledby="about-credits-heading">
                   <div class="section-heading"><h3 id="about-credits-heading">Credits</h3></div>
