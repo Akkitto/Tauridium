@@ -843,6 +843,17 @@ fn open_external(url: &str) {
     let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }
 
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    let parsed =
+        Url::parse(&url).map_err(|error| format!("Invalid external URL: {error}"))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("External links must use HTTP or HTTPS".to_string());
+    }
+    open_external(parsed.as_str());
+    Ok(())
+}
+
 // Download filename derived from the URL (last path segment; the
 // query is ignored). Sanitize separators to prevent path traversal.
 fn download_filename(url: &Url) -> String {
@@ -2331,7 +2342,8 @@ fn main() {
             get_app_settings,
             set_app_settings,
             export_backup,
-            restore_backup
+            restore_backup,
+            open_external_url
         ])
         .build(tauri::generate_context!())
         .expect("failed to launch the Tauri application")

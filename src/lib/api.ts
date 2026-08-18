@@ -156,6 +156,10 @@ export function hideServices(): Promise<void> {
   return invoke("hide_all_services");
 }
 
+export function openExternalUrl(url: string): Promise<void> {
+  return invoke("open_external_url", { url });
+}
+
 // Push service notification/mute/badge settings respected by the Rust poller.
 export function setServiceFlags(s: Service): Promise<void> {
   return invoke("set_service_flags", {

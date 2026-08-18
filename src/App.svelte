@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import tauridiumLogo from "./assets/tauridium.svg";
   import { listen } from "@tauri-apps/api/event";
   import {
     accentFg,
@@ -49,6 +50,7 @@
     setSidebarWidth,
     exportBackup,
     restoreBackup,
+    openExternalUrl,
     DEFAULT_SERVER,
     type MeUser,
     type Service,
@@ -869,6 +871,15 @@
     view = "appSettings";
   }
 
+  async function openProjectLink(url: string) {
+    try {
+      error = null;
+      await openExternalUrl(url);
+    } catch (err) {
+      error = String(err);
+    }
+  }
+
   function backupFileName(): string {
     return `tauridium-backup-${new Date().toISOString().slice(0, 10)}.json`;
   }
@@ -1351,208 +1362,227 @@
           {/each}
         </div>
       {:else if view === "appSettings"}
-        <div class="panel">
-          <div class="panel-head">
-            <h2>Settings</h2>
-            <button class="link" onclick={backToService}>✕ close</button>
+        <div class="panel settings-panel">
+          <div class="panel-head settings-head">
+            <div>
+              <h2>Settings</h2>
+              <p class="panel-subtitle">Configure Tauridium's application-wide behavior.</p>
+            </div>
+            <button class="icon-button" title="Close settings" aria-label="Close settings" onclick={backToService}>✕</button>
           </div>
 
-          <div class="tabs">
+          <nav class="settings-tabs" aria-label="Settings sections">
             {#each [["general", "General"], ["services", "Services"], ["appearance", "Appearance"], ["privacy", "Privacy"], ["advanced", "Advanced"], ["updates", "Updates"], ["about", "About"]] as [id, label] (id)}
               <button
-                class="tab"
+                class="setting-tab"
                 class:on={settingsTab === id}
+                aria-current={settingsTab === id ? "page" : undefined}
                 onclick={() => (id === "about" ? openAbout() : (settingsTab = id as Tab))}>{label}</button>
             {/each}
+          </nav>
+
+          <div class="settings-content">
+            {#if settingsTab === "general"}
+              <section class="settings-section" aria-labelledby="settings-general-startup">
+                <div class="section-heading">
+                  <h3 id="settings-general-startup">Startup</h3>
+                  <p>Choose how Tauridium behaves when the desktop session starts and when its window closes.</p>
+                </div>
+                <div class="settings-list">
+                  {@render appToggle("Launch at login", `Start Tauridium automatically ${loginText}.`, "autostart", appSettings.autostart)}
+                  {@render appToggle("Start in background", `Launch with the main window hidden while Tauridium remains available in the ${trayWord}.`, "startMinimized", appSettings.startMinimized)}
+                  {@render appToggle("Close to tray", `Hide Tauridium to the ${trayWord} when the window close button is used instead of quitting the app.`, "closeToSystemTray", appSettings.closeToSystemTray)}
+                </div>
+              </section>
+            {:else if settingsTab === "services"}
+              <section class="settings-section" aria-labelledby="settings-services-list">
+                <div class="section-heading">
+                  <h3 id="settings-services-list">Service list</h3>
+                  <p>Control what appears in the sidebar and how unread activity is represented.</p>
+                </div>
+                <div class="settings-list">
+                  {@render appToggle("Show disabled services", "Keep disabled services visible in the sidebar with reduced emphasis.", "showDisabledServices", appSettings.showDisabledServices)}
+                  {@render appToggle("Show service names", "Display each service name beside its icon in the sidebar.", "showServiceName", appSettings.showServiceName)}
+                  {@render appToggle("Unread badges for muted services", "Continue displaying unread counts for services whose notifications are muted.", "showMessageBadgeWhenMuted", appSettings.showMessageBadgeWhenMuted)}
+                </div>
+              </section>
+              <section class="settings-section" aria-labelledby="settings-services-performance">
+                <div class="section-heading">
+                  <h3 id="settings-services-performance">Performance</h3>
+                  <p>Balance faster switching against memory use.</p>
+                </div>
+                <div class="settings-list">
+                  <div class="setting-card">
+                    <div class="setting-copy">
+                      <span class="setting-label">Hibernate inactive services</span>
+                      <span class="setting-description">Unload inactive services to save memory. Per-service “Allow hibernation” must also be enabled.</span>
+                    </div>
+                    <select class="select setting-control" aria-label="Hibernate inactive services" bind:value={appSettings.hibernationTimer} onchange={() => saveAppSetting("hibernationTimer", appSettings.hibernationTimer)}>
+                      <option value={0}>Off</option>
+                      <option value={30}>After 30 seconds</option>
+                      <option value={60}>After 1 minute</option>
+                      <option value={300}>After 5 minutes</option>
+                    </select>
+                  </div>
+                  {@render appToggle("Preload services", "Load services in the background after startup for faster switching. This uses more memory.", "preloadServices", appSettings.preloadServices)}
+                </div>
+              </section>
+            {:else if settingsTab === "appearance"}
+              <section class="settings-section" aria-labelledby="settings-appearance-app">
+                <div class="section-heading">
+                  <h3 id="settings-appearance-app">App appearance</h3>
+                  <p>Choose the color scheme and accent used by Tauridium's own interface.</p>
+                </div>
+                <div class="settings-list">
+                  <div class="setting-card">
+                    <div class="setting-copy">
+                      <span class="setting-label">Theme</span>
+                      <span class="setting-description">Follow the operating system appearance or force a light or dark theme.</span>
+                    </div>
+                    <select class="select setting-control" aria-label="Theme" bind:value={appSettings.theme} onchange={() => saveAppSetting("theme", appSettings.theme)}>
+                      <option value="system">Use system setting</option>
+                      <option value="dark">Dark</option>
+                      <option value="light">Light</option>
+                    </select>
+                  </div>
+                  <div class="setting-card">
+                    <div class="setting-copy">
+                      <span class="setting-label">Accent color</span>
+                      <span class="setting-description">Used for selected navigation, primary actions, and active-service emphasis.</span>
+                    </div>
+                    <div class="swatches" role="group" aria-label="Accent color">
+                      {#each ["#ffc131", "#4f46e5", "#2563eb", "#0891b2", "#16a34a", "#d97706", "#dc2626", "#db2777", "#7c3aed"] as c (c)}
+                        <button class="swatch" class:on={appSettings.accentColor === c} style="background:{c}" aria-label={`Use accent color ${c}`} aria-pressed={appSettings.accentColor === c} onclick={() => saveAppSetting("accentColor", c)}></button>
+                      {/each}
+                    </div>
+                  </div>
+                </div>
+              </section>
+              <section class="settings-section" aria-labelledby="settings-appearance-sidebar">
+                <div class="section-heading">
+                  <h3 id="settings-appearance-sidebar">Sidebar</h3>
+                  <p>Adjust service density and placement without changing individual service configuration.</p>
+                </div>
+                <div class="settings-list">
+                  <div class="setting-card">
+                    <div class="setting-copy"><span class="setting-label">Sidebar width</span><span class="setting-description">Choose the horizontal space reserved for services and workspaces.</span></div>
+                    <select class="select setting-control" aria-label="Sidebar width" bind:value={appSettings.sidebarWidth} onchange={() => saveAppSetting("sidebarWidth", appSettings.sidebarWidth)}>
+                      <option value={200}>Compact</option><option value={240}>Normal</option><option value={300}>Wide</option>
+                    </select>
+                  </div>
+                  <div class="setting-card">
+                    <div class="setting-copy"><span class="setting-label">Service icon size</span><span class="setting-description">Change icon size while preserving consistent sidebar spacing.</span></div>
+                    <select class="select setting-control" aria-label="Service icon size" bind:value={appSettings.iconSize} onchange={() => saveAppSetting("iconSize", appSettings.iconSize)}>
+                      <option value={18}>Very small</option><option value={21}>Small</option><option value={24}>Normal</option><option value={28}>Large</option><option value={34}>Very large</option>
+                    </select>
+                  </div>
+                  <div class="setting-card">
+                    <div class="setting-copy"><span class="setting-label">Service position</span><span class="setting-description">Place the service list at the top, center, or bottom of the sidebar.</span></div>
+                    <select class="select setting-control" aria-label="Service position" bind:value={appSettings.sidebarServicesLocation} onchange={() => saveAppSetting("sidebarServicesLocation", appSettings.sidebarServicesLocation)}>
+                      <option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option>
+                    </select>
+                  </div>
+                </div>
+              </section>
+              <section class="settings-section" aria-labelledby="settings-appearance-icons">
+                <div class="section-heading"><h3 id="settings-appearance-icons">Service icons</h3><p>Reduce visual noise while keeping the active service easy to identify.</p></div>
+                <div class="settings-list">
+                  {@render appToggle("Grayscale inactive icons", "Show service icons in grayscale until they are hovered or active.", "grayscaleServices", appSettings.grayscaleServices)}
+                  {#if appSettings.grayscaleServices}
+                    <div class="setting-card">
+                      <div class="setting-copy"><span class="setting-label">Inactive icon dimming</span><span class="setting-description">Control how strongly inactive grayscale icons are dimmed.</span></div>
+                      <div class="range-control"><input class="range" type="range" min="0" max="100" value={appSettings.grayscaleDim} aria-label="Inactive icon dimming" onchange={(e) => saveAppSetting("grayscaleDim", Number(e.currentTarget.value))} /><span>{appSettings.grayscaleDim}%</span></div>
+                    </div>
+                  {/if}
+                </div>
+              </section>
+            {:else if settingsTab === "privacy"}
+              <section class="settings-section" aria-labelledby="settings-privacy-notifications">
+                <div class="section-heading"><h3 id="settings-privacy-notifications">Notifications</h3><p>Limit message information exposed through operating-system notifications.</p></div>
+                <div class="settings-list">{@render appToggle("Private notifications", "Hide sender and message content and show only a generic new-message notification.", "privateNotifications", appSettings.privateNotifications)}</div>
+              </section>
+            {:else if settingsTab === "advanced"}
+              <section class="settings-section" aria-labelledby="settings-advanced-browser">
+                <div class="section-heading"><h3 id="settings-advanced-browser">Browser identity</h3><p>Advanced compatibility controls for services that depend on browser identification.</p></div>
+                <div class="settings-list">
+                  <div class="setting-card setting-card-stack">
+                    <div class="setting-copy"><span class="setting-label">Custom user agent</span><span class="setting-description">Override the browser identity sent to newly opened services. Restart Tauridium to apply it everywhere.</span></div>
+                    <input class="setting-text-input" value={appSettings.userAgentPref} aria-label="Custom user agent" placeholder="Leave empty to use the app default" onchange={(e) => saveAppSetting("userAgentPref", e.currentTarget.value)} />
+                  </div>
+                </div>
+              </section>
+              <section class="settings-section" aria-labelledby="settings-advanced-backup">
+                <div class="section-heading"><h3 id="settings-advanced-backup">Backup</h3><p>Move Tauridium-owned local configuration between installations or keep a manual recovery copy.</p></div>
+                <div class="settings-list">
+                  <div class="setting-card">
+                    <div class="setting-copy"><span class="setting-label">Local Tauridium data</span><span class="setting-description">Exports app settings, local services and workspaces, and complete custom recipes. Ferdium login tokens, website cookies/storage, and remote caches are excluded.</span></div>
+                    <div class="setting-actions"><button class="secondary sm" disabled={backupBusy} onclick={doRestoreBackup}>Restore backup…</button><button class="primary sm" disabled={backupBusy} onclick={doExportBackup}>Export backup…</button></div>
+                  </div>
+                  <p class="settings-note">Backups can contain sensitive local service configuration such as proxy credentials. Store them accordingly.</p>
+                  {#if backupStatus}<p class="settings-status">{backupStatus}</p>{/if}
+                </div>
+              </section>
+              <section class="settings-section" aria-labelledby="settings-advanced-account">
+                <div class="section-heading"><h3 id="settings-advanced-account">{me.local ? "Account" : "Server"}</h3></div>
+                <div class="settings-list">
+                  <div class="setting-card info-card">
+                    <div class="setting-copy"><span class="setting-label">{me.local ? "Local-only mode" : me.email}</span><span class="setting-description">{me.local ? "Services and workspaces are stored on this device without a Ferdium account." : `Connected to ${server}. Sign out to change the server.`}</span></div>
+                    <span class="status-badge">{me.local ? "Local" : "Connected"}</span>
+                  </div>
+                </div>
+              </section>
+            {:else if settingsTab === "updates"}
+              <section class="settings-section" aria-labelledby="settings-updates-version">
+                <div class="section-heading"><h3 id="settings-updates-version">Updates</h3><p>Keep Tauridium current using signed releases published through the project repository.</p></div>
+                <div class="settings-list">
+                  <div class="setting-card">
+                    <div class="setting-copy"><span class="setting-label">Current version</span><span class="setting-description">Tauridium {appVer ? `v${appVer}` : "version information is loading"}.</span></div>
+                    {#if updateInfo}
+                      <button class="primary" disabled={updInstalling} onclick={doInstall}>{updInstalling ? "Installing…" : `Update to v${updateInfo.version}`}</button>
+                    {:else}
+                      <button class="secondary" disabled={updChecking} onclick={() => checkUpdates(false)}>{updChecking ? "Checking…" : "Check for updates"}</button>
+                    {/if}
+                  </div>
+                  {#if updateInfo}<p class="settings-status">Version {updateInfo.version} is available. Tauridium will restart after installation.</p>{/if}
+                  {#if updStatus}<p class="settings-status">{updStatus}</p>{/if}
+                </div>
+              </section>
+            {:else if settingsTab === "about"}
+              <section class="about-page" aria-labelledby="about-tauridium-title">
+                <div class="about-hero">
+                  <img class="about-logo" src={tauridiumLogo} alt="Tauridium application icon" />
+                  <div class="about-identity"><h3 id="about-tauridium-title">Tauridium</h3><p class="about-version">Version {appVer ? `v${appVer}` : "loading…"}</p><p class="about-summary">A lightweight Tauri desktop client for Ferdium with accountless local mode and locally managed recipes.</p></div>
+                </div>
+                <div class="about-actions" role="group" aria-label="Tauridium project links">
+                  <button class="primary" onclick={() => openProjectLink("https://github.com/Gizmo091/Tauridium")}>Source code ↗</button>
+                  <button class="secondary" onclick={() => openProjectLink("https://github.com/Gizmo091/Tauridium/releases")}>Releases ↗</button>
+                  <button class="secondary" onclick={() => openProjectLink("https://github.com/Gizmo091/Tauridium/issues/new")}>Report an issue ↗</button>
+                </div>
+                <section class="settings-section" aria-labelledby="about-project-heading">
+                  <div class="section-heading"><h3 id="about-project-heading">Project</h3><p>Open-source project information and useful destinations.</p></div>
+                  <div class="settings-list">
+                    <button class="setting-card about-link-card" onclick={() => openProjectLink("https://github.com/Gizmo091/Tauridium")}><span class="setting-copy"><span class="setting-label">Repository</span><span class="setting-description">github.com/Gizmo091/Tauridium</span></span><span class="external-indicator" aria-hidden="true">Open ↗</span></button>
+                    <button class="setting-card about-link-card" onclick={() => openProjectLink("https://github.com/Gizmo091/Tauridium/issues")}><span class="setting-copy"><span class="setting-label">Issues and feature requests</span><span class="setting-description">Report a problem, follow known issues, or propose an improvement.</span></span><span class="external-indicator" aria-hidden="true">Open ↗</span></button>
+                  </div>
+                </section>
+                <section class="settings-section" aria-labelledby="about-legal-heading">
+                  <div class="section-heading"><h3 id="about-legal-heading">Legal</h3></div>
+                  <div class="settings-list"><button class="setting-card about-link-card" onclick={() => openProjectLink("https://github.com/Gizmo091/Tauridium/blob/master/LICENSE")"><span class="setting-copy"><span class="setting-label">MIT License</span><span class="setting-description">Copyright © 2026 Mathieu Vedie. View the complete license text.</span></span><span class="external-indicator" aria-hidden="true">View ↗</span></button></div>
+                </section>
+                <section class="settings-section" aria-labelledby="about-credits-heading">
+                  <div class="section-heading"><h3 id="about-credits-heading">Credits</h3></div>
+                  <div class="settings-list"><div class="setting-card info-card"><span class="setting-copy"><span class="setting-label">Maintainer</span><span class="setting-description">Mathieu Vedie</span></span><button class="secondary sm" onclick={() => openProjectLink("https://github.com/Gizmo091/Tauridium/graphs/contributors")}>Contributors ↗</button></div></div>
+                </section>
+                <section class="settings-section" aria-labelledby="about-technology-heading">
+                  <div class="section-heading"><h3 id="about-technology-heading">Technology</h3><p>Key projects Tauridium builds on or interoperates with.</p></div>
+                  <div class="about-reference-grid">
+                    <button class="reference-card" onclick={() => openProjectLink("https://v2.tauri.app/") }><strong>Tauri v2</strong><span>Native desktop application framework ↗</span></button>
+                    <button class="reference-card" onclick={() => openProjectLink("https://ferdium.org/") }><strong>Ferdium</strong><span>Service and recipe ecosystem ↗</span></button>
+                  </div>
+                </section>
+              </section>
+            {/if}
           </div>
-
-          {#if settingsTab === "general"}
-            {@render appToggle("Launch at login", `Start Tauridium automatically ${loginText}.`, "autostart", appSettings.autostart)}
-            {@render appToggle("Start in background", `Launch with the window hidden — Tauridium stays in the ${trayWord}.`, "startMinimized", appSettings.startMinimized)}
-            {@render appToggle("Close button hides to tray", `The window's close button hides Tauridium to the ${trayWord} instead of quitting it.`, "closeToSystemTray", appSettings.closeToSystemTray)}
-          {:else if settingsTab === "services"}
-            {@render appToggle("Show disabled services", "Keep disabled services visible (dimmed) in the sidebar instead of hiding them.", "showDisabledServices", appSettings.showDisabledServices)}
-            {@render appToggle("Show service names", "Show the name next to each service icon in the sidebar.", "showServiceName", appSettings.showServiceName)}
-            {@render appToggle("Unread badge on muted services", "Still show the unread count on services that are muted.", "showMessageBadgeWhenMuted", appSettings.showMessageBadgeWhenMuted)}
-            <div class="setrow">
-              <label class="row-toggle">
-                <span>Hibernate inactive services</span>
-                <select
-                  class="select"
-                  bind:value={appSettings.hibernationTimer}
-                  onchange={() => saveAppSetting("hibernationTimer", appSettings.hibernationTimer)}
-                >
-                  <option value={0}>Off</option>
-                  <option value={30}>After 30s</option>
-                  <option value={60}>After 1 min</option>
-                  <option value={300}>After 5 min</option>
-                </select>
-              </label>
-              <p class="desc">Unload inactive services (per-service "Allow hibernation" must be on) to save memory. A hibernated service stops reporting unread until you reopen it.</p>
-            </div>
-            {@render appToggle("Preload services at startup", "Load your services in the background right after launch so switching to them is instant (uses more memory).", "preloadServices", appSettings.preloadServices)}
-          {:else if settingsTab === "appearance"}
-            <div class="setrow">
-              <label class="row-toggle">
-                <span>Theme</span>
-                <select
-                  class="select"
-                  bind:value={appSettings.theme}
-                  onchange={() => saveAppSetting("theme", appSettings.theme)}
-                >
-                  <option value="system">System</option>
-                  <option value="dark">Dark</option>
-                  <option value="light">Light</option>
-                </select>
-              </label>
-              <p class="desc">System follows your macOS appearance; Dark or Light force one.</p>
-            </div>
-            <div class="setrow">
-              <label class="row-toggle">
-                <span>Accent color</span>
-                <span class="swatches">
-                  {#each ["#ffc131", "#4f46e5", "#2563eb", "#0891b2", "#16a34a", "#d97706", "#dc2626", "#db2777", "#7c3aed"] as c (c)}
-                    <button
-                      class="swatch"
-                      class:on={appSettings.accentColor === c}
-                      style="background:{c}"
-                      aria-label={c}
-                      onclick={() => saveAppSetting("accentColor", c)}
-                    ></button>
-                  {/each}
-                </span>
-              </label>
-              <p class="desc">Highlight color for the active service, buttons and selected workspace.</p>
-            </div>
-
-            <div class="set-title">Sidebar</div>
-            <div class="setrow">
-              <label class="row-toggle">
-                <span>Sidebar width</span>
-                <select
-                  class="select"
-                  bind:value={appSettings.sidebarWidth}
-                  onchange={() => saveAppSetting("sidebarWidth", appSettings.sidebarWidth)}
-                >
-                  <option value={200}>Compact</option>
-                  <option value={240}>Normal</option>
-                  <option value={300}>Wide</option>
-                </select>
-              </label>
-              <p class="desc">Width of the services sidebar.</p>
-            </div>
-            <div class="setrow">
-              <label class="row-toggle">
-                <span>Icon size</span>
-                <select
-                  class="select"
-                  bind:value={appSettings.iconSize}
-                  onchange={() => saveAppSetting("iconSize", appSettings.iconSize)}
-                >
-                  <option value={18}>Very small</option>
-                  <option value={21}>Small</option>
-                  <option value={24}>Normal</option>
-                  <option value={28}>Large</option>
-                  <option value={34}>Very large</option>
-                </select>
-              </label>
-              <p class="desc">Size of the service icons in the sidebar.</p>
-            </div>
-            <div class="setrow">
-              <label class="row-toggle">
-                <span>Services location</span>
-                <select
-                  class="select"
-                  bind:value={appSettings.sidebarServicesLocation}
-                  onchange={() => saveAppSetting("sidebarServicesLocation", appSettings.sidebarServicesLocation)}
-                >
-                  <option value="top">Top</option>
-                  <option value="center">Center</option>
-                  <option value="bottom">Bottom</option>
-                </select>
-              </label>
-              <p class="desc">Vertical position of the service list in the sidebar.</p>
-            </div>
-            {@render appToggle("Grayscale service icons", "Show icons in grayscale; full color on hover and when active.", "grayscaleServices", appSettings.grayscaleServices)}
-            {#if appSettings.grayscaleServices}
-              <div class="setrow">
-                <label class="row-toggle">
-                  <span>Grayscale dim level</span>
-                  <input
-                    class="range"
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={appSettings.grayscaleDim}
-                    onchange={(e) => saveAppSetting("grayscaleDim", Number(e.currentTarget.value))}
-                  />
-                </label>
-                <p class="desc">How much inactive grayscale icons are dimmed.</p>
-              </div>
-            {/if}
-          {:else if settingsTab === "privacy"}
-            {@render appToggle("Private notifications", "Hide the sender and message content in system notifications (shows just 'New message').", "privateNotifications", appSettings.privateNotifications)}
-          {:else if settingsTab === "advanced"}
-            <div class="setrow">
-              <label class="block">
-                Custom user agent
-                <input
-                  value={appSettings.userAgentPref}
-                  placeholder="empty = default (modern Safari)"
-                  onchange={(e) => saveAppSetting("userAgentPref", e.currentTarget.value)}
-                />
-              </label>
-              <p class="desc">Override the browser identity sent to services. Applies to newly opened services (restart to apply everywhere).</p>
-            </div>
-            <div class="set-title">Backup</div>
-            <div class="setrow">
-              <div class="row-toggle">
-                <span>Local Tauridium data</span>
-                <span class="recipe-actions">
-                  <button class="primary sm" disabled={backupBusy} onclick={doExportBackup}>Export backup…</button>
-                  <button class="secondary sm" disabled={backupBusy} onclick={doRestoreBackup}>Restore backup…</button>
-                </span>
-              </div>
-              <p class="desc">Exports app settings, local services/workspaces, and complete custom recipes to one portable JSON file. Ferdium login tokens, website cookies/storage, and remote caches are excluded.</p>
-              <p class="sub">Backups can contain sensitive local service configuration such as proxy credentials. Store them accordingly.</p>
-              {#if backupStatus}<p class="desc">{backupStatus}</p>{/if}
-            </div>
-            {#if me.local}
-              <div class="set-title">Account</div>
-              <code class="recipe">Local only</code>
-              <p class="sub">Accountless mode. Services and workspaces are stored on this device.</p>
-            {:else}
-              <div class="set-title">Server</div>
-              <code class="recipe">{server}</code>
-              <p class="sub">Signed in as {me.email}. Sign out to change server.</p>
-            {/if}
-          {:else if settingsTab === "updates"}
-            <div class="set-title">Version</div>
-            <code class="recipe">Tauridium v{appVer}</code>
-            {#if updateInfo}
-              <p class="desc">A new version is available: <strong>v{updateInfo.version}</strong>.</p>
-              <button class="primary" disabled={updInstalling} onclick={doInstall}>
-                {updInstalling ? "Downloading & installing…" : `Update to v${updateInfo.version} & restart`}
-              </button>
-            {:else}
-              <button class="primary" disabled={updChecking} onclick={() => checkUpdates(false)}>
-                {updChecking ? "Checking…" : "Check for updates"}
-              </button>
-            {/if}
-            {#if updStatus}<p class="desc">{updStatus}</p>{/if}
-            <p class="sub">Updates are downloaded from GitHub Releases and verified with a signature.</p>
-          {:else if settingsTab === "about"}
-            <div class="set-title">Tauridium</div>
-            <div class="setrow">
-              <div class="row-toggle"><span>Version</span><strong>{appVer ? `v${appVer}` : "Loading…"}</strong></div>
-              <p class="desc">A lightweight Tauri desktop client for Ferdium with accountless local mode and locally managed recipes.</p>
-            </div>
-            <div class="setrow">
-              <div class="row-toggle"><span>License</span><strong>MIT</strong></div>
-              <p class="desc">Project: github.com/Gizmo091/Tauridium</p>
-            </div>
-          {/if}
-
           {#if error}<p class="error">{error}</p>{/if}
         </div>
       {/if}
@@ -1614,17 +1644,13 @@
 {/snippet}
 
 {#snippet appToggle(label: string, desc: string, key: keyof AppSettings, checked: boolean)}
-  <div class="setrow">
-    <label class="row-toggle">
-      <input
-        type="checkbox"
-        {checked}
-        onchange={(e) => saveAppSetting(key, e.currentTarget.checked)}
-      />
-      <span>{label}</span>
-    </label>
-    <p class="desc">{desc}</p>
-  </div>
+  <label class="setting-card setting-card-toggle">
+    <span class="setting-copy"><span class="setting-label">{label}</span><span class="setting-description">{desc}</span></span>
+    <span class="switch-control">
+      <input class="switch-input" type="checkbox" {checked} aria-label={label} onchange={(e) => saveAppSetting(key, e.currentTarget.checked)} />
+      <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+    </span>
+  </label>
 {/snippet}
 
 <style>
@@ -1642,10 +1668,11 @@
   }
   :global(body) {
     margin: 0;
-    font-family: -apple-system, system-ui, sans-serif;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     background: var(--bg);
     color: var(--text);
   }
+  button, input, select, textarea { font-family: inherit; }
   .login { display: grid; place-items: center; height: 100vh; }
   .card {
     background: var(--card); padding: 28px; border-radius: 14px; width: 320px;
@@ -1845,6 +1872,112 @@
   textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--border2); background: var(--input); color: var(--text); font-size: 13px; }
   .code-input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1.4; }
   .security-note { margin-top: -4px; }
-  @media (max-width: 760px) { .creator-grid { grid-template-columns: 1fr; } }
+
+  .settings-panel {
+    width: min(820px, calc(100% - 48px)); margin: 24px auto 40px; padding: 0; gap: 0; overflow: hidden;
+  }
+  .settings-head { padding: 22px 24px 18px; align-items: flex-start; }
+  .settings-head h2 { font-size: 22px; line-height: 1.2; }
+  .panel-subtitle { margin: 5px 0 0; color: var(--muted); font-size: 13px; line-height: 1.4; }
+  .icon-button {
+    width: 34px; height: 34px; display: inline-grid; place-items: center; flex: none;
+    border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted);
+    cursor: pointer; font-size: 15px; line-height: 1;
+  }
+  .icon-button:hover { background: var(--hover); color: var(--text); border-color: var(--border); }
+  .icon-button:focus-visible, .setting-tab:focus-visible, .setting-card:focus-visible,
+  .reference-card:focus-visible, .primary:focus-visible, .secondary:focus-visible,
+  .select:focus-visible, .setting-text-input:focus-visible, .swatch:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  .settings-tabs {
+    display: flex; gap: 4px; overflow-x: auto; padding: 0 18px 10px;
+    border-bottom: 1px solid var(--border); scrollbar-width: thin;
+  }
+  .setting-tab {
+    flex: none; padding: 8px 11px; border: 1px solid transparent; border-radius: 8px;
+    background: transparent; color: var(--muted); cursor: pointer; font: inherit;
+    font-size: 13px; font-weight: 600; line-height: 1.2;
+  }
+  .setting-tab:hover { background: var(--hover); color: var(--text2); }
+  .setting-tab.on { background: var(--hover); border-color: var(--border); color: var(--text); }
+  .settings-content { display: flex; flex-direction: column; gap: 26px; padding: 24px; min-height: 260px; }
+  .settings-section { display: flex; flex-direction: column; gap: 10px; }
+  .section-heading { display: flex; flex-direction: column; gap: 4px; padding: 0 2px; }
+  .section-heading h3 { margin: 0; font-size: 13px; line-height: 1.3; font-weight: 700; color: var(--text); }
+  .section-heading p { margin: 0; max-width: 620px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+  .settings-list { display: flex; flex-direction: column; gap: 8px; }
+  .setting-card {
+    width: 100%; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center; gap: 18px; min-height: 68px; padding: 13px 14px;
+    border: 1px solid var(--border); border-radius: 10px; background: var(--input);
+    color: var(--text); text-align: left; font: inherit;
+  }
+  button.setting-card { cursor: pointer; }
+  button.setting-card:hover { background: var(--hover); border-color: var(--border2); }
+  .setting-card-stack { grid-template-columns: 1fr; align-items: stretch; gap: 10px; }
+  .setting-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .setting-label { color: var(--text2); font-size: 14px; line-height: 1.35; font-weight: 650; }
+  .setting-description { max-width: 560px; color: var(--muted); font-size: 12.5px; line-height: 1.45; font-weight: 400; }
+  .setting-control { min-width: 176px; max-width: 230px; margin-left: 0; }
+  .setting-text-input { width: 100%; box-sizing: border-box; }
+  .setting-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+  .settings-note, .settings-status { margin: 0 2px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .settings-status { color: var(--text2); }
+  .info-card { min-height: 72px; }
+  .status-badge {
+    display: inline-flex; align-items: center; min-height: 24px; padding: 0 9px;
+    border: 1px solid var(--border2); border-radius: 999px; background: var(--hover);
+    color: var(--text2); font-size: 11px; font-weight: 700;
+  }
+  .switch-control { position: relative; width: 38px; height: 22px; flex: none; }
+  .switch-input { position: absolute; inset: 0; width: 38px; height: 22px; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
+  .switch-track { position: absolute; inset: 0; border: 1px solid var(--border2); border-radius: 999px; background: var(--bg); transition: background 0.15s ease, border-color 0.15s ease; }
+  .switch-thumb { position: absolute; width: 16px; height: 16px; left: 2px; top: 2px; border-radius: 50%; background: var(--muted); transition: transform 0.15s ease, background 0.15s ease; }
+  .switch-input:checked + .switch-track { background: var(--accent); border-color: var(--accent); }
+  .switch-input:checked + .switch-track .switch-thumb { transform: translateX(16px); background: var(--accent-fg); }
+  .switch-input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .setting-card-toggle { cursor: pointer; }
+  .setting-card-toggle:hover { background: var(--hover); border-color: var(--border2); }
+  .settings-panel .select { padding: 8px 10px; font-size: 13px; }
+  .settings-panel .primary, .settings-panel .secondary { min-height: 34px; display: inline-flex; align-items: center; justify-content: center; }
+  .settings-panel .primary.sm, .settings-panel .secondary.sm { min-height: 30px; }
+  .settings-panel .swatches { margin-left: 0; justify-content: flex-end; flex-wrap: wrap; max-width: 250px; }
+  .settings-panel .swatch { width: 24px; height: 24px; border: 1px solid rgba(255,255,255,0.18); }
+  .range-control { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; min-width: 180px; }
+  .settings-panel .range { width: 140px; margin-left: 0; }
+  .about-page { display: flex; flex-direction: column; gap: 26px; }
+  .about-hero { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: center; gap: 20px; padding: 4px 2px 2px; }
+  .about-logo { width: 88px; height: 88px; display: block; border-radius: 20px; }
+  .about-identity { min-width: 0; }
+  .about-identity h3 { margin: 0; color: var(--text); font-size: 26px; line-height: 1.15; letter-spacing: -0.01em; }
+  .about-version { margin: 5px 0 0; color: var(--text2); font-size: 13px; font-weight: 650; }
+  .about-summary { margin: 8px 0 0; max-width: 560px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+  .about-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .about-link-card { appearance: none; }
+  .external-indicator { color: var(--muted); font-size: 12px; font-weight: 650; white-space: nowrap; }
+  .about-reference-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .reference-card { display: flex; flex-direction: column; gap: 4px; padding: 13px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--input); color: var(--text); text-align: left; cursor: pointer; font: inherit; }
+  .reference-card:hover { background: var(--hover); border-color: var(--border2); }
+  .reference-card strong { font-size: 14px; }
+  .reference-card span { color: var(--muted); font-size: 12px; line-height: 1.4; }
+  @media (max-width: 760px) {
+    .creator-grid { grid-template-columns: 1fr; }
+    .settings-panel { width: calc(100% - 24px); margin: 12px auto 24px; }
+    .settings-head { padding: 18px 18px 14px; }
+    .settings-tabs { padding: 0 12px 9px; }
+    .settings-content { padding: 18px; gap: 22px; }
+    .setting-card { grid-template-columns: 1fr; gap: 10px; align-items: stretch; }
+    .setting-card-toggle { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+    .setting-control { width: 100%; max-width: none; }
+    .setting-actions { justify-content: flex-start; }
+    .settings-panel .swatches { justify-content: flex-start; max-width: none; }
+    .range-control { min-width: 0; }
+    .settings-panel .range { flex: 1; width: auto; }
+    .about-hero { grid-template-columns: 64px minmax(0, 1fr); gap: 14px; }
+    .about-logo { width: 64px; height: 64px; border-radius: 15px; }
+    .about-identity h3 { font-size: 22px; }
+    .about-reference-grid { grid-template-columns: 1fr; }
+  }
 
 </style>
