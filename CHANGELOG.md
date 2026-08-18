@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.17] - 2026-08-18
+
+### Fixed
+
+- Committed the exact Rust formatting required by native `rustfmt 1.94.0` for the 0.3.16 service-ordering and backup-reliability additions, allowing the non-mutating Windows `fmt-check` release gate to proceed.
+- Kept all 0.3.16 service/sidebar/order and backup behavior unchanged; this patch is release-hygiene only.
+
+### Tests
+
+- Extended the offline native-rustfmt baseline with every formatter drift reported by the Windows toolchain in `backup.rs`, `local_profile.rs`, and `main.rs`.
+- Updated backup/release invariants to assert the formatted staging-verification code while preserving the same fsync, read-back validation, SHA-256 verification, and atomic-replace requirements.
+
 ## [0.3.16] - 2026-08-18
 
 ### Changed

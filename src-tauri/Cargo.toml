@@ -1,6 +1,6 @@
 [package]
 name = "tauridium"
-version = "0.3.16"
+version = "0.3.17"
 edition = "2021"
 description = "Tauridium — lightweight Tauri client for Ferdium"
 license = "MIT"
