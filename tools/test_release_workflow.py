@@ -85,6 +85,31 @@ class ReleaseWorkflowTests(unittest.TestCase):
       '    let win = app.get_window("main").ok_or("Main window not found")?;',
       main,
     )
+    self.assertIn(
+      '    let text =\n        fs::read_to_string(path).map_err(|error| format!("Unable to read backup: {error}"))?;',
+      (ROOT / "src-tauri/src/backup.rs").read_text(encoding="utf-8"),
+    )
+    backup = (ROOT / "src-tauri/src/backup.rs").read_text(encoding="utf-8")
+    self.assertIn(
+      '        let root =\n            std::env::temp_dir().join(format!("tauridium-backup-test-{}", std::process::id()));',
+      backup,
+    )
+    self.assertIn(
+      'fn persist_app_settings(app: &AppHandle, state: &AppState, settings: &Value) -> Result<(), String> {',
+      main,
+    )
+    self.assertIn(
+      '        let entry =\n            entry.map_err(|error| format!("Unable to read custom recipe entry: {error}"))?;',
+      recipes,
+    )
+    self.assertIn(
+      '            return Err(format!(\n                "Custom recipe folder uses a reserved Tauridium id: {id}"\n            ));',
+      recipes,
+    )
+    self.assertIn(
+      'pub(crate) fn validate_custom_recipe_backups(backups: &[CustomRecipeBackup]) -> Result<(), String> {',
+      recipes,
+    )
 
   def test_download_notification_uses_valid_quoted_format_string(self) -> None:
     main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
