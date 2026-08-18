@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import tauridiumLogo from "./assets/tauridium.svg";
   import { listen } from "@tauri-apps/api/event";
   import {
@@ -14,6 +14,8 @@
     orderedBySavedIds,
     reorderVisibleSubset,
     serviceLabel,
+    backupTimestamp,
+    automaticBackupDue,
   } from "./lib/ui";
   import { appVersion, checkForUpdate, installUpdate, type Update } from "./lib/updater";
   import { ask, open, save as saveDialog } from "@tauri-apps/plugin-dialog";
@@ -56,6 +58,7 @@
     setSidebarWidth,
     exportBackup,
     restoreBackup,
+    createAutomaticBackup,
     openExternalUrl,
     DEFAULT_SERVER,
     type MeUser,
@@ -107,9 +110,10 @@
   let settingsSvc = $state<Service | null>(null);
   let svcDirty = $state(false); // Service settings changed but not saved yet.
   let svcReload = $state(false); // A field requiring reload (URL/team/UA) changed.
+  let serviceSettingsReturnToSettings = $state(false);
   let newWorkspaceName = $state("");
 
-  type Tab = "general" | "services" | "appearance" | "privacy" | "advanced" | "updates" | "about";
+  type Tab = "general" | "services" | "appearance" | "privacy" | "backup" | "advanced" | "updates" | "about";
   let settingsTab = $state<Tab>("general");
 
   // Updates (automatic updater).
@@ -122,6 +126,9 @@
   // Portable backup/export state.
   let backupBusy = $state(false);
   let backupStatus = $state("");
+  let automaticBackupTimer: ReturnType<typeof setInterval> | null = null;
+  let automaticBackupStartupHandled = false;
+  let automaticBackupRunning = false;
 
   let appSettings = $state<AppSettings>({
     autostart: false,
@@ -143,6 +150,9 @@
     preloadServices: true,
     serviceOrder: [],
     workspaceOrder: [],
+    automaticBackupSchedule: "off",
+    automaticBackupRetention: 10,
+    lastAutomaticBackupAt: 0,
   });
 
   // Hibernation: suspended services have their webview closed while retaining the session.
@@ -215,6 +225,10 @@
         ? "when you sign in to Windows"
         : "when you log in";
 
+  onDestroy(() => {
+    if (automaticBackupTimer) clearInterval(automaticBackupTimer);
+  });
+
   onMount(async () => {
     darkMq?.addEventListener("change", () => {
       if (appSettings.theme === "system") applyTheme();
@@ -257,6 +271,10 @@
     const restored = await attemptRestore();
     booting = false;
     if (!restored) startReconnect(attemptRestore);
+    await maybeRunAutomaticBackup(true);
+    automaticBackupTimer = setInterval(() => {
+      void maybeRunAutomaticBackup(false);
+    }, 60 * 60 * 1000);
     appVersion()
       .then((v) => (appVer = v))
       .catch(() => {});
@@ -565,13 +583,29 @@
     await persistServiceIds(nextIds, previousIds).catch(() => {});
   }
 
-  function openServiceSettings(s: Service) {
+  function openServiceSettings(s: Service, returnToSettings = false) {
     error = null;
+    serviceSettingsReturnToSettings = returnToSettings;
     settingsSvc = { ...s }; // Editable copy; applied to the server on Save.
     svcDirty = false;
     svcReload = false;
     view = "svcSettings";
     hideServices();
+  }
+
+  function closeServiceSettings() {
+    error = null;
+    if (serviceSettingsReturnToSettings) {
+      serviceSettingsReturnToSettings = false;
+      settingsSvc = null;
+      svcDirty = false;
+      svcReload = false;
+      settingsTab = "services";
+      view = "appSettings";
+      hideServices().catch(() => {});
+      return;
+    }
+    backToService();
   }
 
   async function persistService(reload = false) {
@@ -971,7 +1005,36 @@
   }
 
   function backupFileName(): string {
-    return `tauridium-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    return `tauridium-backup-${backupTimestamp()}.json`;
+  }
+
+  function automaticBackupFileName(): string {
+    return `tauridium-auto-backup-${backupTimestamp()}.json`;
+  }
+
+  async function maybeRunAutomaticBackup(startup: boolean) {
+    if (automaticBackupRunning) return;
+    const schedule = appSettings.automaticBackupSchedule ?? "off";
+    const now = Date.now();
+    const due = automaticBackupDue(
+      schedule,
+      appSettings.lastAutomaticBackupAt ?? 0,
+      now,
+      startup,
+      automaticBackupStartupHandled,
+    );
+    if (schedule === "startup" && startup) automaticBackupStartupHandled = true;
+    if (!due) return;
+    automaticBackupRunning = true;
+    try {
+      const summary = await createAutomaticBackup(automaticBackupFileName());
+      appSettings = await setAppSettings({ lastAutomaticBackupAt: now });
+      backupStatus = backupSummaryText("Automatic backup created", summary);
+    } catch (err) {
+      backupStatus = `Automatic backup failed: ${err}`;
+    } finally {
+      automaticBackupRunning = false;
+    }
   }
 
   function backupSummaryText(action: string, summary: BackupSummary): string {
@@ -1068,6 +1131,9 @@
       } as Partial<AppSettings>);
       applyTheme();
       applyLayout();
+      if (key === "automaticBackupSchedule" && value !== "startup") {
+        void maybeRunAutomaticBackup(false);
+      }
     } catch (err) {
       error = String(err);
     }
@@ -1158,7 +1224,7 @@
   <div class="shell">
     <aside class="sidebar">
       <div class="account">
-        <strong>{me.local ? "Local only" : me.firstname || me.email}</strong>
+        <strong>{me.local ? "Local" : me.firstname || me.email}</strong>
         <button class="link" onclick={handleLogout}>sign out</button>
       </div>
 
@@ -1217,7 +1283,7 @@
               <button class="primary sm" disabled={!svcDirty} onclick={saveServiceSettings}>
                 {svcDirty ? "Save changes" : "Saved"}
               </button>
-              <button class="link" onclick={backToService}>✕ close</button>
+              <button class="link" onclick={closeServiceSettings}>✕ close</button>
             </span>
           </div>
           <code class="recipe">recipe: {settingsSvc.recipeId}</code>
@@ -1469,7 +1535,7 @@
           </div>
 
           <nav class="settings-tabs" aria-label="Settings sections">
-            {#each [["general", "General"], ["services", "Services"], ["appearance", "Appearance"], ["privacy", "Privacy"], ["advanced", "Advanced"], ["updates", "Updates"], ["about", "About"]] as [id, label] (id)}
+            {#each [["general", "General"], ["services", "Services"], ["appearance", "Appearance"], ["privacy", "Privacy"], ["backup", "Backup"], ["advanced", "Advanced"], ["updates", "Updates"], ["about", "About"]] as [id, label] (id)}
               <button
                 class="setting-tab"
                 class:on={settingsTab === id}
@@ -1514,7 +1580,7 @@
                       <div class="managed-actions">
                         <button class="icon-button compact" disabled={index === 0} aria-label={`Move ${serviceLabel(service)} up`} title="Move up" onclick={() => moveService(service.id, -1)}>↑</button>
                         <button class="icon-button compact" disabled={index === sorted.length - 1} aria-label={`Move ${serviceLabel(service)} down`} title="Move down" onclick={() => moveService(service.id, 1)}>↓</button>
-                        <button class="secondary sm" onclick={() => openServiceSettings(service)}>Service settings</button>
+                        <button class="secondary sm" onclick={() => openServiceSettings(service, true)}>Service settings</button>
                       </div>
                     </div>
                   {:else}
@@ -1631,6 +1697,31 @@
                 <div class="section-heading"><h3 id="settings-privacy-notifications">Notifications</h3><p>Limit message information exposed through operating-system notifications.</p></div>
                 <div class="settings-list">{@render appToggle("Private notifications", "Hide sender and message content and show only a generic new-message notification.", "privateNotifications", appSettings.privateNotifications)}</div>
               </section>
+            {:else if settingsTab === "backup"}
+              <section class="settings-section" aria-labelledby="settings-backup-manual">
+                <div class="section-heading"><h3 id="settings-backup-manual">Manual backup</h3><p>Export or restore Tauridium-owned configuration using a versioned, integrity-verified backup file.</p></div>
+                <div class="settings-list">
+                  <div class="setting-card">
+                    <div class="setting-copy"><span class="setting-label">Tauridium data</span><span class="setting-description">Exports app settings, canonical service/workspace order, local services and workspaces, and complete custom recipes. Restore validates every component before committing. Ferdium login tokens, website cookies/storage, remote caches, and machine-specific monitor geometry are excluded.</span></div>
+                    <div class="setting-actions"><button class="secondary sm" disabled={backupBusy} onclick={doRestoreBackup}>Restore backup…</button><button class="primary sm" disabled={backupBusy} onclick={doExportBackup}>Export backup…</button></div>
+                  </div>
+                  <p class="settings-note">Backups can contain sensitive local service configuration such as proxy credentials. Store them accordingly.</p>
+                  {#if backupStatus}<p class="settings-status">{backupStatus}</p>{/if}
+                </div>
+              </section>
+              <section class="settings-section" aria-labelledby="settings-backup-automatic">
+                <div class="section-heading"><h3 id="settings-backup-automatic">Automatic backup</h3><p>Create recovery copies without opening a file dialog. Automatic backups are stored under Tauridium's configuration directory in <code>backups/automatic</code>.</p></div>
+                <div class="settings-list">
+                  <div class="setting-card">
+                    <div class="setting-copy"><span class="setting-label">Schedule</span><span class="setting-description">Choose when Tauridium creates automatic backups while it is running.</span></div>
+                    <select class="setting-control" aria-label="Automatic backup schedule" value={appSettings.automaticBackupSchedule} onchange={(e) => saveAppSetting("automaticBackupSchedule", e.currentTarget.value)}><option value="off">Off</option><option value="startup">On program startup</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select>
+                  </div>
+                  <div class="setting-card">
+                    <div class="setting-copy"><span class="setting-label">Retention</span><span class="setting-description">Keep this many newest automatic backups. Older automatic backups are deleted only after a newly written backup has passed integrity verification.</span></div>
+                    <input class="setting-number" type="number" min="1" max="365" value={appSettings.automaticBackupRetention} aria-label="Automatic backup retention" onchange={(e) => saveAppSetting("automaticBackupRetention", Math.max(1, Math.min(365, Number(e.currentTarget.value) || 1)))} />
+                  </div>
+                </div>
+              </section>
             {:else if settingsTab === "advanced"}
               <section class="settings-section" aria-labelledby="settings-advanced-browser">
                 <div class="section-heading"><h3 id="settings-advanced-browser">Browser identity</h3><p>Advanced compatibility controls for services that depend on browser identification.</p></div>
@@ -1641,22 +1732,11 @@
                   </div>
                 </div>
               </section>
-              <section class="settings-section" aria-labelledby="settings-advanced-backup">
-                <div class="section-heading"><h3 id="settings-advanced-backup">Backup</h3><p>Move Tauridium-owned local configuration between installations or keep a manual recovery copy. Backups use a versioned schema with integrity verification and migration support for older formats.</p></div>
-                <div class="settings-list">
-                  <div class="setting-card">
-                    <div class="setting-copy"><span class="setting-label">Local Tauridium data</span><span class="setting-description">Exports app settings, canonical service/workspace order, local services and workspaces, and complete custom recipes. Restore verifies integrity and validates every component before committing. Ferdium login tokens, website cookies/storage, remote caches, and machine-specific monitor geometry are excluded.</span></div>
-                    <div class="setting-actions"><button class="secondary sm" disabled={backupBusy} onclick={doRestoreBackup}>Restore backup…</button><button class="primary sm" disabled={backupBusy} onclick={doExportBackup}>Export backup…</button></div>
-                  </div>
-                  <p class="settings-note">Backups can contain sensitive local service configuration such as proxy credentials. Store them accordingly.</p>
-                  {#if backupStatus}<p class="settings-status">{backupStatus}</p>{/if}
-                </div>
-              </section>
               <section class="settings-section" aria-labelledby="settings-advanced-account">
                 <div class="section-heading"><h3 id="settings-advanced-account">{me.local ? "Account" : "Server"}</h3></div>
                 <div class="settings-list">
                   <div class="setting-card info-card">
-                    <div class="setting-copy"><span class="setting-label">{me.local ? "Local-only mode" : me.email}</span><span class="setting-description">{me.local ? "Services and workspaces are stored on this device without a Ferdium account." : `Connected to ${server}. Sign out to change the server.`}</span></div>
+                    <div class="setting-copy"><span class="setting-label">{me.local ? "Local mode" : me.email}</span><span class="setting-description">{me.local ? "Services and workspaces are stored on this device without a Ferdium account." : `Connected to ${server}. Sign out to change the server.`}</span></div>
                     <span class="status-badge">{me.local ? "Local" : "Connected"}</span>
                   </div>
                 </div>
@@ -2083,6 +2163,7 @@
   .setting-description { max-width: 560px; color: var(--muted); font-size: 12.5px; line-height: 1.45; font-weight: 400; }
   .setting-control { min-width: 176px; max-width: 230px; margin-left: 0; }
   .setting-text-input { width: 100%; box-sizing: border-box; }
+  .setting-number { width: 96px; box-sizing: border-box; text-align: right; }
   .setting-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
   .settings-note, .settings-status { margin: 0 2px; color: var(--muted); font-size: 12px; line-height: 1.45; }
   .settings-status { color: var(--text2); }
@@ -2132,6 +2213,7 @@
     .setting-card { grid-template-columns: 1fr; gap: 10px; align-items: stretch; }
     .setting-card-toggle { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
     .setting-control { width: 100%; max-width: none; }
+    .setting-number { width: 100%; text-align: left; }
     .setting-actions { justify-content: flex-start; }
     .managed-row { align-items: flex-start; flex-direction: column; }
     .managed-actions { width: 100%; justify-content: flex-end; }

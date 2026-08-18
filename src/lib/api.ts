@@ -246,6 +246,9 @@ export interface AppSettings {
   preloadServices: boolean;
   serviceOrder: string[];
   workspaceOrder: string[];
+  automaticBackupSchedule: "off" | "startup" | "daily" | "weekly" | "monthly";
+  automaticBackupRetention: number;
+  lastAutomaticBackupAt: number;
   [k: string]: unknown;
 }
 
@@ -298,5 +301,9 @@ export function exportBackup(path: string): Promise<BackupSummary> {
 
 export function restoreBackup(path: string): Promise<BackupSummary> {
   return invoke("restore_backup", { path });
+}
+
+export function createAutomaticBackup(filename: string): Promise<BackupSummary> {
+  return invoke("create_automatic_backup", { filename });
 }
 

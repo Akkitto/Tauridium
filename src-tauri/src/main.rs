@@ -1991,7 +1991,10 @@ fn default_app_settings_value() -> Value {
         "hibernationTimer": 0,
         "preloadServices": true,
         "serviceOrder": [],
-        "workspaceOrder": []
+        "workspaceOrder": [],
+        "automaticBackupSchedule": "off",
+        "automaticBackupRetention": 10,
+        "lastAutomaticBackupAt": 0
     })
 }
 
@@ -2028,6 +2031,16 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
     if !matches!(location, "top" | "center" | "bottom") {
         return Err("App setting sidebarServicesLocation is invalid".into());
     }
+    let backup_schedule = object
+        .get("automaticBackupSchedule")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if !matches!(
+        backup_schedule,
+        "off" | "startup" | "daily" | "weekly" | "monthly"
+    ) {
+        return Err("App setting automaticBackupSchedule is invalid".into());
+    }
     if !object.get("accentColor").is_some_and(Value::is_string)
         || !object.get("userAgentPref").is_some_and(Value::is_string)
     {
@@ -2046,6 +2059,19 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         if !(min..=max).contains(&number) {
             return Err(format!("App setting {key} is outside its supported range"));
         }
+    }
+    let backup_retention = object
+        .get("automaticBackupRetention")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| "App setting automaticBackupRetention must be an integer".to_string())?;
+    if !(1..=365).contains(&backup_retention) {
+        return Err("App setting automaticBackupRetention is outside its supported range".into());
+    }
+    if !object
+        .get("lastAutomaticBackupAt")
+        .is_some_and(|value| value.as_f64().is_some_and(|number| number >= 0.0))
+    {
+        return Err("App setting lastAutomaticBackupAt must be a non-negative number".into());
     }
     for (key, label) in [("serviceOrder", "Service"), ("workspaceOrder", "Workspace")] {
         let values = object
@@ -2205,6 +2231,7 @@ fn set_app_settings(
     let patch = patch
         .as_object()
         .ok_or_else(|| "App settings patch must be a JSON object".to_string())?;
+    let autostart_changed = patch.contains_key("autostart");
     let mut value = read_app_settings_value(&app);
     let base = value
         .as_object_mut()
@@ -2213,7 +2240,9 @@ fn set_app_settings(
         base.insert(key.clone(), setting.clone());
     }
     validate_app_settings_value(&value)?;
-    apply_autostart_setting(&app, &value)?;
+    if autostart_changed {
+        apply_autostart_setting(&app, &value)?;
+    }
     persist_app_settings(&app, &state, &value)?;
     Ok(value)
 }
@@ -2235,6 +2264,82 @@ fn export_backup(
         custom_recipes,
     );
     backup::save(Path::new(&path), &document)
+}
+
+fn automatic_backup_root(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_config_dir()
+        .map(|root| root.join("backups").join("automatic"))
+        .map_err(|error| format!("Tauridium configuration directory unavailable: {error}"))
+}
+
+fn validate_automatic_backup_filename(filename: &str) -> Result<(), String> {
+    let valid = filename.starts_with("tauridium-auto-backup-")
+        && filename.ends_with(".json")
+        && filename.len() <= 128
+        && filename
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '.'));
+    if valid {
+        Ok(())
+    } else {
+        Err("Automatic backup filename is invalid".into())
+    }
+}
+
+fn prune_automatic_backups(root: &Path, retention: usize) -> Result<(), String> {
+    let mut backups = std::fs::read_dir(root)
+        .map_err(|error| format!("Unable to read automatic backup directory: {error}"))?
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
+        .filter(|entry| {
+            entry.file_name().to_str().is_some_and(|name| {
+                name.starts_with("tauridium-auto-backup-") && name.ends_with(".json")
+            })
+        })
+        .map(|entry| entry.path())
+        .collect::<Vec<_>>();
+    backups.sort_by(|left, right| right.file_name().cmp(&left.file_name()));
+    for path in backups.into_iter().skip(retention) {
+        std::fs::remove_file(&path).map_err(|error| {
+            format!(
+                "Unable to remove expired automatic backup {}: {error}",
+                path.display()
+            )
+        })?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn create_automatic_backup(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    filename: String,
+) -> Result<backup::BackupSummary, String> {
+    validate_automatic_backup_filename(&filename)?;
+    let app_settings = effective_app_settings_value(&app);
+    let retention = app_settings
+        .get("automaticBackupRetention")
+        .and_then(Value::as_u64)
+        .unwrap_or(10)
+        .clamp(1, 365) as usize;
+    let root = automatic_backup_root(&app)?;
+    std::fs::create_dir_all(&root)
+        .map_err(|error| format!("Unable to create automatic backup directory: {error}"))?;
+    let path = root.join(filename);
+    let local_profile = serde_json::to_value(state.local_profile.lock().unwrap().clone())
+        .map_err(|error| format!("Unable to serialize local profile for backup: {error}"))?;
+    let custom_recipes = recipes::backup_custom_recipes(&app)?;
+    let document = backup::BackupDocument::new(
+        env!("CARGO_PKG_VERSION"),
+        app_settings,
+        local_profile,
+        custom_recipes,
+    );
+    let summary = backup::save(&path, &document)?;
+    prune_automatic_backups(&root, retention)?;
+    Ok(summary)
 }
 
 fn restore_recovery_backup_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -2630,6 +2735,7 @@ fn main() {
             sync_services_menu,
             set_app_settings,
             export_backup,
+            create_automatic_backup,
             restore_backup,
             open_external_url
         ])
@@ -2667,6 +2773,30 @@ mod tests {
         assert!(validate_order_ids(&["".into()], "Service").is_err());
         assert!(validate_order_ids(&["a".into(), "a".into()], "Service").is_err());
         assert!(validate_order_ids(&vec!["id".into(); 10_001], "Service").is_err());
+    }
+
+    #[test]
+    fn automatic_backup_filenames_reject_path_traversal_and_bad_names() {
+        assert!(validate_automatic_backup_filename(
+            "tauridium-auto-backup-2026-08-19-001122-003.json"
+        )
+        .is_ok());
+        assert!(validate_automatic_backup_filename("../tauridium-auto-backup-x.json").is_err());
+        assert!(validate_automatic_backup_filename("tauridium-auto-backup-x/evil.json").is_err());
+        assert!(validate_automatic_backup_filename("backup.json").is_err());
+    }
+
+    #[test]
+    fn automatic_backup_settings_accept_only_supported_schedule_and_retention() {
+        let mut settings = default_app_settings_value();
+        assert!(validate_app_settings_value(&settings).is_ok());
+        settings["automaticBackupSchedule"] = json!("hourly");
+        assert!(validate_app_settings_value(&settings).is_err());
+        settings["automaticBackupSchedule"] = json!("daily");
+        settings["automaticBackupRetention"] = json!(0);
+        assert!(validate_app_settings_value(&settings).is_err());
+        settings["automaticBackupRetention"] = json!(365);
+        assert!(validate_app_settings_value(&settings).is_ok());
     }
 
     #[test]

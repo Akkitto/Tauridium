@@ -119,3 +119,35 @@ export function serviceLabel(service: { name?: string | null; recipeId?: string 
   const recipeId = service.recipeId?.trim();
   return recipeId || "Unnamed service";
 }
+
+
+export type AutomaticBackupSchedule = "off" | "startup" | "daily" | "weekly" | "monthly";
+
+export function backupTimestamp(date = new Date()): string {
+  const pad = (value: number, width = 2) => String(value).padStart(width, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}-${pad(date.getMilliseconds(), 3)}`;
+}
+
+export function automaticBackupDue(
+  schedule: AutomaticBackupSchedule,
+  lastRun: number,
+  now: number,
+  startup: boolean,
+  startupHandled: boolean,
+): boolean {
+  if (schedule === "off") return false;
+  if (schedule === "startup") return startup && !startupHandled;
+  if (lastRun <= 0) return true;
+  if (schedule === "monthly") {
+    const due = new Date(lastRun);
+    const day = due.getDate();
+    due.setDate(1);
+    due.setMonth(due.getMonth() + 1);
+    const lastDay = new Date(due.getFullYear(), due.getMonth() + 1, 0).getDate();
+    due.setDate(Math.min(day, lastDay));
+    return now >= due.getTime();
+  }
+  const elapsed = Math.max(0, now - Math.max(0, lastRun));
+  const interval = schedule === "daily" ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+  return elapsed >= interval;
+}
