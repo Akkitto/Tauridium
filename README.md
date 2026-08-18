@@ -47,6 +47,7 @@ uses the Ferdium REST API; accountless mode keeps service/workspace state local.
 - Each service in an **isolated, persistent session** (native WebView)
 - **Native notifications** + dock unread badges
 - **Close-to-tray**, run in background, launch at login
+- **Persistent window state** — restores the main window's size, screen position, maximized state, and fullscreen state across tray hides and full restarts
 - **Per-service settings** (name, custom URL, team, notifications, mute, badges,
   hibernation, dark mode, favicon, proxy, custom user agent…) — synced in server
   mode and persisted locally in accountless mode
@@ -103,6 +104,12 @@ therefore not sent to the server as unknown recipe ids and are merged into the s
 list locally. Ordinary accountless-mode services are not implicitly overlaid after a
 server login.
 
+## Window state
+
+Tauridium persists the main window's normal size, screen position, maximized state, and fullscreen state in `window-state.json` under the OS application-config directory. The state is saved before hiding to the tray and before quitting, then restored before the window is shown again and on the next launch.
+
+Visibility is intentionally excluded from persisted window state so **Start minimized** remains an independent explicit setting. Persistence is limited to the main Tauridium window; service child webviews are not treated as desktop windows. If saved coordinates no longer intersect an available monitor, the window-state restore logic falls back instead of restoring the window off-screen.
+
 ## Backups
 
 Open **Settings → Advanced → Backup** to export Tauridium-owned local state to one portable
@@ -115,9 +122,7 @@ before writing persistent state. Restoring replaces local settings/services/work
 overwrites custom recipes with matching ids; unrelated existing custom recipes are retained.
 The app reloads after a successful restore.
 
-Ferdium login/session credentials, website cookies/storage, and remote recipe caches are
-intentionally excluded. A backup can still contain sensitive local service configuration
-(for example proxy credentials), so store backup files accordingly.
+Ferdium login/session credentials, website cookies/storage, remote recipe caches, and monitor-specific `window-state.json` geometry are intentionally excluded. Window geometry remains local to each installation so restoring a portable backup on a different display setup cannot import stale monitor coordinates. A backup can still contain sensitive local service configuration (for example proxy credentials), so store backup files accordingly.
 
 ## About and project links
 

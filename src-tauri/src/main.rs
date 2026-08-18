@@ -34,6 +34,7 @@ use tauri::{
 };
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_notification::{NotificationExt, PermissionState};
+use tauri_plugin_window_state::{AppHandleExt as _, StateFlags, WindowExt as _};
 
 // Shared HTTP client with connection pooling AND timeouts: without a timeout, a server
 // that accepts a connection but never responds can hang login/show_service indefinitely.
@@ -1992,8 +1993,27 @@ fn restore_backup(
     Ok(document.summary(Path::new(&path)))
 }
 
+fn persisted_window_state_flags() -> StateFlags {
+    StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED | StateFlags::FULLSCREEN
+}
+
+fn save_main_window_state(app: &AppHandle) {
+    if let Err(error) = app.save_window_state(persisted_window_state_flags()) {
+        eprintln!("Unable to save Tauridium window state: {error}");
+    }
+}
+
+fn restore_main_window_state(window: &tauri::Window<Wry>) {
+    if let Err(error) = window.restore_state(persisted_window_state_flags()) {
+        eprintln!("Unable to restore Tauridium window state: {error}");
+    }
+}
+
 fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_window("main") {
+        if !w.is_visible().unwrap_or(false) {
+            restore_main_window_state(&w);
+        }
         let _ = w.show();
         let _ = w.set_focus();
     }
@@ -2002,8 +2022,10 @@ fn show_main(app: &AppHandle) {
 fn toggle_main(app: &AppHandle) {
     if let Some(w) = app.get_window("main") {
         if w.is_visible().unwrap_or(false) {
+            save_main_window_state(app);
             let _ = w.hide();
         } else {
+            restore_main_window_state(&w);
             let _ = w.show();
             let _ = w.set_focus();
         }
@@ -2102,6 +2124,13 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_state_flags(persisted_window_state_flags())
+                .with_filter(|label| label == "main")
+                .with_filename("window-state.json")
+                .build(),
+        )
         .manage(AppState::default())
         .setup(|app| {
             // Cache app settings in memory for the poller, shutdown handling, and related logic.
@@ -2129,6 +2158,8 @@ fn main() {
                     // overlapped the sidebar.
                     WindowEvent::Focused(true) => reposition_active(&handle),
                     WindowEvent::CloseRequested { api, .. } => {
+                        // Persist geometry/state before either hiding to tray or allowing a real close.
+                        save_main_window_state(&handle);
                         // Close to tray: hide instead of quitting; otherwise quit.
                         let close_to_tray = handle
                             .state::<AppState>()
@@ -2159,7 +2190,10 @@ fn main() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => show_main(app),
-                    "quit" => app.exit(0),
+                    "quit" => {
+                        save_main_window_state(app);
+                        app.exit(0);
+                    }
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -2360,6 +2394,17 @@ fn main() {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn persisted_window_state_tracks_geometry_without_visibility() {
+        let flags = persisted_window_state_flags();
+        assert!(flags.contains(StateFlags::SIZE));
+        assert!(flags.contains(StateFlags::POSITION));
+        assert!(flags.contains(StateFlags::MAXIMIZED));
+        assert!(flags.contains(StateFlags::FULLSCREEN));
+        assert!(!flags.contains(StateFlags::VISIBLE));
+        assert!(!flags.contains(StateFlags::DECORATIONS));
+    }
 
     #[test]
     fn password_hash_is_base64_of_sha256() {
