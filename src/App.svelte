@@ -98,7 +98,7 @@
   let svcReload = $state(false); // A field requiring reload (URL/team/UA) changed.
   let newWorkspaceName = $state("");
 
-  type Tab = "general" | "services" | "appearance" | "privacy" | "advanced" | "updates";
+  type Tab = "general" | "services" | "appearance" | "privacy" | "advanced" | "updates" | "about";
   let settingsTab = $state<Tab>("general");
 
   // Updates (automatic updater).
@@ -215,6 +215,11 @@
     listen<number>("select-index", (e) => {
       const s = visibleServices[e.payload - 1];
       if (s) selectService(s);
+    });
+    // The native About menu opens the same deterministic in-app About section on every OS.
+    listen("open-about", () => {
+      settingsTab = "about";
+      view = "appSettings";
     });
     try {
       appSettings = await getAppSettings();
@@ -1286,7 +1291,7 @@
           </div>
 
           <div class="tabs">
-            {#each [["general", "General"], ["services", "Services"], ["appearance", "Appearance"], ["privacy", "Privacy"], ["advanced", "Advanced"], ["updates", "Updates"]] as [id, label] (id)}
+            {#each [["general", "General"], ["services", "Services"], ["appearance", "Appearance"], ["privacy", "Privacy"], ["advanced", "Advanced"], ["updates", "Updates"], ["about", "About"]] as [id, label] (id)}
               <button
                 class="tab"
                 class:on={settingsTab === id}
@@ -1456,6 +1461,16 @@
             {/if}
             {#if updStatus}<p class="desc">{updStatus}</p>{/if}
             <p class="sub">Updates are downloaded from GitHub Releases and verified with a signature.</p>
+          {:else if settingsTab === "about"}
+            <div class="set-title">Tauridium</div>
+            <div class="setrow">
+              <div class="row-toggle"><span>Version</span><strong>{appVer ? `v${appVer}` : "Loading…"}</strong></div>
+              <p class="desc">A lightweight Tauri desktop client for Ferdium with accountless local mode and locally managed recipes.</p>
+            </div>
+            <div class="setrow">
+              <div class="row-toggle"><span>License</span><strong>MIT</strong></div>
+              <p class="desc">Project: github.com/Gizmo091/Tauridium</p>
+            </div>
           {/if}
 
           {#if error}<p class="error">{error}</p>{/if}

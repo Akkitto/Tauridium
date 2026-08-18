@@ -2090,14 +2090,21 @@ fn main() {
             }
             tray.build(app)?;
 
-            // Native macOS menu: App / Edit / View (Toggle Developer Tools).
+            // Native application menu: App / Edit / View / Services.
             {
+                let about = MenuItem::with_id(
+                    app,
+                    "about-tauridium",
+                    "About Tauridium",
+                    true,
+                    None::<&str>,
+                )?;
                 let app_sub = Submenu::with_items(
                     app,
                     "Tauridium",
                     true,
                     &[
-                        &PredefinedMenuItem::about(app, None, None)?,
+                        &about,
                         &PredefinedMenuItem::separator(app)?,
                         &PredefinedMenuItem::hide(app, None)?,
                         &PredefinedMenuItem::hide_others(app, None)?,
@@ -2174,6 +2181,10 @@ fn main() {
                 app.on_menu_event(|app, event| {
                     let id = event.id.as_ref();
                     match id {
+                        "about-tauridium" => {
+                            show_main(app);
+                            let _ = app.emit("open-about", ());
+                        }
                         "toggle-devtools" => toggle_devtools(app),
                         "reload-service" => reload_active_service(app),
                         "reload-app" => reload_app(app),

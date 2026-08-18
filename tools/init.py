@@ -22,7 +22,7 @@ from typing import Sequence
 ROOT = Path(__file__).resolve().parents[1]
 OS_RELEASE = Path("/etc/os-release")
 SYSTEM_DEPS_ENV = "TAURIDIUM_INIT_SYSTEM_DEPS"
-INIT_VERSION = "0.3.7"
+INIT_VERSION = "0.3.8"
 
 # Modules that Tauridium's Linux Tauri/WebKitGTK dependency graph needs at build
 # time. Checking modules instead of package names keeps init idempotent across
@@ -356,6 +356,40 @@ def validate_npm_policy() -> None:
     )
 
 
+def command_succeeds(command: Sequence[str]) -> bool:
+  """Run a capability probe without turning an expected miss into an init failure."""
+  result = subprocess.run(
+    list(command),
+    cwd=ROOT,
+    check=False,
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+  )
+  return result.returncode == 0
+
+
+def ensure_tauri_cli() -> None:
+  """Ensure the Cargo-installed Tauri v2 CLI is available on Unix hosts."""
+  if not shutil.which("cargo"):
+    raise InitError(
+      "Rust/Cargo is required but cargo was not found in PATH; install the stable Rust "
+      "toolchain, then rerun `just init`"
+    )
+
+  probe = ["cargo", "tauri", "--version"]
+  if command_succeeds(probe):
+    print("+ Tauri CLI: available", flush=True)
+    return
+
+  run_checked(["cargo", "install", "tauri-cli", "--locked", "--version", "^2"])
+  if not command_succeeds(probe):
+    raise InitError(
+      "cargo install tauri-cli completed but `cargo tauri` is still unavailable; "
+      "ensure Cargo's bin directory is present in PATH"
+    )
+  print("+ Tauri CLI: installed", flush=True)
+
+
 def install_javascript_dependencies() -> None:
   if not shutil.which("node"):
     raise InitError("Node.js is required but was not found in PATH")
@@ -392,6 +426,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"Tauridium initializer {INIT_VERSION}.", flush=True)
     install_linux_system_dependencies()
     if not args.native_only:
+      ensure_tauri_cli()
       install_javascript_dependencies()
   except subprocess.CalledProcessError as exc:
     command = " ".join(str(part) for part in exc.cmd)
