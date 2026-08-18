@@ -116,6 +116,17 @@ Key finding: WKWebView ignores `data_directory`; use `data_store_identifier` on 
 - Packaged release workflows use `frontendDist`, while `devUrl` remains development-only.
 - Current tracked project text is English-only and guarded by an automated audit.
 
+### Phase 7 — Target-qualified runtime artifacts ✅ COMPLETE (0.3.7)
+- Record the actual Rust compilation target in runtime build provenance.
+- Name run ZIPs with short target suffixes so Windows, Linux, and macOS artifacts coexist.
+- Group multiple supplied runtimes by target during packaging.
+- Keep source/documentation artifact names target-neutral.
+
+### Phase 8 — Cross-platform bootstrap and About reliability ✅ COMPLETE (0.3.8)
+- Unix initialization verifies and installs the Tauri v2 Cargo CLI before release builds can reach `cargo tauri`.
+- The About action is Tauridium-owned and opens a deterministic in-app About section on every desktop platform.
+
+
 ## 7. Known difficult areas
 
 | Area | Approach |
@@ -133,10 +144,3 @@ Key finding: WKWebView ignores `data_directory`; use `data_store_identifier` on 
 - Ferdium server — https://github.com/ferdium/ferdium-server
 - Ferdium recipes — https://github.com/ferdium/ferdium-recipes
 - Tauri — https://v2.tauri.app/
-
-### Phase 7 — Target-qualified runtime artifacts ✅ COMPLETE (0.3.7)
-
-- Record the actual Rust compilation target in runtime build provenance.
-- Name run ZIPs with short target suffixes so Windows, Linux, and macOS artifacts coexist.
-- Group multiple supplied runtimes by target during packaging.
-- Keep source/documentation artifact names target-neutral.

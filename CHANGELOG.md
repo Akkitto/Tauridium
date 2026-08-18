@@ -12,6 +12,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-08-18
+
+### Fixed
+
+- Linux `just init` now probes for the Tauri v2 Cargo CLI, installs `tauri-cli` with Cargo when missing, and verifies `cargo tauri` before the later production build step.
+- Replaced the platform-dependent predefined About menu item with a Tauridium-owned About action that shows the main window and opens an in-app About section.
+- Added an About settings tab with version, project description, license, and project identity.
+
+### Tests
+
+- Added Linux bootstrap regressions covering an existing Tauri CLI, automatic installation, post-install re-probing, missing Cargo diagnostics, and `--native-only` behavior.
+- Added regression coverage tying the native About menu action to the frontend About section.
+
 ## [0.3.7] - 2026-08-17
 
 ### Changed
