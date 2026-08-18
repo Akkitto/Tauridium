@@ -344,22 +344,46 @@ def main() -> int:
     fail("runtime does not expose compile-time Tauri build and target information")
   if "FORBIDDEN_RUNTIME_MARKERS" in package_release:
     fail("release packager still rejects inert configured devUrl bytes")
+  menu_builder = main_rs.split("fn build_native_application_menu", 1)[-1].split("#[derive(Clone, Copy)]", 1)[0]
+  native_menu = main_rs.split("// Native application menu", 1)[-1].split("// Request notification", 1)[0]
+  for marker in ('"open-settings"', '"Settings…"', '"open-add-service"', '"Add Service…"'):
+    if marker not in menu_builder:
+      fail(f"native Tauridium menu builder is incomplete: {marker}")
   for marker in (
-    '"about-tauridium"',
-    '"About Tauridium"',
-    'app.emit("open-about", ())',
+    'app.emit("open-settings", ())',
+    'app.emit("open-add-service", ())',
     'hide_service_webviews(app, &state);',
   ):
+    if marker not in native_menu:
+      fail(f"native Tauridium menu action is incomplete: {marker}")
+  if '"About Tauridium"' in menu_builder + native_menu or "PredefinedMenuItem::about" in menu_builder + native_menu:
+    fail("native Tauridium menu still exposes the obsolete About action")
+  for marker in (
+    "struct NativeServiceMenuEntry",
+    "fn native_service_menu_label",
+    "for (index, service) in services.iter().enumerate()",
+    '"No services configured"',
+    "fn sync_services_menu",
+        'app.emit("select-service-id", service_id.to_string())',
+  ):
     if marker not in main_rs:
-      fail(f"native About action is incomplete: {marker}")
-  if "PredefinedMenuItem::about" in main_rs:
-    fail("About still delegates to the platform-dependent predefined menu item")
+      fail(f"dynamic native Services menu invariant is missing: {marker}")
+  if 'format!("Service {i}")' in main_rs or "for i in 1..=9u32" in main_rs:
+    fail("native Services menu still uses fixed generic numbered slots")
   api_ts = read("src/lib/api.ts")
   api_test_ts = read("src/lib/api.test.ts")
   app = read("src/App.svelte")
   local_profile = read("src-tauri/src/local_profile.rs")
   recipes_rs = read("src-tauri/src/recipes.rs")
   backup_rs = read("src-tauri/src/backup.rs")
+  for marker in (
+    'invoke("sync_services_menu", { services })',
+    'listen<string>("select-service-id"',
+    "services.find((candidate) => candidate.id === e.payload)",
+    "await refreshNativeServicesMenu();",
+  ):
+    if marker not in api_ts + app:
+      fail(f"frontend dynamic native Services menu invariant is missing: {marker}")
 
   required_backend = (
     "start_local_session",
@@ -376,6 +400,8 @@ def main() -> int:
     "create_workspace",
     "update_workspace",
     "delete_workspace",
+    "set_service_order",
+    "set_workspace_order",
     "export_backup",
     "restore_backup",
   )
@@ -481,15 +507,50 @@ def main() -> int:
       fail(f"frontend backup API is missing: {marker}")
   for marker in (
     'const BACKUP_FORMAT: &str = "tauridium-backup"',
+    'const BACKUP_SCHEMA_CURRENT: u32 = 2',
+    'const BACKUP_SCHEMA_MIN: u32 = 1',
+    'const INTEGRITY_ALGORITHM: &str = "sha256"',
     'contains_sensitive_data: true',
     '"ferdiumSessionCredentials"',
     '"websiteCookiesAndStorage"',
     '"remoteRecipeCache"',
-    'write_atomic(path',
+    '"windowMonitorGeometry"',
+    'Backup integrity check failed; the file is corrupted or was modified',
+    'replace_file(&staging, path)',
+    'file.sync_all()',
+    'let verified = load(&staging)',
     'MAX_BACKUP_BYTES',
+    'with_recovery_backup_path',
   ):
     if marker not in backup_rs:
       fail(f"portable backup implementation is missing: {marker}")
+  for marker in (
+    'merge_custom_recipe_backups',
+    'replace_custom_recipes_exact',
+    '.restore-tmp',
+    '.restore-bak',
+    'Backup contains duplicate custom recipe id',
+  ):
+    if marker not in recipes_rs:
+      fail(f"transactional recipe backup restore is missing: {marker}")
+  for marker in (
+    'Backup contains duplicate local service id',
+    'Backup contains duplicate local workspace id',
+    'references unknown local service id',
+    'contains duplicate service id',
+  ):
+    if marker not in local_profile:
+      fail(f"local-profile backup validation is missing: {marker}")
+  restore_body = main_rs.split("fn restore_backup", 1)[-1].split("fn persisted_window_state_flags", 1)[0]
+  for marker in (
+    'restore_recovery_backup_path',
+    'pre-restore-{stamp}.json',
+    'backup::save(&recovery_path, &recovery_document)',
+    'replace_custom_recipes_exact(&app, &previous_recipes)',
+    'persist_app_settings(&app, &state, &previous_settings)',
+  ):
+    if marker not in restore_body and marker not in main_rs:
+      fail(f"backup restore safety invariant is missing: {marker}")
   for marker in (
     'Export backup…',
     'Restore backup…',
@@ -498,6 +559,54 @@ def main() -> int:
   ):
     if marker not in app:
       fail(f"backup UI is missing: {marker}")
+
+  ordering_test = read("tools/test_ordering_ui.py")
+  backup_test = read("tools/test_backup.py")
+  for marker in (
+    'serviceOrder: string[]',
+    'workspaceOrder: string[]',
+    'invoke("set_service_order", { serviceIds })',
+    'invoke("set_workspace_order", { workspaceIds })',
+  ):
+    if marker not in api_ts:
+      fail(f"canonical frontend ordering API is missing: {marker}")
+  for marker in (
+    'async function reconcileSavedOrders()',
+    'setAppSettings({ serviceOrder, workspaceOrder })',
+    'setServiceOrder(nextIds)',
+    'setWorkspaceOrder(nextIds)',
+    'reorderVisibleSubset(previousIds, visibleIds, from, target.id)',
+    'No services configured',
+  ):
+    if marker not in app:
+      fail(f"service/workspace ordering UI invariant is missing: {marker}")
+  sidebar = app.split('<aside class="sidebar">', 1)[-1].split("</aside>", 1)[0]
+  if "+ Add a service" in sidebar or "openAppSettings" in sidebar:
+    fail("sidebar still consumes service-list space with Add Service or Settings buttons")
+  svc_css = app.split(".svcarea {", 1)[-1].split(".account {", 1)[0]
+  for marker in ("flex: 1", "min-height: 0", "overflow-y: auto"):
+    if marker not in svc_css:
+      fail(f"sidebar service list is not dynamically scrollable: {marker}")
+  for test_marker in (
+    "test_drag_reorder_is_one_atomic_persistence_operation",
+    "test_workspace_reorder_uses_same_verified_atomic_order_store",
+    "test_sidebar_reclaims_real_estate_and_scrolls_only_when_needed",
+    "test_native_tauridium_menu_owns_settings_and_add_service",
+    "test_native_services_menu_tracks_actual_services_and_stable_ids",
+    "test_native_services_menu_escapes_names_and_has_no_phantom_slots",
+  ):
+    if test_marker not in ordering_test:
+      fail(f"ordering/sidebar regression coverage is missing: {test_marker}")
+  for test_marker in (
+    "test_backup_schema_is_versioned_and_has_a_migration_floor",
+    "test_current_backups_are_sha256_integrity_protected",
+    "test_restore_creates_recovery_snapshot_before_mutation",
+    "test_restore_is_transactional_and_rolls_back_every_owned_component",
+    "test_export_is_fsync_verified_before_replacing_existing_backup",
+    "test_interrupted_recipe_transaction_has_startup_recovery",
+  ):
+    if test_marker not in backup_test:
+      fail(f"backup reliability regression coverage is missing: {test_marker}")
 
   ci = read(".github/workflows/ci.yml")
   release_workflow = read(".github/workflows/release.yml")

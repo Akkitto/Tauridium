@@ -85,3 +85,37 @@ describe("local recipe helpers", () => {
     expect(looksLikeWebsite("not a site")).toBe(false);
   });
 });
+
+describe("persisted ordering helpers", () => {
+  it("applies saved ids and deterministically appends newly discovered items", async () => {
+    const { orderedBySavedIds } = await import("./ui");
+    const items = [
+      { id: "a", order: 0 },
+      { id: "b", order: 1 },
+      { id: "c", order: 2 },
+    ];
+    expect(orderedBySavedIds(items, ["c", "a"]).map((item) => item.id)).toEqual([
+      "c",
+      "a",
+      "b",
+    ]);
+    expect(items.map((item) => item.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("reorders a filtered workspace subset without moving hidden service slots", async () => {
+    const { reorderVisibleSubset } = await import("./ui");
+    expect(reorderVisibleSubset(["a", "b", "c", "d"], ["a", "c", "d"], "d", "a")).toEqual([
+      "d",
+      "b",
+      "a",
+      "c",
+    ]);
+  });
+
+  it("returns stable service labels when names are missing", async () => {
+    const { serviceLabel } = await import("./ui");
+    expect(serviceLabel({ name: " Mail ", recipeId: "gmail" })).toBe("Mail");
+    expect(serviceLabel({ name: "", recipeId: "gmail" })).toBe("gmail");
+    expect(serviceLabel({ name: "", recipeId: "" })).toBe("Unnamed service");
+  });
+});
