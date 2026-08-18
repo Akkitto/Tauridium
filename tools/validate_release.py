@@ -75,6 +75,7 @@ def main() -> int:
   release_workflow_test = read("tools/test_release_workflow.py")
   check_clean = read("tools/check_clean.py")
   patch_0318_test = read("tools/test_patch_0318.py")
+  patch_0319_test = read("tools/test_patch_0319.py")
   settings_ui_test = read("tools/test_settings_ui.py")
   if f'INIT_VERSION = "{version}"' not in init_py:
     fail("initializer release identity differs from release version")
@@ -620,6 +621,13 @@ def main() -> int:
   ):
     if marker not in settings_ui_test:
       fail(f"0.3.18 Settings regression coverage is missing: {marker}")
+
+  for marker in (
+    "test_monthly_backup_schedule_uses_calendar_months",
+    "test_monthly_backup_regression_covers_real_boundaries",
+  ):
+    if marker not in patch_0319_test:
+      fail(f"0.3.19 backup-scheduling regression coverage is missing: {marker}")
 
   for marker in (
     'Export backup…',
