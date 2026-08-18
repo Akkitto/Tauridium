@@ -1,3 +1,15 @@
+## [0.3.19] - 2026-08-19
+
+### Fixed
+
+- Corrected the automatic-backup monthly scheduling regression test: monthly backups use calendar-month semantics rather than a fixed 30-day interval.
+- Added explicit month-boundary coverage, including exact due-time checks, 31st-to-month-end clamping, and leap-year February behavior.
+
+### Tests
+
+- Added offline release coverage that requires the calendar-month implementation and the native Vitest regression cases, so the same mismatch is caught even when frontend dependencies are unavailable in a packaging environment.
+- The pinned Rust 1.97.1 formatter remains a mandatory pre-tag and packaging gate.
+
 # Changelog
 
 ## [0.3.18] - 2026-08-19

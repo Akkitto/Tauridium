@@ -1,6 +1,6 @@
 {
   "name": "tauridium",
-  "version": "0.3.18",
+  "version": "0.3.19",
   "description": "Tauridium — lightweight Tauri client for Ferdium",
   "type": "module",
   "private": true,
