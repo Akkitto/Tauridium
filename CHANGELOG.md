@@ -12,6 +12,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.12] - 2026-08-18
+
+### Fixed
+- Fixed malformed Svelte markup in the About page MIT License button that prevented `App.svelte` from parsing and caused `svelte-check` to fail.
+- Restored frontend compilability of the Settings/About redesign introduced in 0.3.11.
+
+### Tests
+- Added regression coverage requiring every About project-link `onclick` handler to be a complete Svelte expression.
+
 ## [0.3.11] - 2026-08-18
 
 ### Changed
