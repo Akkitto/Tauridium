@@ -103,6 +103,22 @@ therefore not sent to the server as unknown recipe ids and are merged into the s
 list locally. Ordinary accountless-mode services are not implicitly overlaid after a
 server login.
 
+## Backups
+
+Open **Settings → Advanced → Backup** to export Tauridium-owned local state to one portable
+`tauridium-backup-YYYY-MM-DD.json` file. The backup contains app settings, local
+services/workspaces, and complete custom recipes including optional `icon.svg` and
+`webview.js` files.
+
+**Restore backup…** validates the backup schema, settings, local profile, and every recipe
+before writing persistent state. Restoring replaces local settings/services/workspaces and
+overwrites custom recipes with matching ids; unrelated existing custom recipes are retained.
+The app reloads after a successful restore.
+
+Ferdium login/session credentials, website cookies/storage, and remote recipe caches are
+intentionally excluded. A backup can still contain sensitive local service configuration
+(for example proxy credentials), so store backup files accordingly.
+
 ## Tech stack
 
 - **Tauri v2** (Rust) — multi-webview, tray, native notifications
@@ -233,8 +249,8 @@ before tagging:
 3. Tag and push:
 
 ```text
-git tag -a v0.3.8 -m "Tauridium 0.3.8"
-git push origin v0.3.8
+git tag -a v0.3.9 -m "Tauridium 0.3.9"
+git push origin v0.3.9
 ```
 
 If no matching `CHANGELOG.md` section exists, the workflow falls back to generic
@@ -251,7 +267,7 @@ For a local validated release, run:
 just release
 ```
 
-Runtime ZIPs are target-qualified using the binary's actual Rust compilation target, so artifacts from different native builds can coexist in the same `release/` directory. Common examples are `tauridium-0.3.8-run-win-x64.zip`, `tauridium-0.3.8-run-win-arm64.zip`, `tauridium-0.3.8-run-linux-x64.zip`, `tauridium-0.3.8-run-linux-arm64.zip`, and `tauridium-0.3.8-run-macos-arm64.zip`. Source and documentation ZIP names remain target-neutral.
+Runtime ZIPs are target-qualified using the binary's actual Rust compilation target, so artifacts from different native builds can coexist in the same `release/` directory. Common examples are `tauridium-0.3.9-run-win-x64.zip`, `tauridium-0.3.9-run-win-arm64.zip`, `tauridium-0.3.9-run-linux-x64.zip`, `tauridium-0.3.9-run-linux-arm64.zip`, and `tauridium-0.3.9-run-macos-arm64.zip`. Source and documentation ZIP names remain target-neutral.
 
 `tools/package_release.py` also accepts repeated `--runtime` arguments and groups supplied binaries by their reported compilation target, emitting one run ZIP per target instead of overwriting a generic runtime archive.
 

@@ -12,6 +12,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-08-18
+
+### Fixed
+
+- Fixed the native About action remaining visually hidden behind the active service child webview. The backend now hides service webviews before opening About, and the frontend About path repeats that safeguard defensively.
+- Routed both the native About menu and the Settings About tab through one deterministic frontend `openAbout()` path.
+
+### Added
+
+- Added portable local-data backup export to a single Tauridium JSON backup file.
+- Backups include app settings, local services/workspaces, and complete custom recipe content (`package.json`, `icon.svg`, and `webview.js`).
+- Added backup restore with full preflight validation before persistent state is changed. Matching custom recipe ids are overwritten while unrelated existing custom recipes are retained.
+- Backups deliberately exclude Ferdium login/session credentials, website cookies/storage, and remote recipe caches. The UI warns that local service configuration can still contain sensitive data such as proxy credentials.
+
+### Tests
+
+- Added regressions for child-webview hiding on About, backup command registration, portable backup contents/exclusions, preflight-before-write ordering, atomic backup writes, size limits, and GUI export/restore wiring.
+
 ## [0.3.8] - 2026-08-18
 
 ### Fixed

@@ -126,6 +126,11 @@ Key finding: WKWebView ignores `data_directory`; use `data_store_identifier` on 
 - Unix initialization verifies and installs the Tauri v2 Cargo CLI before release builds can reach `cargo tauri`.
 - The About action is Tauridium-owned and opens a deterministic in-app About section on every desktop platform.
 
+### Phase 9 — About overlay fix and portable local backups ✅ COMPLETE (0.3.9)
+- Hide service child webviews before opening About so the shell panel is always visible.
+- Export settings, local services/workspaces, and custom recipes as one validated portable backup file.
+- Restore backups with complete preflight validation, atomic persistent writes, and explicit exclusions for login tokens, website session data, and remote caches.
+
 
 ## 7. Known difficult areas
 
