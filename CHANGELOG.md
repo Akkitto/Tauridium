@@ -12,6 +12,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.13] - 2026-08-18
+
+### Fixed
+- Committed the exact `rustfmt 1.94.0` formatting required for `open_external_url`, allowing the non-mutating Windows `fmt-check` release gate to pass.
+- Removed three obsolete Settings tab CSS selectors (`.tabs`, `.tab`, `.tab.on`) left behind by the Settings redesign, eliminating the corresponding `svelte-check` unused-selector warnings.
+
+### Tests
+- Extended the offline native-rustfmt baseline guard with the exact external-URL formatting reported by the Windows toolchain.
+- Added regression coverage requiring the obsolete Settings tab selectors to remain absent.
+
 ## [0.3.12] - 2026-08-18
 
 ### Fixed
