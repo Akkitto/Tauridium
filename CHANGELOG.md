@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.3.18] - 2026-08-19
+
+### Added
+
+- Added a dedicated Backup settings tab with manual export/restore, automatic backup schedules for startup/daily/weekly/monthly operation, and configurable retention.
+- Added repository-pinned Rust 1.97.1 tooling and a package-time rustfmt gate so release packaging cannot bypass the exact formatter used by Tauridium.
+
+### Changed
+
+- Manual backup filenames now include local date, time, seconds, and milliseconds so multiple backups on the same day do not collide.
+- Standardized user-facing local-mode terminology to the concise label `Local`.
+- Service settings opened from Settings -> Services now return to that Settings section when closed.
+
+### Fixed
+
+- Appearance and other unrelated settings changes no longer invoke the autostart integration; autostart is updated only when the `autostart` setting itself changes.
+
+### Reliability
+
+- Automatic backups are serialized one at a time, integrity-verified before retention pruning, restricted to Tauridium-owned filenames, and retained independently from manual and pre-restore safety backups.
+- Release packaging now requires a successful `cargo fmt -- --check` under the repository-pinned Rust 1.97.1 toolchain.
+
 ## [0.3.17] - 2026-08-18
 
 ### Fixed
