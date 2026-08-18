@@ -110,6 +110,14 @@ class ReleaseWorkflowTests(unittest.TestCase):
       'pub(crate) fn validate_custom_recipe_backups(backups: &[CustomRecipeBackup]) -> Result<(), String> {',
       recipes,
     )
+    self.assertIn(
+      '    let parsed = Url::parse(&url).map_err(|error| format!("Invalid external URL: {error}"))?;',
+      main,
+    )
+    self.assertNotIn(
+      '    let parsed =\n        Url::parse(&url).map_err(|error| format!("Invalid external URL: {error}"))?;',
+      main,
+    )
 
   def test_download_notification_uses_valid_quoted_format_string(self) -> None:
     main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")

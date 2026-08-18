@@ -103,6 +103,10 @@ class SettingsUiReleaseTests(unittest.TestCase):
     self.assertTrue(icon.is_file())
     self.assertIn('import tauridiumLogo from "./assets/tauridium.svg";', self.app)
 
+  def test_legacy_settings_tab_css_is_removed(self) -> None:
+    for selector in (".tabs {", ".tab {", ".tab.on {"):
+      self.assertNotIn(selector, self.app)
+
 
 if __name__ == "__main__":
   unittest.main()
