@@ -132,7 +132,7 @@ class DependencyDetectionTests(unittest.TestCase):
 
 class ReleaseIdentityTests(unittest.TestCase):
   def test_release_identity_matches_package_version(self) -> None:
-    self.assertEqual(INIT.INIT_VERSION, "0.3.7")
+    self.assertEqual(INIT.INIT_VERSION, "0.3.8")
     INIT.validate_release_identity()
 
   def test_release_identity_rejects_stale_overlay(self) -> None:
@@ -147,12 +147,52 @@ class ReleaseIdentityTests(unittest.TestCase):
 
   @patch.object(INIT, "install_linux_system_dependencies")
   @patch.object(INIT, "validate_release_identity")
-  def test_native_only_runs_identity_then_native_without_npm(self, identity, native) -> None:
-    with patch.object(INIT, "install_javascript_dependencies") as npm:
+  def test_native_only_runs_identity_then_native_without_developer_tools(self, identity, native) -> None:
+    with patch.object(INIT, "ensure_tauri_cli") as tauri_cli, patch.object(
+      INIT, "install_javascript_dependencies"
+    ) as npm:
       self.assertEqual(INIT.main(["--native-only"]), 0)
     identity.assert_called_once_with()
     native.assert_called_once_with()
+    tauri_cli.assert_not_called()
     npm.assert_not_called()
+
+
+class TauriCliTests(unittest.TestCase):
+  @patch.object(INIT, "command_succeeds", return_value=True)
+  @patch.object(INIT.shutil, "which", return_value="/home/test/.cargo/bin/cargo")
+  @patch.object(INIT, "run_checked")
+  def test_existing_tauri_cli_is_reused(self, run_checked, _which, _succeeds) -> None:
+    INIT.ensure_tauri_cli()
+    run_checked.assert_not_called()
+
+  @patch.object(INIT, "command_succeeds", side_effect=[False, True])
+  @patch.object(INIT.shutil, "which", return_value="/home/test/.cargo/bin/cargo")
+  @patch.object(INIT, "run_checked")
+  def test_missing_tauri_cli_is_installed_and_reprobed(
+    self, run_checked, _which, succeeds
+  ) -> None:
+    INIT.ensure_tauri_cli()
+    run_checked.assert_called_once_with(
+      ["cargo", "install", "tauri-cli", "--locked", "--version", "^2"]
+    )
+    self.assertEqual(succeeds.call_count, 2)
+
+  @patch.object(INIT.shutil, "which", return_value=None)
+  def test_missing_cargo_fails_with_actionable_error(self, _which) -> None:
+    with self.assertRaisesRegex(INIT.InitError, "cargo was not found in PATH"):
+      INIT.ensure_tauri_cli()
+
+  @patch.object(INIT, "install_javascript_dependencies")
+  @patch.object(INIT, "ensure_tauri_cli")
+  @patch.object(INIT, "install_linux_system_dependencies")
+  @patch.object(INIT, "validate_release_identity")
+  def test_full_init_ensures_tauri_cli_before_npm(
+    self, _identity, _native, tauri_cli, npm
+  ) -> None:
+    self.assertEqual(INIT.main([]), 0)
+    tauri_cli.assert_called_once_with()
+    npm.assert_called_once_with()
 
 
 class NpmPolicyTests(unittest.TestCase):

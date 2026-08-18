@@ -81,6 +81,14 @@ def main() -> int:
     fail("initializer does not validate esbuild through npm's platform-aware executable path")
   if '["node", str(esbuild), "--version"]' in init_py:
     fail("initializer still attempts to parse the native esbuild binary with Node.js")
+  for marker in (
+    "def ensure_tauri_cli() -> None:",
+    '["cargo", "tauri", "--version"]',
+    '["cargo", "install", "tauri-cli", "--locked", "--version", "^2"]',
+    "ensure_tauri_cli()\n      install_javascript_dependencies()",
+  ):
+    if marker not in init_py:
+      fail(f"Unix initializer is missing Tauri CLI bootstrap coverage: {marker}")
   if "init:\n  python3 tools/init.py" not in justfile:
     fail("just init does not delegate to the self-contained initializer")
   if "python3 -m unittest discover -s tools -p 'test_*.py'" not in justfile:
@@ -288,6 +296,15 @@ def main() -> int:
     fail("runtime does not expose compile-time Tauri build and target information")
   if "FORBIDDEN_RUNTIME_MARKERS" in package_release:
     fail("release packager still rejects inert configured devUrl bytes")
+  for marker in (
+    '"about-tauridium"',
+    '"About Tauridium"',
+    'app.emit("open-about", ())',
+  ):
+    if marker not in main_rs:
+      fail(f"native About action is incomplete: {marker}")
+  if "PredefinedMenuItem::about" in main_rs:
+    fail("About still delegates to the platform-dependent predefined menu item")
   api_ts = read("src/lib/api.ts")
   api_test_ts = read("src/lib/api.test.ts")
   app = read("src/App.svelte")
@@ -323,6 +340,14 @@ def main() -> int:
     fail("frontend Tauri API test reintroduces a hoist-unsafe top-level invoke mock")
   if "Use Tauridium without an account" not in app:
     fail("login UI does not expose accountless mode")
+  for marker in (
+    'listen("open-about"',
+    'settingsTab = "about"',
+    '["about", "About"]',
+    '{:else if settingsTab === "about"}',
+  ):
+    if marker not in app:
+      fail(f"frontend About section is incomplete: {marker}")
   if 'serde_json::json!({ "mode": "local", "version": 1 })' not in main_rs:
     fail("local session marker is missing")
   if 'v.get("mode").and_then(Value::as_str) == Some("local")' not in main_rs:

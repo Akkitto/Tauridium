@@ -94,6 +94,30 @@ class ReleaseWorkflowTests(unittest.TestCase):
     )
     self.assertNotIn('format!("Downloaded "{}""', main)
 
+  def test_about_menu_opens_in_app_about_section(self) -> None:
+    main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+    app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+
+    self.assertIn('"about-tauridium"', main)
+    self.assertIn('"About Tauridium"', main)
+    self.assertIn('app.emit("open-about", ())', main)
+    self.assertNotIn("PredefinedMenuItem::about", main)
+    self.assertIn('listen("open-about"', app)
+    self.assertIn('settingsTab = "about"', app)
+    self.assertIn('["about", "About"]', app)
+    self.assertIn('{:else if settingsTab === "about"}', app)
+    self.assertIn('Project: github.com/Gizmo091/Tauridium', app)
+
+  def test_unix_initializer_bootstraps_tauri_cli_for_release_builds(self) -> None:
+    init_py = (ROOT / "tools/init.py").read_text(encoding="utf-8")
+    self.assertIn('def ensure_tauri_cli() -> None:', init_py)
+    self.assertIn('["cargo", "tauri", "--version"]', init_py)
+    self.assertIn(
+      '["cargo", "install", "tauri-cli", "--locked", "--version", "^2"]',
+      init_py,
+    )
+    self.assertIn('ensure_tauri_cli()\n      install_javascript_dependencies()', init_py)
+
   def test_clean_checker_reports_exact_dirty_path(self) -> None:
     with tempfile.TemporaryDirectory() as temp:
       root = Path(temp)
