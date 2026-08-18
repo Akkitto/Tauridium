@@ -135,7 +135,9 @@ class ReleaseWorkflowTests(unittest.TestCase):
     self.assertIn('view = "appSettings"', about_body)
     self.assertIn('["about", "About"]', app)
     self.assertIn('{:else if settingsTab === "about"}', app)
-    self.assertIn('Project: github.com/Gizmo091/Tauridium', app)
+    self.assertIn('>Repository</span>', app)
+    self.assertIn('github.com/Gizmo091/Tauridium', app)
+    self.assertIn('>MIT License</span>', app)
 
   def test_unix_initializer_bootstraps_tauri_cli_for_release_builds(self) -> None:
     init_py = (ROOT / "tools/init.py").read_text(encoding="utf-8")

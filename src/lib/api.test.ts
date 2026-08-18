@@ -144,3 +144,18 @@ describe("backup commands", () => {
     });
   });
 });
+
+describe("external links", () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    mocks.invoke.mockResolvedValue(undefined);
+  });
+
+  it("opens project links through the native default-browser command", async () => {
+    const { openExternalUrl } = await import("./api");
+    await openExternalUrl("https://github.com/Gizmo091/Tauridium");
+    expect(mocks.invoke).toHaveBeenCalledWith("open_external_url", {
+      url: "https://github.com/Gizmo091/Tauridium",
+    });
+  });
+});

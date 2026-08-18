@@ -354,6 +354,37 @@ def main() -> int:
   ):
     if marker not in app:
       fail(f"frontend About section is incomplete: {marker}")
+  for marker in (
+    'class="panel settings-panel"',
+    'class="settings-content"',
+    'class="setting-card',
+    'grid-template-columns: minmax(0, 1fr) auto',
+    '@media (max-width: 760px)',
+    'class="about-hero"',
+    'class="about-logo"',
+    'Source code ↗',
+    'Releases ↗',
+    'Report an issue ↗',
+    '>Repository</span>',
+    '>MIT License</span>',
+    'Copyright © 2026 Mathieu Vedie',
+    'Contributors ↗',
+    'Tauri v2',
+    'Ferdium',
+  ):
+    if marker not in app:
+      fail(f"settings/About UI quality invariant is missing: {marker}")
+  if 'invoke("open_external_url", { url })' not in api_ts:
+    fail("About project links do not use the native external-browser command")
+  for marker in (
+    'fn open_external_url(url: String) -> Result<(), String>',
+    'matches!(parsed.scheme(), "http" | "https")',
+    'open_external(parsed.as_str())',
+  ):
+    if marker not in main_rs:
+      fail(f"native external-browser path is incomplete: {marker}")
+  if not (ROOT / "src/assets/tauridium.svg").is_file():
+    fail("About page is missing its bundled Tauridium icon")
   if 'serde_json::json!({ "mode": "local", "version": 1 })' not in main_rs:
     fail("local session marker is missing")
   if 'v.get("mode").and_then(Value::as_str) == Some("local")' not in main_rs:
