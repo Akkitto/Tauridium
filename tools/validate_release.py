@@ -288,6 +288,39 @@ def main() -> int:
     fail("build script lacks an actionable development-mode release failure")
 
   main_rs = read("src-tauri/src/main.rs")
+  window_state_test = read("tools/test_window_state.py")
+  for marker in (
+    'tauri-plugin-window-state = "=2.4.1"',
+    'name = "tauri-plugin-window-state"\nversion = "2.4.1"',
+    'checksum = "73736611e14142408d15353e21e3cca2f12a3cfb523ad0ce85999b6d2ef1a704"',
+  ):
+    source = cargo if marker.startswith("tauri-plugin") else cargo_lock
+    if marker not in source:
+      fail(f"persistent window-state dependency invariant is missing: {marker}")
+  for marker in (
+    "StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED | StateFlags::FULLSCREEN",
+    ".with_state_flags(persisted_window_state_flags())",
+    '.with_filter(|label| label == "main")',
+    '.with_filename("window-state.json")',
+    "save_main_window_state(&handle);",
+    "restore_main_window_state(&w);",
+    "persisted_window_state_tracks_geometry_without_visibility",
+  ):
+    if marker not in main_rs:
+      fail(f"persistent window-state lifecycle invariant is missing: {marker}")
+  flags_body = main_rs.split("fn persisted_window_state_flags()", 1)[1].split("\n}", 1)[0]
+  if "StateFlags::VISIBLE" in flags_body:
+    fail("window-state persistence must not store visibility; startup visibility has separate settings")
+  for test_marker in (
+    "test_official_window_state_plugin_is_pinned_and_locked",
+    "test_persistence_tracks_geometry_and_window_mode_but_not_visibility",
+    "test_close_to_tray_saves_before_hiding",
+    "test_tray_toggle_saves_before_hide_and_restores_before_show",
+    "test_show_and_tray_quit_preserve_state",
+  ):
+    if test_marker not in window_state_test:
+      fail(f"persistent window-state regression coverage is missing: {test_marker}")
+
   if (
     'env!("TAURIDIUM_BUILD_MODE")' not in main_rs
     or 'env!("TAURIDIUM_TARGET")' not in main_rs
