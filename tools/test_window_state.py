@@ -34,6 +34,25 @@ class WindowStateTests(unittest.TestCase):
     self.assertIsNotNone(tauridium)
     self.assertIn('"tauri-plugin-window-state"', tauridium.group(0))
 
+
+  def test_window_state_lockfile_preserves_valid_errno_resolution(self) -> None:
+    self.assertRegex(
+      self.lock,
+      re.compile(
+        r'\[\[package\]\]\nname = "errno"\nversion = "0\.3\.14"\n'
+        r'source = "registry\+https://github\.com/rust-lang/crates\.io-index"\n'
+        r'checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"',
+      ),
+    )
+    self.assertNotRegex(
+      self.lock,
+      re.compile(
+        r'name = "errno"\nversion = "0\.3\.13"\n.*?'
+        r'checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"',
+        re.S,
+      ),
+    )
+
   def test_persistence_tracks_geometry_and_window_mode_but_not_visibility(self) -> None:
     body = self.main.split("fn persisted_window_state_flags()", 1)[1].split("\n}", 1)[0]
     for flag in ("SIZE", "POSITION", "MAXIMIZED", "FULLSCREEN"):

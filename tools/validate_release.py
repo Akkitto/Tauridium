@@ -289,6 +289,20 @@ def main() -> int:
 
   main_rs = read("src-tauri/src/main.rs")
   window_state_test = read("tools/test_window_state.py")
+  errno_lock = (
+    'name = "errno"\n'
+    'version = "0.3.14"\n'
+    'source = "registry+https://github.com/rust-lang/crates.io-index"\n'
+    'checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"'
+  )
+  if errno_lock not in cargo_lock:
+    fail("Cargo.lock does not preserve the verified errno 0.3.14 version/checksum pair")
+  if (
+    'name = "errno"\nversion = "0.3.13"' in cargo_lock
+    and '39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb' in cargo_lock
+  ):
+    fail("Cargo.lock contains the known errno 0.3.13/0.3.14 checksum corruption")
+
   for marker in (
     'tauri-plugin-window-state = "=2.4.1"',
     'name = "tauri-plugin-window-state"\nversion = "2.4.1"',
@@ -313,6 +327,7 @@ def main() -> int:
     fail("window-state persistence must not store visibility; startup visibility has separate settings")
   for test_marker in (
     "test_official_window_state_plugin_is_pinned_and_locked",
+    "test_window_state_lockfile_preserves_valid_errno_resolution",
     "test_persistence_tracks_geometry_and_window_mode_but_not_visibility",
     "test_close_to_tray_saves_before_hiding",
     "test_tray_toggle_saves_before_hide_and_restores_before_show",
