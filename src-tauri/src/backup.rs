@@ -141,7 +141,8 @@ pub(crate) fn load(path: &Path) -> Result<BackupDocument, String> {
             metadata.len()
         ));
     }
-    let text = fs::read_to_string(path).map_err(|error| format!("Unable to read backup: {error}"))?;
+    let text =
+        fs::read_to_string(path).map_err(|error| format!("Unable to read backup: {error}"))?;
     let document: BackupDocument = serde_json::from_str(&text)
         .map_err(|error| format!("Unable to parse Tauridium backup: {error}"))?;
     document.validate()?;
@@ -173,10 +174,8 @@ mod tests {
 
     #[test]
     fn backup_round_trips_and_reports_contents() {
-        let root = std::env::temp_dir().join(format!(
-            "tauridium-backup-test-{}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("tauridium-backup-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
         let path = root.join("backup.json");

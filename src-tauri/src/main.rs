@@ -1900,11 +1900,7 @@ fn apply_autostart_setting(app: &AppHandle, settings: &Value) -> Result<(), Stri
     result.map_err(|error| format!("Unable to update autostart: {error}"))
 }
 
-fn persist_app_settings(
-    app: &AppHandle,
-    state: &AppState,
-    settings: &Value,
-) -> Result<(), String> {
+fn persist_app_settings(app: &AppHandle, state: &AppState, settings: &Value) -> Result<(), String> {
     if let Some(path) = app_settings_path(app) {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)

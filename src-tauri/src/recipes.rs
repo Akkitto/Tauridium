@@ -174,7 +174,8 @@ pub(crate) fn backup_custom_recipes(app: &AppHandle) -> Result<Vec<CustomRecipeB
     let entries = fs::read_dir(&root)
         .map_err(|error| format!("Unable to read custom recipe directory: {error}"))?;
     for entry in entries {
-        let entry = entry.map_err(|error| format!("Unable to read custom recipe entry: {error}"))?;
+        let entry =
+            entry.map_err(|error| format!("Unable to read custom recipe entry: {error}"))?;
         let file_type = entry
             .file_type()
             .map_err(|error| format!("Unable to inspect custom recipe entry: {error}"))?;
@@ -188,7 +189,9 @@ pub(crate) fn backup_custom_recipes(app: &AppHandle) -> Result<Vec<CustomRecipeB
             .to_ascii_lowercase();
         validate_recipe_id(&id)?;
         if is_bundled_recipe(&id) {
-            return Err(format!("Custom recipe folder uses a reserved Tauridium id: {id}"));
+            return Err(format!(
+                "Custom recipe folder uses a reserved Tauridium id: {id}"
+            ));
         }
         let mut package = read_package(&entry.path().join(PACKAGE_FILE))?;
         validate_package(&package)?;
@@ -229,9 +232,7 @@ fn prepared_backup_recipes(
     Ok(prepared)
 }
 
-pub(crate) fn validate_custom_recipe_backups(
-    backups: &[CustomRecipeBackup],
-) -> Result<(), String> {
+pub(crate) fn validate_custom_recipe_backups(backups: &[CustomRecipeBackup]) -> Result<(), String> {
     prepared_backup_recipes(backups).map(|_| ())
 }
 
