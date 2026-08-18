@@ -12,6 +12,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.10] - 2026-08-18
+
+### Fixed
+- Commit the exact Rust formatting required by Rust 1.94.0 for the 0.3.9 backup and local-recipe additions, so `just release` passes the non-mutating `cargo fmt -- --check` gate on Windows.
+- Extend offline release regression coverage for the affected backup, settings, and custom-recipe source forms.
+
 ## [0.3.9] - 2026-08-18
 
 ### Fixed

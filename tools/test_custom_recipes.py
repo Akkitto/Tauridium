@@ -94,10 +94,10 @@ class CustomRecipeReleaseTests(unittest.TestCase):
   def test_release_versions_are_consistent(self) -> None:
     package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
     tauri = json.loads((ROOT / "src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
-    self.assertEqual(package["version"], "0.3.9")
-    self.assertEqual(tauri["version"], "0.3.9")
+    self.assertEqual(package["version"], "0.3.10")
+    self.assertEqual(tauri["version"], "0.3.10")
     cargo = (ROOT / "src-tauri/Cargo.toml").read_text(encoding="utf-8")
-    self.assertRegex(cargo, r'(?m)^version = "0\.3\.9"$')
+    self.assertRegex(cargo, r'(?m)^version = "0\.3\.10"$')
 
 
 if __name__ == "__main__":
