@@ -134,7 +134,11 @@ struct NativeServiceMenuEntry {
 
 fn native_service_menu_label(service: &NativeServiceMenuEntry) -> String {
     let raw = service.name.trim();
-    let raw = if raw.is_empty() { service.id.trim() } else { raw };
+    let raw = if raw.is_empty() {
+        service.id.trim()
+    } else {
+        raw
+    };
     let mut label: String = raw.chars().take(80).collect();
     if raw.chars().count() > 80 {
         label.push('…');
@@ -2010,7 +2014,10 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
             return Err(format!("App setting {key} must be boolean"));
         }
     }
-    let theme = object.get("theme").and_then(Value::as_str).unwrap_or_default();
+    let theme = object
+        .get("theme")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     if !matches!(theme, "system" | "dark" | "light") {
         return Err("App setting theme is invalid".into());
     }
@@ -2040,10 +2047,7 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
             return Err(format!("App setting {key} is outside its supported range"));
         }
     }
-    for (key, label) in [
-        ("serviceOrder", "Service"),
-        ("workspaceOrder", "Workspace"),
-    ] {
+    for (key, label) in [("serviceOrder", "Service"), ("workspaceOrder", "Workspace")] {
         let values = object
             .get(key)
             .and_then(Value::as_array)
@@ -2182,10 +2186,7 @@ fn set_workspace_order(
 }
 
 #[tauri::command]
-fn sync_services_menu(
-    app: AppHandle,
-    services: Vec<NativeServiceMenuEntry>,
-) -> Result<(), String> {
+fn sync_services_menu(app: AppHandle, services: Vec<NativeServiceMenuEntry>) -> Result<(), String> {
     let service_ids: Vec<String> = services.iter().map(|service| service.id.clone()).collect();
     validate_order_ids(&service_ids, "Native service menu")?;
     let menu = build_native_application_menu(&app, &services)

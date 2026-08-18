@@ -74,7 +74,9 @@ impl LocalProfile {
                 .filter(|id| !id.is_empty())
                 .ok_or_else(|| "Backup local workspace is missing a valid id".to_string())?;
             if !workspace_ids.insert(id.to_string()) {
-                return Err(format!("Backup contains duplicate local workspace id: {id}"));
+                return Err(format!(
+                    "Backup contains duplicate local workspace id: {id}"
+                ));
             }
             let mut members = std::collections::HashSet::new();
             for service_id in workspace

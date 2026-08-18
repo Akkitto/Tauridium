@@ -280,8 +280,8 @@ pub(crate) fn save(path: &Path, document: &BackupDocument) -> Result<BackupSumma
                 .map_err(|error| format!("Unable to protect backup staging file: {error}"))?;
         }
 
-        let verified = load(&staging)
-            .map_err(|error| format!("Backup write verification failed: {error}"))?;
+        let verified =
+            load(&staging).map_err(|error| format!("Backup write verification failed: {error}"))?;
         if verified.source_schema != BACKUP_SCHEMA_CURRENT
             || verified.payload_digest() != document.payload_digest()
         {
@@ -310,10 +310,7 @@ fn backup_staging_path(path: &Path) -> Result<PathBuf, String> {
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| "Backup destination filename is invalid".to_string())?;
-    Ok(path.with_file_name(format!(
-        ".{name}.tauridium-tmp-{}",
-        std::process::id()
-    )))
+    Ok(path.with_file_name(format!(".{name}.tauridium-tmp-{}", std::process::id())))
 }
 
 pub(crate) fn load(path: &Path) -> Result<BackupDocument, String> {
@@ -391,7 +388,11 @@ mod tests {
         let migrated = BackupDocument::from_value(value).unwrap();
         assert_eq!(migrated.schema, BACKUP_SCHEMA_CURRENT);
         assert_eq!(migrated.source_schema, 1);
-        assert!(!migrated.summary(Path::new("legacy.json")).integrity_verified);
+        assert!(
+            !migrated
+                .summary(Path::new("legacy.json"))
+                .integrity_verified
+        );
     }
 
     #[test]
@@ -438,10 +439,8 @@ mod tests {
 
     #[test]
     fn load_rejects_oversized_backup_before_reading_payload() {
-        let root = std::env::temp_dir().join(format!(
-            "tauridium-backup-size-test-{}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("tauridium-backup-size-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
         let path = root.join("oversized.json");
@@ -456,9 +455,7 @@ mod tests {
     fn restore_summary_can_report_automatic_recovery_snapshot() {
         let path = Path::new("backup.json");
         let recovery = Path::new("backups/pre-restore-123.json");
-        let summary = sample()
-            .summary(path)
-            .with_recovery_backup_path(recovery);
+        let summary = sample().summary(path).with_recovery_backup_path(recovery);
         assert_eq!(
             summary.recovery_backup_path.as_deref(),
             Some("backups/pre-restore-123.json")
