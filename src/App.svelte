@@ -1793,9 +1793,6 @@
   .primary.sm { padding: 6px 12px; font-size: 13px; }
   .panel-head h2 { margin: 0; font-size: 18px; }
   .recipe { color: var(--accent-soft); font-size: 12px; }
-  .tabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
-  .tab { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 5px 10px; border-radius: 8px; }
-  .tab.on { background: var(--hover); color: var(--text); }
   .set-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted2); }
   .row-toggle { flex-direction: row; align-items: center; gap: 10px; color: var(--text2); font-size: 14px; cursor: pointer; }
   .row-toggle input { width: auto; }
