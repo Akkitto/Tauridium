@@ -143,6 +143,14 @@ describe("backup commands", () => {
       path: "/home/example/tauridium-backup.json",
     });
   });
+
+  it("creates an automatic backup in the app-managed backup directory", async () => {
+    const { createAutomaticBackup } = await import("./api");
+    await createAutomaticBackup("tauridium-auto-backup-2026-08-19-001122-037.json");
+    expect(mocks.invoke).toHaveBeenCalledWith("create_automatic_backup", {
+      filename: "tauridium-auto-backup-2026-08-19-001122-037.json",
+    });
+  });
 });
 
 describe("external links", () => {

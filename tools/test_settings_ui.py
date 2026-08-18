@@ -14,7 +14,7 @@ class SettingsUiReleaseTests(unittest.TestCase):
     cls.main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
 
   def test_all_settings_tabs_remain_available(self) -> None:
-    for tab in ("general", "services", "appearance", "privacy", "advanced", "updates", "about"):
+    for tab in ("general", "services", "appearance", "privacy", "backup", "advanced", "updates", "about"):
       self.assertIn(f'settingsTab === "{tab}"', self.app)
 
   def test_settings_use_consistent_card_layout(self) -> None:
@@ -51,6 +51,8 @@ class SettingsUiReleaseTests(unittest.TestCase):
       "sidebarServicesLocation",
       "hibernationTimer",
       "preloadServices",
+      "automaticBackupSchedule",
+      "automaticBackupRetention",
     ):
       self.assertIn(key, settings_body)
 
@@ -106,6 +108,28 @@ class SettingsUiReleaseTests(unittest.TestCase):
   def test_legacy_settings_tab_css_is_removed(self) -> None:
     for selector in (".tabs {", ".tab {", ".tab.on {"):
       self.assertNotIn(selector, self.app)
+
+  def test_backup_has_its_own_settings_tab(self) -> None:
+    self.assertIn('["backup", "Backup"]', self.app)
+    self.assertIn('{:else if settingsTab === "backup"}', self.app)
+    backup = self.app.split('{:else if settingsTab === "backup"}', 1)[1].split('{:else if settingsTab === "advanced"}', 1)[0]
+    advanced = self.app.split('{:else if settingsTab === "advanced"}', 1)[1].split('{:else if settingsTab === "updates"}', 1)[0]
+    self.assertIn('settings-backup-manual', backup)
+    self.assertIn('settings-backup-automatic', backup)
+    self.assertNotIn('Export backup…', advanced)
+
+  def test_service_settings_close_returns_to_services_when_opened_from_settings(self) -> None:
+    self.assertIn('openServiceSettings(service, true)', self.app)
+    body = self.app.split('function closeServiceSettings()', 1)[1].split('async function persistService', 1)[0]
+    self.assertIn('if (serviceSettingsReturnToSettings)', body)
+    self.assertIn('settingsTab = "services"', body)
+    self.assertIn('view = "appSettings"', body)
+    self.assertIn('onclick={closeServiceSettings}>✕ close</button>', self.app)
+
+  def test_deprecated_local_only_wording_is_absent(self) -> None:
+    lowered = self.app.lower()
+    self.assertNotIn('local' + '-only', lowered)
+    self.assertNotIn('local' + ' only', lowered)
 
 
 if __name__ == "__main__":

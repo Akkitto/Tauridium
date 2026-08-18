@@ -119,3 +119,25 @@ describe("persisted ordering helpers", () => {
     expect(serviceLabel({ name: "", recipeId: "" })).toBe("Unnamed service");
   });
 });
+
+
+describe("backup scheduling helpers", () => {
+  it("includes local date, time, and milliseconds in backup names", async () => {
+    const { backupTimestamp } = await import("./ui");
+    const date = new Date(2026, 7, 19, 0, 11, 22, 37);
+    expect(backupTimestamp(date)).toBe("2026-08-19-001122-037");
+  });
+
+  it("handles startup and interval schedules deterministically", async () => {
+    const { automaticBackupDue } = await import("./ui");
+    const day = 24 * 60 * 60 * 1000;
+    expect(automaticBackupDue("off", 0, day, true, false)).toBe(false);
+    expect(automaticBackupDue("startup", 0, day, true, false)).toBe(true);
+    expect(automaticBackupDue("startup", 0, day, true, true)).toBe(false);
+    expect(automaticBackupDue("startup", 0, day, false, false)).toBe(false);
+    expect(automaticBackupDue("daily", day, day * 2 - 1, false, false)).toBe(false);
+    expect(automaticBackupDue("daily", day, day * 2, false, false)).toBe(true);
+    expect(automaticBackupDue("weekly", day, day * 8, false, false)).toBe(true);
+    expect(automaticBackupDue("monthly", day, day * 31, false, false)).toBe(true);
+  });
+});
