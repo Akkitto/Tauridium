@@ -131,6 +131,11 @@ Key finding: WKWebView ignores `data_directory`; use `data_store_identifier` on 
 - Export settings, local services/workspaces, and custom recipes as one validated portable backup file.
 - Restore backups with complete preflight validation, atomic persistent writes, and explicit exclusions for login tokens, website session data, and remote caches.
 
+### Phase 10 — Settings and About UI refinement ✅ COMPLETE (0.3.11)
+- Standardize application settings on one card/list visual system with consistent typography, descriptions, controls, spacing, focus states, and responsive behavior.
+- Present About as an open-source app identity page with icon, version, purpose, project actions, legal information, credits, and technology references.
+- Route About web actions through the operating system's default browser.
+
 
 ## 7. Known difficult areas
 

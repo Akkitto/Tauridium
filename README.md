@@ -50,7 +50,7 @@ uses the Ferdium REST API; accountless mode keeps service/workspace state local.
 - **Per-service settings** (name, custom URL, team, notifications, mute, badges,
   hibernation, dark mode, favicon, proxy, custom user agent…) — synced in server
   mode and persisted locally in accountless mode
-- **App settings in tabs**: General / Services / Appearance / Privacy / Advanced / Updates / About
+- **App settings in tabs**: General / Services / Appearance / Privacy / Advanced / Updates / About, using a consistent settings-card layout with responsive control alignment
 - **Sidebar customization** aligned with Ferdium (icon size, services location,
   grayscale + dim level, width)
 - Theme (system / dark / light) + accent color (Tauri yellow by default)
@@ -118,6 +118,13 @@ The app reloads after a successful restore.
 Ferdium login/session credentials, website cookies/storage, and remote recipe caches are
 intentionally excluded. A backup can still contain sensitive local service configuration
 (for example proxy credentials), so store backup files accordingly.
+
+## About and project links
+
+**Settings → About** presents Tauridium's application identity, installed version, project
+summary, MIT license, maintainer and contributor credits, and the main open-source project
+destinations. Source, release, issue, license, contributor, Tauri, and Ferdium links open in
+the operating system's default browser rather than inside a service webview.
 
 ## Tech stack
 
@@ -249,8 +256,8 @@ before tagging:
 3. Tag and push:
 
 ```text
-git tag -a v0.3.10 -m "Tauridium 0.3.10"
-git push origin v0.3.10
+git tag -a v0.3.11 -m "Tauridium 0.3.11"
+git push origin v0.3.11
 ```
 
 If no matching `CHANGELOG.md` section exists, the workflow falls back to generic
@@ -267,7 +274,7 @@ For a local validated release, run:
 just release
 ```
 
-Runtime ZIPs are target-qualified using the binary's actual Rust compilation target, so artifacts from different native builds can coexist in the same `release/` directory. Common examples are `tauridium-0.3.10-run-win-x64.zip`, `tauridium-0.3.10-run-win-arm64.zip`, `tauridium-0.3.10-run-linux-x64.zip`, `tauridium-0.3.10-run-linux-arm64.zip`, and `tauridium-0.3.10-run-macos-arm64.zip`. Source and documentation ZIP names remain target-neutral.
+Runtime ZIPs are target-qualified using the binary's actual Rust compilation target, so artifacts from different native builds can coexist in the same `release/` directory. Common examples are `tauridium-0.3.11-run-win-x64.zip`, `tauridium-0.3.11-run-win-arm64.zip`, `tauridium-0.3.11-run-linux-x64.zip`, `tauridium-0.3.11-run-linux-arm64.zip`, and `tauridium-0.3.11-run-macos-arm64.zip`. Source and documentation ZIP names remain target-neutral.
 
 `tools/package_release.py` also accepts repeated `--runtime` arguments and groups supplied binaries by their reported compilation target, emitting one run ZIP per target instead of overwriting a generic runtime archive.
 

@@ -12,6 +12,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.11] - 2026-08-18
+
+### Changed
+
+- Redesigned every application Settings tab around a consistent settings-card layout with clear section hierarchy, supporting descriptions, and right-aligned controls.
+- Increased the Settings content width, normalized typography and control sizing, improved keyboard focus treatment, and added responsive stacking for narrower windows.
+- Reworked Appearance, Services, Advanced, Updates, and account/server presentation so labels, controls, status text, and action groups align consistently.
+- Rebuilt About as a standard open-source application identity surface with the Tauridium icon, version, short purpose, repository, releases, issue reporting, license/copyright, maintainer/contributor credits, and Tauri/Ferdium references.
+- About project links now open through Tauridium's native external-link command in the system default browser.
+
+### Tests
+
+- Added Settings/About regressions covering the seven settings sections, card-layout structure, responsive alignment, About metadata, bundled icon, and native external-link wiring.
+
+
 ## [0.3.10] - 2026-08-18
 
 ### Fixed
