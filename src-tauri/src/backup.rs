@@ -83,6 +83,10 @@ pub(crate) fn retention_paths_to_delete(
         right
             .modified
             .cmp(&left.modified)
+            // Automatic-backup filenames embed a fixed-width local timestamp, so descending
+            // filename order is also descending creation-time order. Use it as the deterministic
+            // tie-breaker when copies/restores flatten filesystem mtimes.
+            .then_with(|| right.path.file_name().cmp(&left.path.file_name()))
             .then_with(|| left.path.cmp(&right.path))
     });
     if candidates.len() <= 1 {
@@ -843,7 +847,30 @@ mod tests {
         .collect::<Vec<_>>();
         assert_eq!(
             kept,
-            vec!["tauridium-auto-backup-2026-08-19-120000-001.json"]
+            vec!["tauridium-auto-backup-2026-08-19-120000-003.json"]
+        );
+    }
+
+    #[test]
+    fn tiered_retention_uses_filename_timestamp_when_mtimes_match() {
+        let now = UNIX_EPOCH + std::time::Duration::from_secs(2_000 * DAY_SECS);
+        let morning = candidate("tauridium-auto-backup-2026-08-19-080000-000.json", 0, now);
+        let noon = candidate("tauridium-auto-backup-2026-08-19-120000-000.json", 0, now);
+
+        let deleted = retention_paths_to_delete(
+            vec![morning, noon],
+            RetentionMode::Tiered,
+            10,
+            90,
+            now,
+            None,
+        );
+
+        assert_eq!(
+            deleted,
+            vec![PathBuf::from(
+                "tauridium-auto-backup-2026-08-19-080000-000.json"
+            )]
         );
     }
 
