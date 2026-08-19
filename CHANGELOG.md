@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.3] - 2026-08-19
+
+### Fixed
+
+- Preserved full HSL conversion precision in the custom accent-color picker so opening the picker and applying an unchanged color no longer mutates the stored RGB value through integer HSL quantization.
+- Corrected the frontend color round-trip regression to require exact preservation of representative preset, dark, light, black, and white colors.
+- Kept hue, saturation, and lightness labels rounded for human-readable UI while retaining precise internal slider state.
+
+### Release quality
+
+- Added dedicated 0.4.3 static release regressions for color-conversion precision, exact frontend round trips, and readable slider labels.
+- Verified the corrected TypeScript conversion directly with 10,000 deterministic RGB/HSL round trips in addition to the repository regression suite.
+- Re-ran the pinned Rust 1.97.1 formatter and available source-side release gates before tagging and packaging.
+
 ## [0.4.2] - 2026-08-19
 
 ### Fixed
