@@ -160,6 +160,18 @@ export function openExternalUrl(url: string): Promise<void> {
   return invoke("open_external_url", { url });
 }
 
+export function reloadActiveService(): Promise<void> {
+  return invoke("reload_active_service_command");
+}
+
+export function reloadTauridium(): Promise<void> {
+  return invoke("reload_app_command");
+}
+
+export function toggleDeveloperTools(): Promise<void> {
+  return invoke("toggle_devtools_command");
+}
+
 // Push service notification/mute/badge settings respected by the Rust poller.
 export function setServiceFlags(s: Service): Promise<void> {
   return invoke("set_service_flags", {
@@ -192,6 +204,10 @@ export function deleteService(serviceId: string): Promise<void> {
 // Clear a service cache/session by closing its webview and purging persistent storage.
 export function clearServiceCache(serviceId: string): Promise<void> {
   return invoke("clear_service_cache", { serviceId });
+}
+
+export function clearSandbox(sandboxId: string): Promise<void> {
+  return invoke("clear_sandbox", { sandboxId });
 }
 
 export function listRecipes(): Promise<RecipePreview[]> {
@@ -229,8 +245,9 @@ export function deleteWorkspace(workspaceId: string): Promise<void> {
 export interface AppSettings {
   autostart: boolean;
   startMinimized: boolean;
-  theme: "dark" | "light" | "system";
+  theme: "dark" | "light" | "oled" | "system";
   accentColor: string;
+  customAccentColors: string[];
   closeToSystemTray: boolean;
   privateNotifications: boolean;
   showDisabledServices: boolean;
@@ -238,6 +255,7 @@ export interface AppSettings {
   showMessageBadgeWhenMuted: boolean;
   userAgentPref: string;
   sidebarWidth: number;
+  customSidebarWidths: number[];
   iconSize: number;
   grayscaleServices: boolean;
   grayscaleDim: number;
@@ -246,10 +264,18 @@ export interface AppSettings {
   preloadServices: boolean;
   serviceOrder: string[];
   workspaceOrder: string[];
+  keybindings: Record<string, string>;
+  sandboxes: SandboxDefinition[];
+  serviceSandboxes: Record<string, string>;
   automaticBackupSchedule: "off" | "startup" | "daily" | "weekly" | "monthly";
   automaticBackupRetention: number;
   lastAutomaticBackupAt: number;
   [k: string]: unknown;
+}
+
+export interface SandboxDefinition {
+  id: string;
+  name: string;
 }
 
 export function setSidebarWidth(width: number): Promise<void> {

@@ -1,14 +1,127 @@
 // Pure UI helpers kept here for isolated Vitest coverage.
 
-// Use a dark foreground for bright colors and white otherwise, based on perceived luminance.
+// Choose black or white according to WCAG relative-luminance contrast.
 export function accentFg(hex: string): string {
-  const h = hex.replace("#", "");
-  if (h.length < 6) return "#ffffff";
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return lum > 0.6 ? "#1f2230" : "#ffffff";
+  const normalized = normalizeHexColor(hex);
+  if (!normalized) return "#ffffff";
+  const channels = [1, 3, 5].map((index) => parseInt(normalized.slice(index, index + 2), 16) / 255);
+  const linear = channels.map((channel) =>
+    channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4,
+  );
+  const luminance = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+  const blackContrast = (luminance + 0.05) / 0.05;
+  const whiteContrast = 1.05 / (luminance + 0.05);
+  return blackContrast >= whiteContrast ? "#000000" : "#ffffff";
+}
+
+export function normalizeHexColor(value: string): string | null {
+  const trimmed = value.trim().toLowerCase();
+  if (/^#[0-9a-f]{6}$/.test(trimmed)) return trimmed;
+  if (/^[0-9a-f]{6}$/.test(trimmed)) return `#${trimmed}`;
+  return null;
+}
+
+export function hslToHex(hue: number, saturation: number, lightness: number): string {
+  const h = ((hue % 360) + 360) % 360;
+  const s = Math.max(0, Math.min(100, saturation)) / 100;
+  const l = Math.max(0, Math.min(100, lightness)) / 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  const [r1, g1, b1] =
+    h < 60
+      ? [c, x, 0]
+      : h < 120
+        ? [x, c, 0]
+        : h < 180
+          ? [0, c, x]
+          : h < 240
+            ? [0, x, c]
+            : h < 300
+              ? [x, 0, c]
+              : [c, 0, x];
+  const channel = (value: number) => Math.round((value + m) * 255).toString(16).padStart(2, "0");
+  return `#${channel(r1)}${channel(g1)}${channel(b1)}`;
+}
+
+export function hexToHsl(hex: string): { hue: number; saturation: number; lightness: number } {
+  const normalized = normalizeHexColor(hex) ?? "#ffc131";
+  const r = parseInt(normalized.slice(1, 3), 16) / 255;
+  const g = parseInt(normalized.slice(3, 5), 16) / 255;
+  const b = parseInt(normalized.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  const lightness = (max + min) / 2;
+  let hue = 0;
+  if (delta !== 0) {
+    if (max === r) hue = 60 * (((g - b) / delta) % 6);
+    else if (max === g) hue = 60 * ((b - r) / delta + 2);
+    else hue = 60 * ((r - g) / delta + 4);
+  }
+  if (hue < 0) hue += 360;
+  const saturation = delta === 0 ? 0 : delta / (1 - Math.abs(2 * lightness - 1));
+  return {
+    hue: Math.round(hue),
+    saturation: Math.round(saturation * 100),
+    lightness: Math.round(lightness * 100),
+  };
+}
+
+export const DEFAULT_KEYBINDINGS = {
+  quickWorkspaceSwitch: "Ctrl+D",
+  quickServiceSwitch: "Ctrl+S",
+  openSettings: "Ctrl+,",
+  addService: "Ctrl+N",
+  nextService: "Ctrl+Tab",
+  previousService: "Ctrl+Shift+Tab",
+  nextWorkspace: "Ctrl+Alt+ArrowDown",
+  previousWorkspace: "Ctrl+Alt+ArrowUp",
+  reloadService: "Ctrl+R",
+  reloadApp: "Ctrl+Shift+R",
+  toggleDevtools: "Ctrl+Alt+I",
+} as const;
+
+export type KeybindingAction = keyof typeof DEFAULT_KEYBINDINGS;
+
+export function keyStrokeFromEvent(event: KeyboardEvent): string | null {
+  const modifierKeys = new Set(["Control", "Shift", "Alt", "Meta"]);
+  if (modifierKeys.has(event.key)) return null;
+  const parts: string[] = [];
+  if (event.ctrlKey) parts.push("Ctrl");
+  if (event.altKey) parts.push("Alt");
+  if (event.shiftKey) parts.push("Shift");
+  if (event.metaKey) parts.push("Meta");
+  let key = event.key;
+  if (key === " ") key = "Space";
+  else if (key.length === 1) key = key.toUpperCase();
+  parts.push(key);
+  return parts.join("+");
+}
+
+export function bindingStrokes(binding: string): string[] {
+  return binding
+    .trim()
+    .split(/\s+/)
+    .map((stroke) => stroke.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+}
+
+export function shortcutConflicts(bindings: Record<string, string>): Map<string, string[]> {
+  const grouped = new Map<string, string[]>();
+  for (const [action, binding] of Object.entries(bindings)) {
+    const normalized = bindingStrokes(binding).join(" ");
+    if (!normalized) continue;
+    grouped.set(normalized, [...(grouped.get(normalized) ?? []), action]);
+  }
+  return new Map([...grouped].filter(([, actions]) => actions.length > 1));
+}
+
+export function paged<T>(items: T[], page: number, pageSize: number): T[] {
+  const safeSize = Math.max(1, Math.floor(pageSize));
+  const safePage = Math.max(0, Math.floor(page));
+  return items.slice(safePage * safeSize, safePage * safeSize + safeSize);
 }
 
 // Recipe icon URL from the ferdium-recipes repository.

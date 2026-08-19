@@ -152,13 +152,30 @@ fn build_native_application_menu(
     app: &AppHandle,
     services: &[NativeServiceMenuEntry],
 ) -> tauri::Result<Menu<Wry>> {
-    let settings_item = MenuItem::with_id(app, "open-settings", "Settings…", true, None::<&str>)?;
+    let settings = read_app_settings_value(app);
+    let shortcut = |action: &str| -> Option<String> {
+        settings
+            .get("keybindings")
+            .and_then(Value::as_object)
+            .and_then(|bindings| bindings.get(action))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|binding| !binding.is_empty() && !binding.contains(char::is_whitespace))
+            .map(str::to_string)
+    };
+    let settings_item = MenuItem::with_id(
+        app,
+        "open-settings",
+        "Settings…",
+        true,
+        shortcut("openSettings"),
+    )?;
     let add_service_item = MenuItem::with_id(
         app,
         "open-add-service",
         "Add Service…",
         true,
-        Some("CmdOrCtrl+N"),
+        shortcut("addService"),
     )?;
     let app_sub = Submenu::with_items(
         app,
@@ -194,21 +211,21 @@ fn build_native_application_menu(
         "reload-service",
         "Reload Service",
         true,
-        Some("CmdOrCtrl+R"),
+        shortcut("reloadService"),
     )?;
     let reload_app_item = MenuItem::with_id(
         app,
         "reload-app",
         "Reload Tauridium",
         true,
-        Some("CmdOrCtrl+Shift+R"),
+        shortcut("reloadApp"),
     )?;
     let devtools = MenuItem::with_id(
         app,
         "toggle-devtools",
         "Toggle Developer Tools",
         true,
-        Some("CmdOrCtrl+Alt+I"),
+        shortcut("toggleDevtools"),
     )?;
     let view = Submenu::with_items(
         app,
@@ -219,6 +236,63 @@ fn build_native_application_menu(
             &reload_app_item,
             &PredefinedMenuItem::separator(app)?,
             &devtools,
+        ],
+    )?;
+
+    let quick_workspace = MenuItem::with_id(
+        app,
+        "shortcut:quickWorkspaceSwitch",
+        "Quick Workspace Switcher…",
+        true,
+        shortcut("quickWorkspaceSwitch"),
+    )?;
+    let quick_service = MenuItem::with_id(
+        app,
+        "shortcut:quickServiceSwitch",
+        "Quick Service Switcher…",
+        true,
+        shortcut("quickServiceSwitch"),
+    )?;
+    let next_service = MenuItem::with_id(
+        app,
+        "shortcut:nextService",
+        "Next Service",
+        true,
+        shortcut("nextService"),
+    )?;
+    let previous_service = MenuItem::with_id(
+        app,
+        "shortcut:previousService",
+        "Previous Service",
+        true,
+        shortcut("previousService"),
+    )?;
+    let next_workspace = MenuItem::with_id(
+        app,
+        "shortcut:nextWorkspace",
+        "Next Workspace",
+        true,
+        shortcut("nextWorkspace"),
+    )?;
+    let previous_workspace = MenuItem::with_id(
+        app,
+        "shortcut:previousWorkspace",
+        "Previous Workspace",
+        true,
+        shortcut("previousWorkspace"),
+    )?;
+    let navigate = Submenu::with_items(
+        app,
+        "Navigate",
+        true,
+        &[
+            &quick_workspace,
+            &quick_service,
+            &PredefinedMenuItem::separator(app)?,
+            &next_service,
+            &previous_service,
+            &next_workspace,
+            &previous_workspace,
         ],
     )?;
 
@@ -248,7 +322,7 @@ fn build_native_application_menu(
         .map(|item| item as &dyn IsMenuItem<Wry>)
         .collect();
     let services_menu = Submenu::with_items(app, "Services", true, &service_refs)?;
-    Menu::with_items(app, &[&app_sub, &edit, &view, &services_menu])
+    Menu::with_items(app, &[&app_sub, &edit, &view, &navigate, &services_menu])
 }
 
 #[derive(Clone, Copy)]
@@ -841,13 +915,52 @@ fn uuid_to_bytes(s: &str) -> Option<[u8; 16]> {
     Some(out)
 }
 
+fn sandbox_for_service(settings: &Value, service_id: &str) -> Option<String> {
+    settings
+        .get("serviceSandboxes")
+        .and_then(Value::as_object)
+        .and_then(|assignments| assignments.get(service_id))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|sandbox_id| !sandbox_id.is_empty())
+        .map(str::to_string)
+}
+
+fn sandbox_storage_name(sandbox_id: &str) -> String {
+    let digest = Sha256::digest(format!("tauridium-sandbox:{sandbox_id}").as_bytes());
+    let suffix = digest[..12]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("sandbox-{suffix}")
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn storage_identifier(service_id: &str, sandbox_id: Option<&str>) -> Option<[u8; 16]> {
+    if let Some(sandbox_id) = sandbox_id {
+        let digest = Sha256::digest(format!("tauridium-sandbox:{sandbox_id}").as_bytes());
+        let mut identifier = [0u8; 16];
+        identifier.copy_from_slice(&digest[..16]);
+        Some(identifier)
+    } else {
+        uuid_to_bytes(service_id)
+    }
+}
+
+fn storage_directory(app_data: &Path, service_id: &str, sandbox_id: Option<&str>) -> PathBuf {
+    let name = sandbox_id
+        .map(sandbox_storage_name)
+        .unwrap_or_else(|| service_id.to_string());
+    app_data.join("sessions").join(name)
+}
+
 // Purge a service's persistent storage (cookies, localStorage, session). Call this
 // AFTER closing its webview. macOS: delete the WKWebsiteDataStore by identifier
 // (wry API, main thread required); elsewhere delete the data_directory folder.
 #[cfg(target_os = "macos")]
-fn purge_service_storage(app: &AppHandle, service_id: &str) {
+fn purge_service_storage(app: &AppHandle, service_id: &str, sandbox_id: Option<&str>) {
     use wry::WebViewExtDarwin;
-    if let Some(uuid) = uuid_to_bytes(service_id) {
+    if let Some(uuid) = storage_identifier(service_id, sandbox_id) {
         let _ = app.run_on_main_thread(move || {
             <wry::WebView as WebViewExtDarwin>::remove_data_store(&uuid, |_| {});
         });
@@ -855,9 +968,9 @@ fn purge_service_storage(app: &AppHandle, service_id: &str) {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn purge_service_storage(app: &AppHandle, service_id: &str) {
+fn purge_service_storage(app: &AppHandle, service_id: &str, sandbox_id: Option<&str>) {
     if let Ok(dir) = app.path().app_data_dir() {
-        let _ = std::fs::remove_dir_all(dir.join("sessions").join(service_id));
+        let _ = std::fs::remove_dir_all(storage_directory(&dir, service_id, sandbox_id));
     }
 }
 
@@ -1085,6 +1198,7 @@ async fn create_service_webview(
     custom_url: Option<&str>,
     team: Option<&str>,
     user_agent_pref: Option<&str>,
+    sandbox_id: Option<&str>,
     dark: Option<DarkOpts>,
     pos: LogicalPosition<f64>,
     size: LogicalSize<f64>,
@@ -1191,12 +1305,13 @@ async fn create_service_webview(
     // ignored); Windows/Linux use a dedicated data_directory to avoid shared sessions.
     #[cfg(target_os = "macos")]
     {
-        let store = uuid_to_bytes(service_id).ok_or("serviceId is not a UUID")?;
+        let store = storage_identifier(service_id, sandbox_id)
+            .ok_or("serviceId is not a UUID and no sandbox is assigned")?;
         builder = builder.data_store_identifier(store);
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let dir = app_data.join("sessions").join(service_id);
+        let dir = storage_directory(app_data, service_id, sandbox_id);
         let _ = std::fs::create_dir_all(&dir);
         builder = builder.data_directory(dir);
     }
@@ -1243,6 +1358,7 @@ async fn show_service(
         dark,
     } = request;
     let dark = dark.and_then(DarkSettings::into_opts);
+    let sandbox_id = sandbox_for_service(&state.settings.lock().unwrap(), &service_id);
     let win = app.get_window("main").ok_or("Main window not found")?;
     let label = format!("svc-{service_id}");
     let sw = *state.sidebar_w.lock().unwrap();
@@ -1282,6 +1398,7 @@ async fn show_service(
                 custom_url.as_deref(),
                 team.as_deref(),
                 user_agent_pref.as_deref(),
+                sandbox_id.as_deref(),
                 dark,
                 pos,
                 size,
@@ -1330,6 +1447,7 @@ async fn preload_service(
         dark,
     } = request;
     let dark = dark.and_then(DarkSettings::into_opts);
+    let sandbox_id = sandbox_for_service(&state.settings.lock().unwrap(), &service_id);
     if state.created.lock().unwrap().contains(&service_id) {
         return Ok(());
     }
@@ -1375,6 +1493,7 @@ async fn preload_service(
         custom_url.as_deref(),
         team.as_deref(),
         user_agent_pref.as_deref(),
+        sandbox_id.as_deref(),
         dark,
         offscreen,
         size,
@@ -1577,6 +1696,7 @@ async fn delete_service(
     state: State<'_, AppState>,
     service_id: String,
 ) -> Result<(), String> {
+    let sandbox_id = sandbox_for_service(&state.settings.lock().unwrap(), &service_id);
     let local_service = state
         .local_profile
         .lock()
@@ -1608,8 +1728,11 @@ async fn delete_service(
     state.created.lock().unwrap().remove(&service_id);
     state.unread.lock().unwrap().remove(&service_id);
     state.flags.lock().unwrap().remove(&service_id);
-    // Purge the service session/cookies from disk to avoid stale data and privacy leakage.
-    purge_service_storage(&app, &service_id);
+    // Isolated services own their storage and can be purged safely. Shared sandbox data
+    // belongs to the sandbox, so deleting one member must not sign out the remaining members.
+    if sandbox_id.is_none() {
+        purge_service_storage(&app, &service_id, None);
+    }
     Ok(())
 }
 
@@ -1617,18 +1740,86 @@ async fn delete_service(
 // and purge its storage. The service will reopen cleanly and signed out on next access.
 #[tauri::command]
 fn clear_service_cache(app: AppHandle, state: State<'_, AppState>, service_id: String) {
-    if let Some(wv) = app.get_webview(&format!("svc-{service_id}")) {
-        let _ = wv.close();
+    let sandbox_id = sandbox_for_service(&state.settings.lock().unwrap(), &service_id);
+    let service_ids = if let Some(ref sandbox_id) = sandbox_id {
+        services_in_sandbox(&state.settings.lock().unwrap(), sandbox_id)
+    } else {
+        vec![service_id.clone()]
+    };
+    close_service_ids(&app, &state, &service_ids);
+    purge_service_storage(&app, &service_id, sandbox_id.as_deref());
+}
+
+fn services_in_sandbox(settings: &Value, sandbox_id: &str) -> Vec<String> {
+    settings
+        .get("serviceSandboxes")
+        .and_then(Value::as_object)
+        .map(|assignments| {
+            assignments
+                .iter()
+                .filter_map(|(service_id, value)| {
+                    (value.as_str() == Some(sandbox_id)).then(|| service_id.clone())
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn close_service_ids(app: &AppHandle, state: &AppState, service_ids: &[String]) {
+    let ids: HashSet<&str> = service_ids.iter().map(String::as_str).collect();
+    for service_id in service_ids {
+        if let Some(wv) = app.get_webview(&format!("svc-{service_id}")) {
+            let _ = wv.close();
+        }
+        state.created.lock().unwrap().remove(service_id);
+        state.unread.lock().unwrap().remove(service_id);
     }
-    state.created.lock().unwrap().remove(&service_id);
-    state.unread.lock().unwrap().remove(&service_id);
-    if state.active.lock().unwrap().as_deref() == Some(service_id.as_str()) {
+    if state
+        .active
+        .lock()
+        .unwrap()
+        .as_deref()
+        .is_some_and(|active| ids.contains(active))
+    {
         *state.active.lock().unwrap() = None;
     }
-    if state.desired_active.lock().unwrap().as_deref() == Some(service_id.as_str()) {
+    if state
+        .desired_active
+        .lock()
+        .unwrap()
+        .as_deref()
+        .is_some_and(|active| ids.contains(active))
+    {
         *state.desired_active.lock().unwrap() = None;
     }
-    purge_service_storage(&app, &service_id);
+}
+
+#[tauri::command]
+fn clear_sandbox(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    sandbox_id: String,
+) -> Result<(), String> {
+    let sandbox_id = sandbox_id.trim();
+    if sandbox_id.is_empty() {
+        return Err("Sandbox id is empty".into());
+    }
+    let settings = state.settings.lock().unwrap().clone();
+    let known = settings
+        .get("sandboxes")
+        .and_then(Value::as_array)
+        .is_some_and(|sandboxes| {
+            sandboxes
+                .iter()
+                .any(|sandbox| sandbox.get("id").and_then(Value::as_str) == Some(sandbox_id))
+        });
+    if !known {
+        return Err(format!("Unknown sandbox: {sandbox_id}"));
+    }
+    let service_ids = services_in_sandbox(&settings, sandbox_id);
+    close_service_ids(&app, &state, &service_ids);
+    purge_service_storage(&app, "sandbox", Some(sandbox_id));
+    Ok(())
 }
 
 fn recipe_catalog_cache_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -1977,6 +2168,7 @@ fn default_app_settings_value() -> Value {
         "startMinimized": false,
         "theme": "system",
         "accentColor": "#ffc131",
+        "customAccentColors": [],
         "closeToSystemTray": true,
         "privateNotifications": false,
         "showDisabledServices": true,
@@ -1984,6 +2176,7 @@ fn default_app_settings_value() -> Value {
         "showMessageBadgeWhenMuted": true,
         "userAgentPref": "",
         "sidebarWidth": 240,
+        "customSidebarWidths": [],
         "iconSize": 24,
         "grayscaleServices": false,
         "grayscaleDim": 50,
@@ -1992,10 +2185,129 @@ fn default_app_settings_value() -> Value {
         "preloadServices": true,
         "serviceOrder": [],
         "workspaceOrder": [],
+        "keybindings": {
+            "quickWorkspaceSwitch": "Ctrl+D",
+            "quickServiceSwitch": "Ctrl+S",
+            "openSettings": "Ctrl+,",
+            "addService": "Ctrl+N",
+            "nextService": "Ctrl+Tab",
+            "previousService": "Ctrl+Shift+Tab",
+            "nextWorkspace": "Ctrl+Alt+ArrowDown",
+            "previousWorkspace": "Ctrl+Alt+ArrowUp",
+            "reloadService": "Ctrl+R",
+            "reloadApp": "Ctrl+Shift+R",
+            "toggleDevtools": "Ctrl+Alt+I"
+        },
+        "sandboxes": [],
+        "serviceSandboxes": {},
         "automaticBackupSchedule": "off",
         "automaticBackupRetention": 10,
         "lastAutomaticBackupAt": 0
     })
+}
+
+fn is_hex_color(value: &str) -> bool {
+    value.len() == 7
+        && value.starts_with('#')
+        && value.as_bytes()[1..]
+            .iter()
+            .all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn validate_keybindings(value: Option<&Value>) -> Result<(), String> {
+    const ACTIONS: [&str; 11] = [
+        "quickWorkspaceSwitch",
+        "quickServiceSwitch",
+        "openSettings",
+        "addService",
+        "nextService",
+        "previousService",
+        "nextWorkspace",
+        "previousWorkspace",
+        "reloadService",
+        "reloadApp",
+        "toggleDevtools",
+    ];
+    let bindings = value
+        .and_then(Value::as_object)
+        .ok_or_else(|| "App setting keybindings must be an object".to_string())?;
+    for action in ACTIONS {
+        let binding = bindings
+            .get(action)
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("App keybinding {action} must be a string"))?
+            .trim();
+        if binding.len() > 80 {
+            return Err(format!("App keybinding {action} is too long"));
+        }
+        if !binding.is_empty() && binding.split_whitespace().count() > 2 {
+            return Err(format!("App keybinding {action} has more than two strokes"));
+        }
+    }
+    Ok(())
+}
+
+fn validate_sandboxes(
+    sandboxes: Option<&Value>,
+    assignments: Option<&Value>,
+) -> Result<(), String> {
+    let sandboxes = sandboxes
+        .and_then(Value::as_array)
+        .ok_or_else(|| "App setting sandboxes must be an array".to_string())?;
+    if sandboxes.len() > 256 {
+        return Err("App setting sandboxes contains too many entries".into());
+    }
+    let mut ids = HashSet::with_capacity(sandboxes.len());
+    for sandbox in sandboxes {
+        let object = sandbox
+            .as_object()
+            .ok_or_else(|| "Sandbox entries must be objects".to_string())?;
+        let id = object
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|id| !id.is_empty() && id.len() <= 80)
+            .ok_or_else(|| "Sandbox id is invalid".to_string())?;
+        if !id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        {
+            return Err(format!("Sandbox id contains unsupported characters: {id}"));
+        }
+        if !ids.insert(id.to_string()) {
+            return Err(format!("Duplicate sandbox id: {id}"));
+        }
+        let name = object
+            .get("name")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|name| !name.is_empty() && name.chars().count() <= 80)
+            .ok_or_else(|| format!("Sandbox {id} has an invalid name"))?;
+        if name.chars().any(char::is_control) {
+            return Err(format!("Sandbox {id} name contains control characters"));
+        }
+    }
+
+    let assignments = assignments
+        .and_then(Value::as_object)
+        .ok_or_else(|| "App setting serviceSandboxes must be an object".to_string())?;
+    if assignments.len() > 10_000 {
+        return Err("App setting serviceSandboxes contains too many entries".into());
+    }
+    for (service_id, sandbox_id) in assignments {
+        if service_id.trim().is_empty() {
+            return Err("App setting serviceSandboxes contains an empty service id".into());
+        }
+        let sandbox_id = sandbox_id
+            .as_str()
+            .ok_or_else(|| "App setting serviceSandboxes values must be strings".to_string())?;
+        if !ids.contains(sandbox_id) {
+            return Err(format!(
+                "Service {service_id} references unknown sandbox: {sandbox_id}"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
@@ -2021,7 +2333,7 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         .get("theme")
         .and_then(Value::as_str)
         .unwrap_or_default();
-    if !matches!(theme, "system" | "dark" | "light") {
+    if !matches!(theme, "system" | "dark" | "oled" | "light") {
         return Err("App setting theme is invalid".into());
     }
     let location = object
@@ -2046,6 +2358,23 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
     {
         return Err("App string settings are invalid".into());
     }
+    for key in ["accentColor"] {
+        let color = object.get(key).and_then(Value::as_str).unwrap_or_default();
+        if !is_hex_color(color) {
+            return Err(format!("App setting {key} must be a #RRGGBB color"));
+        }
+    }
+    let custom_colors = object
+        .get("customAccentColors")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "App setting customAccentColors must be an array".to_string())?;
+    if custom_colors.len() > 32
+        || custom_colors
+            .iter()
+            .any(|color| !color.as_str().is_some_and(is_hex_color))
+    {
+        return Err("App setting customAccentColors is invalid".into());
+    }
     for (key, min, max) in [
         ("sidebarWidth", 160.0, 420.0),
         ("iconSize", 12.0, 64.0),
@@ -2060,6 +2389,21 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
             return Err(format!("App setting {key} is outside its supported range"));
         }
     }
+    let custom_widths = object
+        .get("customSidebarWidths")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "App setting customSidebarWidths must be an array".to_string())?;
+    if custom_widths.len() > 16
+        || custom_widths.iter().any(|width| {
+            !width
+                .as_f64()
+                .is_some_and(|number| (160.0..=420.0).contains(&number))
+        })
+    {
+        return Err("App setting customSidebarWidths is invalid".into());
+    }
+    validate_keybindings(object.get("keybindings"))?;
+    validate_sandboxes(object.get("sandboxes"), object.get("serviceSandboxes"))?;
     let backup_retention = object
         .get("automaticBackupRetention")
         .and_then(Value::as_u64)
@@ -2516,6 +2860,21 @@ fn reload_app(app: &AppHandle) {
     }
 }
 
+#[tauri::command]
+fn reload_active_service_command(app: AppHandle) {
+    reload_active_service(&app);
+}
+
+#[tauri::command]
+fn reload_app_command(app: AppHandle) {
+    reload_app(&app);
+}
+
+#[tauri::command]
+fn toggle_devtools_command(app: AppHandle) {
+    toggle_devtools(&app);
+}
+
 const TAURIDIUM_BUILD_MODE: &str = env!("TAURIDIUM_BUILD_MODE");
 const TAURIDIUM_TARGET: &str = env!("TAURIDIUM_TARGET");
 
@@ -2671,7 +3030,12 @@ fn main() {
                         "reload-service" => reload_active_service(app),
                         "reload-app" => reload_app(app),
                         _ => {
-                            if let Some(service_id) = id.strip_prefix("goto-service:") {
+                            if let Some(action) = id.strip_prefix("shortcut:") {
+                                let state = app.state::<AppState>();
+                                hide_service_webviews(app, &state);
+                                show_main(app);
+                                let _ = app.emit("shortcut-action", action.to_string());
+                            } else if let Some(service_id) = id.strip_prefix("goto-service:") {
                                 if !service_id.is_empty() {
                                     let _ = app.emit("select-service-id", service_id.to_string());
                                 }
@@ -2722,6 +3086,7 @@ fn main() {
             create_custom_website_service,
             delete_service,
             clear_service_cache,
+            clear_sandbox,
             list_recipes,
             get_recipe_storage_info,
             save_custom_recipe,
@@ -2737,7 +3102,10 @@ fn main() {
             export_backup,
             create_automatic_backup,
             restore_backup,
-            open_external_url
+            open_external_url,
+            reload_active_service_command,
+            reload_app_command,
+            toggle_devtools_command
         ])
         .build(tauri::generate_context!())
         .expect("failed to launch the Tauri application")
@@ -2797,6 +3165,46 @@ mod tests {
         assert!(validate_app_settings_value(&settings).is_err());
         settings["automaticBackupRetention"] = json!(365);
         assert!(validate_app_settings_value(&settings).is_ok());
+    }
+
+    #[test]
+    fn feature_0400_settings_validate_oled_colors_keybindings_and_sandboxes() {
+        let mut settings = default_app_settings_value();
+        settings["theme"] = json!("oled");
+        settings["accentColor"] = json!("#123abc");
+        settings["customAccentColors"] = json!(["#000000", "#ffffff"]);
+        settings["customSidebarWidths"] = json!([180, 276, 320]);
+        settings["keybindings"]["quickServiceSwitch"] = json!("Ctrl+K Ctrl+S");
+        settings["sandboxes"] = json!([{ "id": "proton", "name": "Proton" }]);
+        settings["serviceSandboxes"] = json!({ "service-a": "proton", "service-b": "proton" });
+        assert!(validate_app_settings_value(&settings).is_ok());
+
+        settings["customAccentColors"] = json!(["black"]);
+        assert!(validate_app_settings_value(&settings).is_err());
+        settings["customAccentColors"] = json!([]);
+        settings["keybindings"]["quickServiceSwitch"] = json!("Ctrl+K Ctrl+S Ctrl+P");
+        assert!(validate_app_settings_value(&settings).is_err());
+        settings["keybindings"]["quickServiceSwitch"] = json!("Ctrl+S");
+        settings["serviceSandboxes"] = json!({ "service-a": "missing" });
+        assert!(validate_app_settings_value(&settings).is_err());
+    }
+
+    #[test]
+    fn shared_sandbox_storage_is_stable_and_distinct_from_isolated_storage() {
+        let root = Path::new("/tmp/tauridium-test");
+        let isolated = storage_directory(root, "service-a", None);
+        let shared_a = storage_directory(root, "service-a", Some("proton"));
+        let shared_b = storage_directory(root, "service-b", Some("proton"));
+        let other = storage_directory(root, "service-a", Some("other"));
+        assert_eq!(isolated, root.join("sessions").join("service-a"));
+        assert_eq!(shared_a, shared_b);
+        assert_ne!(shared_a, isolated);
+        assert_ne!(shared_a, other);
+        assert!(shared_a
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("sandbox-"));
     }
 
     #[test]

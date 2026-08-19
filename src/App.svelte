@@ -16,6 +16,15 @@
     serviceLabel,
     backupTimestamp,
     automaticBackupDue,
+    DEFAULT_KEYBINDINGS,
+    bindingStrokes,
+    hexToHsl,
+    hslToHex,
+    keyStrokeFromEvent,
+    normalizeHexColor,
+    paged,
+    shortcutConflicts,
+    type KeybindingAction,
   } from "./lib/ui";
   import { appVersion, checkForUpdate, installUpdate, type Update } from "./lib/updater";
   import { ask, open, save as saveDialog } from "@tauri-apps/plugin-dialog";
@@ -43,6 +52,7 @@
     createCustomWebsiteService,
     deleteService,
     clearServiceCache,
+    clearSandbox,
     listRecipes,
     getRecipeStorageInfo,
     saveCustomRecipe,
@@ -60,6 +70,9 @@
     restoreBackup,
     createAutomaticBackup,
     openExternalUrl,
+    reloadActiveService,
+    reloadTauridium,
+    toggleDeveloperTools,
     DEFAULT_SERVER,
     type MeUser,
     type Service,
@@ -69,6 +82,7 @@
     type RecipeStorageInfo,
     type AppSettings,
     type BackupSummary,
+    type SandboxDefinition,
   } from "./lib/api";
 
   let server = $state(DEFAULT_SERVER);
@@ -113,8 +127,33 @@
   let serviceSettingsReturnToSettings = $state(false);
   let newWorkspaceName = $state("");
 
-  type Tab = "general" | "services" | "appearance" | "privacy" | "backup" | "advanced" | "updates" | "about";
+  type Tab = "general" | "services" | "appearance" | "keybindings" | "sandbox" | "privacy" | "backup" | "advanced" | "updates" | "about";
   let settingsTab = $state<Tab>("general");
+
+  let managedServiceQuery = $state("");
+  let managedWorkspaceFilter = $state("all");
+  let managedServicePage = $state(0);
+  const MANAGED_SERVICE_PAGE_SIZE = 100;
+
+  let customColorOpen = $state(false);
+  let customColorOriginal = $state("#ffc131");
+  let colorHue = $state(42);
+  let colorSaturation = $state(100);
+  let colorLightness = $state(60);
+
+  let recordingAction = $state<KeybindingAction | null>(null);
+  let recordingStrokes = $state<string[]>([]);
+  let recordingTimer: ReturnType<typeof setTimeout> | null = null;
+  let shortcutPending = $state<{ stroke: string; at: number } | null>(null);
+
+  type QuickSwitcherMode = "service" | "workspace";
+  let quickSwitcherMode = $state<QuickSwitcherMode | null>(null);
+  let quickSwitcherQuery = $state("");
+  let quickSwitcherIndex = $state(0);
+
+  let newSandboxName = $state("");
+  let sandboxServiceQuery = $state("");
+  let sandboxServicePage = $state(0);
 
   // Updates (automatic updater).
   let appVer = $state("");
@@ -135,6 +174,7 @@
     startMinimized: false,
     theme: "system",
     accentColor: "#ffc131",
+    customAccentColors: [],
     closeToSystemTray: true,
     privateNotifications: false,
     showDisabledServices: true,
@@ -142,6 +182,7 @@
     showMessageBadgeWhenMuted: true,
     userAgentPref: "",
     sidebarWidth: 240,
+    customSidebarWidths: [],
     iconSize: 24,
     grayscaleServices: false,
     grayscaleDim: 50,
@@ -150,6 +191,9 @@
     preloadServices: true,
     serviceOrder: [],
     workspaceOrder: [],
+    keybindings: { ...DEFAULT_KEYBINDINGS },
+    sandboxes: [],
+    serviceSandboxes: {},
     automaticBackupSchedule: "off",
     automaticBackupRetention: 10,
     lastAutomaticBackupAt: 0,
@@ -202,6 +246,55 @@
     }
     return list;
   });
+  const managedServices = $derived.by(() => {
+    let list = sorted;
+    if (managedWorkspaceFilter !== "all") {
+      const workspace = workspaces.find((candidate) => candidate.id === managedWorkspaceFilter);
+      const memberIds = new Set(workspace?.services ?? []);
+      list = list.filter((service) => memberIds.has(service.id));
+    }
+    const query = managedServiceQuery.trim().toLowerCase();
+    if (query) {
+      list = list.filter((service) =>
+        `${serviceLabel(service)} ${service.recipeId}`.toLowerCase().includes(query),
+      );
+    }
+    return list;
+  });
+  const managedServicePageCount = $derived(
+    Math.max(1, Math.ceil(managedServices.length / MANAGED_SERVICE_PAGE_SIZE)),
+  );
+  const managedServiceRows = $derived(
+    paged(managedServices, managedServicePage, MANAGED_SERVICE_PAGE_SIZE),
+  );
+  const keybindingConflicts = $derived(shortcutConflicts(appSettings.keybindings));
+  const quickSwitcherItems = $derived.by(() => {
+    const query = quickSwitcherQuery.trim().toLowerCase();
+    if (quickSwitcherMode === "workspace") {
+      return [{ id: "__all__", name: "All services" }, ...sortedWorkspaces]
+        .filter((workspace) => !query || workspace.name.toLowerCase().includes(query))
+        .map((workspace) => ({ id: workspace.id, label: workspace.name, kind: "workspace" as const }));
+    }
+    if (quickSwitcherMode === "service") {
+      return visibleServices
+        .filter((service) => service.isEnabled !== false)
+        .filter((service) => !query || `${serviceLabel(service)} ${service.recipeId}`.toLowerCase().includes(query))
+        .map((service) => ({ id: service.id, label: serviceLabel(service), kind: "service" as const }));
+    }
+    return [];
+  });
+  const sandboxServices = $derived.by(() => {
+    const query = sandboxServiceQuery.trim().toLowerCase();
+    return sorted.filter((service) =>
+      !query || `${serviceLabel(service)} ${service.recipeId}`.toLowerCase().includes(query),
+    );
+  });
+  const sandboxServicePageCount = $derived(
+    Math.max(1, Math.ceil(sandboxServices.length / MANAGED_SERVICE_PAGE_SIZE)),
+  );
+  const sandboxServiceRows = $derived(
+    paged(sandboxServices, sandboxServicePage, MANAGED_SERVICE_PAGE_SIZE),
+  );
 
   const darkMq =
     typeof window !== "undefined"
@@ -227,6 +320,8 @@
 
   onDestroy(() => {
     if (automaticBackupTimer) clearInterval(automaticBackupTimer);
+    if (recordingTimer) clearTimeout(recordingTimer);
+    window.removeEventListener("keydown", handleGlobalKeydown, true);
   });
 
   onMount(async () => {
@@ -253,6 +348,8 @@
     listen("open-settings", openAppSettings);
     listen("open-add-service", openAdd);
     listen("open-about", openAbout);
+    listen<string>("shortcut-action", (event) => executeShortcutAction(event.payload as KeybindingAction));
+    window.addEventListener("keydown", handleGlobalKeydown, true);
     try {
       appSettings = await getAppSettings();
       // Snap iconSize to a valid level for compatibility with older arbitrary values.
@@ -284,8 +381,10 @@
   function applyTheme() {
     const dark =
       appSettings.theme === "dark" ||
+      appSettings.theme === "oled" ||
       (appSettings.theme === "system" && (darkMq?.matches ?? true));
     document.body.classList.toggle("light", !dark);
+    document.body.classList.toggle("oled", appSettings.theme === "oled");
     document.body.style.setProperty("--accent", appSettings.accentColor);
     document.body.style.setProperty("--accent-fg", accentFg(appSettings.accentColor));
   }
@@ -300,6 +399,10 @@
     const op = Math.max(0.2, 1 - (appSettings.grayscaleDim ?? 50) / 130);
     b.style.setProperty("--gray-op", String(op));
     b.dataset.svcloc = appSettings.sidebarServicesLocation ?? "top";
+  }
+
+  function serviceSandboxId(serviceId: string): string | null {
+    return appSettings.serviceSandboxes?.[serviceId] || null;
   }
 
   function markIconFailed(id: string) {
@@ -698,6 +801,11 @@
       const { [s.id]: _, ...rest } = statusMap;
       statusMap = rest;
       services = services.filter((x) => x.id !== s.id);
+      if (appSettings.serviceSandboxes[s.id]) {
+        const serviceSandboxes = { ...appSettings.serviceSandboxes };
+        delete serviceSandboxes[s.id];
+        appSettings = await setAppSettings({ serviceSandboxes });
+      }
       await reconcileSavedOrders();
       await refreshNativeServicesMenu();
       backToService();
@@ -707,18 +815,30 @@
   }
 
   async function handleClearCache(s: Service) {
+    const sandboxId = serviceSandboxId(s.id);
+    const sandbox = sandboxId
+      ? appSettings.sandboxes.find((candidate) => candidate.id === sandboxId)
+      : null;
     if (
       !(await confirmAsk(
-        `Clear cache & session for "${s.name}"? You'll be signed out of this service.`,
+        sandbox
+          ? `Clear shared cache & session for sandbox “${sandbox.name}”? Every assigned service will be signed out.`
+          : `Clear cache & session for "${s.name}"? You'll be signed out of this service.`,
       ))
     )
       return;
     try {
       await clearServiceCache(s.id);
-      clearHibTimer(s.id);
-      const { [s.id]: _, ...rest } = statusMap;
-      statusMap = rest;
-      hibernated = new Set([...hibernated].filter((id) => id !== s.id));
+      const affectedIds = sandboxId
+        ? Object.entries(appSettings.serviceSandboxes)
+            .filter(([, assigned]) => assigned === sandboxId)
+            .map(([serviceId]) => serviceId)
+        : [s.id];
+      for (const serviceId of affectedIds) clearHibTimer(serviceId);
+      statusMap = Object.fromEntries(
+        Object.entries(statusMap).filter(([serviceId]) => !affectedIds.includes(serviceId)),
+      );
+      hibernated = new Set([...hibernated].filter((id) => !affectedIds.includes(id)));
       backToService(); // Reopens cleanly in a signed-out state.
     } catch (err) {
       error = String(err);
@@ -1134,9 +1254,338 @@
       if (key === "automaticBackupSchedule" && value !== "startup") {
         void maybeRunAutomaticBackup(false);
       }
+      if (key === "keybindings") await refreshNativeServicesMenu();
     } catch (err) {
       error = String(err);
     }
+  }
+
+  async function moveManagedService(serviceId: string, delta: number) {
+    const visibleIds = managedServices.map((service) => service.id);
+    const index = visibleIds.indexOf(serviceId);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= visibleIds.length) return;
+    const previousIds = sorted.map((service) => service.id);
+    const nextIds = reorderVisibleSubset(
+      previousIds,
+      visibleIds,
+      serviceId,
+      visibleIds[target],
+    );
+    await persistServiceIds(nextIds, previousIds).catch(() => {});
+  }
+
+  function openCustomColorPicker() {
+    customColorOriginal = appSettings.accentColor;
+    const hsl = hexToHsl(appSettings.accentColor);
+    colorHue = hsl.hue;
+    colorSaturation = hsl.saturation;
+    colorLightness = hsl.lightness;
+    customColorOpen = true;
+  }
+
+  function cancelCustomColorPicker() {
+    appSettings.accentColor = customColorOriginal;
+    customColorOpen = false;
+    applyTheme();
+  }
+
+  function previewCustomColor() {
+    appSettings.accentColor = hslToHex(colorHue, colorSaturation, colorLightness);
+    applyTheme();
+  }
+
+  function setCustomColorFromNative(value: string) {
+    const normalized = normalizeHexColor(value);
+    if (!normalized) return;
+    const hsl = hexToHsl(normalized);
+    colorHue = hsl.hue;
+    colorSaturation = hsl.saturation;
+    colorLightness = hsl.lightness;
+    appSettings.accentColor = normalized;
+    applyTheme();
+  }
+
+  async function applyCustomColor(savePreset: boolean) {
+    const color = hslToHex(colorHue, colorSaturation, colorLightness);
+    const customAccentColors = savePreset
+      ? [...new Set([...(appSettings.customAccentColors ?? []), color])].slice(-32)
+      : appSettings.customAccentColors;
+    try {
+      appSettings = await setAppSettings({ accentColor: color, customAccentColors });
+      customColorOpen = false;
+      applyTheme();
+    } catch (err) {
+      error = String(err);
+    }
+  }
+
+  async function removeCustomAccent(color: string) {
+    await saveAppSetting(
+      "customAccentColors",
+      appSettings.customAccentColors.filter((candidate) => candidate !== color),
+    );
+  }
+
+  function previewSidebarWidth(value: number) {
+    const width = Math.max(160, Math.min(420, Math.round(value)));
+    appSettings.sidebarWidth = width;
+    applyLayout();
+    void setSidebarWidth(width);
+  }
+
+  async function saveCurrentSidebarPreset() {
+    const width = Math.round(appSettings.sidebarWidth);
+    if ([180, 240, 320].includes(width)) return;
+    const customSidebarWidths = [...new Set([...(appSettings.customSidebarWidths ?? []), width])]
+      .slice(-16)
+      .sort((left, right) => left - right);
+    await saveAppSetting("customSidebarWidths", customSidebarWidths);
+  }
+
+  async function removeSidebarPreset(width: number) {
+    await saveAppSetting(
+      "customSidebarWidths",
+      appSettings.customSidebarWidths.filter((candidate) => candidate !== width),
+    );
+  }
+
+  async function saveKeybinding(action: KeybindingAction, binding: string) {
+    const keybindings = { ...appSettings.keybindings, [action]: binding };
+    await saveAppSetting("keybindings", keybindings);
+  }
+
+  function stopRecording() {
+    if (recordingTimer) clearTimeout(recordingTimer);
+    recordingTimer = null;
+    recordingAction = null;
+    recordingStrokes = [];
+  }
+
+  function beginRecording(action: KeybindingAction) {
+    stopRecording();
+    recordingAction = action;
+  }
+
+  function finishRecordedBinding(action: KeybindingAction, strokes: string[]) {
+    stopRecording();
+    void saveKeybinding(action, strokes.join(" "));
+  }
+
+  function openQuickSwitcher(mode: QuickSwitcherMode) {
+    quickSwitcherMode = mode;
+    quickSwitcherQuery = "";
+    quickSwitcherIndex = 0;
+    void hideServices();
+    setTimeout(() => document.querySelector<HTMLInputElement>(".quick-switcher input")?.focus(), 0);
+  }
+
+  function closeQuickSwitcher(restore = true) {
+    quickSwitcherMode = null;
+    quickSwitcherQuery = "";
+    quickSwitcherIndex = 0;
+    shortcutPending = null;
+    if (restore && view === "service" && activeService) selectService(activeService);
+  }
+
+  function chooseWorkspace(workspaceId: string | null) {
+    activeWorkspace = workspaceId;
+    const candidate = sorted.find(
+      (service) =>
+        service.isEnabled !== false &&
+        (!workspaceId ||
+          (workspaces.find((workspace) => workspace.id === workspaceId)?.services ?? []).includes(
+            service.id,
+          )),
+    );
+    if (candidate) {
+      selectService(candidate);
+    } else {
+      activeId = null;
+      serviceLoadError = null;
+      void hideServices();
+    }
+  }
+
+  function chooseQuickSwitcherItem(item: { id: string; kind: QuickSwitcherMode }) {
+    quickSwitcherMode = null;
+    quickSwitcherQuery = "";
+    quickSwitcherIndex = 0;
+    if (item.kind === "service") {
+      const service = services.find((candidate) => candidate.id === item.id);
+      if (service) selectService(service);
+    } else {
+      chooseWorkspace(item.id === "__all__" ? null : item.id);
+    }
+  }
+
+  function cycleService(delta: number) {
+    const candidates = visibleServices.filter((service) => service.isEnabled !== false);
+    if (!candidates.length) return;
+    const current = candidates.findIndex((service) => service.id === activeId);
+    const index = current < 0 ? 0 : (current + delta + candidates.length) % candidates.length;
+    selectService(candidates[index]);
+  }
+
+  function cycleWorkspace(delta: number) {
+    if (!sortedWorkspaces.length) return;
+    const current = sortedWorkspaces.findIndex((workspace) => workspace.id === activeWorkspace);
+    const index = current < 0 ? (delta > 0 ? 0 : sortedWorkspaces.length - 1) : (current + delta + sortedWorkspaces.length) % sortedWorkspaces.length;
+    chooseWorkspace(sortedWorkspaces[index].id);
+  }
+
+  function executeShortcutAction(action: KeybindingAction) {
+    switch (action) {
+      case "quickWorkspaceSwitch": openQuickSwitcher("workspace"); break;
+      case "quickServiceSwitch": openQuickSwitcher("service"); break;
+      case "openSettings": openAppSettings(); break;
+      case "addService": openAdd(); break;
+      case "nextService": cycleService(1); break;
+      case "previousService": cycleService(-1); break;
+      case "nextWorkspace": cycleWorkspace(1); break;
+      case "previousWorkspace": cycleWorkspace(-1); break;
+      case "reloadService": void reloadActiveService(); break;
+      case "reloadApp": void reloadTauridium(); break;
+      case "toggleDevtools": void toggleDeveloperTools(); break;
+    }
+  }
+
+  function handleGlobalKeydown(event: KeyboardEvent) {
+    if (recordingAction) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        stopRecording();
+        return;
+      }
+      if (event.key === "Backspace" || event.key === "Delete") {
+        event.preventDefault();
+        const action = recordingAction;
+        stopRecording();
+        void saveKeybinding(action, "");
+        return;
+      }
+      const stroke = keyStrokeFromEvent(event);
+      if (!stroke) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const action = recordingAction;
+      const next = [...recordingStrokes, stroke].slice(0, 2);
+      recordingStrokes = next;
+      if (recordingTimer) clearTimeout(recordingTimer);
+      if (next.length === 2) {
+        finishRecordedBinding(action, next);
+      } else {
+        recordingTimer = setTimeout(() => finishRecordedBinding(action, next), 1800);
+      }
+      return;
+    }
+
+    if (quickSwitcherMode) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeQuickSwitcher();
+      } else if (event.key === "ArrowDown") {
+        event.preventDefault();
+        const lastVisible = Math.max(0, Math.min(quickSwitcherItems.length, 100) - 1);
+        quickSwitcherIndex = Math.min(lastVisible, quickSwitcherIndex + 1);
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        quickSwitcherIndex = Math.max(0, quickSwitcherIndex - 1);
+      } else if (event.key === "Enter" && quickSwitcherItems[quickSwitcherIndex]) {
+        event.preventDefault();
+        chooseQuickSwitcherItem(quickSwitcherItems[quickSwitcherIndex]);
+      }
+      return;
+    }
+
+    const target = event.target as HTMLElement | null;
+    if (target?.matches("input, textarea, select") || target?.isContentEditable) return;
+    const stroke = keyStrokeFromEvent(event);
+    if (!stroke) return;
+    const entries = Object.entries(appSettings.keybindings) as [KeybindingAction, string][];
+    if (shortcutPending && Date.now() - shortcutPending.at < 1800) {
+      const match = entries.find(([, binding]) => {
+        const strokes = bindingStrokes(binding);
+        return strokes.length === 2 && strokes[0] === shortcutPending?.stroke && strokes[1] === stroke;
+      });
+      shortcutPending = null;
+      if (match) {
+        event.preventDefault();
+        executeShortcutAction(match[0]);
+        return;
+      }
+    }
+    const chordPrefix = entries.some(([, binding]) => {
+      const strokes = bindingStrokes(binding);
+      return strokes.length === 2 && strokes[0] === stroke;
+    });
+    if (chordPrefix) {
+      event.preventDefault();
+      shortcutPending = { stroke, at: Date.now() };
+      setTimeout(() => {
+        if (shortcutPending?.stroke === stroke && Date.now() - shortcutPending.at >= 1700) {
+          shortcutPending = null;
+        }
+      }, 1800);
+      return;
+    }
+    const single = entries.find(([, binding]) => {
+      const strokes = bindingStrokes(binding);
+      return strokes.length === 1 && strokes[0] === stroke;
+    });
+    if (single) {
+      event.preventDefault();
+      executeShortcutAction(single[0]);
+    }
+  }
+
+  async function createSandboxGroup() {
+    const name = newSandboxName.trim();
+    if (!name) return;
+    const sandbox: SandboxDefinition = { id: `sandbox-${crypto.randomUUID()}`, name };
+    await saveAppSetting("sandboxes", [...appSettings.sandboxes, sandbox]);
+    newSandboxName = "";
+  }
+
+  async function renameSandboxGroup(sandboxId: string, name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    await saveAppSetting(
+      "sandboxes",
+      appSettings.sandboxes.map((sandbox) => sandbox.id === sandboxId ? { ...sandbox, name: trimmed } : sandbox),
+    );
+  }
+
+  async function assignServiceSandbox(serviceId: string, sandboxId: string) {
+    const serviceSandboxes = { ...appSettings.serviceSandboxes };
+    if (sandboxId) serviceSandboxes[serviceId] = sandboxId;
+    else delete serviceSandboxes[serviceId];
+    await saveAppSetting("serviceSandboxes", serviceSandboxes);
+    await closeService(serviceId).catch(() => {});
+    if (activeId === serviceId) {
+      const service = services.find((candidate) => candidate.id === serviceId);
+      if (service) selectService(service);
+    }
+  }
+
+  async function clearSandboxGroup(sandbox: SandboxDefinition) {
+    if (!(await confirmAsk(`Clear cache & session for sandbox “${sandbox.name}”? Every assigned service will be signed out.`))) return;
+    await clearSandbox(sandbox.id);
+    if (activeService && serviceSandboxId(activeService.id) === sandbox.id) selectService(activeService);
+  }
+
+  async function deleteSandboxGroup(sandbox: SandboxDefinition) {
+    if (!(await confirmAsk(`Delete sandbox “${sandbox.name}”? Its shared cache/session will be cleared and assigned services will return to isolated storage.`))) return;
+    const activeWasAssigned = activeService ? serviceSandboxId(activeService.id) === sandbox.id : false;
+    await clearSandbox(sandbox.id);
+    const serviceSandboxes = Object.fromEntries(
+      Object.entries(appSettings.serviceSandboxes).filter(([, value]) => value !== sandbox.id),
+    );
+    appSettings = await setAppSettings({
+      sandboxes: appSettings.sandboxes.filter((candidate) => candidate.id !== sandbox.id),
+      serviceSandboxes,
+    });
+    if (activeWasAssigned && activeService) selectService(activeService);
   }
 
   function backToService() {
@@ -1233,12 +1682,12 @@
         <button
           class="pill"
           class:on={activeWorkspace === null}
-          onclick={() => (activeWorkspace = null)}>All</button>
+          onclick={() => chooseWorkspace(null)}>All</button>
         {#each sortedWorkspaces as w (w.id)}
           <button
             class="pill"
             class:on={activeWorkspace === w.id}
-            onclick={() => (activeWorkspace = w.id)}>{w.name}</button>
+            onclick={() => chooseWorkspace(w.id)}>{w.name}</button>
         {/each}
         <button class="pill mng" onclick={openWorkspaces} title="Manage workspaces">⚙</button>
       </div>
@@ -1535,7 +1984,7 @@
           </div>
 
           <nav class="settings-tabs" aria-label="Settings sections">
-            {#each [["general", "General"], ["services", "Services"], ["appearance", "Appearance"], ["privacy", "Privacy"], ["backup", "Backup"], ["advanced", "Advanced"], ["updates", "Updates"], ["about", "About"]] as [id, label] (id)}
+            {#each [["general", "General"], ["services", "Services"], ["appearance", "Appearance"], ["keybindings", "Keybinds"], ["sandbox", "Sandbox"], ["privacy", "Privacy"], ["backup", "Backup"], ["advanced", "Advanced"], ["updates", "Updates"], ["about", "About"]] as [id, label] (id)}
               <button
                 class="setting-tab"
                 class:on={settingsTab === id}
@@ -1561,10 +2010,31 @@
               <section class="settings-section" aria-labelledby="settings-services-configured">
                 <div class="section-heading">
                   <h3 id="settings-services-configured">Configured services <span class="section-count">{services.length}</span></h3>
-                  <p>The list follows your actual Tauridium services. Reorder here or drag services in the sidebar; both use the same atomically persisted order.</p>
+                  <p>Search or separate the list by workspace. Reordering a filtered workspace changes only those visible service slots while preserving the canonical global order.</p>
+                </div>
+                <div class="managed-toolbar">
+                  <input
+                    class="setting-text-input"
+                    type="search"
+                    placeholder="Search configured services…"
+                    bind:value={managedServiceQuery}
+                    oninput={() => (managedServicePage = 0)}
+                    aria-label="Search configured services"
+                  />
+                  <select
+                    class="select"
+                    bind:value={managedWorkspaceFilter}
+                    onchange={() => (managedServicePage = 0)}
+                    aria-label="Filter configured services by workspace"
+                  >
+                    <option value="all">All workspaces</option>
+                    {#each sortedWorkspaces as workspace (workspace.id)}
+                      <option value={workspace.id}>{workspace.name}</option>
+                    {/each}
+                  </select>
                 </div>
                 <div class="managed-list" role="list" aria-label="Configured services">
-                  {#each sorted as service, index (service.id)}
+                  {#each managedServiceRows as service, index (service.id)}
                     <div class="managed-row" role="listitem">
                       <div class="managed-identity">
                         {#if failedIcons.has(service.id)}
@@ -1578,18 +2048,25 @@
                         </div>
                       </div>
                       <div class="managed-actions">
-                        <button class="icon-button compact" disabled={index === 0} aria-label={`Move ${serviceLabel(service)} up`} title="Move up" onclick={() => moveService(service.id, -1)}>↑</button>
-                        <button class="icon-button compact" disabled={index === sorted.length - 1} aria-label={`Move ${serviceLabel(service)} down`} title="Move down" onclick={() => moveService(service.id, 1)}>↓</button>
+                        <button class="icon-button compact" disabled={managedServicePage * MANAGED_SERVICE_PAGE_SIZE + index === 0} aria-label={`Move ${serviceLabel(service)} up`} title="Move up" onclick={() => moveManagedService(service.id, -1)}>↑</button>
+                        <button class="icon-button compact" disabled={managedServicePage * MANAGED_SERVICE_PAGE_SIZE + index === managedServices.length - 1} aria-label={`Move ${serviceLabel(service)} down`} title="Move down" onclick={() => moveManagedService(service.id, 1)}>↓</button>
                         <button class="secondary sm" onclick={() => openServiceSettings(service, true)}>Service settings</button>
                       </div>
                     </div>
                   {:else}
                     <div class="managed-empty">
-                      <strong>No services configured</strong>
-                      <span>Add a service from the Tauridium application menu.</span>
+                      <strong>{services.length ? "No services match this view" : "No services configured"}</strong>
+                      <span>{services.length ? "Change the search or workspace filter." : "Add a service from the Tauridium application menu."}</span>
                     </div>
                   {/each}
                 </div>
+                {#if managedServices.length > MANAGED_SERVICE_PAGE_SIZE}
+                  <div class="pagination" aria-label="Configured services pages">
+                    <button class="secondary sm" disabled={managedServicePage === 0} onclick={() => (managedServicePage = Math.max(0, managedServicePage - 1))}>Previous</button>
+                    <span>Page {managedServicePage + 1} of {managedServicePageCount} · {managedServices.length} services</span>
+                    <button class="secondary sm" disabled={managedServicePage >= managedServicePageCount - 1} onclick={() => (managedServicePage = Math.min(managedServicePageCount - 1, managedServicePage + 1))}>Next</button>
+                  </div>
+                {/if}
               </section>
               <section class="settings-section" aria-labelledby="settings-services-list">
                 <div class="section-heading">
@@ -1633,11 +2110,12 @@
                   <div class="setting-card">
                     <div class="setting-copy">
                       <span class="setting-label">Theme</span>
-                      <span class="setting-description">Follow the operating system appearance or force a light or dark theme.</span>
+                      <span class="setting-description">Follow the operating system appearance or force Light, Dark, or true-black Black OLED mode.</span>
                     </div>
                     <select class="select setting-control" aria-label="Theme" bind:value={appSettings.theme} onchange={() => saveAppSetting("theme", appSettings.theme)}>
                       <option value="system">Use system setting</option>
                       <option value="dark">Dark</option>
+                      <option value="oled">Black OLED</option>
                       <option value="light">Light</option>
                     </select>
                   </div>
@@ -1650,8 +2128,29 @@
                       {#each ["#ffc131", "#4f46e5", "#2563eb", "#0891b2", "#16a34a", "#d97706", "#dc2626", "#db2777", "#7c3aed"] as c (c)}
                         <button class="swatch" class:on={appSettings.accentColor === c} style="background:{c}" aria-label={`Use accent color ${c}`} aria-pressed={appSettings.accentColor === c} onclick={() => saveAppSetting("accentColor", c)}></button>
                       {/each}
+                      {#each appSettings.customAccentColors as c (c)}
+                        <span class="custom-swatch-wrap">
+                          <button class="swatch" class:on={appSettings.accentColor === c} style="background:{c}" aria-label={`Use custom accent color ${c}`} aria-pressed={appSettings.accentColor === c} onclick={() => saveAppSetting("accentColor", c)}></button>
+                          <button class="swatch-remove" aria-label={`Remove custom accent ${c}`} title="Remove preset" onclick={() => removeCustomAccent(c)}>×</button>
+                        </span>
+                      {/each}
+                      <button class="secondary sm" onclick={openCustomColorPicker}>Custom…</button>
                     </div>
                   </div>
+                  {#if customColorOpen}
+                    <div class="setting-card setting-card-stack color-picker-card">
+                      <div class="setting-copy"><span class="setting-label">Custom accent</span><span class="setting-description">Use the platform color picker or adjust hue, saturation, and lightness with keyboard-accessible sliders.</span></div>
+                      <div class="color-picker-preview-row">
+                        <input type="color" value={appSettings.accentColor} aria-label="Custom accent native color picker" oninput={(event) => setCustomColorFromNative(event.currentTarget.value)} />
+                        <code>{appSettings.accentColor}</code>
+                        <span class="color-preview" style={`background:${appSettings.accentColor}`} aria-hidden="true"></span>
+                      </div>
+                      <label class="slider-field"><span>Hue <strong>{colorHue}°</strong></span><input type="range" min="0" max="359" value={colorHue} oninput={(event) => { colorHue = Number(event.currentTarget.value); previewCustomColor(); }} /></label>
+                      <label class="slider-field"><span>Saturation <strong>{colorSaturation}%</strong></span><input type="range" min="0" max="100" value={colorSaturation} oninput={(event) => { colorSaturation = Number(event.currentTarget.value); previewCustomColor(); }} /></label>
+                      <label class="slider-field"><span>Lightness <strong>{colorLightness}%</strong></span><input type="range" min="10" max="90" value={colorLightness} oninput={(event) => { colorLightness = Number(event.currentTarget.value); previewCustomColor(); }} /></label>
+                      <div class="setting-actions"><button class="secondary sm" onclick={cancelCustomColorPicker}>Cancel</button><button class="secondary sm" onclick={() => applyCustomColor(false)}>Use color</button><button class="primary sm" onclick={() => applyCustomColor(true)}>Use & save preset</button></div>
+                    </div>
+                  {/if}
                 </div>
               </section>
               <section class="settings-section" aria-labelledby="settings-appearance-sidebar">
@@ -1660,11 +2159,21 @@
                   <p>Adjust service density and placement without changing individual service configuration.</p>
                 </div>
                 <div class="settings-list">
-                  <div class="setting-card">
-                    <div class="setting-copy"><span class="setting-label">Sidebar width</span><span class="setting-description">Choose the horizontal space reserved for services and workspaces.</span></div>
-                    <select class="select setting-control" aria-label="Sidebar width" bind:value={appSettings.sidebarWidth} onchange={() => saveAppSetting("sidebarWidth", appSettings.sidebarWidth)}>
-                      <option value={200}>Compact</option><option value={240}>Normal</option><option value={300}>Wide</option>
-                    </select>
+                  <div class="setting-card setting-card-stack">
+                    <div class="setting-copy"><span class="setting-label">Sidebar width</span><span class="setting-description">Drag for a custom width or select Slim, Normal, Wide, or one of your saved custom presets.</span></div>
+                    <div class="sidebar-width-control">
+                      <input class="range" type="range" min="160" max="420" step="2" value={appSettings.sidebarWidth} aria-label="Sidebar width" oninput={(event) => previewSidebarWidth(Number(event.currentTarget.value))} onchange={() => saveAppSetting("sidebarWidth", appSettings.sidebarWidth)} />
+                      <output>{Math.round(appSettings.sidebarWidth)} px</output>
+                    </div>
+                    <div class="preset-row" role="group" aria-label="Sidebar width presets">
+                      <button class="secondary sm" class:on={appSettings.sidebarWidth === 180} onclick={() => saveAppSetting("sidebarWidth", 180)}>Slim · 180</button>
+                      <button class="secondary sm" class:on={appSettings.sidebarWidth === 240} onclick={() => saveAppSetting("sidebarWidth", 240)}>Normal · 240</button>
+                      <button class="secondary sm" class:on={appSettings.sidebarWidth === 320} onclick={() => saveAppSetting("sidebarWidth", 320)}>Wide · 320</button>
+                      {#each appSettings.customSidebarWidths as width (width)}
+                        <span class="preset-chip"><button class="secondary sm" class:on={appSettings.sidebarWidth === width} onclick={() => saveAppSetting("sidebarWidth", width)}>{width} px</button><button class="preset-remove" aria-label={`Remove ${width} pixel sidebar preset`} onclick={() => removeSidebarPreset(width)}>×</button></span>
+                      {/each}
+                      <button class="secondary sm" disabled={[180, 240, 320, ...appSettings.customSidebarWidths].includes(Math.round(appSettings.sidebarWidth))} onclick={saveCurrentSidebarPreset}>Save current preset</button>
+                    </div>
                   </div>
                   <div class="setting-card">
                     <div class="setting-copy"><span class="setting-label">Service icon size</span><span class="setting-description">Change icon size while preserving consistent sidebar spacing.</span></div>
@@ -1691,6 +2200,73 @@
                     </div>
                   {/if}
                 </div>
+              </section>
+            {:else if settingsTab === "keybindings"}
+              <section class="settings-section" aria-labelledby="settings-keybindings-main">
+                <div class="section-heading"><h3 id="settings-keybindings-main">Keybindings</h3><p>Customize application navigation. Bindings may be a single shortcut or a two-stroke chord such as Ctrl+K Ctrl+S. Press Delete while recording to clear a binding.</p></div>
+                <div class="settings-list keybinding-list">
+                  {#each [
+                    ["quickWorkspaceSwitch", "Quick workspace switcher", "Search and switch workspaces."],
+                    ["quickServiceSwitch", "Quick service search", "Search and switch services in the active workspace."],
+                    ["openSettings", "Open Settings", "Open Tauridium application settings."],
+                    ["addService", "Add service", "Open the add-service screen."],
+                    ["nextService", "Next service", "Move to the next enabled service."],
+                    ["previousService", "Previous service", "Move to the previous enabled service."],
+                    ["nextWorkspace", "Next workspace", "Move to the next workspace."],
+                    ["previousWorkspace", "Previous workspace", "Move to the previous workspace."],
+                    ["reloadService", "Reload service", "Reload the active service webview."],
+                    ["reloadApp", "Reload Tauridium", "Reload the Tauridium shell."],
+                    ["toggleDevtools", "Toggle Developer Tools", "Open or close developer tools for the active service."]
+                  ] as [action, label, description] (action)}
+                    {@const binding = appSettings.keybindings[action] ?? ""}
+                    {@const conflict = keybindingConflicts.get(bindingStrokes(binding).join(" "))}
+                    <div class="setting-card keybinding-card">
+                      <div class="setting-copy"><span class="setting-label">{label}</span><span class="setting-description">{description}{#if conflict}<span class="keybinding-conflict"> Conflicts with another action.</span>{/if}</span></div>
+                      <div class="keybinding-control">
+                        <kbd>{recordingAction === action ? (recordingStrokes.length ? `${recordingStrokes.join(" ")} …` : "Press shortcut…") : (binding || "Unassigned")}</kbd>
+                        <button class="secondary sm" aria-pressed={recordingAction === action} onclick={() => beginRecording(action as KeybindingAction)}>{recordingAction === action ? "Recording" : "Record"}</button>
+                        <button class="link" disabled={!binding} onclick={() => saveKeybinding(action as KeybindingAction, "")}>Clear</button>
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+                <div class="setting-actions"><button class="secondary" onclick={() => saveAppSetting("keybindings", { ...DEFAULT_KEYBINDINGS })}>Restore defaults</button></div>
+              </section>
+            {:else if settingsTab === "sandbox"}
+              <section class="settings-section" aria-labelledby="settings-sandbox-groups">
+                <div class="section-heading"><h3 id="settings-sandbox-groups">Shared sandboxes</h3><p>Services assigned to the same sandbox use the same persistent webview data store, allowing compatible services to share login sessions and caches. Unassigned services remain isolated.</p></div>
+                <div class="sandbox-create-row"><input class="setting-text-input" bind:value={newSandboxName} maxlength="80" placeholder="New sandbox name, e.g. Proton" aria-label="New sandbox name" /><button class="primary" disabled={!newSandboxName.trim()} onclick={createSandboxGroup}>Create sandbox</button></div>
+                <div class="settings-list">
+                  {#each appSettings.sandboxes as sandbox (sandbox.id)}
+                    <div class="setting-card sandbox-card">
+                      <div class="setting-copy">
+                        <input class="setting-text-input sandbox-name" value={sandbox.name} maxlength="80" aria-label={`Sandbox name ${sandbox.name}`} onchange={(event) => renameSandboxGroup(sandbox.id, event.currentTarget.value)} />
+                        <span class="setting-description">{Object.values(appSettings.serviceSandboxes).filter((value) => value === sandbox.id).length} assigned service(s)</span>
+                      </div>
+                      <div class="setting-actions"><button class="secondary sm" onclick={() => clearSandboxGroup(sandbox)}>Clear session</button><button class="link danger-link" onclick={() => deleteSandboxGroup(sandbox)}>Delete</button></div>
+                    </div>
+                  {:else}
+                    <div class="managed-empty"><strong>No shared sandboxes</strong><span>Create one, then assign two or more compatible services below.</span></div>
+                  {/each}
+                </div>
+              </section>
+              <section class="settings-section" aria-labelledby="settings-sandbox-services">
+                <div class="section-heading"><h3 id="settings-sandbox-services">Service assignments <span class="section-count">{services.length}</span></h3><p>Changing an assignment closes only that service webview and recreates it using the selected data store.</p></div>
+                <input class="setting-text-input" type="search" bind:value={sandboxServiceQuery} oninput={() => (sandboxServicePage = 0)} placeholder="Search services…" aria-label="Search sandbox service assignments" />
+                <div class="managed-list" role="list" aria-label="Sandbox service assignments">
+                  {#each sandboxServiceRows as service (service.id)}
+                    <div class="managed-row" role="listitem">
+                      <div class="managed-copy"><strong>{serviceLabel(service)}</strong><span>{service.recipeId}</span></div>
+                      <select class="select sandbox-select" value={serviceSandboxId(service.id) ?? ""} aria-label={`Sandbox for ${serviceLabel(service)}`} onchange={(event) => assignServiceSandbox(service.id, event.currentTarget.value)}>
+                        <option value="">Isolated</option>
+                        {#each appSettings.sandboxes as sandbox (sandbox.id)}<option value={sandbox.id}>{sandbox.name}</option>{/each}
+                      </select>
+                    </div>
+                  {:else}<div class="managed-empty"><strong>No services match</strong><span>Change the search text.</span></div>{/each}
+                </div>
+                {#if sandboxServices.length > MANAGED_SERVICE_PAGE_SIZE}
+                  <div class="pagination"><button class="secondary sm" disabled={sandboxServicePage === 0} onclick={() => (sandboxServicePage = Math.max(0, sandboxServicePage - 1))}>Previous</button><span>Page {sandboxServicePage + 1} of {sandboxServicePageCount}</span><button class="secondary sm" disabled={sandboxServicePage >= sandboxServicePageCount - 1} onclick={() => (sandboxServicePage = Math.min(sandboxServicePageCount - 1, sandboxServicePage + 1))}>Next</button></div>
+                {/if}
               </section>
             {:else if settingsTab === "privacy"}
               <section class="settings-section" aria-labelledby="settings-privacy-notifications">
@@ -1800,6 +2376,40 @@
   </div>
 {/if}
 
+{#if quickSwitcherMode}
+  <div class="quick-switcher-backdrop" role="presentation" onclick={(event) => event.currentTarget === event.target && closeQuickSwitcher()}>
+    <section class="quick-switcher" role="dialog" aria-modal="true" aria-label={quickSwitcherMode === "service" ? "Quick service search" : "Quick workspace switcher"}>
+      <div class="quick-switcher-head">
+        <input
+          type="search"
+          value={quickSwitcherQuery}
+          placeholder={quickSwitcherMode === "service" ? "Search services…" : "Search workspaces…"}
+          aria-label={quickSwitcherMode === "service" ? "Search services" : "Search workspaces"}
+          oninput={(event) => { quickSwitcherQuery = event.currentTarget.value; quickSwitcherIndex = 0; }}
+        />
+        <button class="icon-button" aria-label="Close quick switcher" title="Close" onclick={() => closeQuickSwitcher()}>×</button>
+      </div>
+      <div class="quick-switcher-results" role="listbox" aria-label="Quick switcher results">
+        {#each quickSwitcherItems.slice(0, 100) as item, index (item.id)}
+          <button
+            class="quick-switcher-item"
+            class:active={index === quickSwitcherIndex}
+            role="option"
+            aria-selected={index === quickSwitcherIndex}
+            onmouseenter={() => (quickSwitcherIndex = index)}
+            onclick={() => chooseQuickSwitcherItem(item)}
+          >
+            <span>{item.label}</span><small>{item.kind === "service" ? "Service" : "Workspace"}</small>
+          </button>
+        {:else}
+          <div class="quick-switcher-empty">No matches</div>
+        {/each}
+      </div>
+      {#if quickSwitcherItems.length > 100}<p class="quick-switcher-hint">Showing the first 100 matches. Refine your search to narrow the list.</p>{/if}
+    </section>
+  </div>
+{/if}
+
 {#snippet row(s: Service)}
   <div
     class="srow-wrap"
@@ -1875,6 +2485,12 @@
     --input: #ffffff; --border: #d6dae6; --border2: #c8cddc;
     --text: #1c2030; --text2: #2a2f40; --muted: #5b6280; --muted2: #818aa6;
     --hover: #e4e7f0; --accent-soft: #5b52d6; --link: #6d75a0;
+  }
+  :global(body.oled) {
+    --bg: #000000; --sidebar: #000000; --card: #050505; --panel: #050505;
+    --input: #0a0a0a; --border: #242424; --border2: #343434;
+    --text: #f5f5f5; --text2: #dedede; --muted: #a3a3a3; --muted2: #777777;
+    --hover: #121212; --accent-soft: #d0cbff; --link: #a9b0d0;
   }
   :global(body) {
     margin: 0;
@@ -2189,6 +2805,49 @@
   .settings-panel .swatch { width: 24px; height: 24px; border: 1px solid rgba(255,255,255,0.18); }
   .range-control { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; min-width: 180px; }
   .settings-panel .range { width: 140px; margin-left: 0; }
+  .managed-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, 220px); gap: 8px; }
+  .pagination { display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--muted); font-size: 12px; }
+  .custom-swatch-wrap { position: relative; display: inline-flex; align-items: center; }
+  .swatch-remove { position: absolute; top: -8px; right: -8px; width: 18px; height: 18px; display: grid; place-items: center; padding: 0; border: 1px solid var(--border2); border-radius: 999px; background: var(--panel); color: var(--muted); cursor: pointer; font-size: 12px; line-height: 1; }
+  .swatch-remove:hover, .preset-remove:hover { color: var(--text); background: var(--hover); }
+  .color-picker-card { gap: 12px; }
+  .color-picker-preview-row { display: grid; grid-template-columns: 48px minmax(100px, 1fr) 38px; align-items: center; gap: 10px; }
+  .color-picker-preview-row input[type="color"] { width: 48px; height: 38px; padding: 2px; border-radius: 8px; cursor: pointer; }
+  .color-picker-preview-row code { color: var(--text2); font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; }
+  .color-preview { width: 34px; height: 34px; border: 1px solid var(--border2); border-radius: 8px; }
+  .slider-field { display: grid; grid-template-columns: 112px minmax(140px, 1fr); align-items: center; gap: 10px; color: var(--muted); }
+  .slider-field > span { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+  .slider-field strong { color: var(--text2); font-variant-numeric: tabular-nums; }
+  .slider-field input[type="range"] { width: 100%; margin: 0; accent-color: var(--accent); }
+  .sidebar-width-control { display: grid; grid-template-columns: minmax(160px, 1fr) 72px; align-items: center; gap: 12px; }
+  .sidebar-width-control .range { width: 100%; margin: 0; }
+  .sidebar-width-control output { color: var(--text2); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
+  .preset-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  .preset-chip { min-height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--border2); border-radius: 999px; background: var(--input); color: var(--text2); }
+  .preset-chip button { min-height: 24px; }
+  .preset-chip .secondary { border: none; background: transparent; padding: 2px 4px; color: var(--text2); }
+  .preset-remove { min-width: 24px; padding: 0; border: none; background: transparent; color: var(--muted); cursor: pointer; }
+  .keybinding-list { gap: 7px; }
+  .keybinding-card { min-height: 72px; }
+  .keybinding-control { display: flex; align-items: center; justify-content: flex-end; gap: 7px; flex-wrap: wrap; }
+  .keybinding-control kbd { min-width: 120px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 6px 8px; border: 1px solid var(--border2); border-bottom-width: 2px; border-radius: 6px; background: var(--bg); color: var(--text2); font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; text-align: center; }
+  .keybinding-conflict { color: #ff9b9b; font-weight: 650; }
+  .sandbox-create-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .sandbox-card { align-items: start; }
+  .sandbox-name { max-width: 320px; }
+  .sandbox-select { min-width: 180px; }
+  .danger-link { color: #ff9b9b; }
+  .quick-switcher-backdrop { position: fixed; inset: 0; z-index: 1000; display: flex; justify-content: center; align-items: flex-start; padding-top: min(14vh, 120px); background: rgba(0, 0, 0, 0.46); }
+  .quick-switcher { width: min(620px, calc(100vw - 32px)); max-height: min(68vh, 680px); overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--border2); border-radius: 12px; background: var(--panel); box-shadow: 0 18px 60px rgba(0, 0, 0, 0.48); }
+  .quick-switcher-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 10px; border-bottom: 1px solid var(--border); }
+  .quick-switcher-head input { width: 100%; box-sizing: border-box; min-height: 38px; }
+  .quick-switcher-results { min-height: 48px; overflow-y: auto; overscroll-behavior: contain; padding: 6px; }
+  .quick-switcher-item { width: 100%; min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text2); cursor: pointer; text-align: left; font: inherit; }
+  .quick-switcher-item:hover, .quick-switcher-item.active { background: var(--hover); border-color: var(--border); }
+  .quick-switcher-item small { color: var(--muted); font-size: 11px; }
+  .quick-switcher-empty, .quick-switcher-hint { padding: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+  .quick-switcher-hint { margin: 0; padding: 8px 12px; border-top: 1px solid var(--border); }
+
   .about-page { display: flex; flex-direction: column; gap: 26px; }
   .about-hero { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: center; gap: 20px; padding: 4px 2px 2px; }
   .about-logo { width: 88px; height: 88px; display: block; border-radius: 20px; }
@@ -2220,6 +2879,14 @@
     .settings-panel .swatches { justify-content: flex-start; max-width: none; }
     .range-control { min-width: 0; }
     .settings-panel .range { flex: 1; width: auto; }
+    .managed-toolbar, .sandbox-create-row { grid-template-columns: 1fr; }
+    .color-picker-preview-row { grid-template-columns: 48px minmax(0, 1fr); }
+    .color-preview { display: none; }
+    .slider-field { grid-template-columns: 1fr; gap: 5px; }
+    .sidebar-width-control { grid-template-columns: 1fr auto; }
+    .keybinding-control { justify-content: flex-start; }
+    .keybinding-control kbd { flex: 1; max-width: none; }
+    .sandbox-select { width: 100%; margin-left: 0; }
     .about-hero { grid-template-columns: 64px minmax(0, 1fr); gap: 14px; }
     .about-logo { width: 64px; height: 64px; border-radius: 15px; }
     .about-identity h3 { font-size: 22px; }

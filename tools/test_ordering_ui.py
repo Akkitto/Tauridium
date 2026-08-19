@@ -77,7 +77,10 @@ class OrderingAndSidebarTests(unittest.TestCase):
     settings = self.app.split('{:else if settingsTab === "services"}', 1)[1].split('{:else if settingsTab === "appearance"}', 1)[0]
     self.assertIn("Configured services", settings)
     self.assertIn("{services.length}", settings)
-    self.assertIn("{#each sorted as service, index (service.id)}", settings)
+    self.assertIn("{#each managedServiceRows as service, index (service.id)}", settings)
+    self.assertIn("managedWorkspaceFilter", settings)
+    self.assertIn("managedServiceQuery", settings)
+    self.assertIn("MANAGED_SERVICE_PAGE_SIZE", settings)
     self.assertIn("{serviceLabel(service)}", settings)
     self.assertIn("No services configured", settings)
     self.assertIn("Service settings", settings)

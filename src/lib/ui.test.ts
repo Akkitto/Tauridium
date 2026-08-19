@@ -1,19 +1,55 @@
 import { describe, it, expect } from "vitest";
-import { accentFg, recipeIcon, iconSrc, filterRecipes, snapIconSize } from "./ui";
+import {
+  DEFAULT_KEYBINDINGS,
+  accentFg,
+  bindingStrokes,
+  filterRecipes,
+  hexToHsl,
+  hslToHex,
+  iconSrc,
+  normalizeHexColor,
+  paged,
+  recipeIcon,
+  shortcutConflicts,
+  snapIconSize,
+} from "./ui";
 
 describe("accentFg", () => {
   it("returns dark text on light accents (Tauri yellow)", () => {
-    expect(accentFg("#ffc131")).toBe("#1f2230");
-    expect(accentFg("#ffffff")).toBe("#1f2230");
+    expect(accentFg("#ffc131")).toBe("#000000");
+    expect(accentFg("#ffffff")).toBe("#000000");
   });
   it("returns white text on dark accents", () => {
     expect(accentFg("#4f46e5")).toBe("#ffffff");
     expect(accentFg("#000000")).toBe("#ffffff");
-    expect(accentFg("#16a34a")).toBe("#ffffff");
+    expect(accentFg("#16a34a")).toBe("#000000");
   });
   it("tolerates short / malformed hex", () => {
     expect(accentFg("#abc")).toBe("#ffffff");
     expect(accentFg("")).toBe("#ffffff");
+  });
+});
+
+describe("0.4.0 appearance and navigation helpers", () => {
+  it("normalizes and round-trips custom colors", () => {
+    expect(normalizeHexColor(" FFC131 ")).toBe("#ffc131");
+    expect(normalizeHexColor("#xyzxyz")).toBeNull();
+    const hsl = hexToHsl("#ffc131");
+    expect(hslToHex(hsl.hue, hsl.saturation, hsl.lightness)).toBe("#ffc133");
+  });
+
+  it("supports single shortcuts, two-stroke chords, and conflict detection", () => {
+    expect(DEFAULT_KEYBINDINGS.quickWorkspaceSwitch).toBe("Ctrl+D");
+    expect(DEFAULT_KEYBINDINGS.quickServiceSwitch).toBe("Ctrl+S");
+    expect(bindingStrokes("Ctrl+K   Ctrl+S")).toEqual(["Ctrl+K", "Ctrl+S"]);
+    const conflicts = shortcutConflicts({ a: "Ctrl+K Ctrl+S", b: "Ctrl+K Ctrl+S", c: "Ctrl+D" });
+    expect(conflicts.get("Ctrl+K Ctrl+S")).toEqual(["a", "b"]);
+  });
+
+  it("pages large lists without mutating them", () => {
+    const values = Array.from({ length: 250 }, (_, index) => index);
+    expect(paged(values, 1, 100)).toEqual(values.slice(100, 200));
+    expect(values).toHaveLength(250);
   });
 });
 
