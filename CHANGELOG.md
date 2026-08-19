@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.1] - 2026-08-19
+
+### Fixed
+
+- Restored the missing `[unix]` guard on the Unix `package-handoff` recipe. `just` no longer rejects the entire `justfile` as a duplicate `package-handoff` definition before commands such as `just init-self-test` can run on Windows.
+- Added a generalized release invariant that rejects duplicate `just` recipes unless every definition is explicitly and disjointly guarded by `[unix]` or `[windows]`, preventing this parser failure class from recurring.
+
+### Release quality
+
+- Enforced `--locked` for Cargo check, Clippy, and Rust-test gates in branch CI and tagged-release validation.
+- Strengthened the tagged-release gate so offline Python regressions, `svelte-check`, frontend tests, Cargo check, Clippy with warnings denied, Rust tests, and native Rust 1.97.1 formatting must pass before the draft release is created.
+- Re-ran project-owned whitespace/line-ending checks, Python syntax compilation, TypeScript syntax parsing, structured configuration parsing, release invariants, and the full offline regression suite while leaving vendored third-party formatting unchanged.
+
 ## [0.4.0] - 2026-08-19
 
 ### Added
