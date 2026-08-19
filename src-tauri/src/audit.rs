@@ -12,6 +12,15 @@ const AUDIT_FILE: &str = "tauridium-audit.jsonl";
 const MAX_AUDIT_FILE_BYTES: u64 = 5 * 1024 * 1024;
 const AUDIT_ROTATIONS: usize = 4;
 const MAX_READ_ENTRIES: usize = 10_000;
+
+// Keep audit retention/read limits large enough for useful diagnostics. These are
+// compile-time invariants so Clippy does not have to lint constant runtime tests.
+const _: () = {
+    assert!(MAX_READ_ENTRIES >= 5_000);
+    assert!(MAX_AUDIT_FILE_BYTES >= 1024 * 1024);
+    assert!(AUDIT_ROTATIONS == 4);
+};
+
 static AUDIT_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -299,12 +308,9 @@ mod tests {
     #[test]
     fn audit_rotation_generations_are_bounded() {
         let path = Path::new("audit/tauridium-audit.jsonl");
-        assert_eq!(AUDIT_ROTATIONS, 4);
         assert_eq!(
             rotated_path(path, AUDIT_ROTATIONS),
             Path::new("audit/tauridium-audit.jsonl.4")
         );
-        assert!(MAX_READ_ENTRIES >= 5_000);
-        assert!(MAX_AUDIT_FILE_BYTES >= 1024 * 1024);
     }
 }
