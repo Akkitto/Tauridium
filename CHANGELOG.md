@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.5] - 2026-08-19
+
+### Fixed
+
+- Moved audit-log capacity and rotation invariants from runtime unit-test assertions into compile-time const assertions, eliminating the Rust 1.97.1 `clippy::assertions_on_constants` failures reported by the Windows-native release gate without suppressing Clippy.
+- Removed the redundant runtime assertion of the fixed audit rotation count so the remaining Rust test verifies rotated-path behavior rather than literal constant values.
+
+### Release quality
+
+- Added 0.4.5 regression coverage that requires the compile-time invariant form and rejects `allow`/`expect` suppression of `clippy::assertions_on_constants`.
+- Verified the exact const-assertion pattern independently with the supplied Rust 1.97.1 `clippy-driver -D warnings`, in addition to the mandatory formatter and offline release suites.
+
 ## [0.4.4] - 2026-08-19
 
 ### Fixed
