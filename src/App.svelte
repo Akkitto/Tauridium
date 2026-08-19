@@ -2378,7 +2378,7 @@
 
 {#if quickSwitcherMode}
   <div class="quick-switcher-backdrop" role="presentation" onclick={(event) => event.currentTarget === event.target && closeQuickSwitcher()}>
-    <section class="quick-switcher" role="dialog" aria-modal="true" aria-label={quickSwitcherMode === "service" ? "Quick service search" : "Quick workspace switcher"}>
+    <div class="quick-switcher" role="dialog" aria-modal="true" aria-label={quickSwitcherMode === "service" ? "Quick service search" : "Quick workspace switcher"}>
       <div class="quick-switcher-head">
         <input
           type="search"
@@ -2406,7 +2406,7 @@
         {/each}
       </div>
       {#if quickSwitcherItems.length > 100}<p class="quick-switcher-hint">Showing the first 100 matches. Refine your search to narrow the list.</p>{/if}
-    </section>
+    </div>
   </div>
 {/if}
 

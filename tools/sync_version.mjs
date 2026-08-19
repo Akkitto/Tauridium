@@ -61,4 +61,15 @@ if (updatedInitPs1 === initPs1Source && !initPs1Source.includes(`$InitVersion = 
 }
 fs.writeFileSync(initPs1Path, updatedInitPs1);
 
+const readmePath = "README.md";
+const readme = fs.readFileSync(readmePath, "utf8");
+const updatedReadme = readme
+  .replace(/git tag -a v\d+\.\d+\.\d+ -m "Tauridium \d+\.\d+\.\d+"/, `git tag -a v${version} -m "Tauridium ${version}"`)
+  .replace(/git push origin v\d+\.\d+\.\d+/, `git push origin v${version}`)
+  .replace(/tauridium-\d+\.\d+\.\d+-run-/g, `tauridium-${version}-run-`);
+if (updatedReadme === readme && !readme.includes(`git tag -a v${version} -m "Tauridium ${version}"`)) {
+  throw new Error("unable to update README release examples");
+}
+fs.writeFileSync(readmePath, updatedReadme);
+
 console.log(`Tauridium release identity -> ${version}`);

@@ -1757,9 +1757,8 @@ fn services_in_sandbox(settings: &Value, sandbox_id: &str) -> Vec<String> {
         .map(|assignments| {
             assignments
                 .iter()
-                .filter_map(|(service_id, value)| {
-                    (value.as_str() == Some(sandbox_id)).then(|| service_id.clone())
-                })
+                .filter(|(_, value)| value.as_str() == Some(sandbox_id))
+                .map(|(service_id, _)| service_id.clone())
                 .collect()
         })
         .unwrap_or_default()
@@ -2358,11 +2357,12 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
     {
         return Err("App string settings are invalid".into());
     }
-    for key in ["accentColor"] {
-        let color = object.get(key).and_then(Value::as_str).unwrap_or_default();
-        if !is_hex_color(color) {
-            return Err(format!("App setting {key} must be a #RRGGBB color"));
-        }
+    let accent_color = object
+        .get("accentColor")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if !is_hex_color(accent_color) {
+        return Err("App setting accentColor must be a #RRGGBB color".into());
     }
     let custom_colors = object
         .get("customAccentColors")
@@ -3187,6 +3187,17 @@ mod tests {
         settings["keybindings"]["quickServiceSwitch"] = json!("Ctrl+S");
         settings["serviceSandboxes"] = json!({ "service-a": "missing" });
         assert!(validate_app_settings_value(&settings).is_err());
+    }
+
+    #[test]
+    fn shared_sandbox_storage_identifier_is_stable_and_distinct() {
+        let isolated = storage_identifier("00112233-4455-6677-8899-aabbccddeeff", None).unwrap();
+        let shared_a = storage_identifier("service-a", Some("proton")).unwrap();
+        let shared_b = storage_identifier("service-b", Some("proton")).unwrap();
+        let other = storage_identifier("service-a", Some("other")).unwrap();
+        assert_eq!(shared_a, shared_b);
+        assert_ne!(shared_a, isolated);
+        assert_ne!(shared_a, other);
     }
 
     #[test]

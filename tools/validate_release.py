@@ -115,6 +115,7 @@ def main() -> int:
   patch_0319_test = read("tools/test_patch_0319.py")
   settings_ui_test = read("tools/test_settings_ui.py")
   feature_0400_test = read("tools/test_feature_0400.py")
+  patch_0402_test = read("tools/test_patch_0402.py")
   if f'INIT_VERSION = "{version}"' not in init_py:
     fail("initializer release identity differs from release version")
   if "required pkg-config modules are" in init_py:
@@ -678,6 +679,24 @@ def main() -> int:
     if marker not in feature_0400_test:
       fail(f"0.4.0 feature regression coverage is missing: {marker}")
   for marker in (
+    "test_quick_switcher_uses_dialog_compatible_container",
+    "test_shared_storage_identifier_is_exercised_by_tests",
+    "test_services_in_sandbox_avoids_filter_map_bool_then_lint",
+    "test_single_accent_color_validation_is_direct",
+  ):
+    if marker not in patch_0402_test:
+      fail(f"0.4.2 quality regression coverage is missing: {marker}")
+
+  for marker in (
+    '<div class="quick-switcher" role="dialog"',
+    '.filter(|(_, value)| value.as_str() == Some(sandbox_id))',
+    'let accent_color = object',
+    'fn shared_sandbox_storage_identifier_is_stable_and_distinct()',
+  ):
+    if marker not in app + main_rs:
+      fail(f"0.4.2 quality invariant is missing: {marker}")
+
+  for marker in (
     '["keybindings", "Keybinds"]',
     '["sandbox", "Sandbox"]',
     'appSettings.theme === "oled"',
@@ -822,6 +841,15 @@ def main() -> int:
     sys.stderr.write(english.stdout)
     sys.stderr.write(english.stderr)
     fail("English-only tracked-source audit failed")
+
+  readme = read("README.md")
+  for marker in (
+    f'git tag -a v{version} -m "Tauridium {version}"',
+    f'git push origin v{version}',
+    f'tauridium-{version}-run-win-x64.zip',
+  ):
+    if marker not in readme:
+      fail(f"README release example differs from release version: {marker}")
 
   changelog = read("CHANGELOG.md")
   if f"## [{version}]" not in changelog:

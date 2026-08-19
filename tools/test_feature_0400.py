@@ -85,6 +85,7 @@ class Feature0400Tests(unittest.TestCase):
       '"src-tauri/Cargo.lock"',
       '"tools/init.py"',
       '"tools/init.ps1"',
+      '"README.md"',
     ):
       self.assertIn(marker, sync)
 
