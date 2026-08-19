@@ -72,8 +72,8 @@ class SettingsUiReleaseTests(unittest.TestCase):
       "Report an issue ↗",
       "Repository",
       "Issues and feature requests",
-      "MIT License",
-      "Copyright © 2026 Mathieu Vedie",
+      "appMetadata?.license",
+      "appMetadata?.maintainer",
       "Maintainer",
       "Contributors ↗",
       "Tauri v2",
@@ -96,7 +96,7 @@ class SettingsUiReleaseTests(unittest.TestCase):
     for handler in handlers:
       self.assertRegex(
         handler,
-        r'onclick=\{\(\) => openProjectLink\("https://[^"]+"\)\s*\}',
+        r'onclick=\{\(\) => openProjectLink\((?:"https://[^"]+"|projectRepository|`\$\{projectRepository\}/[^`]+`)\)\s*\}',
         msg=f"Malformed About onclick expression: {handler}",
       )
 

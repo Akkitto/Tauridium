@@ -118,6 +118,7 @@ def main() -> int:
   patch_0402_test = read("tools/test_patch_0402.py")
   patch_0403_test = read("tools/test_patch_0403.py")
   patch_0404_test = read("tools/test_patch_0404.py")
+  patch_0407_test = read("tools/test_patch_0407.py")
   if f'INIT_VERSION = "{version}"' not in init_py:
     fail("initializer release identity differs from release version")
   if "required pkg-config modules are" in init_py:
@@ -475,11 +476,34 @@ def main() -> int:
     "get_audit_log",
     "export_audit_log",
     "clear_audit_log",
+    "get_service_icon",
+    "get_app_metadata",
   )
   handler = main_rs.split("tauri::generate_handler![", 1)[-1].split("]", 1)[0]
   for command in required_backend:
     if command not in handler:
       fail(f"Tauri handler is missing {command}")
+
+  for marker in (
+    'oncontextmenu={(e) => openServiceContextMenu(e, s)}',
+    '>Settings</button>',
+    '>Reload</button>',
+    '"Enable Service" : "Disable Service"',
+    'Fetch missing website icons',
+    'Enable custom URL placeholders for all services',
+    'Show reload notifications',
+  ):
+    if marker not in app:
+      fail(f"0.4.7 service-control UI invariant is missing: {marker}")
+  for marker in (
+    'test_sidebar_uses_full_row_without_cogwheel_and_has_context_menu',
+    'test_website_icons_are_persistently_positive_and_negative_cached',
+    'test_reload_shortcut_and_context_menu_share_optional_toast_path',
+  ):
+    if marker not in patch_0407_test:
+      fail(f"0.4.7 regression coverage is missing: {marker}")
+  if 'class="cog"' in app:
+    fail("sidebar service cogwheel was reintroduced")
 
   if 'invoke("start_local_session")' not in api_ts:
     fail("frontend API does not expose the accountless session command")
@@ -511,8 +535,8 @@ def main() -> int:
     'Releases ↗',
     'Report an issue ↗',
     '>Repository</span>',
-    '>MIT License</span>',
-    'Copyright © 2026 Mathieu Vedie',
+    'appMetadata?.license',
+    'appMetadata?.maintainer',
     'Contributors ↗',
     'Tauri v2',
     'Ferdium',
@@ -546,7 +570,7 @@ def main() -> int:
     '"custom-website"',
     '"https://nano-gpt.com/chat"',
     '"https://chutes.ai/chat"',
-    '"http://127.0.0.1:4096"',
+    '"https://opencode.ai/go"',
     'Recipe id is reserved by Tauridium',
     'package["id"] = Value::String(id.clone())',
   ):

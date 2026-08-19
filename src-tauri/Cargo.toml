@@ -2,7 +2,9 @@
 name = "tauridium"
 version = "0.4.6"
 edition = "2021"
+rust-version = "1.97.1"
 description = "Tauridium — lightweight Tauri client for Ferdium"
+repository = "https://github.com/Gizmo091/Tauridium"
 license = "MIT"
 
 [build-dependencies]

@@ -107,7 +107,7 @@ Key finding: WKWebView ignores `data_directory`; use `data_store_identifier` on 
 - Merged remote, bundled, and user recipe catalogs.
 - Local `recipes/<id>/package.json` directory under Tauridium's OS configuration directory.
 - GUI folder/package import and lightweight recipe creator with optional `icon.svg`/`webview.js`.
-- Bundled NanoGPT, Chutes, and OpenCode Web recipes.
+- Bundled NanoGPT, Chutes, and OpenCode recipes.
 - Services created from Tauridium-local recipes remain local even while signed into a server.
 
 ### Phase 6 — Production runtime integrity ✅ COMPLETE (0.3.6)

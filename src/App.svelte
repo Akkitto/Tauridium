@@ -52,6 +52,7 @@
     createCustomWebsiteService,
     deleteService,
     clearServiceCache,
+    getServiceIcon,
     clearSandbox,
     listRecipes,
     getRecipeStorageInfo,
@@ -73,8 +74,8 @@
     getAuditLog,
     exportAuditLog,
     clearAuditLog,
+    getAppMetadata,
     openExternalUrl,
-    reloadActiveService,
     reloadTauridium,
     toggleDeveloperTools,
     DEFAULT_SERVER,
@@ -89,6 +90,8 @@
     type SandboxDefinition,
     type PortablePayload,
     type AuditEntry,
+    type AppMetadata,
+    type ServiceCustomUrlTemplate,
   } from "./lib/api";
 
   let server = $state(DEFAULT_SERVER);
@@ -116,6 +119,8 @@
   let activeId = $state<string | null>(null);
   let unreadMap = $state<Record<string, number>>({});
   let failedIcons = $state<Set<string>>(new Set());
+  let serviceIcons = $state<Record<string, string>>({});
+  let iconFetchAttempted = new Set<string>();
   // Per-service loading state emitted by the backend through on_page_load.
   let statusMap = $state<Record<string, "loading" | "ready">>({});
   // Error opening the active service (showService rejected it: broken recipe, invalid URL, etc.).
@@ -131,6 +136,8 @@
   let svcDirty = $state(false); // Service settings changed but not saved yet.
   let svcReload = $state(false); // A field requiring reload (URL/team/UA) changed.
   let serviceSettingsReturnToSettings = $state(false);
+  let serviceTemplateDraft = $state<ServiceCustomUrlTemplate>({ enabled: false, customId1: "", customId2: "" });
+  let serviceTemplateDirty = $state(false);
   let newWorkspaceName = $state("");
 
   type Tab = "general" | "services" | "appearance" | "keybindings" | "sandbox" | "privacy" | "backup" | "audit" | "advanced" | "updates" | "about";
@@ -157,6 +164,12 @@
   let quickSwitcherMode = $state<QuickSwitcherMode | null>(null);
   let quickSwitcherQuery = $state("");
   let quickSwitcherIndex = $state(0);
+
+  let serviceContextMenu = $state<{ serviceId: string; x: number; y: number } | null>(null);
+  let toastMessage = $state("");
+  let toastTimer: ReturnType<typeof setTimeout> | null = null;
+  let appMetadata = $state<AppMetadata | null>(null);
+  const projectRepository = $derived((appMetadata?.repository || "https://github.com/Gizmo091/Tauridium").replace(/\/$/, ""));
 
   let newSandboxName = $state("");
   let sandboxServiceQuery = $state("");
@@ -205,6 +218,10 @@
     sidebarServicesLocation: "top",
     hibernationTimer: 0,
     preloadServices: true,
+    fetchMissingServiceIcons: true,
+    reloadToasts: true,
+    customUrlTemplatesEnabled: false,
+    serviceCustomUrlTemplates: {},
     serviceOrder: [],
     workspaceOrder: [],
     keybindings: { ...DEFAULT_KEYBINDINGS },
@@ -261,7 +278,7 @@
       list = list.filter((s) => ids.has(s.id));
     }
     if (!appSettings.showDisabledServices) {
-      list = list.filter((s) => s.isEnabled);
+      list = list.filter((s) => s.isEnabled !== false);
     }
     return list;
   });
@@ -351,6 +368,7 @@
   onDestroy(() => {
     if (automaticBackupTimer) clearInterval(automaticBackupTimer);
     if (recordingTimer) clearTimeout(recordingTimer);
+    if (toastTimer) clearTimeout(toastTimer);
     if (sidebarResizeFrame !== null) cancelAnimationFrame(sidebarResizeFrame);
     window.removeEventListener("keydown", handleGlobalKeydown, true);
     window.removeEventListener("resize", handleWindowResize);
@@ -374,7 +392,7 @@
     // make a numbered menu item select the wrong service.
     listen<string>("select-service-id", (e) => {
       const service = services.find((candidate) => candidate.id === e.payload);
-      if (service) selectService(service);
+      if (service?.isEnabled !== false) selectService(service);
     });
     // Native menu actions always route through the shell so service webviews cannot cover them.
     listen("open-settings", openAppSettings);
@@ -407,6 +425,9 @@
     }, 60 * 60 * 1000);
     appVersion()
       .then((v) => (appVer = v))
+      .catch(() => {});
+    getAppMetadata()
+      .then((metadata) => (appMetadata = metadata))
       .catch(() => {});
     checkUpdates(true); // Silent startup check.
   });
@@ -459,8 +480,102 @@
     return appSettings.serviceSandboxes?.[serviceId] || null;
   }
 
-  function markIconFailed(id: string) {
-    failedIcons = new Set(failedIcons).add(id);
+  function showToast(message: string) {
+    toastMessage = message;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      toastMessage = "";
+      toastTimer = null;
+    }, 2600);
+  }
+
+  function displayedServiceIcon(service: Service): string {
+    return serviceIcons[service.id] || iconSrc(service);
+  }
+
+  async function loadServiceIcon(
+    service: Service,
+    force = false,
+    report = false,
+    preferWebsiteIcon = service.useFavicon === true,
+  ) {
+    const attemptKey = `${service.id}:${preferWebsiteIcon ? "website" : "default"}`;
+    if (!force && iconFetchAttempted.has(attemptKey)) return;
+    iconFetchAttempted.add(attemptKey);
+    try {
+      const icon = await getServiceIcon(service, force, preferWebsiteIcon);
+      if (icon) {
+        serviceIcons = { ...serviceIcons, [service.id]: icon };
+        const next = new Set(failedIcons);
+        next.delete(service.id);
+        failedIcons = next;
+        if (report) showToast(`Refetched icon for ${serviceLabel(service)}.`);
+      } else if (report) {
+        showToast(`No website icon found for ${serviceLabel(service)}.`);
+      }
+    } catch (err) {
+      if (report) error = `Unable to refetch icon for ${serviceLabel(service)}: ${err}`;
+    }
+  }
+
+  function hydrateServiceIcons() {
+    if (!appSettings.fetchMissingServiceIcons && !services.some((service) => service.useFavicon === true)) return;
+    for (const service of services) {
+      if (appSettings.fetchMissingServiceIcons || service.useFavicon === true) {
+        void loadServiceIcon(service);
+      }
+    }
+  }
+
+  function markIconFailed(service: Service) {
+    failedIcons = new Set(failedIcons).add(service.id);
+    if (appSettings.fetchMissingServiceIcons || service.useFavicon === true) {
+      void loadServiceIcon(service, false, false, true);
+    }
+  }
+
+  function closeServiceContextMenu() {
+    serviceContextMenu = null;
+  }
+
+  function openServiceContextMenu(event: MouseEvent, service: Service) {
+    event.preventDefault();
+    event.stopPropagation();
+    const width = 226;
+    const height = 154;
+    serviceContextMenu = {
+      serviceId: service.id,
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8)),
+    };
+    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".service-context-menu button:not(:disabled)")?.focus());
+  }
+
+  function openServiceContextMenuFromKeyboard(event: KeyboardEvent, service: Service) {
+    if (!(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
+    event.preventDefault();
+    const rect = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : null;
+    serviceContextMenu = {
+      serviceId: service.id,
+      x: rect ? Math.min(rect.left + 28, window.innerWidth - 234) : 12,
+      y: rect ? Math.min(rect.bottom, window.innerHeight - 162) : 12,
+    };
+    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".service-context-menu button:not(:disabled)")?.focus());
+  }
+
+  function handleServiceContextMenuKeydown(event: KeyboardEvent) {
+    const menu = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    const items = menu ? [...menu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')] : [];
+    if (!items.length) return;
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    let next = current;
+    if (event.key === "ArrowDown") next = (current + 1 + items.length) % items.length;
+    else if (event.key === "ArrowUp") next = (current - 1 + items.length) % items.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = items.length - 1;
+    else return;
+    event.preventDefault();
+    items[next]?.focus();
   }
 
   function sameIds(left: string[], right: string[]): boolean {
@@ -501,9 +616,14 @@
     await reconcileSavedOrders();
     await refreshNativeServicesMenu();
     await Promise.all(services.map((s) => setServiceFlags(s).catch(() => {})));
-    const first = sorted.find((s) => s.isEnabled) ?? sorted[0] ?? null;
+    const first = sorted.find((s) => s.isEnabled !== false) ?? null;
     if (first) selectService(first);
+    else {
+      activeId = null;
+      await hideServices();
+    }
     preloadRest(first?.id);
+    hydrateServiceIcons();
   }
 
   // Gradually preload other active services in off-screen webviews,
@@ -514,7 +634,7 @@
     preloadCancelled = false;
     const list = sorted.filter(
       (s) =>
-        s.isEnabled &&
+        s.isEnabled !== false &&
         s.id !== firstId &&
         !(appSettings.hibernationTimer > 0 && s.isHibernationEnabled === true),
     );
@@ -657,6 +777,7 @@
   }
 
   function selectService(s: Service) {
+    if (s.isEnabled === false) return;
     const prev = activeId;
     error = null;
     serviceLoadError = null;
@@ -744,6 +865,8 @@
     error = null;
     serviceSettingsReturnToSettings = returnToSettings;
     settingsSvc = { ...s }; // Editable copy; applied to the server on Save.
+    serviceTemplateDraft = { ...(appSettings.serviceCustomUrlTemplates[s.id] ?? { enabled: false, customId1: "", customId2: "" }) };
+    serviceTemplateDirty = false;
     svcDirty = false;
     svcReload = false;
     view = "svcSettings";
@@ -755,6 +878,7 @@
     if (serviceSettingsReturnToSettings) {
       serviceSettingsReturnToSettings = false;
       settingsSvc = null;
+      serviceTemplateDirty = false;
       svcDirty = false;
       svcReload = false;
       settingsTab = "services";
@@ -833,6 +957,12 @@
     if (reload) svcReload = true;
   }
 
+  function saveServiceTemplateField(key: keyof ServiceCustomUrlTemplate, value: boolean | string) {
+    (serviceTemplateDraft as Record<string, unknown>)[key] = value;
+    serviceTemplateDirty = true;
+    svcReload = true;
+  }
+
   function saveNum(key: keyof Service, value: string) {
     if (!settingsSvc) return;
     const n = Number.parseInt(value, 10);
@@ -843,8 +973,93 @@
 
   async function saveServiceSettings() {
     await persistService(svcReload);
+    if (settingsSvc && serviceTemplateDirty) {
+      appSettings = await setAppSettings({
+        serviceCustomUrlTemplates: {
+          ...appSettings.serviceCustomUrlTemplates,
+          [settingsSvc.id]: { ...serviceTemplateDraft },
+        },
+      });
+      serviceTemplateDirty = false;
+    }
     svcDirty = false;
     svcReload = false;
+  }
+
+  async function setServiceEnabled(service: Service, enabled: boolean) {
+    closeServiceContextMenu();
+    if ((service.isEnabled !== false) === enabled) return;
+    try {
+      await updateService(service.id, { isEnabled: enabled });
+      services = services.map((candidate) => candidate.id === service.id ? { ...candidate, isEnabled: enabled } : candidate);
+      if (settingsSvc?.id === service.id) settingsSvc = { ...settingsSvc, isEnabled: enabled };
+      await refreshNativeServicesMenu();
+      if (!enabled) {
+        clearHibTimer(service.id);
+        await closeService(service.id).catch(() => {});
+        const { [service.id]: _, ...rest } = statusMap;
+        statusMap = rest;
+        hibernated = new Set([...hibernated].filter((id) => id !== service.id));
+        if (activeId === service.id) {
+          activeId = null;
+          const keepServiceSettingsOpen = view === "svcSettings" && settingsSvc?.id === service.id;
+          if (!keepServiceSettingsOpen) {
+            const scoped = visibleServices.find((candidate) => candidate.id !== service.id && candidate.isEnabled !== false);
+            const fallback = sorted.find((candidate) => candidate.id !== service.id && candidate.isEnabled !== false);
+            const next = scoped ?? fallback ?? null;
+            if (next) selectService(next);
+            else {
+              view = "service";
+              await hideServices();
+            }
+          }
+        }
+      }
+      showToast(`${serviceLabel(service)} ${enabled ? "enabled" : "disabled"}.`);
+    } catch (err) {
+      error = `Unable to ${enabled ? "enable" : "disable"} ${serviceLabel(service)}: ${err}`;
+    }
+  }
+
+  async function toggleServiceEnabled(service: Service) {
+    await setServiceEnabled(service, service.isEnabled === false);
+  }
+
+  async function reloadServiceFromUi(service: Service) {
+    closeServiceContextMenu();
+    if (service.isEnabled === false) return;
+    try {
+      statusMap = { ...statusMap, [service.id]: "loading" };
+      await closeService(service.id);
+      const { [service.id]: _, ...rest } = statusMap;
+      statusMap = rest;
+      if (activeId === service.id) selectService(service);
+      else await preloadService(service);
+      if (appSettings.reloadToasts) showToast(`${serviceLabel(service)} reloaded.`);
+    } catch (err) {
+      error = `Unable to reload ${serviceLabel(service)}: ${err}`;
+    }
+  }
+
+  async function refetchAllServiceIcons() {
+    if (!(await confirmAsk("Refetch and replace cached website icons for all services? This can contact every configured service website."))) return;
+    let success = 0;
+    const failures: string[] = [];
+    for (const service of services) {
+      iconFetchAttempted.delete(`${service.id}:default`);
+      iconFetchAttempted.delete(`${service.id}:website`);
+      try {
+        const icon = await getServiceIcon(service, true, true);
+        if (icon) {
+          serviceIcons = { ...serviceIcons, [service.id]: icon };
+          success += 1;
+        } else failures.push(serviceLabel(service));
+      } catch {
+        failures.push(serviceLabel(service));
+      }
+    }
+    showToast(`Refetched ${success} of ${services.length} service icons.`);
+    if (failures.length) error = `No website icon was available for ${failures.length} service${failures.length === 1 ? "" : "s"}.`;
   }
 
   async function handleDelete(s: Service) {
@@ -855,10 +1070,12 @@
       const { [s.id]: _, ...rest } = statusMap;
       statusMap = rest;
       services = services.filter((x) => x.id !== s.id);
-      if (appSettings.serviceSandboxes[s.id]) {
+      if (appSettings.serviceSandboxes[s.id] || appSettings.serviceCustomUrlTemplates[s.id]) {
         const serviceSandboxes = { ...appSettings.serviceSandboxes };
+        const serviceCustomUrlTemplates = { ...appSettings.serviceCustomUrlTemplates };
         delete serviceSandboxes[s.id];
-        appSettings = await setAppSettings({ serviceSandboxes });
+        delete serviceCustomUrlTemplates[s.id];
+        appSettings = await setAppSettings({ serviceSandboxes, serviceCustomUrlTemplates });
       }
       await reconcileSavedOrders();
       await refreshNativeServicesMenu();
@@ -1664,13 +1881,14 @@
       case "previousService": cycleService(-1); break;
       case "nextWorkspace": cycleWorkspace(1); break;
       case "previousWorkspace": cycleWorkspace(-1); break;
-      case "reloadService": void reloadActiveService(); break;
+      case "reloadService": if (activeService) void reloadServiceFromUi(activeService); break;
       case "reloadApp": void reloadTauridium(); break;
       case "toggleDevtools": void toggleDeveloperTools(); break;
     }
   }
 
   function handleGlobalKeydown(event: KeyboardEvent) {
+    if (event.key === "Escape" && serviceContextMenu) { event.preventDefault(); closeServiceContextMenu(); return; }
     if (recordingAction) {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -1810,7 +2028,7 @@
 
   function backToService() {
     error = null;
-    const target = activeService ?? sorted.find((s) => s.isEnabled) ?? sorted[0];
+    const target = (activeService?.isEnabled !== false ? activeService : null) ?? sorted.find((s) => s.isEnabled !== false) ?? null;
     if (target) selectService(target);
     else view = "service";
   }
@@ -1949,8 +2167,8 @@
           <div class="panel-head">
             <h2>Settings — {serviceLabel(settingsSvc)}</h2>
             <span class="head-actions">
-              <button class="primary sm" disabled={!svcDirty} onclick={saveServiceSettings}>
-                {svcDirty ? "Save changes" : "Saved"}
+              <button class="primary sm" disabled={!svcDirty && !serviceTemplateDirty} onclick={saveServiceSettings}>
+                {svcDirty || serviceTemplateDirty ? "Save changes" : "Saved"}
               </button>
               <button class="link" onclick={closeServiceSettings}>✕ close</button>
             </span>
@@ -1967,17 +2185,31 @@
               Custom URL
               <input value={settingsSvc.customUrl ?? ""} placeholder="https://… (for services that support it)" onchange={(e) => saveText("customUrl", e.currentTarget.value, true)} />
             </label>
-            <p class="desc">Override the service URL (self-hosted instances, custom domains). Reloads the service.</p>
+            <p class="desc">Override the recipe URL. Supports <code>{"{teamId}"}</code> for recipes with website workspace IDs and, when enabled below, <code>{"{{custom_id_1}}"}</code> / <code>{"{{custom_id_2}}"}</code>. Reloads the service.</p>
           </div>
           <div class="setrow">
             <label class="block">
               Team / workspace ID
-              <input value={settingsSvc.team ?? ""} placeholder="e.g. Slack team" onchange={(e) => saveText("team", e.currentTarget.value, true)} />
+              <input value={settingsSvc.team ?? ""} placeholder="wrk_01ABC123EXAMPLE" onchange={(e) => saveText("team", e.currentTarget.value, true)} />
             </label>
-            <p class="desc">For services whose URL includes a team ID (Slack, etc.). Reloads the service.</p>
+            <p class="desc">Website-specific team/workspace slug or ID, not a Tauridium Workspace. Example: <code>wrk_01ABC123EXAMPLE</code> becomes <code>https://opencode.ai/workspace/wrk_01ABC123EXAMPLE/go</code> for OpenCode. Reloads the service.</p>
           </div>
-
-          {@render toggle("Enabled", "Load this service. Disabled services stay listed but aren't loaded.", "isEnabled", settingsSvc.isEnabled !== false)}
+          <div class="set-title">Custom URL placeholders</div>
+          <div class="setrow">
+            <label class="row-toggle">
+              <input type="checkbox" checked={appSettings.customUrlTemplatesEnabled || serviceTemplateDraft.enabled} disabled={appSettings.customUrlTemplatesEnabled} onchange={(e) => saveServiceTemplateField("enabled", e.currentTarget.checked)} />
+              <span>{appSettings.customUrlTemplatesEnabled ? "Enabled globally" : "Enable for this service"}</span>
+            </label>
+            <p class="desc">Allow exact <code>{"{{custom_id_1}}"}</code> and <code>{"{{custom_id_2}}"}</code> tokens in this service's Custom URL. Global enablement is available in Advanced settings.</p>
+          </div>
+          {#if appSettings.customUrlTemplatesEnabled || serviceTemplateDraft.enabled}
+            <div class="setrow">
+              <div class="proxy-grid">
+                <label>Custom ID 1<input value={serviceTemplateDraft.customId1} placeholder="first replacement value" onchange={(e) => saveServiceTemplateField("customId1", e.currentTarget.value)} /></label>
+                <label>Custom ID 2 (optional)<input value={serviceTemplateDraft.customId2} placeholder="second replacement value" onchange={(e) => saveServiceTemplateField("customId2", e.currentTarget.value)} /></label>
+              </div>
+            </div>
+          {/if}
           {@render toggle("Notifications", "Show system notifications for new messages in this service.", "isNotificationEnabled", settingsSvc.isNotificationEnabled !== false)}
           {@render toggle("Muted", "Silence this service — no notifications at all.", "isMuted", settingsSvc.isMuted === true)}
           {@render toggle("Unread badge", `Count this service's unread messages in the ${dockWord} badge.`, "isBadgeEnabled", settingsSvc.isBadgeEnabled !== false)}
@@ -2000,7 +2232,11 @@
               <p class="desc">Dark Reader fine-tuning (applies to this service's dark mode).</p>
             </div>
           {/if}
-          {@render toggle("Use favicon as icon", "Use the site's favicon instead of the recipe icon (not rendered locally yet).", "useFavicon", settingsSvc.useFavicon === true)}
+          {@render toggle("Use website icon", "Prefer this service's cached website icon over its recipe icon. Tauridium fetches it once and reuses the persistent local cache.", "useFavicon", settingsSvc.useFavicon === true)}
+          <div class="setrow">
+            <div><strong>Website icon cache</strong><p class="desc">Discard the cached result and fetch this service's current website icon again.</p></div>
+            <button class="secondary sm" onclick={() => settingsSvc && loadServiceIcon(settingsSvc, true, true, true)}>Refetch icon</button>
+          </div>
           {@render toggle("Progress bar", "Service preference. Tauridium already shows a loading spinner per service.", "isProgressbarEnabled", settingsSvc.isProgressbarEnabled === true)}
           <div class="setrow">
             <label class="block">
@@ -2032,6 +2268,15 @@
               </div>
               <button class="danger sm" onclick={() => settingsSvc && handleClearCache(settingsSvc)}>
                 Clear cache
+              </button>
+            </div>
+            <div class="dz-row">
+              <div>
+                <strong>{settingsSvc.isEnabled === false ? "Enable service" : "Disable service"}</strong>
+                <p class="dz-hint">{settingsSvc.isEnabled === false ? "Allow this web app to load again." : "Keep it in the list, but close it and prevent the web app from loading until re-enabled."}</p>
+              </div>
+              <button class:danger={settingsSvc.isEnabled !== false} class:secondary={settingsSvc.isEnabled === false} class="sm" onclick={() => settingsSvc && toggleServiceEnabled(settingsSvc)}>
+                {settingsSvc.isEnabled === false ? "Enable" : "Disable"}
               </button>
             </div>
             <div class="dz-row">
@@ -2602,6 +2847,28 @@
                   </div>
                 </div>
               </section>
+              <section class="settings-section" aria-labelledby="settings-advanced-service-icons">
+                <div class="section-heading"><h3 id="settings-advanced-service-icons">Service icons</h3><p>Control durable website-icon discovery and refresh.</p></div>
+                <div class="settings-list">
+                  {@render appToggle("Fetch missing website icons", "When a service has no preset recipe icon, fetch its website icon once and keep the result in Tauridium's persistent cache. Enabled by default.", "fetchMissingServiceIcons", appSettings.fetchMissingServiceIcons)}
+                  <div class="setting-card">
+                    <div class="setting-copy"><span class="setting-label">Refetch all service icons</span><span class="setting-description">Discard cached icon results and contact every configured service to discover its current website icon again.</span></div>
+                    <button class="secondary sm" onclick={refetchAllServiceIcons}>Refetch all…</button>
+                  </div>
+                </div>
+              </section>
+              <section class="settings-section" aria-labelledby="settings-advanced-url-templates">
+                <div class="section-heading"><h3 id="settings-advanced-url-templates">Custom URL placeholders</h3><p>Opt in to reusable values inside service Custom URLs.</p></div>
+                <div class="settings-list">
+                  {@render appToggle("Enable custom URL placeholders for all services", "Allow {{custom_id_1}} and {{custom_id_2}} replacement in every service Custom URL. Disabled by default; individual services can opt in instead.", "customUrlTemplatesEnabled", appSettings.customUrlTemplatesEnabled)}
+                </div>
+              </section>
+              <section class="settings-section" aria-labelledby="settings-advanced-feedback">
+                <div class="section-heading"><h3 id="settings-advanced-feedback">Feedback</h3></div>
+                <div class="settings-list">
+                  {@render appToggle("Show reload notifications", "Show a brief toast after a service is reloaded from a keybinding or the service context menu.", "reloadToasts", appSettings.reloadToasts)}
+                </div>
+              </section>
               <section class="settings-section" aria-labelledby="settings-advanced-account">
                 <div class="section-heading"><h3 id="settings-advanced-account">{me.local ? "Account" : "Server"}</h3></div>
                 <div class="settings-list">
@@ -2631,27 +2898,27 @@
               <section class="about-page" aria-labelledby="about-tauridium-title">
                 <div class="about-hero">
                   <img class="about-logo" src={tauridiumLogo} alt="Tauridium application icon" />
-                  <div class="about-identity"><h3 id="about-tauridium-title">Tauridium</h3><p class="about-version">Version {appVer ? `v${appVer}` : "loading…"}</p><p class="about-summary">A lightweight Tauri desktop client for Ferdium with accountless local mode and locally managed recipes.</p></div>
+                  <div class="about-identity"><h3 id="about-tauridium-title">{appMetadata?.name ?? "Tauridium"}</h3><p class="about-version">Version {appVer ? `v${appVer}` : "loading…"}</p><p class="about-summary">{appMetadata?.description ?? "Tauridium desktop client"}</p></div>
                 </div>
                 <div class="about-actions" role="group" aria-label="Tauridium project links">
-                  <button class="primary" onclick={() => openProjectLink("https://github.com/Gizmo091/Tauridium")}>Source code ↗</button>
-                  <button class="secondary" onclick={() => openProjectLink("https://github.com/Gizmo091/Tauridium/releases")}>Releases ↗</button>
-                  <button class="secondary" onclick={() => openProjectLink("https://github.com/Gizmo091/Tauridium/issues/new")}>Report an issue ↗</button>
+                  <button class="primary" onclick={() => openProjectLink(projectRepository)}>Source code ↗</button>
+                  <button class="secondary" onclick={() => openProjectLink(`${projectRepository}/releases`)}>Releases ↗</button>
+                  <button class="secondary" onclick={() => openProjectLink(`${projectRepository}/issues/new`)}>Report an issue ↗</button>
                 </div>
                 <section class="settings-section" aria-labelledby="about-project-heading">
                   <div class="section-heading"><h3 id="about-project-heading">Project</h3><p>Open-source project information and useful destinations.</p></div>
                   <div class="settings-list">
-                    <button class="setting-card about-link-card" onclick={() => openProjectLink("https://github.com/Gizmo091/Tauridium")}><span class="setting-copy"><span class="setting-label">Repository</span><span class="setting-description">github.com/Gizmo091/Tauridium</span></span><span class="external-indicator" aria-hidden="true">Open ↗</span></button>
-                    <button class="setting-card about-link-card" onclick={() => openProjectLink("https://github.com/Gizmo091/Tauridium/issues")}><span class="setting-copy"><span class="setting-label">Issues and feature requests</span><span class="setting-description">Report a problem, follow known issues, or propose an improvement.</span></span><span class="external-indicator" aria-hidden="true">Open ↗</span></button>
+                    <button class="setting-card about-link-card" onclick={() => openProjectLink(projectRepository)}><span class="setting-copy"><span class="setting-label">Repository</span><span class="setting-description">{projectRepository}</span></span><span class="external-indicator" aria-hidden="true">Open ↗</span></button>
+                    <button class="setting-card about-link-card" onclick={() => openProjectLink(`${projectRepository}/issues`)}><span class="setting-copy"><span class="setting-label">Issues and feature requests</span><span class="setting-description">Report a problem, follow known issues, or propose an improvement.</span></span><span class="external-indicator" aria-hidden="true">Open ↗</span></button>
                   </div>
                 </section>
                 <section class="settings-section" aria-labelledby="about-legal-heading">
                   <div class="section-heading"><h3 id="about-legal-heading">Legal</h3></div>
-                  <div class="settings-list"><button class="setting-card about-link-card" onclick={() => openProjectLink("https://github.com/Gizmo091/Tauridium/blob/master/LICENSE")}><span class="setting-copy"><span class="setting-label">MIT License</span><span class="setting-description">Copyright © 2026 Mathieu Vedie. View the complete license text.</span></span><span class="external-indicator" aria-hidden="true">View ↗</span></button></div>
+                  <div class="settings-list"><button class="setting-card about-link-card" onclick={() => openProjectLink(`${projectRepository}/blob/master/LICENSE`)}><span class="setting-copy"><span class="setting-label">{appMetadata?.license ?? "License"}</span><span class="setting-description">Copyright © 2026 {appMetadata?.maintainer ?? "Tauridium contributors"}. View the complete license text.</span></span><span class="external-indicator" aria-hidden="true">View ↗</span></button></div>
                 </section>
                 <section class="settings-section" aria-labelledby="about-credits-heading">
                   <div class="section-heading"><h3 id="about-credits-heading">Credits</h3></div>
-                  <div class="settings-list"><div class="setting-card info-card"><span class="setting-copy"><span class="setting-label">Maintainer</span><span class="setting-description">Mathieu Vedie</span></span><button class="secondary sm" onclick={() => openProjectLink("https://github.com/Gizmo091/Tauridium/graphs/contributors")}>Contributors ↗</button></div></div>
+                  <div class="settings-list"><div class="setting-card info-card"><span class="setting-copy"><span class="setting-label">Maintainer</span><span class="setting-description">{appMetadata?.maintainer ?? "Tauridium contributors"}</span></span><button class="secondary sm" onclick={() => openProjectLink(`${projectRepository}/graphs/contributors`)}>Contributors ↗</button></div></div>
                 </section>
                 <section class="settings-section" aria-labelledby="about-technology-heading">
                   <div class="section-heading"><h3 id="about-technology-heading">Technology</h3><p>Key projects Tauridium builds on or interoperates with.</p></div>
@@ -2668,6 +2935,24 @@
       {/if}
     </section>
   </div>
+{/if}
+
+{#if serviceContextMenu}
+  {@const contextService = services.find((service) => service.id === serviceContextMenu?.serviceId) ?? null}
+  <div class="service-context-backdrop" role="presentation" onclick={(event) => event.currentTarget === event.target && closeServiceContextMenu()} oncontextmenu={(event) => { event.preventDefault(); if (event.currentTarget === event.target) closeServiceContextMenu(); }}>
+    {#if contextService}
+      <div class="service-context-menu" role="menu" aria-label={`${serviceLabel(contextService)} actions`} style={`left:${serviceContextMenu.x}px;top:${serviceContextMenu.y}px`} onkeydown={handleServiceContextMenuKeydown}>
+        <button role="menuitem" onclick={() => { closeServiceContextMenu(); openServiceSettings(contextService); }}>Settings</button>
+        <button role="menuitem" disabled={contextService.isEnabled === false} onclick={() => reloadServiceFromUi(contextService)}>Reload</button>
+        <div class="service-context-separator" aria-hidden="true"></div>
+        <button role="menuitem" class:context-danger={contextService.isEnabled !== false} onclick={() => toggleServiceEnabled(contextService)}>{contextService.isEnabled === false ? "Enable Service" : "Disable Service"}</button>
+      </div>
+    {/if}
+  </div>
+{/if}
+
+{#if toastMessage}
+  <div class="toast" role="status" aria-live="polite">{toastMessage}</div>
 {/if}
 
 {#if quickSwitcherMode}
@@ -2720,14 +3005,17 @@
     <button
       class="srow"
       class:active={s.id === activeId && view === "service"}
-      class:disabled={!s.isEnabled}
+      class:disabled={s.isEnabled === false}
       class:asleep={hibernated.has(s.id)}
+      aria-disabled={s.isEnabled === false}
+      oncontextmenu={(e) => openServiceContextMenu(e, s)}
       onclick={() => selectService(s)}
+      onkeydown={(e) => openServiceContextMenuFromKeyboard(e, s)}
     >
-      {#if failedIcons.has(s.id)}
+      {#if failedIcons.has(s.id) && !serviceIcons[s.id]}
         <span class="dot">{serviceLabel(s).slice(0, 1).toUpperCase()}</span>
       {:else}
-        <img class="svc-icon" src={iconSrc(s)} alt="" onerror={() => markIconFailed(s.id)} />
+        <img class="svc-icon" src={displayedServiceIcon(s)} alt="" onerror={() => markIconFailed(s)} />
       {/if}
       {#if appSettings.showServiceName}
         <span class="srow-name">{serviceLabel(s)}</span>
@@ -2739,7 +3027,6 @@
         </span>
       {/if}
     </button>
-    <button class="cog" title="Settings" onclick={() => openServiceSettings(s)}>⚙</button>
   </div>
 {/snippet}
 
@@ -2859,15 +3146,15 @@
     background: transparent; border-color: var(--border2); color: var(--muted);
     font-size: 14px; line-height: 1; padding: 4px 8px;
   }
-  .svclist { display: flex; flex: none; flex-direction: column; gap: 2px; padding-right: 2px; }
+  .svclist { display: flex; flex: none; flex-direction: column; gap: 2px; padding-right: 0; }
 
-  .srow-wrap { display: flex; align-items: center; position: relative; }
+  .srow-wrap { display: flex; align-items: center; position: relative; width: 100%; }
   .srow-wrap.dragging { opacity: 0.4; }
   .srow-wrap.drag-over::before {
     content: ""; position: absolute; left: 6px; right: 6px; top: -1px;
     height: 2px; background: var(--accent); border-radius: 2px;
   }
-  .srow {
+  .srow { width: 100%;
     display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0;
     padding: 7px 8px; border: none; border-radius: 8px; background: none;
     color: var(--text2); cursor: pointer; text-align: left; font-size: 14px;
@@ -2889,9 +3176,6 @@
     display: inline-flex; align-items: center; justify-content: center;
   }
   .ubadge.muted { background: var(--muted2); }
-  .cog { background: none; border: none; color: var(--muted2); cursor: pointer; font-size: 21px; line-height: 1; opacity: 0; padding: 2px 4px; }
-  .srow-wrap:hover .cog { opacity: 1; }
-  .cog:hover { color: var(--accent-soft); }
   .count { font-size: 11px; color: var(--muted2); }
   .ver { font-weight: 700; color: var(--muted); }
 
@@ -3144,6 +3428,14 @@
   .sandbox-name { max-width: 320px; }
   .sandbox-select { min-width: 180px; }
   .danger-link { color: #ff9b9b; }
+  .service-context-backdrop { position: fixed; inset: 0; z-index: 1200; }
+  .service-context-menu { position: fixed; width: 226px; padding: 5px; border: 1px solid var(--border2); border-radius: 9px; background: var(--panel); box-shadow: 0 14px 42px rgba(0, 0, 0, 0.45); }
+  .service-context-menu button { width: 100%; min-height: 34px; padding: 7px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--text2); text-align: left; cursor: pointer; font: inherit; }
+  .service-context-menu button:hover:not(:disabled), .service-context-menu button:focus-visible { background: var(--hover); }
+  .service-context-menu button:disabled { color: var(--muted2); cursor: default; }
+  .service-context-menu button.context-danger { color: #ff9b9b; }
+  .service-context-separator { height: 1px; margin: 4px 3px; background: var(--border); }
+  .toast { position: fixed; z-index: 1400; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: min(520px, calc(100vw - 32px)); padding: 10px 14px; border: 1px solid var(--border2); border-radius: 9px; background: var(--panel); color: var(--text); box-shadow: 0 10px 34px rgba(0, 0, 0, 0.42); font-size: 13px; }
   .quick-switcher-backdrop { position: fixed; inset: 0; z-index: 1000; display: flex; justify-content: center; align-items: flex-start; padding-top: min(14vh, 120px); background: rgba(0, 0, 0, 0.46); }
   .quick-switcher { width: min(620px, calc(100vw - 32px)); max-height: min(68vh, 680px); overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--border2); border-radius: 12px; background: var(--panel); box-shadow: 0 18px 60px rgba(0, 0, 0, 0.48); }
   .quick-switcher-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 10px; border-bottom: 1px solid var(--border); }

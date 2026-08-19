@@ -2,6 +2,7 @@
 
 mod audit;
 mod backup;
+mod icons;
 mod local_profile;
 mod portable;
 mod recipes;
@@ -393,7 +394,7 @@ pub(crate) fn replace_file(tmp: &Path, path: &Path) -> std::io::Result<()> {
 
 // Atomic write: write .tmp, then replace. Prevents a truncated file if the app crashes
 // during the write (otherwise session.json / app_settings.json could become unreadable).
-fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
+pub(crate) fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
     let tmp = path.with_extension("tmp");
     std::fs::write(&tmp, contents)?;
     replace_file(&tmp, path)
@@ -760,10 +761,77 @@ fn ensure_scheme(u: &str) -> String {
 }
 
 // Replicate the `url` getter from ferdium-app's Service model.
+#[derive(Clone, Debug, Default)]
+struct CustomUrlTemplateValues {
+    enabled: bool,
+    custom_id_1: String,
+    custom_id_2: String,
+}
+
+fn service_custom_url_template_values(
+    settings: &Value,
+    service_id: &str,
+) -> CustomUrlTemplateValues {
+    let global = settings
+        .get("customUrlTemplatesEnabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let entry = settings
+        .get("serviceCustomUrlTemplates")
+        .and_then(Value::as_object)
+        .and_then(|entries| entries.get(service_id))
+        .and_then(Value::as_object);
+    CustomUrlTemplateValues {
+        enabled: global
+            || entry
+                .and_then(|value| value.get("enabled"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        custom_id_1: entry
+            .and_then(|value| value.get("customId1"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        custom_id_2: entry
+            .and_then(|value| value.get("customId2"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+    }
+}
+
+fn apply_custom_url_templates(
+    url: &str,
+    values: &CustomUrlTemplateValues,
+) -> Result<String, String> {
+    if !values.enabled {
+        return Ok(url.to_string());
+    }
+    let mut resolved = url.to_string();
+    for (placeholder, value, label) in [
+        ("{{custom_id_1}}", values.custom_id_1.trim(), "custom ID 1"),
+        ("{{custom_id_2}}", values.custom_id_2.trim(), "custom ID 2"),
+    ] {
+        if resolved.contains(placeholder) {
+            if value.is_empty() {
+                return Err(format!(
+                    "Custom URL uses {placeholder} but {label} is empty"
+                ));
+            }
+            resolved = resolved.replace(placeholder, value);
+        }
+    }
+    if resolved.contains("{{custom_id_") {
+        return Err("Custom URL contains an unsupported custom ID placeholder".into());
+    }
+    Ok(resolved)
+}
+
 fn resolve_url(
     cfg: &Value,
     custom_url: Option<&str>,
     team: Option<&str>,
+    templates: &CustomUrlTemplateValues,
 ) -> Result<String, String> {
     let config = cfg.get("config").ok_or("Recipe has no config block")?;
     let service_url = config
@@ -780,13 +848,24 @@ fn resolve_url(
         .unwrap_or(false);
 
     if has_custom {
-        if let Some(u) = custom_url.filter(|u| !u.is_empty()) {
-            return Ok(ensure_scheme(u));
+        if let Some(u) = custom_url.map(str::trim).filter(|u| !u.is_empty()) {
+            let mut resolved = ensure_scheme(u);
+            if has_team {
+                if let Some(t) = team.map(str::trim).filter(|t| !t.is_empty()) {
+                    resolved = resolved.replace("{teamId}", t);
+                }
+            }
+            return apply_custom_url_templates(&resolved, templates);
         }
     }
     if has_team {
-        if let Some(t) = team.filter(|t| !t.is_empty()) {
-            return Ok(service_url.replace("{teamId}", t));
+        if let Some(t) = team.map(str::trim).filter(|t| !t.is_empty()) {
+            let team_url = config
+                .get("teamURL")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .unwrap_or(service_url);
+            return Ok(team_url.replace("{teamId}", t));
         }
     }
     if service_url.is_empty() {
@@ -1207,7 +1286,9 @@ async fn create_service_webview(
     size: LogicalSize<f64>,
 ) -> Result<(), String> {
     let cfg = recipe_config(win.app_handle(), app_data, recipe_id).await?;
-    let url_str = resolve_url(&cfg, custom_url, team)?;
+    let template_values =
+        service_custom_url_template_values(&state.settings.lock().unwrap(), service_id);
+    let url_str = resolve_url(&cfg, custom_url, team, &template_values)?;
     let url = Url::parse(&url_str).map_err(|e| format!("Invalid URL {url_str}: {e}"))?;
     let host = url.host_str().unwrap_or("").to_ascii_lowercase();
     // Recipe runtime (DOM unread-count scraping -> __pakeUnread), best effort.
@@ -1510,6 +1591,78 @@ async fn preload_service(
     Ok(())
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ServiceIconRequest {
+    service_id: String,
+    recipe_id: String,
+    custom_url: Option<String>,
+    team: Option<String>,
+    #[serde(default)]
+    is_local_recipe: bool,
+    #[serde(default)]
+    prefer_website_icon: bool,
+}
+
+#[tauri::command]
+async fn get_service_icon(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    request: ServiceIconRequest,
+    force: bool,
+) -> Result<Option<String>, String> {
+    validate_recipe_id(&request.recipe_id)?;
+    if request.service_id.trim().is_empty() {
+        return Err("Service icon request is missing a service id".into());
+    }
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    let cfg = recipe_config(&app, &app_data, &request.recipe_id).await?;
+    let templates =
+        service_custom_url_template_values(&state.settings.lock().unwrap(), &request.service_id);
+    let page_url = resolve_url(
+        &cfg,
+        request.custom_url.as_deref(),
+        request.team.as_deref(),
+        &templates,
+    )?;
+    let has_preset = recipes::has_preset_icon(&app, &request.recipe_id, request.is_local_recipe);
+    let should_fetch = request.prefer_website_icon || !has_preset;
+    let result = icons::cached_or_fetch(
+        &app,
+        &HTTP,
+        &request.service_id,
+        &page_url,
+        force,
+        should_fetch,
+    )
+    .await;
+    match &result {
+        Ok(Some(_)) => audit::best_effort(
+            &app,
+            "info",
+            "service-icon",
+            if force { "refetch" } else { "fetch" },
+            "success",
+            "Website icon cached",
+            serde_json::json!({ "serviceId": request.service_id, "recipeId": request.recipe_id }),
+        ),
+        Err(error) if force => audit::best_effort(
+            &app,
+            "warning",
+            "service-icon",
+            "refetch",
+            "failure",
+            "Website icon refetch failed",
+            serde_json::json!({ "serviceId": request.service_id, "recipeId": request.recipe_id, "error": error }),
+        ),
+        _ => {}
+    }
+    result
+}
+
 fn hide_service_webviews(app: &AppHandle, state: &AppState) {
     let created: Vec<String> = state.created.lock().unwrap().iter().cloned().collect();
     for sid in created {
@@ -1777,6 +1930,7 @@ async fn delete_service(
     state.created.lock().unwrap().remove(&service_id);
     state.unread.lock().unwrap().remove(&service_id);
     state.flags.lock().unwrap().remove(&service_id);
+    icons::remove_cached(&app, &service_id);
     // Isolated services own their storage and can be purged safely. Shared sandbox data
     // belongs to the sandbox, so deleting one member must not sign out the remaining members.
     if sandbox_id.is_none() {
@@ -2233,6 +2387,10 @@ fn default_app_settings_value() -> Value {
         "sidebarServicesLocation": "top",
         "hibernationTimer": 0,
         "preloadServices": true,
+        "fetchMissingServiceIcons": true,
+        "reloadToasts": true,
+        "customUrlTemplatesEnabled": false,
+        "serviceCustomUrlTemplates": {},
         "serviceOrder": [],
         "workspaceOrder": [],
         "keybindings": {
@@ -2377,6 +2535,9 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         "showMessageBadgeWhenMuted",
         "grayscaleServices",
         "preloadServices",
+        "fetchMissingServiceIcons",
+        "reloadToasts",
+        "customUrlTemplatesEnabled",
     ] {
         if !object.get(key).is_some_and(Value::is_boolean) {
             return Err(format!("App setting {key} must be boolean"));
@@ -2480,6 +2641,38 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         })
     {
         return Err("App setting customSidebarWidths is invalid".into());
+    }
+    let service_templates = object
+        .get("serviceCustomUrlTemplates")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "App setting serviceCustomUrlTemplates must be an object".to_string())?;
+    if service_templates.len() > 10_000 {
+        return Err("App setting serviceCustomUrlTemplates contains too many entries".into());
+    }
+    for (service_id, entry) in service_templates {
+        if service_id.trim().is_empty() {
+            return Err(
+                "App setting serviceCustomUrlTemplates contains an empty service id".into(),
+            );
+        }
+        let entry = entry.as_object().ok_or_else(|| {
+            format!("Custom URL template settings for {service_id} must be an object")
+        })?;
+        if !entry.get("enabled").is_some_and(Value::is_boolean) {
+            return Err(format!(
+                "Custom URL template enabled flag for {service_id} must be boolean"
+            ));
+        }
+        for key in ["customId1", "customId2"] {
+            let value = entry.get(key).and_then(Value::as_str).ok_or_else(|| {
+                format!("Custom URL template {key} for {service_id} must be a string")
+            })?;
+            if value.len() > 2048 || value.chars().any(char::is_control) {
+                return Err(format!(
+                    "Custom URL template {key} for {service_id} is invalid"
+                ));
+            }
+        }
     }
     validate_keybindings(object.get("keybindings"))?;
     validate_sandboxes(object.get("sandboxes"), object.get("serviceSandboxes"))?;
@@ -3329,6 +3522,29 @@ fn reload_app(app: &AppHandle) {
     }
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppMetadata {
+    name: &'static str,
+    version: &'static str,
+    description: &'static str,
+    repository: &'static str,
+    license: &'static str,
+    maintainer: &'static str,
+}
+
+#[tauri::command]
+fn get_app_metadata() -> AppMetadata {
+    AppMetadata {
+        name: "Tauridium",
+        version: env!("CARGO_PKG_VERSION"),
+        description: env!("CARGO_PKG_DESCRIPTION"),
+        repository: env!("CARGO_PKG_REPOSITORY"),
+        license: env!("CARGO_PKG_LICENSE"),
+        maintainer: env!("TAURIDIUM_MAINTAINER"),
+    }
+}
+
 #[tauri::command]
 fn reload_active_service_command(app: AppHandle) {
     reload_active_service(&app);
@@ -3544,6 +3760,7 @@ fn main() {
             get_workspaces,
             show_service,
             preload_service,
+            get_service_icon,
             hide_all_services,
             close_service,
             set_sidebar_width,
@@ -3576,6 +3793,7 @@ fn main() {
             export_audit_log,
             clear_audit_log,
             open_external_url,
+            get_app_metadata,
             reload_active_service_command,
             reload_app_command,
             toggle_devtools_command
@@ -3771,7 +3989,7 @@ mod tests {
     fn resolve_url_uses_plain_service_url() {
         let cfg = json!({ "config": { "serviceURL": "https://web.whatsapp.com" } });
         assert_eq!(
-            resolve_url(&cfg, None, None).unwrap(),
+            resolve_url(&cfg, None, None, &CustomUrlTemplateValues::default()).unwrap(),
             "https://web.whatsapp.com"
         );
     }
@@ -3780,18 +3998,30 @@ mod tests {
     fn resolve_url_honours_custom_url_only_when_allowed() {
         let cfg = json!({ "config": { "serviceURL": "https://default", "hasCustomUrl": true } });
         assert_eq!(
-            resolve_url(&cfg, Some("chat.example.fr"), None).unwrap(),
+            resolve_url(
+                &cfg,
+                Some("chat.example.fr"),
+                None,
+                &CustomUrlTemplateValues::default()
+            )
+            .unwrap(),
             "https://chat.example.fr"
         );
         // Empty custom URL falls back to serviceURL.
         assert_eq!(
-            resolve_url(&cfg, Some(""), None).unwrap(),
+            resolve_url(&cfg, Some(""), None, &CustomUrlTemplateValues::default()).unwrap(),
             "https://default"
         );
         // A recipe without hasCustomUrl ignores the custom URL.
         let cfg2 = json!({ "config": { "serviceURL": "https://default" } });
         assert_eq!(
-            resolve_url(&cfg2, Some("chat.example.fr"), None).unwrap(),
+            resolve_url(
+                &cfg2,
+                Some("chat.example.fr"),
+                None,
+                &CustomUrlTemplateValues::default()
+            )
+            .unwrap(),
             "https://default"
         );
     }
@@ -3801,15 +4031,82 @@ mod tests {
         let cfg =
             json!({ "config": { "serviceURL": "https://{teamId}.slack.com", "hasTeamId": true } });
         assert_eq!(
-            resolve_url(&cfg, None, Some("acme")).unwrap(),
+            resolve_url(
+                &cfg,
+                None,
+                Some("acme"),
+                &CustomUrlTemplateValues::default()
+            )
+            .unwrap(),
             "https://acme.slack.com"
         );
     }
 
     #[test]
+    fn resolve_url_uses_recipe_team_url_and_custom_placeholders() {
+        let cfg = json!({
+            "config": {
+                "serviceURL": "https://opencode.ai/go",
+                "teamURL": "https://opencode.ai/workspace/{teamId}/go",
+                "hasTeamId": true,
+                "hasCustomUrl": true
+            }
+        });
+        assert_eq!(
+            resolve_url(
+                &cfg,
+                None,
+                Some("wrk_01ABC123EXAMPLE"),
+                &CustomUrlTemplateValues::default(),
+            )
+            .unwrap(),
+            "https://opencode.ai/workspace/wrk_01ABC123EXAMPLE/go"
+        );
+
+        let templates = CustomUrlTemplateValues {
+            enabled: true,
+            custom_id_1: "alpha".into(),
+            custom_id_2: "beta".into(),
+        };
+        assert_eq!(
+            resolve_url(
+                &cfg,
+                Some("https://example.com/{{custom_id_1}}/go?slot={{custom_id_2}}"),
+                None,
+                &templates,
+            )
+            .unwrap(),
+            "https://example.com/alpha/go?slot=beta"
+        );
+    }
+
+    #[test]
+    fn custom_url_placeholders_require_values_when_enabled() {
+        let cfg = json!({ "config": { "serviceURL": "https://default", "hasCustomUrl": true } });
+        let templates = CustomUrlTemplateValues {
+            enabled: true,
+            custom_id_1: String::new(),
+            custom_id_2: String::new(),
+        };
+        assert!(resolve_url(
+            &cfg,
+            Some("https://example.com/{{custom_id_1}}"),
+            None,
+            &templates,
+        )
+        .is_err());
+    }
+
+    #[test]
     fn resolve_url_errors_without_service_url() {
-        assert!(resolve_url(&json!({ "config": {} }), None, None).is_err());
-        assert!(resolve_url(&json!({}), None, None).is_err());
+        assert!(resolve_url(
+            &json!({ "config": {} }),
+            None,
+            None,
+            &CustomUrlTemplateValues::default()
+        )
+        .is_err());
+        assert!(resolve_url(&json!({}), None, None, &CustomUrlTemplateValues::default()).is_err());
     }
 
     #[test]

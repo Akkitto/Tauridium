@@ -42,7 +42,7 @@ uses the Ferdium REST API; accountless mode keeps service/workspace state local.
 - **Accountless local mode** — no Ferdium account, server, or token required
 - **Local custom recipes** — add folders manually, import them through the GUI, or create them with the built-in lightweight recipe creator
 - **Custom Website** fallback — add any HTTP(S) site even when no preset recipe exists
-- Bundled AI recipes for **NanoGPT**, **Chutes**, and **OpenCode Web**
+- Bundled AI recipes for **NanoGPT**, **Chutes**, and **OpenCode**
 - Optional Ferdium server sign-in — account, services and workspaces stay synced
 - Each service in an **isolated, persistent session** (native WebView)
 - **Native notifications** + dock unread badges
@@ -100,9 +100,9 @@ atomically. A local `webview.js` runs inside the service page and can access its
 so only use scripts you trust.
 
 Bundled local recipes include **Custom Website**, **NanoGPT**, **Chutes**, and
-**OpenCode Web**. OpenCode Web defaults to `http://127.0.0.1:4096`; start OpenCode
-with a stable web port such as `opencode web --port 4096`, or override the URL in
-the service because that recipe allows custom URLs.
+**OpenCode**. OpenCode defaults to `https://opencode.ai/go`. Set its website-specific
+workspace ID to use `https://opencode.ai/workspace/{teamId}/go`, or override the URL
+with a custom URL when needed.
 
 Local recipes are owned by Tauridium even during a Ferdium-server session. They are
 therefore not sent to the server as unknown recipe ids and are merged into the service

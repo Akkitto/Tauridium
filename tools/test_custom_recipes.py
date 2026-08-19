@@ -21,7 +21,7 @@ class CustomRecipeReleaseTests(unittest.TestCase):
     for recipe_id, url in {
       "nanogpt": "https://nano-gpt.com/chat",
       "chutes": "https://chutes.ai/chat",
-      "opencode": "http://127.0.0.1:4096",
+      "opencode": "https://opencode.ai/go",
       "custom-website": "https://example.com",
     }.items():
       self.assertIn(f'"{recipe_id}"', self.recipes)

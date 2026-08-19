@@ -156,6 +156,19 @@ export function hideServices(): Promise<void> {
   return invoke("hide_all_services");
 }
 
+export interface AppMetadata {
+  name: string;
+  version: string;
+  description: string;
+  repository: string;
+  license: string;
+  maintainer: string;
+}
+
+export function getAppMetadata(): Promise<AppMetadata> {
+  return invoke("get_app_metadata");
+}
+
 export function openExternalUrl(url: string): Promise<void> {
   return invoke("open_external_url", { url });
 }
@@ -206,6 +219,24 @@ export function clearServiceCache(serviceId: string): Promise<void> {
   return invoke("clear_service_cache", { serviceId });
 }
 
+export function getServiceIcon(
+  service: Service,
+  force = false,
+  preferWebsiteIcon = service.useFavicon === true,
+): Promise<string | null> {
+  return invoke("get_service_icon", {
+    request: {
+      serviceId: service.id,
+      recipeId: service.recipeId,
+      customUrl: service.customUrl ?? null,
+      team: service.team ?? null,
+      isLocalRecipe: service.isLocalRecipe === true,
+      preferWebsiteIcon,
+    },
+    force,
+  });
+}
+
 export function clearSandbox(sandboxId: string): Promise<void> {
   return invoke("clear_sandbox", { sandboxId });
 }
@@ -242,6 +273,12 @@ export function deleteWorkspace(workspaceId: string): Promise<void> {
   return invoke("delete_workspace", { workspaceId });
 }
 
+export interface ServiceCustomUrlTemplate {
+  enabled: boolean;
+  customId1: string;
+  customId2: string;
+}
+
 export interface AppSettings {
   autostart: boolean;
   startMinimized: boolean;
@@ -264,6 +301,10 @@ export interface AppSettings {
   sidebarServicesLocation: "top" | "center" | "bottom";
   hibernationTimer: number;
   preloadServices: boolean;
+  fetchMissingServiceIcons: boolean;
+  reloadToasts: boolean;
+  customUrlTemplatesEnabled: boolean;
+  serviceCustomUrlTemplates: Record<string, ServiceCustomUrlTemplate>;
   serviceOrder: string[];
   workspaceOrder: string[];
   keybindings: Record<string, string>;
