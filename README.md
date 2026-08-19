@@ -51,10 +51,12 @@ uses the Ferdium REST API; accountless mode keeps service/workspace state local.
 - **Per-service settings** (name, custom URL, team, notifications, mute, badges,
   hibernation, dark mode, favicon, proxy, custom user agent…) — synced in server
   mode and persisted locally in accountless mode
-- **App settings in tabs**: General / Services / Appearance / Privacy / Advanced / Updates / About, using a consistent settings-card layout with responsive control alignment
-- **Sidebar customization** aligned with Ferdium (icon size, services location,
-  grayscale + dim level, width)
-- Theme (system / dark / light) + accent color (Tauri yellow by default)
+- **App settings in tabs**: General / Services / Appearance / Keybinds / Sandbox / Privacy / Backup / Advanced / Updates / About, using a consistent settings-card layout with responsive control alignment
+- **Sidebar customization** aligned with Ferdium (icon size, services location, grayscale + dim level, and a 160–420 px width slider with Slim / Normal / Wide plus saved custom presets)
+- Theme (system / dark / **Black OLED** / light) + preset or custom accent colors using a native color picker and HSL sliders
+- **Configurable keybindings** for navigation and application actions, including `Ctrl+D` workspace switching, `Ctrl+S` service search, and optional two-stroke chords
+- **Shared sandboxes** that let compatible services deliberately share one persistent webview data store/login session while unassigned services remain isolated
+- Scalable Settings → Services management with search, workspace filtering, 100-row paging, and filtered reordering that preserves hidden global-order slots
 
 ## Accountless local mode
 
@@ -112,7 +114,7 @@ Visibility is intentionally excluded from persisted window state so **Start mini
 
 ## Backups
 
-Open **Settings → Advanced → Backup** to export Tauridium-owned local state to one portable
+Open **Settings → Backup** to export Tauridium-owned local state to one portable
 `tauridium-backup-YYYY-MM-DD.json` file. The backup contains app settings, local
 services/workspaces, and complete custom recipes including optional `icon.svg` and
 `webview.js` files.
@@ -261,8 +263,8 @@ before tagging:
 3. Tag and push:
 
 ```text
-git tag -a v0.3.19 -m "Tauridium 0.3.19"
-git push origin v0.3.19
+git tag -a v0.4.0 -m "Tauridium 0.4.0"
+git push origin v0.4.0
 ```
 
 If no matching `CHANGELOG.md` section exists, the workflow falls back to generic
@@ -279,9 +281,9 @@ For a local validated release, run:
 just release
 ```
 
-Runtime ZIPs are target-qualified using the binary's actual Rust compilation target, so artifacts from different native builds can coexist in the same `release/` directory. Common examples are `tauridium-0.3.19-run-win-x64.zip`, `tauridium-0.3.19-run-win-arm64.zip`, `tauridium-0.3.19-run-linux-x64.zip`, `tauridium-0.3.19-run-linux-arm64.zip`, and `tauridium-0.3.19-run-macos-arm64.zip`. Source and documentation ZIP names remain target-neutral.
+Runtime ZIPs are target-qualified using the binary's actual Rust compilation target, so artifacts from different native builds can coexist in the same `release/` directory. Common examples are `tauridium-0.4.0-run-win-x64.zip`, `tauridium-0.4.0-run-win-arm64.zip`, `tauridium-0.4.0-run-linux-x64.zip`, `tauridium-0.4.0-run-linux-arm64.zip`, and `tauridium-0.4.0-run-macos-arm64.zip`. Source and documentation ZIP names remain target-neutral.
 
-`tools/package_release.py` also accepts repeated `--runtime` arguments and groups supplied binaries by their reported compilation target, emitting one run ZIP per target instead of overwriting a generic runtime archive.
+`tools/package_release.py --build-handoff` emits an explicit `run-build-handoff` ZIP when a native runtime cannot be proven in the current environment. It never labels that archive as a validated executable. `tools/package_release.py` also accepts repeated `--runtime` arguments and groups supplied binaries by their reported compilation target, emitting one run ZIP per target instead of overwriting a generic runtime archive.
 
 The release recipe is deliberately non-mutating: it requires a clean Git worktree before
 validation, checks Rust formatting without rewriting source files, runs Cargo gates with the

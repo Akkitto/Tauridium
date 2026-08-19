@@ -1,3 +1,37 @@
+# Changelog
+
+## [0.4.0] - 2026-08-19
+
+### Added
+
+- Added a true-black **Black OLED** theme with near-black elevated surfaces, retained focus treatment, and existing system/dark/light modes.
+- Added accent presets plus saved custom accent colors with a native color input and keyboard-accessible hue, saturation, and lightness sliders.
+- Added a 160–420 px sidebar-width slider, Slim/Normal/Wide presets, and persisted custom width presets.
+- Added **Keybinds** settings for application/navigation actions. Defaults include `Ctrl+D` for the workspace switcher and `Ctrl+S` for service search; two-stroke chords are recordable and exact conflicts are surfaced.
+- Added searchable keyboard-driven quick workspace/service switchers with bounded result rendering for large installations.
+- Added **Sandbox** settings. Compatible services can share a Tauridium-owned persistent webview data store/session; isolated services retain their existing per-service store. Shared stores can be cleared as a group and are not deleted when only one member service is removed.
+- Added an explicit `package-handoff` / `--build-handoff` release path that produces a clearly named source-only runtime build handoff when no native executable can be validated.
+
+### Changed
+
+- Configured Services now scales through search, workspace filtering, and 100-row paging. Filtered reordering uses the canonical global order and preserves hidden service slots.
+- Workspace selection now consistently activates an eligible service in the selected workspace rather than leaving a hidden active service selected.
+- Accent foreground selection now uses WCAG relative-luminance contrast between black and white foregrounds.
+- Shared-sandbox identity is derived authoritatively by the Rust backend from persisted settings rather than trusted from a frontend webview request.
+- Version synchronization now updates Tauri, npm, Cargo/Cargo.lock, and initializer release identities together.
+
+### Backup and reliability
+
+- OLED/theme state, custom accent presets, custom sidebar presets, keybindings, sandbox definitions, and service-to-sandbox assignments are all stored in `appSettings`; the existing integrity-protected backup payload exports/restores the complete object.
+- Deleting a shared sandbox clears its shared data, removes assignments transactionally through app settings, and reopens an affected active service in isolated storage.
+- Clearing a shared service cache closes every service using that sandbox before deleting the shared store, preventing live webviews from retaining stale session state.
+
+### Tests
+
+- Added 0.4.0 offline regressions for appearance persistence, scalable service management, keybinding/chord defaults, backend-authoritative sandbox identity, and backup coverage.
+- Added Rust unit tests for malformed new settings and deterministic shared/isolated storage identity.
+- Rust 1.97.1 native `rustfmt` remains a mandatory implementation, pre-tag, packaging, and extracted-source gate.
+
 ## [0.3.19] - 2026-08-19
 
 ### Fixed
@@ -9,8 +43,6 @@
 
 - Added offline release coverage that requires the calendar-month implementation and the native Vitest regression cases, so the same mismatch is caught even when frontend dependencies are unavailable in a packaging environment.
 - The pinned Rust 1.97.1 formatter remains a mandatory pre-tag and packaging gate.
-
-# Changelog
 
 ## [0.3.18] - 2026-08-19
 
