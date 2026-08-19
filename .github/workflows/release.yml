@@ -38,7 +38,11 @@ jobs:
           node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json','utf8'));if(c.version!==process.env.VERSION)process.exit(1);"
           git fetch origin master:refs/remotes/origin/master
           git merge-base --is-ancestor "$GITHUB_SHA" origin/master
+      - name: Offline regression tests
+        run: python3 -m unittest discover -s tools -p 'test_*.py'
       - run: npm ci
+      - name: Frontend typecheck
+        run: npm run check
       - name: Frontend unit tests
         run: npm test
       - name: Install Linux WebView deps
@@ -52,8 +56,12 @@ jobs:
           components: rustfmt, clippy
       - name: Format check
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+      - name: Cargo check
+        run: cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked
+      - name: Clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings
       - name: Rust unit tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --all-features
+        run: cargo test --manifest-path src-tauri/Cargo.toml --all-features --locked
 
   # 2) Create the draft release exactly once so every matrix job does not create
   #    a duplicate release or scatter assets across releases.

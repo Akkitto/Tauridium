@@ -90,6 +90,7 @@ release-clean:
 package:
   python3 tools/package_release.py
 
+[unix]
 package-handoff:
   python3 tools/package_release.py --build-handoff
 

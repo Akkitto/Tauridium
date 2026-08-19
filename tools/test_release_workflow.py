@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import subprocess
 import tempfile
 import unittest
@@ -11,7 +12,26 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def load_release_validator():
+  path = ROOT / "tools/validate_release.py"
+  spec = importlib.util.spec_from_file_location("tauridium_validate_release", path)
+  if spec is None or spec.loader is None:
+    raise RuntimeError("unable to load release validator")
+  module = importlib.util.module_from_spec(spec)
+  spec.loader.exec_module(module)
+  return module
+
+
 class ReleaseWorkflowTests(unittest.TestCase):
+  def test_platform_specific_just_recipes_are_disjoint(self) -> None:
+    validator = load_release_validator()
+    justfile = (ROOT / "justfile").read_text(encoding="utf-8")
+    validator.validate_just_recipe_platforms(justfile)
+
+    malformed = justfile.replace("[unix]\npackage-handoff:", "package-handoff:", 1)
+    with self.assertRaisesRegex(SystemExit, "duplicate just recipe 'package-handoff'"):
+      validator.validate_just_recipe_platforms(malformed)
+
   def test_release_uses_non_mutating_format_check_and_clean_gates(self) -> None:
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")
     self.assertIn(
@@ -33,6 +53,25 @@ class ReleaseWorkflowTests(unittest.TestCase):
       "cargo tauri build --no-bundle --ci",
     ):
       self.assertIn(marker, justfile)
+
+
+  def test_ci_and_tagged_release_enforce_locked_full_quality_gates(self) -> None:
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    for marker in (
+      "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings",
+      "cargo test --manifest-path src-tauri/Cargo.toml --all-features --locked",
+      "cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked",
+    ):
+      self.assertIn(marker, ci)
+      self.assertIn(marker, release)
+    for marker in (
+      "python3 -m unittest discover -s tools -p 'test_*.py'",
+      "npm run check",
+      "npm test",
+      "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
+    ):
+      self.assertIn(marker, release)
 
   def test_production_runtime_uses_tauri_cli_and_raw_release_is_guarded(self) -> None:
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")

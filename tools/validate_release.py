@@ -21,6 +21,42 @@ def read(path: str) -> str:
   return (ROOT / path).read_text(encoding="utf-8")
 
 
+def validate_just_recipe_platforms(justfile: str) -> None:
+  """Reject duplicate recipes unless each definition is platform-disjoint."""
+  pending_platforms: set[str] = set()
+  definitions: dict[str, list[set[str]]] = {}
+  recipe_header = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)(?:\s+[^:]*)?:\s*(?:#.*)?$")
+
+  for raw_line in justfile.splitlines():
+    line = raw_line.strip()
+    if not line or line.startswith("#"):
+      continue
+    if raw_line[:1].isspace():
+      continue
+    if line.startswith("[") and line.endswith("]"):
+      attribute = line[1:-1].strip()
+      if attribute in {"unix", "windows"}:
+        pending_platforms.add(attribute)
+      continue
+
+    match = recipe_header.match(line)
+    if match:
+      definitions.setdefault(match.group(1), []).append(set(pending_platforms))
+    pending_platforms.clear()
+
+  for name, variants in definitions.items():
+    if len(variants) < 2:
+      continue
+    if any(len(platforms) != 1 for platforms in variants):
+      fail(
+        f"duplicate just recipe {name!r} must give every definition exactly one "
+        "[unix] or [windows] attribute"
+      )
+    platforms = [next(iter(value)) for value in variants]
+    if len(platforms) != len(set(platforms)):
+      fail(f"duplicate just recipe {name!r} has overlapping platform definitions")
+
+
 def main() -> int:
   tauri = json.loads(read("src-tauri/tauri.conf.json"))
   package = json.loads(read("package.json"))
@@ -65,6 +101,7 @@ def main() -> int:
       )
 
   justfile = read("justfile")
+  validate_just_recipe_platforms(justfile)
   init_py = read("tools/init.py")
   init_ps1 = read("tools/init.ps1")
   python_ps1 = read("tools/python.ps1")
@@ -732,6 +769,13 @@ def main() -> int:
     fail("CI does not target master")
   if "-D warnings" not in ci or "--all-features" not in ci:
     fail("CI Rust gates are weaker than release policy")
+  for marker in (
+    "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings",
+    "cargo test --manifest-path src-tauri/Cargo.toml --all-features --locked",
+    "cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked",
+  ):
+    if marker not in ci:
+      fail(f"CI Cargo gate can ignore Cargo.lock: {marker}")
   if "dtolnay/rust-toolchain@stable" in ci + release_workflow:
     fail("CI/release workflows must not float Rust stable; use pinned Rust 1.97.1")
   if ci.count("dtolnay/rust-toolchain@1.97.1") < 3:
@@ -739,8 +783,17 @@ def main() -> int:
   if release_workflow.count("dtolnay/rust-toolchain@1.97.1") < 2:
     fail("tagged release workflow does not pin Rust 1.97.1 in test/build jobs")
   release_test_block = release_workflow.split("test:\n", 1)[-1].split("create-release:", 1)[0]
-  if "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check" not in release_test_block:
-    fail("tagged release can be created without the pinned rustfmt check")
+  for marker in (
+    "python3 -m unittest discover -s tools -p 'test_*.py'",
+    "npm run check",
+    "npm test",
+    "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
+    "cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked",
+    "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings",
+    "cargo test --manifest-path src-tauri/Cargo.toml --all-features --locked",
+  ):
+    if marker not in release_test_block:
+      fail(f"tagged release can be created without required gate: {marker}")
   if "cargo tauri build --no-bundle --ci" not in ci:
     fail("CI does not exercise a production Tauri runtime build")
   if "cargo build --manifest-path src-tauri/Cargo.toml --release --all-features" in ci:

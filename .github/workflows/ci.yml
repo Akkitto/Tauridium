@@ -59,9 +59,9 @@ jobs:
       - name: Format check
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       - name: Clippy
-        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings
       - name: Unit tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --all-features
+        run: cargo test --manifest-path src-tauri/Cargo.toml --all-features --locked
       - name: Install Tauri CLI
         run: cargo install tauri-cli --locked --version "^2"
       - name: Production release build
@@ -85,7 +85,7 @@ jobs:
         with:
           workspaces: src-tauri
       - name: Check
-        run: cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features
+        run: cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked
 
   windows-native:
     name: Windows native (PowerShell · full gates)
@@ -121,7 +121,7 @@ jobs:
       - name: Format check
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       - name: Clippy
-        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings
       - name: Check
         run: just check
       - name: Tests
