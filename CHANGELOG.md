@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.4.2] - 2026-08-19
+
+### Fixed
+
+- Replaced the quick switcher `<section role="dialog">` with a dialog-compatible generic container so `svelte-check` no longer reports the Svelte accessibility warning found by the Windows-native quality gate.
+- Exercised the macOS/shared-session `storage_identifier` helper in Rust unit tests, eliminating the Windows test-target dead-code warning that becomes a Clippy error under `-D warnings` while increasing sandbox identity coverage.
+- Rewrote shared-sandbox membership collection from `filter_map(bool.then(...))` to Clippy-preferred `filter` plus `map` without changing ordering or behavior.
+- Replaced the single-element accent-color validation loop with direct validation, removing the `clippy::single_element_loop` failure without weakening input validation.
+
+### Release quality
+
+- Added patch regressions that preserve the corrected quick-switcher dialog markup and the exact Rust structures required to avoid the three Windows-native Clippy failures.
+- Extended cross-platform release-version synchronization to the README tag and target-qualified runtime examples, with release validation rejecting stale examples.
+- Re-ran the full offline regression suite and pinned Rust 1.97.1 formatter gate before tagging and packaging.
+
 ## [0.4.1] - 2026-08-19
 
 ### Fixed
