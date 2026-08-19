@@ -285,6 +285,9 @@ def main() -> int:
     if package_marker not in package_release:
       fail(f"release packager is missing source-ZIP fallback protection: {package_marker}")
   for marker in (
+    "def add_directory(",
+    "def git_metadata_directories(",
+    'add_directory(zf, prefix + ".git/")',
     'f"tauridium-{release_version}-run-{suffix}.zip"',
     '"x86_64-pc-windows-msvc": "win-x64"',
     '"x86_64-unknown-linux-gnu": "linux-x64"',
@@ -298,6 +301,7 @@ def main() -> int:
     "test_extracted_source_rejects_modified_source",
     "test_extracted_source_requires_manifest_when_git_is_absent",
     "test_source_zip_preserves_manifest_and_manifest_file_set",
+    "test_source_zip_preserves_required_empty_git_directories_after_pack_refs",
     "test_source_zip_requires_git_history",
     "test_dirty_git_source_error_names_changed_path",
     "test_docs_use_manifest_git_log_without_git_repository",
@@ -634,16 +638,20 @@ def main() -> int:
     fail("frontend API does not expose automatic backup creation")
   for marker in (
     'fn create_automatic_backup(',
-    'prune_automatic_backups(&root, retention_mode, retention, max_age_days)',
+    'prune_automatic_backups(&root, retention_mode, retention, max_age_days, &path)',
     'backup::save(&path, &document)?',
     'automaticBackupSchedule',
     'automaticBackupRetention',
     'lastAutomaticBackupAt',
+    'protected_path: &Path',
+    'Some(protected_path)',
+    'stamp.len() != 21',
+    'days_in_month(year, month)',
   ):
     if marker not in main_rs:
       fail(f"automatic backup backend invariant is missing: {marker}")
   auto_body = main_rs.split("fn create_automatic_backup", 1)[-1].split("#[tauri::command]", 1)[0]
-  if auto_body.index("backup::save(&path, &document)?") > auto_body.index("prune_automatic_backups(&root, retention_mode, retention, max_age_days)"):
+  if auto_body.index("backup::save(&path, &document)?") > auto_body.index("prune_automatic_backups(&root, retention_mode, retention, max_age_days, &path)"):
     fail("automatic backup retention pruning can occur before verified backup save")
   if 'let autostart_changed = patch.contains_key("autostart");' not in main_rs:
     fail("settings persistence does not isolate autostart side effects")
@@ -745,7 +753,7 @@ def main() -> int:
     '"sidebarWidthPercent": 20',
     'apply_autostart_setting(app, &app_settings)',
     'Backup data restored successfully',
-    'prune_automatic_backups(&root, retention_mode, retention, max_age_days)',
+    'prune_automatic_backups(&root, retention_mode, retention, max_age_days, &path)',
   ):
     if marker not in main_rs:
       fail(f"0.4.4 backend invariant is missing: {marker}")

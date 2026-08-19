@@ -68,13 +68,16 @@ fn age_days(now: SystemTime, modified: SystemTime) -> u64 {
 }
 
 /// Returns the automatic-backup paths that may be deleted after a newly created backup
-/// has already passed integrity verification. The newest backup is always retained.
+/// has already passed integrity verification. When supplied, `protected_path` is always retained
+/// even if another file has an anomalous future filesystem timestamp. Otherwise the newest
+/// candidate is retained as the safety floor.
 pub(crate) fn retention_paths_to_delete(
     mut candidates: Vec<RetentionCandidate>,
     mode: RetentionMode,
     count: usize,
     max_age_days: u64,
     now: SystemTime,
+    protected_path: Option<&Path>,
 ) -> Vec<PathBuf> {
     candidates.sort_by(|left, right| {
         right
@@ -87,13 +90,23 @@ pub(crate) fn retention_paths_to_delete(
     }
 
     let mut keep = HashSet::<PathBuf>::new();
-    if let Some(newest) = candidates.first() {
+    if let Some(protected) = protected_path.filter(|protected| {
+        candidates
+            .iter()
+            .any(|candidate| candidate.path.as_path() == *protected)
+    }) {
+        keep.insert(protected.to_path_buf());
+    } else if let Some(newest) = candidates.first() {
         keep.insert(newest.path.clone());
     }
 
     match mode {
         RetentionMode::Count => {
-            for candidate in candidates.iter().take(count.max(1)) {
+            let target = count.max(1);
+            for candidate in &candidates {
+                if keep.len() >= target {
+                    break;
+                }
                 keep.insert(candidate.path.clone());
             }
         }
@@ -105,7 +118,11 @@ pub(crate) fn retention_paths_to_delete(
             }
         }
         RetentionMode::CountAndAge => {
-            for candidate in candidates.iter().take(count.max(1)) {
+            let target = count.max(1);
+            for candidate in &candidates {
+                if keep.len() >= target {
+                    break;
+                }
                 if age_days(now, candidate.modified) <= max_age_days {
                     keep.insert(candidate.path.clone());
                 }
@@ -619,7 +636,7 @@ mod tests {
             candidate("tauridium-auto-backup-2026-08-18-120000-000.json", 1, now),
             candidate("tauridium-auto-backup-2026-08-17-120000-000.json", 2, now),
         ];
-        let deleted = retention_paths_to_delete(items, RetentionMode::Count, 2, 90, now);
+        let deleted = retention_paths_to_delete(items, RetentionMode::Count, 2, 90, now, None);
         assert_eq!(deleted.len(), 1);
         assert!(deleted[0].to_string_lossy().contains("2026-08-17"));
         assert!(retention_paths_to_delete(
@@ -631,7 +648,8 @@ mod tests {
             RetentionMode::Count,
             1,
             90,
-            now
+            now,
+            None,
         )
         .is_empty());
     }
@@ -643,7 +661,7 @@ mod tests {
             candidate("tauridium-auto-backup-2026-01-01-120000-000.json", 120, now),
             candidate("tauridium-auto-backup-2025-12-01-120000-000.json", 150, now),
         ];
-        let deleted = retention_paths_to_delete(items, RetentionMode::Age, 10, 30, now);
+        let deleted = retention_paths_to_delete(items, RetentionMode::Age, 10, 30, now, None);
         assert_eq!(deleted.len(), 1);
         assert!(deleted[0].to_string_lossy().contains("2025-12-01"));
     }
@@ -656,7 +674,8 @@ mod tests {
             candidate("tauridium-auto-backup-2026-08-10-120000-000.json", 9, now),
             candidate("tauridium-auto-backup-2026-07-01-120000-000.json", 49, now),
         ];
-        let deleted = retention_paths_to_delete(items, RetentionMode::CountAndAge, 2, 14, now);
+        let deleted =
+            retention_paths_to_delete(items, RetentionMode::CountAndAge, 2, 14, now, None);
         assert_eq!(deleted.len(), 1);
         assert!(deleted[0].to_string_lossy().contains("2026-07-01"));
     }
@@ -680,7 +699,7 @@ mod tests {
                 now,
             ),
         ];
-        let deleted = retention_paths_to_delete(items, RetentionMode::Tiered, 10, 90, now);
+        let deleted = retention_paths_to_delete(items, RetentionMode::Tiered, 10, 90, now, None);
         let names = deleted
             .iter()
             .filter_map(|path| path.file_name().and_then(|name| name.to_str()))
@@ -813,7 +832,7 @@ mod tests {
             candidate("tauridium-auto-backup-2026-08-19-120000-001.json", 0, now),
             candidate("tauridium-auto-backup-2026-08-19-120000-003.json", 0, now),
         ];
-        let deleted = retention_paths_to_delete(items, RetentionMode::Count, 1, 90, now);
+        let deleted = retention_paths_to_delete(items, RetentionMode::Count, 1, 90, now, None);
         let kept = [
             "tauridium-auto-backup-2026-08-19-120000-001.json",
             "tauridium-auto-backup-2026-08-19-120000-002.json",
@@ -829,6 +848,37 @@ mod tests {
     }
 
     #[test]
+    fn count_retention_protects_just_created_backup_from_future_mtime() {
+        let now = UNIX_EPOCH + std::time::Duration::from_secs(2_000 * DAY_SECS);
+        let protected = PathBuf::from("tauridium-auto-backup-2026-08-19-120000-000.json");
+        let current = RetentionCandidate {
+            path: protected.clone(),
+            modified: now,
+        };
+        let future = RetentionCandidate {
+            path: PathBuf::from("tauridium-auto-backup-2026-08-18-120000-000.json"),
+            modified: now + std::time::Duration::from_secs(30 * DAY_SECS),
+        };
+
+        let deleted = retention_paths_to_delete(
+            vec![future, current],
+            RetentionMode::Count,
+            1,
+            90,
+            now,
+            Some(&protected),
+        );
+
+        assert_eq!(
+            deleted,
+            vec![PathBuf::from(
+                "tauridium-auto-backup-2026-08-18-120000-000.json"
+            )]
+        );
+        assert!(!deleted.contains(&protected));
+    }
+
+    #[test]
     fn future_modified_time_is_treated_as_recent_not_expired() {
         let now = UNIX_EPOCH + std::time::Duration::from_secs(2_000 * DAY_SECS);
         let future = RetentionCandidate {
@@ -836,7 +886,8 @@ mod tests {
             modified: now + std::time::Duration::from_secs(DAY_SECS),
         };
         let old = candidate("tauridium-auto-backup-2026-01-01-120000-000.json", 200, now);
-        let deleted = retention_paths_to_delete(vec![future, old], RetentionMode::Age, 10, 30, now);
+        let deleted =
+            retention_paths_to_delete(vec![future, old], RetentionMode::Age, 10, 30, now, None);
         assert_eq!(
             deleted,
             vec![PathBuf::from(

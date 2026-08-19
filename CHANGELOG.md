@@ -25,9 +25,12 @@
 
 ### Backup and release quality
 
-- Automatic retention runs only after the new backup has been staged, flushed, reread, parsed, and integrity-verified; retention cleanup failures do not invalidate the newly verified backup.
-- Expanded Rust backup tests for corrupted/truncated files, integrity tampering, stale staging files, replacement safety, deterministic retention boundaries, future timestamps, warning propagation, supported retention modes, and tiered history.
+- Automatic retention runs only after the new backup has been staged, flushed, reread, parsed, and integrity-verified; retention cleanup failures do not invalidate the newly verified backup. The just-created verified backup is explicitly protected from pruning even when a pre-existing file has an anomalous future filesystem timestamp.
+- Retention now considers only filenames matching Tauridium's exact generated `tauridium-auto-backup-YYYY-MM-DD-HHMMSS-mmm.json` shape with valid calendar/time fields, preventing unrelated look-alike files from becoming deletion candidates.
+- Expanded Rust backup tests for corrupted/truncated files, integrity tampering, stale staging files, replacement safety, deterministic retention boundaries, future timestamps, protected-new-backup semantics, strict automatic-backup filename validation, warning propagation, supported retention modes, and tiered history.
 - Added portable-export integrity/atomicity and referential-integrity tests, audit redaction/rotation tests, autostart idempotence coverage, and 0.4.4 cross-layer release invariants.
+- Hardened source-ZIP packaging to preserve required empty `.git` directories after refs are packed, so a freshly extracted release remains a directly usable Git repository even after repository garbage collection.
+- Added a packed-refs extraction regression that verifies the packaged repository resolves `HEAD`, its exact release tag, and passes `git fsck --full`.
 - Retained the mandatory native Rust 1.97.1 formatter gate and existing tagged-release compilation/lint/test gates.
 
 ## [0.4.3] - 2026-08-19

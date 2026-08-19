@@ -92,10 +92,19 @@ class Patch0404Tests(unittest.TestCase):
   def test_retention_never_runs_before_new_backup_verifies(self) -> None:
     body = self.main.split("fn create_automatic_backup", 1)[1].split("fn restore_recovery_backup_path", 1)[0]
     save = body.index("backup::save(&path, &document)?")
-    prune = body.index("prune_automatic_backups(&root, retention_mode, retention, max_age_days)")
+    prune = body.index("prune_automatic_backups(&root, retention_mode, retention, max_age_days, &path)")
     self.assertLess(save, prune)
     self.assertIn("Backup was created and verified, but retention cleanup failed", body)
     self.assertIn("summary = summary.with_warning(warning)", body)
+
+  def test_automatic_retention_only_targets_exact_tauridium_backup_names(self) -> None:
+    validator = self.main.split("fn validate_automatic_backup_filename", 1)[1].split("fn prune_automatic_backups", 1)[0]
+    prune = self.main.split("fn prune_automatic_backups", 1)[1].split("#[tauri::command]", 1)[0]
+    self.assertIn("stamp.len() != 21", validator)
+    self.assertIn("days_in_month(year, month)", validator)
+    self.assertIn("validate_automatic_backup_filename(name).is_ok()", prune)
+    self.assertIn("protected_path: &Path", prune)
+    self.assertIn("Some(protected_path)", prune)
 
   def test_backup_module_has_expanded_corruption_and_atomicity_tests(self) -> None:
     for marker in (
@@ -105,6 +114,7 @@ class Patch0404Tests(unittest.TestCase):
       "backup_summary_accumulates_nonfatal_warnings",
       "count_retention_is_deterministic_when_timestamps_match",
       "future_modified_time_is_treated_as_recent_not_expired",
+      "count_retention_protects_just_created_backup_from_future_mtime",
       "calendar_keys_require_expected_automatic_backup_prefix_and_shape",
     ):
       self.assertIn(marker, self.backup)

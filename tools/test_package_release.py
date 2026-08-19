@@ -195,6 +195,41 @@ class PackageReleaseTests(unittest.TestCase):
       text=True,
     )
 
+  def test_source_zip_preserves_required_empty_git_directories_after_pack_refs(self) -> None:
+    self.init_git_repository()
+    subprocess.run(["git", "pack-refs", "--all", "--prune"], cwd=self.root, check=True)
+    context = PACKAGE.source_context("0.2.0")
+    output = self.root / "source.zip"
+
+    PACKAGE.build_source(output, "0.2.0", context)
+
+    extract_root = self.root / "packed-extracted"
+    with zipfile.ZipFile(output) as archive:
+      names = set(archive.namelist())
+      self.assertIn("tauridium-0.2.0/.git/refs/", names)
+      self.assertIn("tauridium-0.2.0/.git/refs/heads/", names)
+      self.assertIn("tauridium-0.2.0/.git/refs/tags/", names)
+      archive.extractall(extract_root)
+
+    extracted = extract_root / "tauridium-0.2.0"
+    self.assertEqual(
+      subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=extracted, text=True).strip(),
+      subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.root, text=True).strip(),
+    )
+    self.assertEqual(
+      subprocess.check_output(
+        ["git", "describe", "--tags", "--exact-match", "HEAD"], cwd=extracted, text=True
+      ).strip(),
+      "v0.2.0",
+    )
+    subprocess.run(
+      ["git", "fsck", "--full"],
+      cwd=extracted,
+      check=True,
+      capture_output=True,
+      text=True,
+    )
+
   def test_source_zip_requires_git_history(self) -> None:
     self.write_manifest()
     context = PACKAGE.source_context("0.2.0")

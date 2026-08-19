@@ -2808,13 +2808,69 @@ fn automatic_backup_root(app: &AppHandle, settings: &Value) -> Result<PathBuf, S
         .map_err(|error| format!("Tauridium configuration directory unavailable: {error}"))
 }
 
+fn parse_automatic_backup_number(value: &str) -> Option<u32> {
+    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    value.parse::<u32>().ok()
+}
+
+fn is_leap_year(year: u32) -> bool {
+    year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400))
+}
+
+fn days_in_month(year: u32, month: u32) -> Option<u32> {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => Some(31),
+        4 | 6 | 9 | 11 => Some(30),
+        2 if is_leap_year(year) => Some(29),
+        2 => Some(28),
+        _ => None,
+    }
+}
+
 fn validate_automatic_backup_filename(filename: &str) -> Result<(), String> {
-    let valid = filename.starts_with("tauridium-auto-backup-")
-        && filename.ends_with(".json")
-        && filename.len() <= 128
-        && filename
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '.'));
+    const PREFIX: &str = "tauridium-auto-backup-";
+    const SUFFIX: &str = ".json";
+    let stamp = filename
+        .strip_prefix(PREFIX)
+        .and_then(|value| value.strip_suffix(SUFFIX))
+        .ok_or_else(|| "Automatic backup filename is invalid".to_string())?;
+    if stamp.len() != 21
+        || stamp.as_bytes().get(4) != Some(&b'-')
+        || stamp.as_bytes().get(7) != Some(&b'-')
+        || stamp.as_bytes().get(10) != Some(&b'-')
+        || stamp.as_bytes().get(17) != Some(&b'-')
+    {
+        return Err("Automatic backup filename is invalid".into());
+    }
+
+    let year = parse_automatic_backup_number(&stamp[0..4]);
+    let month = parse_automatic_backup_number(&stamp[5..7]);
+    let day = parse_automatic_backup_number(&stamp[8..10]);
+    let hour = parse_automatic_backup_number(&stamp[11..13]);
+    let minute = parse_automatic_backup_number(&stamp[13..15]);
+    let second = parse_automatic_backup_number(&stamp[15..17]);
+    let millis = parse_automatic_backup_number(&stamp[18..21]);
+    let valid = match (year, month, day, hour, minute, second, millis) {
+        (
+            Some(year),
+            Some(month),
+            Some(day),
+            Some(hour),
+            Some(minute),
+            Some(second),
+            Some(millis),
+        ) => {
+            year >= 1
+                && days_in_month(year, month).is_some_and(|limit| (1..=limit).contains(&day))
+                && hour <= 23
+                && minute <= 59
+                && second <= 59
+                && millis <= 999
+        }
+        _ => false,
+    };
     if valid {
         Ok(())
     } else {
@@ -2827,6 +2883,7 @@ fn prune_automatic_backups(
     mode: backup::RetentionMode,
     retention: usize,
     max_age_days: u64,
+    protected_path: &Path,
 ) -> Result<usize, String> {
     let candidates = std::fs::read_dir(root)
         .map_err(|error| format!("Unable to read automatic backup directory: {error}"))?
@@ -2852,6 +2909,7 @@ fn prune_automatic_backups(
         retention,
         max_age_days,
         SystemTime::now(),
+        Some(protected_path),
     );
     let count = expired.len();
     for path in expired {
@@ -2904,7 +2962,7 @@ fn create_automatic_backup(
             custom_recipes,
         );
         let mut summary = backup::save(&path, &document)?;
-        match prune_automatic_backups(&root, retention_mode, retention, max_age_days) {
+        match prune_automatic_backups(&root, retention_mode, retention, max_age_days, &path) {
             Ok(removed) => {
                 audit::best_effort(
                     &app,
@@ -3559,14 +3617,33 @@ mod tests {
     }
 
     #[test]
-    fn automatic_backup_filenames_reject_path_traversal_and_bad_names() {
-        assert!(validate_automatic_backup_filename(
-            "tauridium-auto-backup-2026-08-19-001122-003.json"
-        )
-        .is_ok());
-        assert!(validate_automatic_backup_filename("../tauridium-auto-backup-x.json").is_err());
-        assert!(validate_automatic_backup_filename("tauridium-auto-backup-x/evil.json").is_err());
-        assert!(validate_automatic_backup_filename("backup.json").is_err());
+    fn automatic_backup_filenames_require_exact_generated_timestamp_shape() {
+        for valid in [
+            "tauridium-auto-backup-2026-08-19-001122-003.json",
+            "tauridium-auto-backup-2024-02-29-235959-999.json",
+        ] {
+            assert!(validate_automatic_backup_filename(valid).is_ok(), "{valid}");
+        }
+        for invalid in [
+            "../tauridium-auto-backup-2026-08-19-001122-003.json",
+            "tauridium-auto-backup-2026-08-19-001122-003.json.bak",
+            "tauridium-auto-backup-2026-08-19-001122.json",
+            "tauridium-auto-backup-2026-8-19-001122-003.json",
+            "tauridium-auto-backup-2026-02-29-001122-003.json",
+            "tauridium-auto-backup-2026-13-01-001122-003.json",
+            "tauridium-auto-backup-2026-08-32-001122-003.json",
+            "tauridium-auto-backup-2026-08-19-241122-003.json",
+            "tauridium-auto-backup-2026-08-19-006022-003.json",
+            "tauridium-auto-backup-2026-08-19-001160-003.json",
+            "tauridium-auto-backup-0000-01-01-000000-000.json",
+            "tauridium-auto-backup-x/evil.json",
+            "backup.json",
+        ] {
+            assert!(
+                validate_automatic_backup_filename(invalid).is_err(),
+                "unexpectedly accepted {invalid}"
+            );
+        }
     }
 
     #[test]

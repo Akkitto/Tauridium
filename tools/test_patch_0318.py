@@ -40,8 +40,8 @@ class Patch0318Tests(unittest.TestCase):
   def test_automatic_backup_serializes_and_prunes_only_after_verified_save(self) -> None:
     body = self.main.split('fn create_automatic_backup', 1)[1].split('fn restore_recovery_backup_path', 1)[0]
     self.assertIn('backup::save(&path, &document)?', body)
-    self.assertIn('prune_automatic_backups(&root, retention_mode, retention, max_age_days)', body)
-    self.assertLess(body.index('backup::save(&path, &document)?'), body.index('prune_automatic_backups(&root, retention_mode, retention, max_age_days)'))
+    self.assertIn('prune_automatic_backups(&root, retention_mode, retention, max_age_days, &path)', body)
+    self.assertLess(body.index('backup::save(&path, &document)?'), body.index('prune_automatic_backups(&root, retention_mode, retention, max_age_days, &path)'))
     prune = self.main.split('fn prune_automatic_backups', 1)[1].split('#[tauri::command]', 1)[0]
     self.assertIn('validate_automatic_backup_filename(name).is_ok()', prune)
     self.assertIn('retention_paths_to_delete', prune)
@@ -63,10 +63,12 @@ class Patch0318Tests(unittest.TestCase):
 
   def test_automatic_backup_filename_is_path_traversal_safe(self) -> None:
     body = self.main.split('fn validate_automatic_backup_filename', 1)[1].split('fn prune_automatic_backups', 1)[0]
-    self.assertIn('character.is_ascii_alphanumeric()', body)
-    self.assertIn("matches!(character, '-' | '.')", body)
-    self.assertIn('filename.starts_with("tauridium-auto-backup-")', body)
-    self.assertIn('filename.ends_with(".json")', body)
+    self.assertIn('const PREFIX: &str = "tauridium-auto-backup-";', body)
+    self.assertIn('const SUFFIX: &str = ".json";', body)
+    self.assertIn('.strip_prefix(PREFIX)', body)
+    self.assertIn('.strip_suffix(SUFFIX)', body)
+    self.assertIn('stamp.len() != 21', body)
+    self.assertIn('days_in_month(year, month)', body)
 
   def test_local_only_wording_is_absent_from_current_tracked_text(self) -> None:
     for path in ROOT.rglob('*'):

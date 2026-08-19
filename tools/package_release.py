@@ -137,6 +137,14 @@ def add_bytes(zf: zipfile.ZipFile, data: bytes, archive_name: str, executable: b
   zf.writestr(info, data)
 
 
+def add_directory(zf: zipfile.ZipFile, archive_name: str) -> None:
+  directory_name = archive_name.rstrip("/") + "/"
+  info = zipfile.ZipInfo(directory_name, ZIP_TIME)
+  info.compress_type = zipfile.ZIP_STORED
+  info.external_attr = (0o40755 << 16) | 0x10
+  zf.writestr(info, b"")
+
+
 def safe_manifest_path(value: str) -> str:
   path = PurePosixPath(value)
   if path.is_absolute() or not value or ".." in path.parts or path.as_posix() != value:
@@ -312,6 +320,24 @@ def source_context(release_version: str) -> SourceContext:
   return load_source_manifest(release_version)
 
 
+def git_metadata_directories() -> tuple[Path, ...]:
+  repository_root = git_repository_root()
+  if repository_root is None:
+    raise SystemExit(
+      "error: source ZIP packaging requires a real Git checkout so the complete .git "
+      "history can be included"
+    )
+  git_dir = repository_root / ".git"
+  if not git_dir.is_dir():
+    raise SystemExit("error: source ZIP packaging requires a .git directory")
+  return tuple(
+    sorted(
+      (path for path in git_dir.rglob("*") if path.is_dir()),
+      key=lambda path: path.as_posix(),
+    )
+  )
+
+
 def git_metadata_files() -> tuple[Path, ...]:
   repository_root = git_repository_root()
   if repository_root is None:
@@ -340,6 +366,10 @@ def build_source(output: Path, release_version: str, context: SourceContext) -> 
     for entry in context.entries:
       add_file(zf, entry.path, prefix + entry.archive_path, mode=entry.mode)
     add_bytes(zf, context.manifest_bytes, prefix + SOURCE_MANIFEST_NAME)
+    add_directory(zf, prefix + ".git/")
+    for directory in git_metadata_directories():
+      archive_path = directory.relative_to(git_dir).as_posix()
+      add_directory(zf, prefix + ".git/" + archive_path)
     for source in git_metadata_files():
       archive_path = source.relative_to(git_dir).as_posix()
       if archive_path == "config":
