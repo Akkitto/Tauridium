@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.6] - 2026-08-19
+
+### Fixed
+
+- Fixed tiered automatic-backup retention when multiple backups have identical filesystem modification times. Tauridium now uses the fixed-width timestamp embedded in its validated automatic-backup filename as the deterministic tie-breaker, so the newer same-day recovery point is retained instead of an older one.
+- Applied the same deterministic newest-filename policy to count retention when mtimes tie, while preserving explicit protection of the just-created integrity-verified backup against anomalous future mtimes.
+
+### Release quality
+
+- Added Rust regression coverage for the exact Windows-native tiered-retention failure and equal-mtime count retention.
+- Added 0.4.6 offline release regressions that require descending embedded-timestamp tie-breaking and reject a return to pathname-ascending selection.
+- Verified the exact production retention function independently with Rust 1.97.1 and Clippy `-D warnings` without lint suppression.
+
 ## [0.4.5] - 2026-08-19
 
 ### Fixed
