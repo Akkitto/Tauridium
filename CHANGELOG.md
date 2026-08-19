@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.4.7] - 2026-08-19
+
+### Changed
+
+- Replaced each sidebar service cogwheel with a full-width service row and a right-click / Shift+F10 context menu containing **Settings**, **Reload**, and the state-aware **Enable Service** / **Disable Service** action. Disabled services stay listed with reduced emphasis, are closed immediately, and are never selected or preloaded until re-enabled.
+- Added the matching enable/disable control to each service Settings danger zone between **Clear cache & session** and **Delete service**.
+- Changed the bundled OpenCode recipe title to **OpenCode**, its default URL to `https://opencode.ai/go`, and added workspace routing through `https://opencode.ai/workspace/{teamId}/go`.
+- Clarified the service **Team / workspace ID** field with an explicit website-specific OpenCode example.
+- Added opt-in custom URL placeholders `{{custom_id_1}}` and `{{custom_id_2}}`, disabled globally by default and enableable globally or per service.
+
+### Added
+
+- Added persistent website-icon discovery for services without usable preset icons, enabled by default, with positive and negative caching to avoid repeated network fetches. Service Settings can explicitly refetch one icon; Advanced Settings can refetch all icons after confirmation.
+- Added optional reload toast notifications for service reloads triggered by keybindings or the service context menu.
+- Added package/build metadata plumbing for About-page repository, license, description, and configurable maintainer metadata.
+
+### Reliability and release quality
+
+- Added regression coverage for disabled-service lifecycle behavior, context-menu accessibility/navigation, OpenCode workspace routing, custom URL placeholder validation, persistent icon caching/refetch behavior, reload toasts, and build metadata.
+- Hardened icon caching to create its cache directory atomically before first write and to keep preset-icon failure fallback separate from initial automatic icon probes.
+- Preserved disabled service Settings while toggling the currently active service off, instead of unexpectedly navigating away from the Settings view.
+- Retained the mandatory Rust 1.97.1 formatter and locked release-validation gates.
+
 ## [0.4.6] - 2026-08-19
 
 ### Fixed
