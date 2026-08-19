@@ -193,6 +193,11 @@ def exact_release_tag(release_version: str) -> str | None:
 
 
 def git_source_context(release_version: str) -> SourceContext:
+  expected_tag = f"v{release_version}"
+  if exact_release_tag(release_version) != expected_tag:
+    raise SystemExit(
+      f"error: release packaging requires HEAD to carry exact tag {expected_tag}"
+    )
   dirty = git_output("status", "--porcelain", "--untracked-files=all")
   if dirty:
     details = "\n".join(f"  {line}" for line in dirty.splitlines())
@@ -245,6 +250,11 @@ def load_source_manifest(release_version: str) -> SourceContext:
     raise SystemExit(
       "error: source manifest version differs from this source tree; "
       "extract the matching release into a new empty directory"
+    )
+  git = manifest.get("git")
+  if not isinstance(git, dict) or git.get("tag") != f"v{release_version}":
+    raise SystemExit(
+      f"error: source manifest is not anchored to exact release tag v{release_version}"
     )
 
   raw_entries = manifest.get("files")
@@ -479,6 +489,34 @@ def build_runtime(
     add_file(zf, ROOT / "LICENSE", f"tauridium-{release_version}/LICENSE")
 
 
+def build_runtime_handoff(
+  output: Path,
+  release_version: str,
+  context: SourceContext,
+) -> None:
+  """Package a source-only runtime build handoff without claiming a native executable."""
+  prefix = f"tauridium-{release_version}/"
+  handoff = (
+    f"Tauridium {release_version} native runtime build handoff\n\n"
+    "This archive contains the exact release source without Git metadata.\n"
+    "It is not a fabricated or cross-platform executable, and no native runtime is claimed.\n\n"
+    "Build and validate the native runtime on the target platform with:\n"
+    "  just init ; just check ; just test ; just build ; just package\n\n"
+    "On Windows 11, the same workflow is supported natively through PowerShell/pwsh; "
+    "Bash, Nushell, WSL, and Git Bash are not required.\n\n"
+    "Runtime ZIPs are target-qualified from the executable's reported Rust target, for example:\n"
+    f"  tauridium-{release_version}-run-win-x64.zip\n"
+    f"  tauridium-{release_version}-run-linux-x64.zip\n\n"
+    "Rust formatting is pinned by rust-toolchain.toml to 1.97.1 and release packaging "
+    "refuses to proceed unless cargo fmt -- --check succeeds.\n"
+  ).encode()
+  with zipfile.ZipFile(output, "w") as zf:
+    for entry in context.entries:
+      add_file(zf, entry.path, prefix + entry.archive_path, mode=entry.mode)
+    add_bytes(zf, context.manifest_bytes, prefix + SOURCE_MANIFEST_NAME)
+    add_bytes(zf, handoff, prefix + "RUNTIME-HANDOFF.txt")
+
+
 def manifest_git_log(context: SourceContext) -> str:
   git = context.manifest.get("git")
   if isinstance(git, dict):
@@ -515,6 +553,11 @@ def build_docs(
 def main() -> int:
   parser = argparse.ArgumentParser()
   parser.add_argument("--runtime", type=Path, action="append")
+  parser.add_argument(
+    "--build-handoff",
+    action="store_true",
+    help="package an explicitly source-only run-build-handoff instead of a native runtime",
+  )
   parser.add_argument("--output-dir", type=Path, default=ROOT / "release")
   args = parser.parse_args()
 
@@ -526,14 +569,21 @@ def main() -> int:
   src = output_dir / f"tauridium-{release_version}-src.zip"
   doc = output_dir / f"tauridium-{release_version}-doc.zip"
   build_source(src, release_version, context)
-  runtime_paths = [path.resolve() for path in args.runtime] if args.runtime else default_runtimes()
-  runtime_artifacts = [inspect_runtime(path, release_version) for path in runtime_paths]
-  grouped_runtimes = group_runtimes_by_target(runtime_artifacts)
+  if args.build_handoff and args.runtime:
+    raise SystemExit("error: --build-handoff cannot be combined with --runtime")
   run_zips: list[Path] = []
-  for suffix, target_runtimes in sorted(grouped_runtimes.items()):
-    run = output_dir / runtime_zip_name(release_version, suffix)
-    build_runtime(run, release_version, target_runtimes)
-    run_zips.append(run)
+  if args.build_handoff:
+    handoff = output_dir / f"tauridium-{release_version}-run-build-handoff.zip"
+    build_runtime_handoff(handoff, release_version, context)
+    run_zips.append(handoff)
+  else:
+    runtime_paths = [path.resolve() for path in args.runtime] if args.runtime else default_runtimes()
+    runtime_artifacts = [inspect_runtime(path, release_version) for path in runtime_paths]
+    grouped_runtimes = group_runtimes_by_target(runtime_artifacts)
+    for suffix, target_runtimes in sorted(grouped_runtimes.items()):
+      run = output_dir / runtime_zip_name(release_version, suffix)
+      build_runtime(run, release_version, target_runtimes)
+      run_zips.append(run)
   build_docs(doc, release_version, src, run_zips, context)
   print(src)
   for run in run_zips:

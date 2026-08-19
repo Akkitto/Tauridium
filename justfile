@@ -90,9 +90,16 @@ release-clean:
 package:
   python3 tools/package_release.py
 
+package-handoff:
+  python3 tools/package_release.py --build-handoff
+
 [windows]
 package:
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/package_release.py
+
+[windows]
+package-handoff:
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/package_release.py --build-handoff
 
 release: release-clean fmt-check lint check test build release-clean package
 

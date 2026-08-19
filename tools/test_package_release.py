@@ -118,6 +118,21 @@ class PackageReleaseTests(unittest.TestCase):
     subprocess.run(["git", "tag", "v0.2.0"], cwd=self.root, check=True)
 
 
+  def test_git_source_requires_exact_release_tag(self) -> None:
+    self.init_git_repository()
+    subprocess.run(["git", "tag", "-d", "v0.2.0"], cwd=self.root, check=True, capture_output=True)
+
+    with self.assertRaisesRegex(SystemExit, "requires HEAD to carry exact tag v0.2.0"):
+      PACKAGE.source_context("0.2.0")
+
+  def test_manifest_source_requires_exact_release_tag(self) -> None:
+    manifest = self.write_manifest()
+    manifest["git"]["tag"] = None
+    (self.root / PACKAGE.SOURCE_MANIFEST_NAME).write_bytes(PACKAGE.manifest_bytes(manifest))
+
+    with self.assertRaisesRegex(SystemExit, "not anchored to exact release tag v0.2.0"):
+      PACKAGE.source_context("0.2.0")
+
   def test_dirty_git_source_error_names_changed_path(self) -> None:
     self.init_git_repository()
     (self.root / "source.txt").write_text("dirty\n", encoding="utf-8")
@@ -320,6 +335,23 @@ class PackageReleaseTests(unittest.TestCase):
     with mock.patch.object(PACKAGE.subprocess, "run", side_effect=fake_run):
       with self.assertRaisesRegex(SystemExit, "not compiled in Tauri production mode"):
         PACKAGE.inspect_runtime(runtime, "0.2.0")
+
+  def test_build_handoff_is_explicitly_non_native_and_contains_exact_source(self) -> None:
+    self.init_git_repository()
+    context = PACKAGE.source_context("0.2.0")
+    output = self.root / "tauridium-0.2.0-run-build-handoff.zip"
+
+    PACKAGE.build_runtime_handoff(output, "0.2.0", context)
+
+    with zipfile.ZipFile(output) as archive:
+      names = set(archive.namelist())
+      self.assertIn("tauridium-0.2.0/source.txt", names)
+      self.assertIn("tauridium-0.2.0/RUNTIME-HANDOFF.txt", names)
+      self.assertIn(f"tauridium-0.2.0/{PACKAGE.SOURCE_MANIFEST_NAME}", names)
+      self.assertFalse(any(name.startswith("tauridium-0.2.0/.git/") for name in names))
+      handoff = archive.read("tauridium-0.2.0/RUNTIME-HANDOFF.txt").decode()
+      self.assertIn("no native runtime is claimed", handoff)
+      self.assertIn("PowerShell/pwsh", handoff)
 
   def test_docs_use_manifest_git_log_without_git_repository(self) -> None:
     self.write_manifest()

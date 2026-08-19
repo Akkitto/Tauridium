@@ -77,6 +77,7 @@ def main() -> int:
   patch_0318_test = read("tools/test_patch_0318.py")
   patch_0319_test = read("tools/test_patch_0319.py")
   settings_ui_test = read("tools/test_settings_ui.py")
+  feature_0400_test = read("tools/test_feature_0400.py")
   if f'INIT_VERSION = "{version}"' not in init_py:
     fail("initializer release identity differs from release version")
   if "required pkg-config modules are" in init_py:
@@ -628,6 +629,45 @@ def main() -> int:
   ):
     if marker not in patch_0319_test:
       fail(f"0.3.19 backup-scheduling regression coverage is missing: {marker}")
+
+  for marker in (
+    "test_oled_and_custom_appearance_are_persisted",
+    "test_service_management_scales_and_preserves_global_slots",
+    "test_keybindings_include_requested_defaults_and_chords",
+    "test_shared_sandboxes_are_backend_authoritative",
+    "test_all_new_settings_flow_through_integrity_protected_backup",
+    "test_release_identity_sync_covers_every_versioned_surface",
+  ):
+    if marker not in feature_0400_test:
+      fail(f"0.4.0 feature regression coverage is missing: {marker}")
+  for marker in (
+    '["keybindings", "Keybinds"]',
+    '["sandbox", "Sandbox"]',
+    'appSettings.theme === "oled"',
+    'const MANAGED_SERVICE_PAGE_SIZE = 100;',
+    'quickWorkspaceSwitch: "Ctrl+D"',
+    'quickServiceSwitch: "Ctrl+S"',
+  ):
+    if marker not in app + read("src/lib/ui.ts"):
+      fail(f"0.4.0 frontend feature invariant is missing: {marker}")
+  for marker in (
+    'fn sandbox_for_service',
+    'fn clear_sandbox',
+    '"sandboxes": []',
+    '"serviceSandboxes": {}',
+  ):
+    if marker not in main_rs:
+      fail(f"0.4.0 sandbox backend invariant is missing: {marker}")
+  for marker in (
+    'def build_runtime_handoff(',
+    '"--build-handoff"',
+    'run-build-handoff.zip',
+    'no native runtime is claimed',
+  ):
+    if marker not in package_release:
+      fail(f"explicit non-native runtime handoff invariant is missing: {marker}")
+  if "test_build_handoff_is_explicitly_non_native_and_contains_exact_source" not in package_release_test:
+    fail("release handoff regression coverage is missing")
 
   for marker in (
     'Export backup…',
