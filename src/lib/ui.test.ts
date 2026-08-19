@@ -34,8 +34,10 @@ describe("0.4.0 appearance and navigation helpers", () => {
   it("normalizes and round-trips custom colors", () => {
     expect(normalizeHexColor(" FFC131 ")).toBe("#ffc131");
     expect(normalizeHexColor("#xyzxyz")).toBeNull();
-    const hsl = hexToHsl("#ffc131");
-    expect(hslToHex(hsl.hue, hsl.saturation, hsl.lightness)).toBe("#ffc133");
+    for (const color of ["#ffc131", "#4f46e5", "#16a34a", "#000000", "#ffffff"]) {
+      const hsl = hexToHsl(color);
+      expect(hslToHex(hsl.hue, hsl.saturation, hsl.lightness)).toBe(color);
+    }
   });
 
   it("supports single shortcuts, two-stroke chords, and conflict detection", () => {

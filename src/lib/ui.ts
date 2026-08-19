@@ -62,9 +62,9 @@ export function hexToHsl(hex: string): { hue: number; saturation: number; lightn
   if (hue < 0) hue += 360;
   const saturation = delta === 0 ? 0 : delta / (1 - Math.abs(2 * lightness - 1));
   return {
-    hue: Math.round(hue),
-    saturation: Math.round(saturation * 100),
-    lightness: Math.round(lightness * 100),
+    hue,
+    saturation: saturation * 100,
+    lightness: lightness * 100,
   };
 }
 

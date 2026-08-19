@@ -2145,9 +2145,9 @@
                         <code>{appSettings.accentColor}</code>
                         <span class="color-preview" style={`background:${appSettings.accentColor}`} aria-hidden="true"></span>
                       </div>
-                      <label class="slider-field"><span>Hue <strong>{colorHue}°</strong></span><input type="range" min="0" max="359" value={colorHue} oninput={(event) => { colorHue = Number(event.currentTarget.value); previewCustomColor(); }} /></label>
-                      <label class="slider-field"><span>Saturation <strong>{colorSaturation}%</strong></span><input type="range" min="0" max="100" value={colorSaturation} oninput={(event) => { colorSaturation = Number(event.currentTarget.value); previewCustomColor(); }} /></label>
-                      <label class="slider-field"><span>Lightness <strong>{colorLightness}%</strong></span><input type="range" min="10" max="90" value={colorLightness} oninput={(event) => { colorLightness = Number(event.currentTarget.value); previewCustomColor(); }} /></label>
+                      <label class="slider-field"><span>Hue <strong>{Math.round(colorHue)}°</strong></span><input type="range" min="0" max="359" value={colorHue} oninput={(event) => { colorHue = Number(event.currentTarget.value); previewCustomColor(); }} /></label>
+                      <label class="slider-field"><span>Saturation <strong>{Math.round(colorSaturation)}%</strong></span><input type="range" min="0" max="100" value={colorSaturation} oninput={(event) => { colorSaturation = Number(event.currentTarget.value); previewCustomColor(); }} /></label>
+                      <label class="slider-field"><span>Lightness <strong>{Math.round(colorLightness)}%</strong></span><input type="range" min="10" max="90" value={colorLightness} oninput={(event) => { colorLightness = Number(event.currentTarget.value); previewCustomColor(); }} /></label>
                       <div class="setting-actions"><button class="secondary sm" onclick={cancelCustomColorPicker}>Cancel</button><button class="secondary sm" onclick={() => applyCustomColor(false)}>Use color</button><button class="primary sm" onclick={() => applyCustomColor(true)}>Use & save preset</button></div>
                     </div>
                   {/if}

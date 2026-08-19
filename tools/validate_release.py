@@ -116,6 +116,7 @@ def main() -> int:
   settings_ui_test = read("tools/test_settings_ui.py")
   feature_0400_test = read("tools/test_feature_0400.py")
   patch_0402_test = read("tools/test_patch_0402.py")
+  patch_0403_test = read("tools/test_patch_0403.py")
   if f'INIT_VERSION = "{version}"' not in init_py:
     fail("initializer release identity differs from release version")
   if "required pkg-config modules are" in init_py:
@@ -695,6 +696,24 @@ def main() -> int:
   ):
     if marker not in app + main_rs:
       fail(f"0.4.2 quality invariant is missing: {marker}")
+
+  for marker in (
+    "test_hex_to_hsl_preserves_fractional_precision",
+    "test_frontend_requires_true_color_round_trip",
+    "test_color_slider_labels_remain_human_readable",
+  ):
+    if marker not in patch_0403_test:
+      fail(f"0.4.3 color-picker regression coverage is missing: {marker}")
+
+  for marker in (
+    "saturation: saturation * 100",
+    "lightness: lightness * 100",
+    "{Math.round(colorHue)}°",
+    "{Math.round(colorSaturation)}%",
+    "{Math.round(colorLightness)}%",
+  ):
+    if marker not in app + read("src/lib/ui.ts"):
+      fail(f"0.4.3 color-picker invariant is missing: {marker}")
 
   for marker in (
     '["keybindings", "Keybinds"]',
