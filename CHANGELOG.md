@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.4.4] - 2026-08-19
+
+### Fixed
+
+- Made backup restore transactional only for Tauridium-owned data. Operating-system autostart synchronization now runs after the verified restore commits, is state-aware/idempotent, and can only add a non-fatal restore warning; rollback no longer invokes the external autostart integration.
+- Hardened autostart state inspection so an unreadable operating-system integration is reported distinctly instead of blindly issuing another enable/disable mutation.
+- Prevented long automatic-backup directory paths and relative sidebar widths on very wide displays from overflowing or disagreeing with backend geometry limits.
+
+### Added
+
+- Added a native directory picker for the automatic-backup output location, with an explicit return-to-managed-default action.
+- Added count, maximum-age, combined count-and-age, and tiered GFS-style automatic-backup retention. Tiered retention keeps progressively representative daily, weekly, monthly, and yearly recovery points while always preserving the newest verified backup.
+- Added a Settings **Audit log** tab with searchable/filterable structured events for application and service settings, service/workspace ordering, manual and automatic backups, restores, retention, portable exports, warnings, failures, export, and clear operations. Secret-like detail fields are recursively redacted; local JSONL history is bounded by rotation and synchronized against concurrent in-process access.
+- Added integrity-protected portable sandbox exports for one sandbox or all sandboxes, including assigned services, relevant workspace membership, sandbox assignments, and referenced custom recipes.
+- Added matching portable workspace exports for one workspace or all workspaces, including their services, referenced sandboxes/assignments, and referenced custom recipes. Portable bundles reject dangling service/workspace/sandbox relationships.
+- Added percentage-based sidebar sizing alongside fixed pixel widths. Relative sizing follows window resize events through animation-frame-throttled updates and remains bounded to preserve useful service content.
+
+### Changed
+
+- Increased the Settings card to use substantially more available desktop width. Settings tabs now distribute across the available width and wrap to additional rows instead of horizontally scrolling.
+- Renamed **Service position** to **Service list alignment**.
+- Audit-log export now includes every event still present in the bounded retained log generations rather than applying the UI read cap.
+
+### Backup and release quality
+
+- Automatic retention runs only after the new backup has been staged, flushed, reread, parsed, and integrity-verified; retention cleanup failures do not invalidate the newly verified backup.
+- Expanded Rust backup tests for corrupted/truncated files, integrity tampering, stale staging files, replacement safety, deterministic retention boundaries, future timestamps, warning propagation, supported retention modes, and tiered history.
+- Added portable-export integrity/atomicity and referential-integrity tests, audit redaction/rotation tests, autostart idempotence coverage, and 0.4.4 cross-layer release invariants.
+- Retained the mandatory native Rust 1.97.1 formatter gate and existing tagged-release compilation/lint/test gates.
+
 ## [0.4.3] - 2026-08-19
 
 ### Fixed

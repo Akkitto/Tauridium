@@ -117,6 +117,7 @@ def main() -> int:
   feature_0400_test = read("tools/test_feature_0400.py")
   patch_0402_test = read("tools/test_patch_0402.py")
   patch_0403_test = read("tools/test_patch_0403.py")
+  patch_0404_test = read("tools/test_patch_0404.py")
   if f'INIT_VERSION = "{version}"' not in init_py:
     fail("initializer release identity differs from release version")
   if "required pkg-config modules are" in init_py:
@@ -435,6 +436,8 @@ def main() -> int:
   local_profile = read("src-tauri/src/local_profile.rs")
   recipes_rs = read("src-tauri/src/recipes.rs")
   backup_rs = read("src-tauri/src/backup.rs")
+  audit_rs = read("src-tauri/src/audit.rs")
+  portable_rs = read("src-tauri/src/portable.rs")
   for marker in (
     'invoke("sync_services_menu", { services })',
     'listen<string>("select-service-id"',
@@ -464,6 +467,10 @@ def main() -> int:
     "export_backup",
     "restore_backup",
     "create_automatic_backup",
+    "export_portable_bundle",
+    "get_audit_log",
+    "export_audit_log",
+    "clear_audit_log",
   )
   handler = main_rs.split("tauri::generate_handler![", 1)[-1].split("]", 1)[0]
   for command in required_backend:
@@ -601,13 +608,13 @@ def main() -> int:
   ):
     if marker not in local_profile:
       fail(f"local-profile backup validation is missing: {marker}")
-  restore_body = main_rs.split("fn restore_backup", 1)[-1].split("fn persisted_window_state_flags", 1)[0]
+  restore_body = main_rs.split("fn perform_restore_backup", 1)[-1].split("#[tauri::command]\nfn restore_backup", 1)[0]
   for marker in (
     'restore_recovery_backup_path',
     'pre-restore-{stamp}.json',
     'backup::save(&recovery_path, &recovery_document)',
-    'replace_custom_recipes_exact(&app, &previous_recipes)',
-    'persist_app_settings(&app, &state, &previous_settings)',
+    'replace_custom_recipes_exact(app, &previous_recipes)',
+    'persist_app_settings(app, state, &previous_settings)',
   ):
     if marker not in restore_body and marker not in main_rs:
       fail(f"backup restore safety invariant is missing: {marker}")
@@ -627,7 +634,7 @@ def main() -> int:
     fail("frontend API does not expose automatic backup creation")
   for marker in (
     'fn create_automatic_backup(',
-    'prune_automatic_backups(&root, retention)',
+    'prune_automatic_backups(&root, retention_mode, retention, max_age_days)',
     'backup::save(&path, &document)?',
     'automaticBackupSchedule',
     'automaticBackupRetention',
@@ -636,7 +643,7 @@ def main() -> int:
     if marker not in main_rs:
       fail(f"automatic backup backend invariant is missing: {marker}")
   auto_body = main_rs.split("fn create_automatic_backup", 1)[-1].split("#[tauri::command]", 1)[0]
-  if auto_body.index("backup::save(&path, &document)?") > auto_body.index("prune_automatic_backups(&root, retention)"):
+  if auto_body.index("backup::save(&path, &document)?") > auto_body.index("prune_automatic_backups(&root, retention_mode, retention, max_age_days)"):
     fail("automatic backup retention pruning can occur before verified backup save")
   if 'let autostart_changed = patch.contains_key("autostart");' not in main_rs:
     fail("settings persistence does not isolate autostart side effects")
@@ -714,6 +721,67 @@ def main() -> int:
   ):
     if marker not in app + read("src/lib/ui.ts"):
       fail(f"0.4.3 color-picker invariant is missing: {marker}")
+
+  for marker in (
+    "test_restore_does_not_roll_back_machine_autostart",
+    "test_automatic_backup_directory_is_persisted_validated_and_user_selectable",
+    "test_settings_panel_uses_wider_dynamic_width_and_wrapping_tabs",
+    "test_backup_retention_supports_count_age_combined_and_tiered_modes",
+    "test_audit_tab_can_filter_refresh_export_and_clear",
+    "test_sandbox_exports_support_individual_and_all_with_referenced_services",
+    "test_workspace_exports_support_individual_and_all",
+    "test_percentage_sidebar_width_is_bounded_and_resize_throttled",
+    "test_service_position_wording_is_replaced",
+    "test_portable_exports_are_integrity_protected_and_atomically_replaced",
+  ):
+    if marker not in patch_0404_test:
+      fail(f"0.4.4 regression coverage is missing: {marker}")
+
+  for marker in (
+    '"automaticBackupDirectory": ""',
+    '"automaticBackupRetentionMode": "count"',
+    '"automaticBackupMaxAgeDays": 90',
+    '"sidebarWidthMode": "pixels"',
+    '"sidebarWidthPercent": 20',
+    'apply_autostart_setting(app, &app_settings)',
+    'Backup data restored successfully',
+    'prune_automatic_backups(&root, retention_mode, retention, max_age_days)',
+  ):
+    if marker not in main_rs:
+      fail(f"0.4.4 backend invariant is missing: {marker}")
+
+  for marker in (
+    'const MAX_AUDIT_FILE_BYTES: u64 = 5 * 1024 * 1024;',
+    'Value::String("[redacted]".into())',
+    'file.sync_data()',
+  ):
+    if marker not in audit_rs:
+      fail(f"0.4.4 audit invariant is missing: {marker}")
+
+  for marker in (
+    'const PORTABLE_FORMAT: &str = "tauridium-portable-collection";',
+    'payload_sha256',
+    'replace_file(&staging, path)',
+    'select_custom_recipes',
+  ):
+    if marker not in portable_rs:
+      fail(f"0.4.4 portable export invariant is missing: {marker}")
+
+  for marker in (
+    '["audit", "Audit log"]',
+    'flex-wrap: wrap',
+    'width: min(1180px, calc(100% - 32px))',
+    'Service list alignment',
+    'MAX_SIDEBAR_WIDTH_PX = 1200',
+    'Choose automatic backup folder',
+    'Tiered history (GFS-style)',
+    'Export all sandboxes…',
+    'doPortableExport("workspaces", "all workspaces"',
+  ):
+    if marker not in app:
+      fail(f"0.4.4 frontend invariant is missing: {marker}")
+  if "Service position" in app:
+    fail("obsolete Service position wording remains in the Settings UI")
 
   for marker in (
     '["keybindings", "Keybinds"]',

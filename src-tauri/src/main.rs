@@ -1,7 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod audit;
 mod backup;
 mod local_profile;
+mod portable;
 mod recipes;
 
 // Tauridium — lightweight Ferdium client (Tauri v2).
@@ -51,6 +53,7 @@ static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
 const API_UA: &str = concat!("Tauridium/", env!("CARGO_PKG_VERSION"));
 // Logical sidebar width; must match the shell CSS.
 const SIDEBAR_W: f64 = 240.0;
+const MAX_SIDEBAR_W: f64 = 1200.0;
 // Modern Safari UA WITH the `Version/` token: WhatsApp requires Safari >= 15, while the webview
 // Native WKWebView does not always expose this token (which can trigger an unsupported-browser warning). Keep
 // a Safari identity rather than Chrome to avoid breaking services that depend on the Safari path
@@ -1539,7 +1542,7 @@ fn close_service(app: AppHandle, state: State<'_, AppState>, service_id: String)
 // Change the sidebar width and reposition the active service webview.
 #[tauri::command]
 fn set_sidebar_width(app: AppHandle, state: State<'_, AppState>, width: f64) {
-    *state.sidebar_w.lock().unwrap() = width.clamp(160.0, 420.0);
+    *state.sidebar_w.lock().unwrap() = width.clamp(160.0, MAX_SIDEBAR_W);
     reposition_active(&app);
 }
 
@@ -1579,6 +1582,44 @@ fn set_service_flags(
 
 // Update a service. In local mode, persist the mutation in local_profile.json;
 // in server mode keep it synchronized via PUT /v1/service/:id.
+fn finish_service_update(
+    app: &AppHandle,
+    service_id: &str,
+    patch: &Value,
+    result: Result<Value, String>,
+) -> Result<Value, String> {
+    match result {
+        Ok(updated) => {
+            audit::best_effort(
+                app,
+                "info",
+                "settings",
+                "service-change",
+                "success",
+                "Service settings changed",
+                serde_json::json!({ "serviceId": service_id, "changes": patch }),
+            );
+            Ok(updated)
+        }
+        Err(error) => {
+            audit::best_effort(
+                app,
+                "error",
+                "settings",
+                "service-change",
+                "failure",
+                "Service settings change failed",
+                serde_json::json!({
+                    "serviceId": service_id,
+                    "changes": patch,
+                    "error": &error
+                }),
+            );
+            Err(error)
+        }
+    }
+}
+
 #[tauri::command]
 async fn update_service(
     app: AppHandle,
@@ -1592,27 +1633,35 @@ async fn update_service(
         .unwrap()
         .has_local_recipe_service(&service_id);
     if is_local_mode(&state) || local_service {
-        let mut profile = state.local_profile.lock().unwrap();
-        let mut next = profile.clone();
-        let updated = next.update_service(&service_id, &patch)?;
-        save_local_profile(&app, &next)?;
-        *profile = next;
-        return Ok(updated);
+        let operation = (|| -> Result<Value, String> {
+            let mut profile = state.local_profile.lock().unwrap();
+            let mut next = profile.clone();
+            let updated = next.update_service(&service_id, &patch)?;
+            save_local_profile(&app, &next)?;
+            *profile = next;
+            Ok(updated)
+        })();
+        return finish_service_update(&app, &service_id, &patch, operation);
     }
-    let (base, token) = current(&state)?;
-    let res = HTTP
-        .clone()
-        .put(format!("{base}/v1/service/{service_id}"))
-        .bearer_auth(&token)
-        .header(reqwest::header::USER_AGENT, API_UA)
-        .json(&patch)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !res.status().is_success() {
-        return Err(format!("Service update failed: HTTP {}", res.status()));
+
+    let operation = async {
+        let (base, token) = current(&state)?;
+        let res = HTTP
+            .clone()
+            .put(format!("{base}/v1/service/{service_id}"))
+            .bearer_auth(&token)
+            .header(reqwest::header::USER_AGENT, API_UA)
+            .json(&patch)
+            .send()
+            .await
+            .map_err(|error| error.to_string())?;
+        if !res.status().is_success() {
+            return Err(format!("Service update failed: HTTP {}", res.status()));
+        }
+        res.json().await.map_err(|error| error.to_string())
     }
-    res.json().await.map_err(|e| e.to_string())
+    .await;
+    finish_service_update(&app, &service_id, &patch, operation)
 }
 
 // Create a service locally or through POST /v1/service depending on session mode.
@@ -2175,6 +2224,8 @@ fn default_app_settings_value() -> Value {
         "showMessageBadgeWhenMuted": true,
         "userAgentPref": "",
         "sidebarWidth": 240,
+        "sidebarWidthMode": "pixels",
+        "sidebarWidthPercent": 20,
         "customSidebarWidths": [],
         "iconSize": 24,
         "grayscaleServices": false,
@@ -2200,7 +2251,10 @@ fn default_app_settings_value() -> Value {
         "sandboxes": [],
         "serviceSandboxes": {},
         "automaticBackupSchedule": "off",
+        "automaticBackupDirectory": "",
+        "automaticBackupRetentionMode": "count",
         "automaticBackupRetention": 10,
+        "automaticBackupMaxAgeDays": 90,
         "lastAutomaticBackupAt": 0
     })
 }
@@ -2342,6 +2396,13 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
     if !matches!(location, "top" | "center" | "bottom") {
         return Err("App setting sidebarServicesLocation is invalid".into());
     }
+    let sidebar_width_mode = object
+        .get("sidebarWidthMode")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if !matches!(sidebar_width_mode, "pixels" | "percent") {
+        return Err("App setting sidebarWidthMode is invalid".into());
+    }
     let backup_schedule = object
         .get("automaticBackupSchedule")
         .and_then(Value::as_str)
@@ -2351,6 +2412,23 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         "off" | "startup" | "daily" | "weekly" | "monthly"
     ) {
         return Err("App setting automaticBackupSchedule is invalid".into());
+    }
+    let backup_retention_mode = object
+        .get("automaticBackupRetentionMode")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if !matches!(
+        backup_retention_mode,
+        "count" | "age" | "countAndAge" | "tiered"
+    ) {
+        return Err("App setting automaticBackupRetentionMode is invalid".into());
+    }
+    let backup_directory = object
+        .get("automaticBackupDirectory")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "App setting automaticBackupDirectory must be a string".to_string())?;
+    if backup_directory.len() > 4096 || backup_directory.chars().any(char::is_control) {
+        return Err("App setting automaticBackupDirectory is invalid".into());
     }
     if !object.get("accentColor").is_some_and(Value::is_string)
         || !object.get("userAgentPref").is_some_and(Value::is_string)
@@ -2377,6 +2455,7 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
     }
     for (key, min, max) in [
         ("sidebarWidth", 160.0, 420.0),
+        ("sidebarWidthPercent", 10.0, 40.0),
         ("iconSize", 12.0, 64.0),
         ("grayscaleDim", 0.0, 100.0),
         ("hibernationTimer", 0.0, 86_400.0),
@@ -2410,6 +2489,13 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         .ok_or_else(|| "App setting automaticBackupRetention must be an integer".to_string())?;
     if !(1..=365).contains(&backup_retention) {
         return Err("App setting automaticBackupRetention is outside its supported range".into());
+    }
+    let backup_max_age = object
+        .get("automaticBackupMaxAgeDays")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| "App setting automaticBackupMaxAgeDays must be an integer".to_string())?;
+    if !(1..=3650).contains(&backup_max_age) {
+        return Err("App setting automaticBackupMaxAgeDays is outside its supported range".into());
     }
     if !object
         .get("lastAutomaticBackupAt")
@@ -2471,10 +2557,21 @@ fn effective_app_settings_value(app: &AppHandle) -> Value {
     value
 }
 
+fn autostart_needs_update(current: bool, desired: bool) -> bool {
+    current != desired
+}
+
 fn apply_autostart_setting(app: &AppHandle, settings: &Value) -> Result<(), String> {
     let Some(enabled) = settings.get("autostart").and_then(Value::as_bool) else {
         return Ok(());
     };
+    let current = app
+        .autolaunch()
+        .is_enabled()
+        .map_err(|error| format!("Unable to inspect autostart state: {error}"))?;
+    if !autostart_needs_update(current, enabled) {
+        return Ok(());
+    }
     let result = if enabled {
         app.autolaunch().enable()
     } else {
@@ -2528,12 +2625,22 @@ fn persist_order_setting(
     ids: Vec<String>,
 ) -> Result<Value, String> {
     validate_order_ids(&ids, label)?;
+    let count = ids.len();
     let mut settings = read_app_settings_value(app);
     let object = settings
         .as_object_mut()
         .ok_or_else(|| "Internal app settings state is invalid".to_string())?;
     object.insert(key.to_string(), serde_json::json!(ids));
     persist_app_settings(app, state, &settings)?;
+    audit::best_effort(
+        app,
+        "info",
+        "settings",
+        "reorder",
+        "success",
+        format!("{label} order changed"),
+        serde_json::json!({ "setting": key, "count": count }),
+    );
     Ok(settings)
 }
 
@@ -2574,21 +2681,69 @@ fn set_app_settings(
 ) -> Result<Value, String> {
     let patch = patch
         .as_object()
-        .ok_or_else(|| "App settings patch must be a JSON object".to_string())?;
+        .ok_or_else(|| "App settings patch must be a JSON object".to_string())?
+        .clone();
+    let previous = read_app_settings_value(&app);
     let autostart_changed = patch.contains_key("autostart");
-    let mut value = read_app_settings_value(&app);
-    let base = value
-        .as_object_mut()
-        .ok_or_else(|| "Internal app settings state is invalid".to_string())?;
-    for (key, setting) in patch {
-        base.insert(key.clone(), setting.clone());
+    let operation = (|| -> Result<Value, String> {
+        let mut value = previous.clone();
+        let base = value
+            .as_object_mut()
+            .ok_or_else(|| "Internal app settings state is invalid".to_string())?;
+        for (key, setting) in &patch {
+            base.insert(key.clone(), setting.clone());
+        }
+        validate_app_settings_value(&value)?;
+        if autostart_changed {
+            apply_autostart_setting(&app, &value)?;
+        }
+        if let Err(error) = persist_app_settings(&app, &state, &value) {
+            if autostart_changed {
+                let _ = apply_autostart_setting(&app, &previous);
+            }
+            return Err(error);
+        }
+        Ok(value)
+    })();
+
+    match operation {
+        Ok(value) => {
+            let changes = patch
+                .iter()
+                .map(|(key, after)| {
+                    (
+                        key.clone(),
+                        serde_json::json!({
+                            "before": previous.get(key).cloned().unwrap_or(Value::Null),
+                            "after": after
+                        }),
+                    )
+                })
+                .collect::<serde_json::Map<_, _>>();
+            audit::best_effort(
+                &app,
+                "info",
+                "settings",
+                "change",
+                "success",
+                format!("Updated {} application setting(s)", patch.len()),
+                serde_json::json!({ "changes": changes }),
+            );
+            Ok(value)
+        }
+        Err(error) => {
+            audit::best_effort(
+                &app,
+                "error",
+                "settings",
+                "change",
+                "failure",
+                error.clone(),
+                serde_json::json!({ "keys": patch.keys().collect::<Vec<_>>() }),
+            );
+            Err(error)
+        }
     }
-    validate_app_settings_value(&value)?;
-    if autostart_changed {
-        apply_autostart_setting(&app, &value)?;
-    }
-    persist_app_settings(&app, &state, &value)?;
-    Ok(value)
 }
 
 #[tauri::command]
@@ -2597,20 +2752,56 @@ fn export_backup(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<backup::BackupSummary, String> {
-    let app_settings = effective_app_settings_value(&app);
-    let local_profile = serde_json::to_value(state.local_profile.lock().unwrap().clone())
-        .map_err(|error| format!("Unable to serialize local profile for backup: {error}"))?;
-    let custom_recipes = recipes::backup_custom_recipes(&app)?;
-    let document = backup::BackupDocument::new(
-        env!("CARGO_PKG_VERSION"),
-        app_settings,
-        local_profile,
-        custom_recipes,
-    );
-    backup::save(Path::new(&path), &document)
+    let operation = (|| -> Result<backup::BackupSummary, String> {
+        let app_settings = effective_app_settings_value(&app);
+        let local_profile = serde_json::to_value(state.local_profile.lock().unwrap().clone())
+            .map_err(|error| format!("Unable to serialize local profile for backup: {error}"))?;
+        let custom_recipes = recipes::backup_custom_recipes(&app)?;
+        let document = backup::BackupDocument::new(
+            env!("CARGO_PKG_VERSION"),
+            app_settings,
+            local_profile,
+            custom_recipes,
+        );
+        backup::save(Path::new(&path), &document)
+    })();
+    match operation {
+        Ok(summary) => {
+            audit::best_effort(
+                &app,
+                "info",
+                "backup",
+                "export",
+                "success",
+                "Manual backup exported and integrity verified",
+                serde_json::json!({ "path": path, "schema": summary.schema }),
+            );
+            Ok(summary)
+        }
+        Err(error) => {
+            audit::best_effort(
+                &app,
+                "error",
+                "backup",
+                "export",
+                "failure",
+                error.clone(),
+                serde_json::json!({ "path": path }),
+            );
+            Err(error)
+        }
+    }
 }
 
-fn automatic_backup_root(app: &AppHandle) -> Result<PathBuf, String> {
+fn automatic_backup_root(app: &AppHandle, settings: &Value) -> Result<PathBuf, String> {
+    let configured = settings
+        .get("automaticBackupDirectory")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default();
+    if !configured.is_empty() {
+        return Ok(PathBuf::from(configured));
+    }
     app.path()
         .app_config_dir()
         .map(|root| root.join("backups").join("automatic"))
@@ -2631,20 +2822,39 @@ fn validate_automatic_backup_filename(filename: &str) -> Result<(), String> {
     }
 }
 
-fn prune_automatic_backups(root: &Path, retention: usize) -> Result<(), String> {
-    let mut backups = std::fs::read_dir(root)
+fn prune_automatic_backups(
+    root: &Path,
+    mode: backup::RetentionMode,
+    retention: usize,
+    max_age_days: u64,
+) -> Result<usize, String> {
+    let candidates = std::fs::read_dir(root)
         .map_err(|error| format!("Unable to read automatic backup directory: {error}"))?
         .filter_map(Result::ok)
         .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
         .filter(|entry| {
-            entry.file_name().to_str().is_some_and(|name| {
-                name.starts_with("tauridium-auto-backup-") && name.ends_with(".json")
+            entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| validate_automatic_backup_filename(name).is_ok())
+        })
+        .filter_map(|entry| {
+            let modified = entry.metadata().ok()?.modified().ok()?;
+            Some(backup::RetentionCandidate {
+                path: entry.path(),
+                modified,
             })
         })
-        .map(|entry| entry.path())
         .collect::<Vec<_>>();
-    backups.sort_by(|left, right| right.file_name().cmp(&left.file_name()));
-    for path in backups.into_iter().skip(retention) {
+    let expired = backup::retention_paths_to_delete(
+        candidates,
+        mode,
+        retention,
+        max_age_days,
+        SystemTime::now(),
+    );
+    let count = expired.len();
+    for path in expired {
         std::fs::remove_file(&path).map_err(|error| {
             format!(
                 "Unable to remove expired automatic backup {}: {error}",
@@ -2652,7 +2862,7 @@ fn prune_automatic_backups(root: &Path, retention: usize) -> Result<(), String> 
             )
         })?;
     }
-    Ok(())
+    Ok(count)
 }
 
 #[tauri::command]
@@ -2661,29 +2871,103 @@ fn create_automatic_backup(
     state: State<'_, AppState>,
     filename: String,
 ) -> Result<backup::BackupSummary, String> {
-    validate_automatic_backup_filename(&filename)?;
-    let app_settings = effective_app_settings_value(&app);
-    let retention = app_settings
-        .get("automaticBackupRetention")
-        .and_then(Value::as_u64)
-        .unwrap_or(10)
-        .clamp(1, 365) as usize;
-    let root = automatic_backup_root(&app)?;
-    std::fs::create_dir_all(&root)
-        .map_err(|error| format!("Unable to create automatic backup directory: {error}"))?;
-    let path = root.join(filename);
-    let local_profile = serde_json::to_value(state.local_profile.lock().unwrap().clone())
-        .map_err(|error| format!("Unable to serialize local profile for backup: {error}"))?;
-    let custom_recipes = recipes::backup_custom_recipes(&app)?;
-    let document = backup::BackupDocument::new(
-        env!("CARGO_PKG_VERSION"),
-        app_settings,
-        local_profile,
-        custom_recipes,
-    );
-    let summary = backup::save(&path, &document)?;
-    prune_automatic_backups(&root, retention)?;
-    Ok(summary)
+    let operation = (|| -> Result<backup::BackupSummary, String> {
+        validate_automatic_backup_filename(&filename)?;
+        let app_settings = effective_app_settings_value(&app);
+        let retention = app_settings
+            .get("automaticBackupRetention")
+            .and_then(Value::as_u64)
+            .unwrap_or(10)
+            .clamp(1, 365) as usize;
+        let max_age_days = app_settings
+            .get("automaticBackupMaxAgeDays")
+            .and_then(Value::as_u64)
+            .unwrap_or(90)
+            .clamp(1, 3650);
+        let retention_mode = backup::RetentionMode::parse(
+            app_settings
+                .get("automaticBackupRetentionMode")
+                .and_then(Value::as_str)
+                .unwrap_or("count"),
+        )?;
+        let root = automatic_backup_root(&app, &app_settings)?;
+        std::fs::create_dir_all(&root)
+            .map_err(|error| format!("Unable to create automatic backup directory: {error}"))?;
+        let path = root.join(&filename);
+        let local_profile = serde_json::to_value(state.local_profile.lock().unwrap().clone())
+            .map_err(|error| format!("Unable to serialize local profile for backup: {error}"))?;
+        let custom_recipes = recipes::backup_custom_recipes(&app)?;
+        let document = backup::BackupDocument::new(
+            env!("CARGO_PKG_VERSION"),
+            app_settings,
+            local_profile,
+            custom_recipes,
+        );
+        let mut summary = backup::save(&path, &document)?;
+        match prune_automatic_backups(&root, retention_mode, retention, max_age_days) {
+            Ok(removed) => {
+                audit::best_effort(
+                    &app,
+                    "info",
+                    "backup",
+                    "retention",
+                    "success",
+                    format!("Automatic backup retention removed {removed} expired backup(s)"),
+                    serde_json::json!({ "mode": format!("{retention_mode:?}"), "removed": removed }),
+                );
+            }
+            Err(error) => {
+                let warning = format!(
+                    "Backup was created and verified, but retention cleanup failed: {error}"
+                );
+                audit::best_effort(
+                    &app,
+                    "warning",
+                    "backup",
+                    "retention",
+                    "warning",
+                    warning.clone(),
+                    serde_json::json!({ "directory": root }),
+                );
+                summary = summary.with_warning(warning);
+            }
+        }
+        Ok(summary)
+    })();
+    match operation {
+        Ok(summary) => {
+            audit::best_effort(
+                &app,
+                if summary.warnings.is_empty() {
+                    "info"
+                } else {
+                    "warning"
+                },
+                "backup",
+                "automatic",
+                if summary.warnings.is_empty() {
+                    "success"
+                } else {
+                    "warning"
+                },
+                "Automatic backup created and integrity verified",
+                serde_json::json!({ "path": &summary.path, "warnings": &summary.warnings }),
+            );
+            Ok(summary)
+        }
+        Err(error) => {
+            audit::best_effort(
+                &app,
+                "error",
+                "backup",
+                "automatic",
+                "failure",
+                error.clone(),
+                serde_json::json!({ "filename": filename }),
+            );
+            Err(error)
+        }
+    }
 }
 
 fn restore_recovery_backup_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -2700,27 +2984,25 @@ fn restore_recovery_backup_path(app: &AppHandle) -> Result<PathBuf, String> {
         .join(format!("pre-restore-{stamp}.json")))
 }
 
-#[tauri::command]
-fn restore_backup(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    path: String,
+fn perform_restore_backup(
+    app: &AppHandle,
+    state: &AppState,
+    path: &Path,
 ) -> Result<backup::BackupSummary, String> {
-    let document = backup::load(Path::new(&path))?;
+    let document = backup::load(path)?;
 
-    // Phase 1: validate and prepare the complete restore without changing persistent state.
+    // Phase 1: validate and prepare every owned component before the first mutation.
     let app_settings = merge_app_settings_value(&document.app_settings())?;
     let local_profile = LocalProfile::from_value(document.local_profile())?;
     recipes::validate_custom_recipe_backups(document.custom_recipes())?;
-    let previous_settings = effective_app_settings_value(&app);
+    let previous_settings = effective_app_settings_value(app);
     let previous_profile = state.local_profile.lock().unwrap().clone();
-    let previous_recipes = recipes::backup_custom_recipes(&app)?;
+    let previous_recipes = recipes::backup_custom_recipes(app)?;
     let restored_recipes =
         recipes::merge_custom_recipe_backups(&previous_recipes, document.custom_recipes())?;
 
-    // Always create a validated recovery snapshot before the first persistent mutation. If this
-    // cannot be written, abort the restore without changing any Tauridium state.
-    let recovery_path = restore_recovery_backup_path(&app)?;
+    // Create and verify the pre-restore recovery point before any persistent mutation.
+    let recovery_path = restore_recovery_backup_path(app)?;
     let previous_profile_value = serde_json::to_value(previous_profile.clone())
         .map_err(|error| format!("Unable to serialize pre-restore local profile: {error}"))?;
     let recovery_document = backup::BackupDocument::new(
@@ -2732,28 +3014,25 @@ fn restore_backup(
     backup::save(&recovery_path, &recovery_document)
         .map_err(|error| format!("Unable to create pre-restore safety backup: {error}"))?;
 
-    // Phase 2: commit. Each component is atomic on its own; if any later component fails,
-    // restore every prior component from the snapshot above so a backup restore is all-or-nothing.
+    // Phase 2: commit Tauridium-owned files. Autostart is an external OS integration and is
+    // deliberately applied only after this transaction succeeds, so a missing Windows startup
+    // entry can never roll back otherwise-valid backup data.
     let commit = (|| -> Result<(), String> {
-        recipes::replace_custom_recipes_exact(&app, &restored_recipes)?;
-        save_local_profile(&app, &local_profile)?;
-        apply_autostart_setting(&app, &app_settings)?;
-        persist_app_settings(&app, &state, &app_settings)?;
+        recipes::replace_custom_recipes_exact(app, &restored_recipes)?;
+        save_local_profile(app, &local_profile)?;
+        persist_app_settings(app, state, &app_settings)?;
         Ok(())
     })();
 
     if let Err(error) = commit {
         let mut rollback_errors = Vec::new();
-        if let Err(rollback) = recipes::replace_custom_recipes_exact(&app, &previous_recipes) {
+        if let Err(rollback) = recipes::replace_custom_recipes_exact(app, &previous_recipes) {
             rollback_errors.push(format!("recipes: {rollback}"));
         }
-        if let Err(rollback) = save_local_profile(&app, &previous_profile) {
+        if let Err(rollback) = save_local_profile(app, &previous_profile) {
             rollback_errors.push(format!("local profile: {rollback}"));
         }
-        if let Err(rollback) = apply_autostart_setting(&app, &previous_settings) {
-            rollback_errors.push(format!("autostart: {rollback}"));
-        }
-        if let Err(rollback) = persist_app_settings(&app, &state, &previous_settings) {
+        if let Err(rollback) = persist_app_settings(app, state, &previous_settings) {
             rollback_errors.push(format!("app settings: {rollback}"));
         }
         *state.local_profile.lock().unwrap() = previous_profile;
@@ -2769,9 +3048,141 @@ fn restore_backup(
     }
 
     *state.local_profile.lock().unwrap() = local_profile;
-    Ok(document
-        .summary(Path::new(&path))
-        .with_recovery_backup_path(&recovery_path))
+    let mut summary = document
+        .summary(path)
+        .with_recovery_backup_path(&recovery_path);
+    if let Err(error) = apply_autostart_setting(app, &app_settings) {
+        summary = summary.with_warning(format!(
+            "Backup data restored successfully, but the operating-system autostart integration could not be synchronized: {error}"
+        ));
+    }
+    Ok(summary)
+}
+
+#[tauri::command]
+fn restore_backup(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<backup::BackupSummary, String> {
+    let operation = perform_restore_backup(&app, &state, Path::new(&path));
+    match operation {
+        Ok(summary) => {
+            audit::best_effort(
+                &app,
+                if summary.warnings.is_empty() {
+                    "info"
+                } else {
+                    "warning"
+                },
+                "backup",
+                "restore",
+                if summary.warnings.is_empty() {
+                    "success"
+                } else {
+                    "warning"
+                },
+                "Backup restore completed",
+                serde_json::json!({
+                    "path": path,
+                    "recoveryBackupPath": &summary.recovery_backup_path,
+                    "warnings": &summary.warnings
+                }),
+            );
+            Ok(summary)
+        }
+        Err(error) => {
+            audit::best_effort(
+                &app,
+                "error",
+                "backup",
+                "restore",
+                "failure",
+                error.clone(),
+                serde_json::json!({ "path": path }),
+            );
+            Err(error)
+        }
+    }
+}
+
+#[tauri::command]
+fn export_portable_bundle(
+    app: AppHandle,
+    path: String,
+    kind: String,
+    payload: portable::PortablePayload,
+) -> Result<portable::PortableSummary, String> {
+    let operation = (|| -> Result<portable::PortableSummary, String> {
+        let custom_recipes = recipes::backup_custom_recipes(&app)?;
+        portable::save(
+            Path::new(&path),
+            env!("CARGO_PKG_VERSION"),
+            &kind,
+            payload,
+            &custom_recipes,
+        )
+    })();
+    match operation {
+        Ok(summary) => {
+            audit::best_effort(
+                &app,
+                "info",
+                "export",
+                "portable",
+                "success",
+                format!("Exported portable Tauridium {} bundle", summary.kind),
+                serde_json::json!({ "path": path, "kind": &summary.kind }),
+            );
+            Ok(summary)
+        }
+        Err(error) => {
+            audit::best_effort(
+                &app,
+                "error",
+                "export",
+                "portable",
+                "failure",
+                error.clone(),
+                serde_json::json!({ "path": path, "kind": kind }),
+            );
+            Err(error)
+        }
+    }
+}
+
+#[tauri::command]
+fn get_audit_log(app: AppHandle, limit: Option<usize>) -> Result<Vec<audit::AuditEntry>, String> {
+    audit::read(&app, limit.unwrap_or(500).clamp(1, 10_000))
+}
+
+#[tauri::command]
+fn export_audit_log(app: AppHandle, path: String) -> Result<usize, String> {
+    let count = audit::export(&app, Path::new(&path))?;
+    audit::best_effort(
+        &app,
+        "info",
+        "audit",
+        "export",
+        "success",
+        format!("Exported {count} audit event(s)"),
+        serde_json::json!({ "path": path, "count": count }),
+    );
+    Ok(count)
+}
+
+#[tauri::command]
+fn clear_audit_log(app: AppHandle) -> Result<(), String> {
+    audit::clear(&app)?;
+    audit::record(
+        &app,
+        "warning",
+        "audit",
+        "clear",
+        "success",
+        "Audit history was cleared by the user",
+        serde_json::json!({}),
+    )
 }
 
 fn persisted_window_state_flags() -> StateFlags {
@@ -2941,7 +3352,7 @@ fn main() {
                     .get("sidebarWidth")
                     .and_then(Value::as_f64)
                     .unwrap_or(SIDEBAR_W)
-                    .clamp(160.0, 420.0); // Prevent corrupted settings from hiding the service.
+                    .clamp(160.0, MAX_SIDEBAR_W); // Prevent corrupted settings from hiding the service.
                 *st.sidebar_w.lock().unwrap() = w;
             }
 
@@ -3102,6 +3513,10 @@ fn main() {
             export_backup,
             create_automatic_backup,
             restore_backup,
+            export_portable_bundle,
+            get_audit_log,
+            export_audit_log,
+            clear_audit_log,
             open_external_url,
             reload_active_service_command,
             reload_app_command,
@@ -3165,6 +3580,34 @@ mod tests {
         assert!(validate_app_settings_value(&settings).is_err());
         settings["automaticBackupRetention"] = json!(365);
         assert!(validate_app_settings_value(&settings).is_ok());
+    }
+
+    #[test]
+    fn autostart_application_is_idempotent_when_os_state_already_matches() {
+        assert!(!autostart_needs_update(false, false));
+        assert!(!autostart_needs_update(true, true));
+        assert!(autostart_needs_update(false, true));
+        assert!(autostart_needs_update(true, false));
+    }
+
+    #[test]
+    fn feature_0404_settings_validate_backup_retention_and_relative_sidebar_width() {
+        let mut settings = default_app_settings_value();
+        settings["sidebarWidthMode"] = json!("percent");
+        settings["sidebarWidthPercent"] = json!(28);
+        settings["automaticBackupDirectory"] = json!(r"C:\Backups\Tauridium");
+        settings["automaticBackupRetentionMode"] = json!("tiered");
+        settings["automaticBackupMaxAgeDays"] = json!(3650);
+        assert!(validate_app_settings_value(&settings).is_ok());
+
+        settings["sidebarWidthPercent"] = json!(50);
+        assert!(validate_app_settings_value(&settings).is_err());
+        settings["sidebarWidthPercent"] = json!(20);
+        settings["automaticBackupRetentionMode"] = json!("unknown");
+        assert!(validate_app_settings_value(&settings).is_err());
+        settings["automaticBackupRetentionMode"] = json!("age");
+        settings["automaticBackupMaxAgeDays"] = json!(0);
+        assert!(validate_app_settings_value(&settings).is_err());
     }
 
     #[test]

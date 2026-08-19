@@ -65,12 +65,12 @@ class BackupWorkflowTests(unittest.TestCase):
     self.assertNotIn('join("session.json")', self.backup)
 
   def test_restore_validates_every_component_before_first_commit(self) -> None:
-    body = self.main.split("fn restore_backup", 1)[1].split("fn persisted_window_state_flags", 1)[0]
+    body = self.main.split("fn perform_restore_backup", 1)[1].split("#[tauri::command]\nfn restore_backup", 1)[0]
     validate_settings = body.index("merge_app_settings_value")
     validate_profile = body.index("LocalProfile::from_value")
     validate_recipes = body.index("validate_custom_recipe_backups")
     recovery_snapshot = body.index("Unable to create pre-restore safety backup")
-    first_commit = body.index("replace_custom_recipes_exact(&app, &restored_recipes)")
+    first_commit = body.index("replace_custom_recipes_exact(app, &restored_recipes)")
     self.assertLess(validate_settings, recovery_snapshot)
     self.assertLess(validate_profile, recovery_snapshot)
     self.assertLess(validate_recipes, recovery_snapshot)
@@ -80,7 +80,7 @@ class BackupWorkflowTests(unittest.TestCase):
     self.assertIn("prepared_backup_recipes", self.recipes)
 
   def test_restore_creates_recovery_snapshot_before_mutation(self) -> None:
-    body = self.main.split("fn restore_backup", 1)[1].split("fn persisted_window_state_flags", 1)[0]
+    body = self.main.split("fn perform_restore_backup", 1)[1].split("#[tauri::command]\nfn restore_backup", 1)[0]
     self.assertIn('join("backups")', self.main)
     self.assertIn('format!("pre-restore-{stamp}.json")', self.main)
     self.assertIn("previous_settings.clone()", body)
@@ -92,19 +92,23 @@ class BackupWorkflowTests(unittest.TestCase):
     self.assertIn("Recovery snapshot:", self.app)
 
   def test_restore_is_transactional_and_rolls_back_every_owned_component(self) -> None:
-    body = self.main.split("fn restore_backup", 1)[1].split("fn persisted_window_state_flags", 1)[0]
+    body = self.main.split("fn perform_restore_backup", 1)[1].split("#[tauri::command]\nfn restore_backup", 1)[0]
     for marker in (
       "previous_settings",
       "previous_profile",
       "previous_recipes",
-      "replace_custom_recipes_exact(&app, &previous_recipes)",
-      "save_local_profile(&app, &previous_profile)",
-      "apply_autostart_setting(&app, &previous_settings)",
-      "persist_app_settings(&app, &state, &previous_settings)",
+      "replace_custom_recipes_exact(app, &previous_recipes)",
+      "save_local_profile(app, &previous_profile)",
+      "persist_app_settings(app, state, &previous_settings)",
       "Backup restore failed and the previous Tauridium state was restored",
       "Rollback also reported",
     ):
       self.assertIn(marker, body)
+    commit_end = body.index("*state.local_profile.lock().unwrap() = local_profile")
+    autostart_apply = body.index("apply_autostart_setting(app, &app_settings)")
+    self.assertLess(commit_end, autostart_apply)
+    rollback = body.split("if let Err(error) = commit", 1)[1].split("*state.local_profile.lock().unwrap() = local_profile", 1)[0]
+    self.assertNotIn("apply_autostart_setting", rollback)
 
   def test_recipe_restore_is_staged_and_non_destructive_for_unrelated_recipes(self) -> None:
     for marker in (

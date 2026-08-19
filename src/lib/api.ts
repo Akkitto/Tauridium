@@ -255,6 +255,8 @@ export interface AppSettings {
   showMessageBadgeWhenMuted: boolean;
   userAgentPref: string;
   sidebarWidth: number;
+  sidebarWidthMode: "pixels" | "percent";
+  sidebarWidthPercent: number;
   customSidebarWidths: number[];
   iconSize: number;
   grayscaleServices: boolean;
@@ -268,7 +270,10 @@ export interface AppSettings {
   sandboxes: SandboxDefinition[];
   serviceSandboxes: Record<string, string>;
   automaticBackupSchedule: "off" | "startup" | "daily" | "weekly" | "monthly";
+  automaticBackupDirectory: string;
+  automaticBackupRetentionMode: "count" | "age" | "countAndAge" | "tiered";
   automaticBackupRetention: number;
+  automaticBackupMaxAgeDays: number;
   lastAutomaticBackupAt: number;
   [k: string]: unknown;
 }
@@ -319,6 +324,7 @@ export interface BackupSummary {
   serviceCount: number;
   workspaceCount: number;
   recoveryBackupPath?: string;
+  warnings?: string[];
 }
 
 export function exportBackup(path: string): Promise<BackupSummary> {
@@ -333,3 +339,49 @@ export function createAutomaticBackup(filename: string): Promise<BackupSummary> 
   return invoke("create_automatic_backup", { filename });
 }
 
+export interface PortablePayload {
+  services: Service[];
+  workspaces: Workspace[];
+  sandboxes: SandboxDefinition[];
+  serviceSandboxes: Record<string, string>;
+}
+
+export interface PortableSummary {
+  path: string;
+  kind: "sandbox" | "sandboxes" | "workspace" | "workspaces";
+  serviceCount: number;
+  workspaceCount: number;
+  sandboxCount: number;
+  customRecipeCount: number;
+  integrityVerified: boolean;
+}
+
+export function exportPortableBundle(
+  path: string,
+  kind: PortableSummary["kind"],
+  payload: PortablePayload,
+): Promise<PortableSummary> {
+  return invoke("export_portable_bundle", { path, kind, payload });
+}
+
+export interface AuditEntry {
+  timestampUnixMs: number;
+  level: "info" | "warning" | "error" | string;
+  category: string;
+  action: string;
+  outcome: string;
+  message: string;
+  details: unknown;
+}
+
+export function getAuditLog(limit = 500): Promise<AuditEntry[]> {
+  return invoke("get_audit_log", { limit });
+}
+
+export function exportAuditLog(path: string): Promise<number> {
+  return invoke("export_audit_log", { path });
+}
+
+export function clearAuditLog(): Promise<void> {
+  return invoke("clear_audit_log");
+}

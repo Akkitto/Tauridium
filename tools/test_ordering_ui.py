@@ -100,13 +100,15 @@ class OrderingAndSidebarTests(unittest.TestCase):
     self.assertIn("overscroll-behavior: contain", css)
     self.assertIn("scrollbar-gutter: stable", css)
 
-  def test_workspace_and_settings_tabs_use_compact_modern_scrollable_layouts(self) -> None:
+  def test_workspace_tabs_scroll_but_settings_tabs_wrap_without_horizontal_scroll(self) -> None:
     self.assertIn("overflow-x: auto", self.app.split(".wspills {", 1)[1].split(".pill {", 1)[0])
     self.assertIn("flex-wrap: nowrap", self.app.split(".wspills {", 1)[1].split(".pill {", 1)[0])
     settings_css = self.app.split(".settings-tabs {", 1)[1].split(".settings-tab {", 1)[0]
     self.assertIn("border-radius", settings_css)
     self.assertIn("background", settings_css)
-    self.assertIn("overflow-x", settings_css)
+    self.assertIn("flex-wrap: wrap", settings_css)
+    self.assertIn("overflow: visible", settings_css)
+    self.assertNotIn("overflow-x: auto", settings_css)
 
   def test_native_tauridium_menu_owns_settings_and_add_service(self) -> None:
     builder = self.main.split("fn build_native_application_menu", 1)[1].split("#[derive(Clone, Copy)]", 1)[0]

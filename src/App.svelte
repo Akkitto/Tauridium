@@ -69,6 +69,10 @@
     exportBackup,
     restoreBackup,
     createAutomaticBackup,
+    exportPortableBundle,
+    getAuditLog,
+    exportAuditLog,
+    clearAuditLog,
     openExternalUrl,
     reloadActiveService,
     reloadTauridium,
@@ -83,6 +87,8 @@
     type AppSettings,
     type BackupSummary,
     type SandboxDefinition,
+    type PortablePayload,
+    type AuditEntry,
   } from "./lib/api";
 
   let server = $state(DEFAULT_SERVER);
@@ -127,13 +133,14 @@
   let serviceSettingsReturnToSettings = $state(false);
   let newWorkspaceName = $state("");
 
-  type Tab = "general" | "services" | "appearance" | "keybindings" | "sandbox" | "privacy" | "backup" | "advanced" | "updates" | "about";
+  type Tab = "general" | "services" | "appearance" | "keybindings" | "sandbox" | "privacy" | "backup" | "audit" | "advanced" | "updates" | "about";
   let settingsTab = $state<Tab>("general");
 
   let managedServiceQuery = $state("");
   let managedWorkspaceFilter = $state("all");
   let managedServicePage = $state(0);
   const MANAGED_SERVICE_PAGE_SIZE = 100;
+  const MAX_SIDEBAR_WIDTH_PX = 1200;
 
   let customColorOpen = $state(false);
   let customColorOriginal = $state("#ffc131");
@@ -167,7 +174,14 @@
   let backupStatus = $state("");
   let automaticBackupTimer: ReturnType<typeof setInterval> | null = null;
   let automaticBackupStartupHandled = false;
-  let automaticBackupRunning = false;
+  let automaticBackupRunning = $state(false);
+  let portableExportStatus = $state("");
+  let auditEntries = $state<AuditEntry[]>([]);
+  let auditQuery = $state("");
+  let auditLevel = $state("all");
+  let auditBusy = $state(false);
+  let auditStatus = $state("");
+  let sidebarResizeFrame: number | null = null;
 
   let appSettings = $state<AppSettings>({
     autostart: false,
@@ -182,6 +196,8 @@
     showMessageBadgeWhenMuted: true,
     userAgentPref: "",
     sidebarWidth: 240,
+    sidebarWidthMode: "pixels",
+    sidebarWidthPercent: 20,
     customSidebarWidths: [],
     iconSize: 24,
     grayscaleServices: false,
@@ -195,7 +211,10 @@
     sandboxes: [],
     serviceSandboxes: {},
     automaticBackupSchedule: "off",
+    automaticBackupDirectory: "",
+    automaticBackupRetentionMode: "count",
     automaticBackupRetention: 10,
+    automaticBackupMaxAgeDays: 90,
     lastAutomaticBackupAt: 0,
   });
 
@@ -295,6 +314,17 @@
   const sandboxServiceRows = $derived(
     paged(sandboxServices, sandboxServicePage, MANAGED_SERVICE_PAGE_SIZE),
   );
+  const filteredAuditEntries = $derived.by(() => {
+    const query = auditQuery.trim().toLowerCase();
+    return auditEntries.filter((entry) => {
+      if (auditLevel !== "all" && entry.level !== auditLevel) return false;
+      if (!query) return true;
+      const details = JSON.stringify(entry.details ?? {});
+      return `${entry.level} ${entry.category} ${entry.action} ${entry.outcome} ${entry.message} ${details}`
+        .toLowerCase()
+        .includes(query);
+    });
+  });
 
   const darkMq =
     typeof window !== "undefined"
@@ -321,7 +351,9 @@
   onDestroy(() => {
     if (automaticBackupTimer) clearInterval(automaticBackupTimer);
     if (recordingTimer) clearTimeout(recordingTimer);
+    if (sidebarResizeFrame !== null) cancelAnimationFrame(sidebarResizeFrame);
     window.removeEventListener("keydown", handleGlobalKeydown, true);
+    window.removeEventListener("resize", handleWindowResize);
   });
 
   onMount(async () => {
@@ -350,6 +382,7 @@
     listen("open-about", openAbout);
     listen<string>("shortcut-action", (event) => executeShortcutAction(event.payload as KeybindingAction));
     window.addEventListener("keydown", handleGlobalKeydown, true);
+    window.addEventListener("resize", handleWindowResize);
     try {
       appSettings = await getAppSettings();
       // Snap iconSize to a valid level for compatibility with older arbitrary values.
@@ -359,7 +392,7 @@
         setAppSettings({ iconSize: snapped }).catch(() => {});
       }
       applyTheme();
-      applyLayout();
+      syncSidebarWidth();
     } catch {
       /* defaults */
     }
@@ -389,16 +422,37 @@
     document.body.style.setProperty("--accent-fg", accentFg(appSettings.accentColor));
   }
 
-  // Sidebar customization: width, icon size, grayscale/dimming, and position.
+  function effectiveSidebarWidthPx(): number {
+    if (appSettings.sidebarWidthMode !== "percent") return appSettings.sidebarWidth;
+    const preferred = window.innerWidth * (appSettings.sidebarWidthPercent / 100);
+    // Preserve a useful service viewport and the same backend width ceiling on every display.
+    const availableMax = Math.max(160, Math.min(MAX_SIDEBAR_WIDTH_PX, window.innerWidth - 360));
+    return Math.max(160, Math.min(availableMax, preferred));
+  }
+
+  // Sidebar customization: width, icon size, grayscale/dimming, and alignment.
   function applyLayout() {
     const b = document.body;
-    b.style.setProperty("--sidebar-w", `${appSettings.sidebarWidth}px`);
+    b.style.setProperty("--sidebar-w", `${effectiveSidebarWidthPx()}px`);
     b.style.setProperty("--icon-size", `${appSettings.iconSize}px`);
     b.classList.toggle("grayscale", !!appSettings.grayscaleServices);
     // dim 0..100 controls grayscale icon opacity (100 = heavily faded).
     const op = Math.max(0.2, 1 - (appSettings.grayscaleDim ?? 50) / 130);
     b.style.setProperty("--gray-op", String(op));
     b.dataset.svcloc = appSettings.sidebarServicesLocation ?? "top";
+  }
+
+  function syncSidebarWidth() {
+    applyLayout();
+    setSidebarWidth(effectiveSidebarWidthPx()).catch(() => {});
+  }
+
+  function handleWindowResize() {
+    if (appSettings.sidebarWidthMode !== "percent" || sidebarResizeFrame !== null) return;
+    sidebarResizeFrame = requestAnimationFrame(() => {
+      sidebarResizeFrame = null;
+      syncSidebarWidth();
+    });
   }
 
   function serviceSandboxId(serviceId: string): string | null {
@@ -1164,7 +1218,153 @@
         ? `migrated from legacy schema ${summary.sourceSchema}`
         : "legacy integrity metadata unavailable";
     const recovery = summary.recoveryBackupPath ? ` Recovery snapshot: ${summary.recoveryBackupPath}` : "";
-    return `${action}: schema ${summary.schema}, ${integrity}; ${summary.customRecipeCount} custom recipes, ${summary.serviceCount} local services, ${summary.workspaceCount} local workspaces.${recovery}`;
+    const warnings = summary.warnings?.length ? ` Warning: ${summary.warnings.join(" ")}` : "";
+    return `${action}: schema ${summary.schema}, ${integrity}; ${summary.customRecipeCount} custom recipes, ${summary.serviceCount} local services, ${summary.workspaceCount} local workspaces.${recovery}${warnings}`;
+  }
+
+  async function chooseAutomaticBackupDirectory() {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: "Choose automatic backup folder",
+        defaultPath: appSettings.automaticBackupDirectory || undefined,
+      });
+      const path = Array.isArray(selected) ? selected[0] : selected;
+      if (path) await saveAppSetting("automaticBackupDirectory", path);
+    } catch (err) {
+      error = `Unable to choose automatic backup folder: ${err}`;
+    }
+  }
+
+  async function useDefaultAutomaticBackupDirectory() {
+    await saveAppSetting("automaticBackupDirectory", "");
+  }
+
+  function portableSlug(value: string): string {
+    return value
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "export";
+  }
+
+  function portablePayloadForServices(
+    selectedServices: Service[],
+    selectedWorkspaces: Workspace[],
+    selectedSandboxes?: SandboxDefinition[],
+  ): PortablePayload {
+    const serviceIds = new Set(selectedServices.map((service) => service.id));
+    const assignments = Object.fromEntries(
+      Object.entries(appSettings.serviceSandboxes).filter(([serviceId]) => serviceIds.has(serviceId)),
+    );
+    const sandboxIds = new Set(Object.values(assignments));
+    const sandboxes = selectedSandboxes ?? appSettings.sandboxes.filter((sandbox) => sandboxIds.has(sandbox.id));
+    return {
+      services: selectedServices,
+      workspaces: selectedWorkspaces,
+      sandboxes,
+      serviceSandboxes: assignments,
+    };
+  }
+
+  function sandboxPortablePayload(sandboxId?: string): PortablePayload {
+    const sandboxes = sandboxId
+      ? appSettings.sandboxes.filter((sandbox) => sandbox.id === sandboxId)
+      : [...appSettings.sandboxes];
+    const sandboxIds = new Set(sandboxes.map((sandbox) => sandbox.id));
+    const selectedServices = sorted.filter((service) => sandboxIds.has(serviceSandboxId(service.id) ?? ""));
+    const serviceIds = new Set(selectedServices.map((service) => service.id));
+    const selectedWorkspaces = sortedWorkspaces
+      .filter((workspace) => workspace.services.some((serviceId) => serviceIds.has(serviceId)))
+      .map((workspace) => ({
+        ...workspace,
+        services: workspace.services.filter((serviceId) => serviceIds.has(serviceId)),
+      }));
+    return portablePayloadForServices(selectedServices, selectedWorkspaces, sandboxes);
+  }
+
+  function workspacePortablePayload(workspaceId?: string): PortablePayload {
+    const selectedWorkspaces = workspaceId
+      ? sortedWorkspaces.filter((workspace) => workspace.id === workspaceId)
+      : [...sortedWorkspaces];
+    const serviceIds = new Set(selectedWorkspaces.flatMap((workspace) => workspace.services));
+    const selectedServices = sorted.filter((service) => serviceIds.has(service.id));
+    return portablePayloadForServices(selectedServices, selectedWorkspaces);
+  }
+
+  async function doPortableExport(
+    kind: "sandbox" | "sandboxes" | "workspace" | "workspaces",
+    label: string,
+    payload: PortablePayload,
+  ) {
+    portableExportStatus = "";
+    error = null;
+    try {
+      const path = await saveDialog({
+        title: `Export Tauridium ${label}`,
+        defaultPath: `tauridium-${portableSlug(label)}-${backupTimestamp()}.json`,
+        filters: [{ name: "Tauridium portable export", extensions: ["json"] }],
+      });
+      if (!path) return;
+      const summary = await exportPortableBundle(path, kind, payload);
+      portableExportStatus = `Exported ${summary.serviceCount} service(s), ${summary.workspaceCount} workspace(s), ${summary.sandboxCount} sandbox(es), and ${summary.customRecipeCount} referenced custom recipe(s); integrity verified.`;
+    } catch (err) {
+      error = `Portable export failed: ${err}`;
+    }
+  }
+
+  async function refreshAuditLog() {
+    auditBusy = true;
+    auditStatus = "";
+    try {
+      auditEntries = await getAuditLog(5000);
+      auditStatus = `${auditEntries.length} most recent audit event(s) loaded.`;
+    } catch (err) {
+      auditStatus = `Unable to load audit log: ${err}`;
+    } finally {
+      auditBusy = false;
+    }
+  }
+
+  async function doExportAuditLog() {
+    try {
+      const path = await saveDialog({
+        title: "Export Tauridium audit log",
+        defaultPath: `tauridium-audit-${backupTimestamp()}.jsonl`,
+        filters: [{ name: "JSON Lines", extensions: ["jsonl"] }],
+      });
+      if (!path) return;
+      const count = await exportAuditLog(path);
+      auditStatus = `Exported ${count} audit event(s).`;
+      await refreshAuditLog();
+    } catch (err) {
+      auditStatus = `Audit export failed: ${err}`;
+    }
+  }
+
+  async function doClearAuditLog() {
+    const confirmed = await confirmAsk(
+      "Clear the local Tauridium audit history? A new audit event recording this clear action will remain.",
+    );
+    if (!confirmed) return;
+    try {
+      await clearAuditLog();
+      await refreshAuditLog();
+    } catch (err) {
+      auditStatus = `Unable to clear audit log: ${err}`;
+    }
+  }
+
+  function selectSettingsTab(id: string) {
+    if (id === "about") {
+      openAbout();
+      return;
+    }
+    settingsTab = id as Tab;
+    if (settingsTab === "audit") void refreshAuditLog();
   }
 
   async function doExportBackup() {
@@ -1183,6 +1383,24 @@
     } catch (err) {
       error = `Backup export failed: ${err}`;
     } finally {
+      backupBusy = false;
+    }
+  }
+
+  async function runAutomaticBackupNow() {
+    if (automaticBackupRunning || backupBusy) return;
+    automaticBackupRunning = true;
+    backupBusy = true;
+    backupStatus = "";
+    try {
+      const now = Date.now();
+      const summary = await createAutomaticBackup(automaticBackupFileName());
+      appSettings = await setAppSettings({ lastAutomaticBackupAt: now });
+      backupStatus = backupSummaryText("Automatic backup created", summary);
+    } catch (err) {
+      backupStatus = `Automatic backup failed: ${err}`;
+    } finally {
+      automaticBackupRunning = false;
       backupBusy = false;
     }
   }
@@ -1244,7 +1462,9 @@
     (appSettings as Record<string, unknown>)[key] = value;
     if (key === "theme" || key === "accentColor") applyTheme();
     applyLayout();
-    if (key === "sidebarWidth") setSidebarWidth(value as number).catch(() => {});
+    if (key === "sidebarWidth" || key === "sidebarWidthMode" || key === "sidebarWidthPercent") {
+      syncSidebarWidth();
+    }
     try {
       appSettings = await setAppSettings({
         [key]: value,
@@ -1937,7 +2157,9 @@
           <div class="searchrow">
             <input bind:value={newWorkspaceName} placeholder="New workspace name" />
             <button class="primary" onclick={handleCreateWorkspace}>Create</button>
+            <button class="secondary" disabled={!sortedWorkspaces.length} onclick={() => doPortableExport("workspaces", "all workspaces", workspacePortablePayload())}>Export all…</button>
           </div>
+          {#if portableExportStatus}<p class="sub">{portableExportStatus}</p>{/if}
           {#if error}<p class="error">{error}</p>{/if}
 
           {#each sortedWorkspaces as ws, workspaceIndex (ws.id)}
@@ -1951,6 +2173,7 @@
                 <div class="workspace-actions">
                   <button class="icon-button compact" disabled={workspaceIndex === 0} aria-label={`Move ${ws.name} up`} title="Move up" onclick={() => moveWorkspace(ws.id, -1)}>↑</button>
                   <button class="icon-button compact" disabled={workspaceIndex === sortedWorkspaces.length - 1} aria-label={`Move ${ws.name} down`} title="Move down" onclick={() => moveWorkspace(ws.id, 1)}>↓</button>
+                  <button class="secondary sm" onclick={() => doPortableExport("workspace", `workspace ${ws.name}`, workspacePortablePayload(ws.id))}>Export…</button>
                   <button class="link danger-link" onclick={() => handleDeleteWorkspace(ws)}>delete</button>
                 </div>
               </div>
@@ -1984,12 +2207,12 @@
           </div>
 
           <nav class="settings-tabs" aria-label="Settings sections">
-            {#each [["general", "General"], ["services", "Services"], ["appearance", "Appearance"], ["keybindings", "Keybinds"], ["sandbox", "Sandbox"], ["privacy", "Privacy"], ["backup", "Backup"], ["advanced", "Advanced"], ["updates", "Updates"], ["about", "About"]] as [id, label] (id)}
+            {#each [["general", "General"], ["services", "Services"], ["appearance", "Appearance"], ["keybindings", "Keybinds"], ["sandbox", "Sandbox"], ["privacy", "Privacy"], ["backup", "Backup"], ["audit", "Audit log"], ["advanced", "Advanced"], ["updates", "Updates"], ["about", "About"]] as [id, label] (id)}
               <button
                 class="setting-tab"
                 class:on={settingsTab === id}
                 aria-current={settingsTab === id ? "page" : undefined}
-                onclick={() => (id === "about" ? openAbout() : (settingsTab = id as Tab))}>{label}</button>
+                onclick={() => selectSettingsTab(id)}>{label}</button>
             {/each}
           </nav>
 
@@ -2160,20 +2383,32 @@
                 </div>
                 <div class="settings-list">
                   <div class="setting-card setting-card-stack">
-                    <div class="setting-copy"><span class="setting-label">Sidebar width</span><span class="setting-description">Drag for a custom width or select Slim, Normal, Wide, or one of your saved custom presets.</span></div>
-                    <div class="sidebar-width-control">
-                      <input class="range" type="range" min="160" max="420" step="2" value={appSettings.sidebarWidth} aria-label="Sidebar width" oninput={(event) => previewSidebarWidth(Number(event.currentTarget.value))} onchange={() => saveAppSetting("sidebarWidth", appSettings.sidebarWidth)} />
-                      <output>{Math.round(appSettings.sidebarWidth)} px</output>
-                    </div>
-                    <div class="preset-row" role="group" aria-label="Sidebar width presets">
-                      <button class="secondary sm" class:on={appSettings.sidebarWidth === 180} onclick={() => saveAppSetting("sidebarWidth", 180)}>Slim · 180</button>
-                      <button class="secondary sm" class:on={appSettings.sidebarWidth === 240} onclick={() => saveAppSetting("sidebarWidth", 240)}>Normal · 240</button>
-                      <button class="secondary sm" class:on={appSettings.sidebarWidth === 320} onclick={() => saveAppSetting("sidebarWidth", 320)}>Wide · 320</button>
-                      {#each appSettings.customSidebarWidths as width (width)}
-                        <span class="preset-chip"><button class="secondary sm" class:on={appSettings.sidebarWidth === width} onclick={() => saveAppSetting("sidebarWidth", width)}>{width} px</button><button class="preset-remove" aria-label={`Remove ${width} pixel sidebar preset`} onclick={() => removeSidebarPreset(width)}>×</button></span>
-                      {/each}
-                      <button class="secondary sm" disabled={[180, 240, 320, ...appSettings.customSidebarWidths].includes(Math.round(appSettings.sidebarWidth))} onclick={saveCurrentSidebarPreset}>Save current preset</button>
-                    </div>
+                    <div class="setting-copy"><span class="setting-label">Sidebar width</span><span class="setting-description">Use a fixed pixel width or keep the sidebar proportional to the Tauridium window.</span></div>
+                    <select class="select setting-control" aria-label="Sidebar width mode" value={appSettings.sidebarWidthMode} onchange={(event) => saveAppSetting("sidebarWidthMode", event.currentTarget.value)}>
+                      <option value="pixels">Fixed pixels</option>
+                      <option value="percent">Relative to window</option>
+                    </select>
+                    {#if appSettings.sidebarWidthMode === "pixels"}
+                      <div class="sidebar-width-control">
+                        <input class="range" type="range" min="160" max="420" step="2" value={appSettings.sidebarWidth} aria-label="Sidebar width in pixels" oninput={(event) => previewSidebarWidth(Number(event.currentTarget.value))} onchange={() => saveAppSetting("sidebarWidth", appSettings.sidebarWidth)} />
+                        <output>{Math.round(appSettings.sidebarWidth)} px</output>
+                      </div>
+                      <div class="preset-row" role="group" aria-label="Sidebar width presets">
+                        <button class="secondary sm" class:on={appSettings.sidebarWidth === 180} onclick={() => saveAppSetting("sidebarWidth", 180)}>Slim · 180</button>
+                        <button class="secondary sm" class:on={appSettings.sidebarWidth === 240} onclick={() => saveAppSetting("sidebarWidth", 240)}>Normal · 240</button>
+                        <button class="secondary sm" class:on={appSettings.sidebarWidth === 320} onclick={() => saveAppSetting("sidebarWidth", 320)}>Wide · 320</button>
+                        {#each appSettings.customSidebarWidths as width (width)}
+                          <span class="preset-chip"><button class="secondary sm" class:on={appSettings.sidebarWidth === width} onclick={() => saveAppSetting("sidebarWidth", width)}>{width} px</button><button class="preset-remove" aria-label={`Remove ${width} pixel sidebar preset`} onclick={() => removeSidebarPreset(width)}>×</button></span>
+                        {/each}
+                        <button class="secondary sm" disabled={[180, 240, 320, ...appSettings.customSidebarWidths].includes(Math.round(appSettings.sidebarWidth))} onclick={saveCurrentSidebarPreset}>Save current preset</button>
+                      </div>
+                    {:else}
+                      <div class="sidebar-width-control">
+                        <input class="range" type="range" min="10" max="40" step="1" value={appSettings.sidebarWidthPercent} aria-label="Sidebar width as percentage of window" oninput={(event) => { appSettings.sidebarWidthPercent = Number(event.currentTarget.value); syncSidebarWidth(); }} onchange={() => saveAppSetting("sidebarWidthPercent", appSettings.sidebarWidthPercent)} />
+                        <output>{Math.round(appSettings.sidebarWidthPercent)}%</output>
+                      </div>
+                      <p class="settings-note">Relative mode recalculates the service viewport while the window is resized. Updates are animation-frame throttled to avoid unnecessary layout work.</p>
+                    {/if}
                   </div>
                   <div class="setting-card">
                     <div class="setting-copy"><span class="setting-label">Service icon size</span><span class="setting-description">Change icon size while preserving consistent sidebar spacing.</span></div>
@@ -2182,8 +2417,8 @@
                     </select>
                   </div>
                   <div class="setting-card">
-                    <div class="setting-copy"><span class="setting-label">Service position</span><span class="setting-description">Place the service list at the top, center, or bottom of the sidebar.</span></div>
-                    <select class="select setting-control" aria-label="Service position" bind:value={appSettings.sidebarServicesLocation} onchange={() => saveAppSetting("sidebarServicesLocation", appSettings.sidebarServicesLocation)}>
+                    <div class="setting-copy"><span class="setting-label">Service list alignment</span><span class="setting-description">Align the service list to the top, center, or bottom of the sidebar.</span></div>
+                    <select class="select setting-control" aria-label="Service list alignment" bind:value={appSettings.sidebarServicesLocation} onchange={() => saveAppSetting("sidebarServicesLocation", appSettings.sidebarServicesLocation)}>
                       <option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option>
                     </select>
                   </div>
@@ -2236,6 +2471,8 @@
               <section class="settings-section" aria-labelledby="settings-sandbox-groups">
                 <div class="section-heading"><h3 id="settings-sandbox-groups">Shared sandboxes</h3><p>Services assigned to the same sandbox use the same persistent webview data store, allowing compatible services to share login sessions and caches. Unassigned services remain isolated.</p></div>
                 <div class="sandbox-create-row"><input class="setting-text-input" bind:value={newSandboxName} maxlength="80" placeholder="New sandbox name, e.g. Proton" aria-label="New sandbox name" /><button class="primary" disabled={!newSandboxName.trim()} onclick={createSandboxGroup}>Create sandbox</button></div>
+                <div class="setting-actions sandbox-export-actions"><button class="secondary sm" disabled={!appSettings.sandboxes.length} onclick={() => doPortableExport("sandboxes", "all sandboxes", sandboxPortablePayload())}>Export all sandboxes…</button></div>
+                {#if portableExportStatus}<p class="settings-status">{portableExportStatus}</p>{/if}
                 <div class="settings-list">
                   {#each appSettings.sandboxes as sandbox (sandbox.id)}
                     <div class="setting-card sandbox-card">
@@ -2243,7 +2480,7 @@
                         <input class="setting-text-input sandbox-name" value={sandbox.name} maxlength="80" aria-label={`Sandbox name ${sandbox.name}`} onchange={(event) => renameSandboxGroup(sandbox.id, event.currentTarget.value)} />
                         <span class="setting-description">{Object.values(appSettings.serviceSandboxes).filter((value) => value === sandbox.id).length} assigned service(s)</span>
                       </div>
-                      <div class="setting-actions"><button class="secondary sm" onclick={() => clearSandboxGroup(sandbox)}>Clear session</button><button class="link danger-link" onclick={() => deleteSandboxGroup(sandbox)}>Delete</button></div>
+                      <div class="setting-actions"><button class="secondary sm" onclick={() => doPortableExport("sandbox", `sandbox ${sandbox.name}`, sandboxPortablePayload(sandbox.id))}>Export…</button><button class="secondary sm" onclick={() => clearSandboxGroup(sandbox)}>Clear session</button><button class="link danger-link" onclick={() => deleteSandboxGroup(sandbox)}>Delete</button></div>
                     </div>
                   {:else}
                     <div class="managed-empty"><strong>No shared sandboxes</strong><span>Create one, then assign two or more compatible services below.</span></div>
@@ -2286,18 +2523,75 @@
                 </div>
               </section>
               <section class="settings-section" aria-labelledby="settings-backup-automatic">
-                <div class="section-heading"><h3 id="settings-backup-automatic">Automatic backup</h3><p>Create recovery copies without opening a file dialog. Automatic backups are stored under Tauridium's configuration directory in <code>backups/automatic</code>.</p></div>
+                <div class="section-heading"><h3 id="settings-backup-automatic">Automatic backup</h3><p>Create integrity-verified recovery copies on a schedule or on demand, then prune only after the new backup has been reread and verified.</p></div>
                 <div class="settings-list">
                   <div class="setting-card">
                     <div class="setting-copy"><span class="setting-label">Schedule</span><span class="setting-description">Choose when Tauridium creates automatic backups while it is running.</span></div>
                     <select class="setting-control" aria-label="Automatic backup schedule" value={appSettings.automaticBackupSchedule} onchange={(e) => saveAppSetting("automaticBackupSchedule", e.currentTarget.value)}><option value="off">Off</option><option value="startup">On program startup</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select>
                   </div>
-                  <div class="setting-card">
-                    <div class="setting-copy"><span class="setting-label">Retention</span><span class="setting-description">Keep this many newest automatic backups. Older automatic backups are deleted only after a newly written backup has passed integrity verification.</span></div>
-                    <input class="setting-number" type="number" min="1" max="365" value={appSettings.automaticBackupRetention} aria-label="Automatic backup retention" onchange={(e) => saveAppSetting("automaticBackupRetention", Math.max(1, Math.min(365, Number(e.currentTarget.value) || 1)))} />
+                  <div class="setting-card setting-card-stack">
+                    <div class="setting-copy"><span class="setting-label">Output folder</span><span class="setting-description">Choose the folder used for scheduled and on-demand automatic backups. Leave unset to use Tauridium's managed configuration folder.</span></div>
+                    <div class="backup-location-row">
+                      <code title={appSettings.automaticBackupDirectory || "Tauridium configuration/backups/automatic (default)"}>{appSettings.automaticBackupDirectory || "Tauridium configuration/backups/automatic (default)"}</code>
+                      <div class="setting-actions"><button class="secondary sm" onclick={chooseAutomaticBackupDirectory}>Choose folder…</button><button class="secondary sm" disabled={!appSettings.automaticBackupDirectory} onclick={useDefaultAutomaticBackupDirectory}>Use default</button></div>
+                    </div>
                   </div>
+                  <div class="setting-card">
+                    <div class="setting-copy"><span class="setting-label">Retention strategy</span><span class="setting-description">Choose a simple count, age limit, both limits together, or tiered GFS-style history.</span></div>
+                    <select class="setting-control" aria-label="Automatic backup retention strategy" value={appSettings.automaticBackupRetentionMode} onchange={(e) => saveAppSetting("automaticBackupRetentionMode", e.currentTarget.value)}>
+                      <option value="count">Newest backup count</option>
+                      <option value="age">Maximum age</option>
+                      <option value="countAndAge">Count and maximum age</option>
+                      <option value="tiered">Tiered history (GFS-style)</option>
+                    </select>
+                  </div>
+                  {#if appSettings.automaticBackupRetentionMode === "count" || appSettings.automaticBackupRetentionMode === "countAndAge"}
+                    <div class="setting-card">
+                      <div class="setting-copy"><span class="setting-label">Newest backups to keep</span><span class="setting-description">Always keep at least the newest verified automatic backup.</span></div>
+                      <input class="setting-number" type="number" min="1" max="365" value={appSettings.automaticBackupRetention} aria-label="Automatic backup count retention" onchange={(e) => saveAppSetting("automaticBackupRetention", Math.max(1, Math.min(365, Number(e.currentTarget.value) || 1)))} />
+                    </div>
+                  {/if}
+                  {#if appSettings.automaticBackupRetentionMode === "age" || appSettings.automaticBackupRetentionMode === "countAndAge"}
+                    <div class="setting-card">
+                      <div class="setting-copy"><span class="setting-label">Maximum backup age</span><span class="setting-description">Delete automatic backups older than this many days after a new verified backup exists. The newest verified backup is never removed solely because of age.</span></div>
+                      <div class="number-with-unit"><input class="setting-number" type="number" min="1" max="3650" value={appSettings.automaticBackupMaxAgeDays} aria-label="Automatic backup maximum age in days" onchange={(e) => saveAppSetting("automaticBackupMaxAgeDays", Math.max(1, Math.min(3650, Number(e.currentTarget.value) || 1)))} /><span>days</span></div>
+                    </div>
+                  {/if}
+                  {#if appSettings.automaticBackupRetentionMode === "tiered"}
+                    <div class="setting-card info-card">
+                      <div class="setting-copy"><span class="setting-label">Tiered history</span><span class="setting-description">Keeps one representative per recent day, then progressively one per week, calendar month, and calendar year for up to about five years. This is a GFS-style retention pattern; using one folder does not by itself satisfy a 3-2-1 backup strategy.</span></div>
+                      <span class="status-badge">Daily → weekly → monthly → yearly</span>
+                    </div>
+                  {/if}
+                  <div class="setting-actions"><button class="primary sm" disabled={backupBusy || automaticBackupRunning} onclick={runAutomaticBackupNow}>Back up now</button></div>
+                  <p class="settings-note">Retention cleanup runs only after the newly written backup has been staged, flushed, reread, parsed, and integrity-verified.</p>
                 </div>
               </section>
+            {:else if settingsTab === "audit"}
+              <section class="settings-section" aria-labelledby="settings-audit-log">
+                <div class="section-heading"><h3 id="settings-audit-log">Audit log</h3><p>Review application-setting changes, backup exports/restores, scheduled backups, portable exports, warnings, and failures. Secret-like fields are redacted before persistence.</p></div>
+                <div class="audit-toolbar">
+                  <input class="setting-text-input" type="search" bind:value={auditQuery} placeholder="Search audit events…" aria-label="Search audit events" />
+                  <select class="select" bind:value={auditLevel} aria-label="Filter audit events by level"><option value="all">All levels</option><option value="info">Info</option><option value="warning">Warnings</option><option value="error">Errors</option></select>
+                  <button class="secondary sm" disabled={auditBusy} onclick={refreshAuditLog}>Refresh</button>
+                  <button class="secondary sm" disabled={auditBusy || !auditEntries.length} onclick={doExportAuditLog}>Export…</button>
+                  <button class="secondary sm" disabled={auditBusy || !auditEntries.length} onclick={doClearAuditLog}>Clear…</button>
+                </div>
+                {#if auditStatus}<p class="settings-status">{auditStatus}</p>{/if}
+                <div class="audit-list" role="list" aria-label="Tauridium audit events">
+                  {#each filteredAuditEntries as entry}
+                    <article class="audit-entry" class:audit-warning={entry.level === "warning"} class:audit-error={entry.level === "error"} role="listitem">
+                      <div class="audit-entry-head"><time datetime={new Date(entry.timestampUnixMs).toISOString()}>{new Date(entry.timestampUnixMs).toLocaleString()}</time><span class="audit-level">{entry.level}</span><span>{entry.category} · {entry.action} · {entry.outcome}</span></div>
+                      <strong>{entry.message}</strong>
+                      {#if entry.details && JSON.stringify(entry.details) !== "{}"}<pre>{JSON.stringify(entry.details, null, 2)}</pre>{/if}
+                    </article>
+                  {:else}
+                    <div class="managed-empty"><strong>No matching audit events</strong><span>Change the filter or refresh the log.</span></div>
+                  {/each}
+                </div>
+                <p class="settings-note">Audit files rotate locally when they grow large. The UI loads the latest 5,000 events; exported JSONL preserves chronological order.</p>
+              </section>
+
             {:else if settingsTab === "advanced"}
               <section class="settings-section" aria-labelledby="settings-advanced-browser">
                 <div class="section-heading"><h3 id="settings-advanced-browser">Browser identity</h3><p>Advanced compatibility controls for services that depend on browser identification.</p></div>
@@ -2727,7 +3021,7 @@
   }
 
   .settings-panel {
-    width: min(820px, calc(100% - 48px)); margin: 24px auto 40px; padding: 0; gap: 0; overflow: hidden;
+    width: min(1180px, calc(100% - 32px)); margin: 16px auto 40px; padding: 0; gap: 0; overflow: hidden;
   }
   .settings-head { padding: 22px 24px 18px; align-items: flex-start; }
   .settings-head h2 { font-size: 22px; line-height: 1.2; }
@@ -2744,12 +3038,12 @@
     outline: 2px solid var(--accent); outline-offset: 2px;
   }
   .settings-tabs {
-    display: flex; gap: 4px; overflow-x: auto; margin: 0 18px 10px; padding: 4px;
+    display: flex; flex-wrap: wrap; gap: 4px; overflow: visible; margin: 0 18px 10px; padding: 4px;
     border: 1px solid var(--border); border-radius: 11px;
-    background: color-mix(in srgb, var(--input) 76%, transparent); scrollbar-width: thin;
+    background: color-mix(in srgb, var(--input) 76%, transparent);
   }
   .setting-tab {
-    flex: none; min-height: 34px; padding: 7px 12px; border: 1px solid transparent; border-radius: 8px;
+    flex: 1 1 auto; min-width: max-content; min-height: 34px; padding: 7px 12px; border: 1px solid transparent; border-radius: 8px;
     background: transparent; color: var(--muted); cursor: pointer; font: inherit;
     font-size: 13px; font-weight: 650; line-height: 1.2;
     transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
@@ -2763,7 +3057,7 @@
   .settings-section { display: flex; flex-direction: column; gap: 10px; }
   .section-heading { display: flex; flex-direction: column; gap: 4px; padding: 0 2px; }
   .section-heading h3 { margin: 0; font-size: 13px; line-height: 1.3; font-weight: 700; color: var(--text); }
-  .section-heading p { margin: 0; max-width: 620px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+  .section-heading p { margin: 0; max-width: 840px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
   .settings-list { display: flex; flex-direction: column; gap: 8px; }
   .setting-card {
     width: 100%; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr) auto;
@@ -2776,7 +3070,7 @@
   .setting-card-stack { grid-template-columns: 1fr; align-items: stretch; gap: 10px; }
   .setting-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
   .setting-label { color: var(--text2); font-size: 14px; line-height: 1.35; font-weight: 650; }
-  .setting-description { max-width: 560px; color: var(--muted); font-size: 12.5px; line-height: 1.45; font-weight: 400; }
+  .setting-description { max-width: 760px; color: var(--muted); font-size: 12.5px; line-height: 1.45; font-weight: 400; }
   .setting-control { min-width: 176px; max-width: 230px; margin-left: 0; }
   .setting-text-input { width: 100%; box-sizing: border-box; }
   .setting-number { width: 96px; box-sizing: border-box; text-align: right; }
@@ -2832,6 +3126,19 @@
   .keybinding-control { display: flex; align-items: center; justify-content: flex-end; gap: 7px; flex-wrap: wrap; }
   .keybinding-control kbd { min-width: 120px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 6px 8px; border: 1px solid var(--border2); border-bottom-width: 2px; border-radius: 6px; background: var(--bg); color: var(--text2); font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; text-align: center; }
   .keybinding-conflict { color: #ff9b9b; font-weight: 650; }
+  .backup-location-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; width: 100%; }
+  .backup-location-row code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .number-with-unit { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+  .audit-toolbar { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(120px, 160px) auto auto auto; gap: 8px; align-items: center; }
+  .audit-list { display: flex; flex-direction: column; gap: 8px; max-height: min(56vh, 620px); overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
+  .audit-entry { display: flex; flex-direction: column; gap: 6px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--input); }
+  .audit-entry.audit-warning { border-color: color-mix(in srgb, #ffbf69 55%, var(--border)); }
+  .audit-entry.audit-error { border-color: color-mix(in srgb, #ff7373 62%, var(--border)); }
+  .audit-entry-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--muted); font-size: 11px; }
+  .audit-entry-head time { font-variant-numeric: tabular-nums; }
+  .audit-level { min-height: 20px; display: inline-flex; align-items: center; padding: 0 6px; border: 1px solid var(--border2); border-radius: 999px; color: var(--text2); font-weight: 700; text-transform: uppercase; font-size: 10px; }
+  .audit-entry strong { color: var(--text2); font-size: 13px; line-height: 1.35; }
+  .audit-entry pre { max-height: 190px; margin: 0; padding: 9px; overflow: auto; border-radius: 7px; background: var(--bg); color: var(--muted); font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
   .sandbox-create-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
   .sandbox-card { align-items: start; }
   .sandbox-name { max-width: 320px; }
@@ -2879,7 +3186,7 @@
     .settings-panel .swatches { justify-content: flex-start; max-width: none; }
     .range-control { min-width: 0; }
     .settings-panel .range { flex: 1; width: auto; }
-    .managed-toolbar, .sandbox-create-row { grid-template-columns: 1fr; }
+    .managed-toolbar, .sandbox-create-row, .backup-location-row, .audit-toolbar { grid-template-columns: 1fr; }
     .color-picker-preview-row { grid-template-columns: 48px minmax(0, 1fr); }
     .color-preview { display: none; }
     .slider-field { grid-template-columns: 1fr; gap: 5px; }

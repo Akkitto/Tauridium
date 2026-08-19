@@ -51,12 +51,15 @@ uses the Ferdium REST API; accountless mode keeps service/workspace state local.
 - **Per-service settings** (name, custom URL, team, notifications, mute, badges,
   hibernation, dark mode, favicon, proxy, custom user agent…) — synced in server
   mode and persisted locally in accountless mode
-- **App settings in tabs**: General / Services / Appearance / Keybinds / Sandbox / Privacy / Backup / Advanced / Updates / About, using a consistent settings-card layout with responsive control alignment
-- **Sidebar customization** aligned with Ferdium (icon size, services location, grayscale + dim level, and a 160–420 px width slider with Slim / Normal / Wide plus saved custom presets)
+- **App settings in tabs**: General / Services / Appearance / Keybinds / Sandbox / Privacy / Backup / Audit log / Advanced / Updates / About, using a consistent settings-card layout with responsive control alignment
+- **Sidebar customization** aligned with Ferdium (icon size, service-list alignment, grayscale + dim level, fixed 160–420 px widths with Slim / Normal / Wide/custom presets, or a responsive percentage of the window)
 - Theme (system / dark / **Black OLED** / light) + preset or custom accent colors using a native color picker and HSL sliders
 - **Configurable keybindings** for navigation and application actions, including `Ctrl+D` workspace switching, `Ctrl+S` service search, and optional two-stroke chords
-- **Shared sandboxes** that let compatible services deliberately share one persistent webview data store/login session while unassigned services remain isolated
+- **Shared sandboxes** that let compatible services deliberately share one persistent webview data store/login session while unassigned services remain isolated; one or all sandboxes can be exported with their services and referenced custom recipes
 - Scalable Settings → Services management with search, workspace filtering, 100-row paging, and filtered reordering that preserves hidden global-order slots
+- **Portable workspace exports** for one or all workspaces, including referenced services, sandboxes, assignments, and custom recipes
+- **Hardened backups** with integrity-verified transactional restore, selectable automatic-backup directory, startup/daily/weekly/monthly scheduling, count/age/combined/tiered retention, and pre-restore recovery points
+- **Local structured audit log** for settings, backup/restore/retention/export operations, warnings, and failures, with secret-field redaction and bounded rotation
 
 ## Accountless local mode
 

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -14,6 +15,139 @@ const BACKUP_SCHEMA_CURRENT: u32 = 2;
 const BACKUP_SCHEMA_MIN: u32 = 1;
 const INTEGRITY_ALGORITHM: &str = "sha256";
 const MAX_BACKUP_BYTES: u64 = 64 * 1024 * 1024;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RetentionMode {
+    Count,
+    Age,
+    CountAndAge,
+    Tiered,
+}
+
+impl RetentionMode {
+    pub(crate) fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "count" => Ok(Self::Count),
+            "age" => Ok(Self::Age),
+            "countAndAge" => Ok(Self::CountAndAge),
+            "tiered" => Ok(Self::Tiered),
+            _ => Err(format!(
+                "Unsupported automatic backup retention mode: {value}"
+            )),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct RetentionCandidate {
+    pub path: PathBuf,
+    pub modified: SystemTime,
+}
+
+const DAY_SECS: u64 = 24 * 60 * 60;
+
+fn filename_calendar_key(path: &Path, bytes: usize) -> Option<String> {
+    let name = path.file_name()?.to_str()?;
+    let stamp = name.strip_prefix("tauridium-auto-backup-")?;
+    if stamp.len() < bytes {
+        return None;
+    }
+    let key = &stamp[..bytes];
+    if key
+        .bytes()
+        .all(|byte| byte.is_ascii_digit() || byte == b'-')
+    {
+        Some(key.to_string())
+    } else {
+        None
+    }
+}
+
+fn age_days(now: SystemTime, modified: SystemTime) -> u64 {
+    now.duration_since(modified).unwrap_or_default().as_secs() / DAY_SECS
+}
+
+/// Returns the automatic-backup paths that may be deleted after a newly created backup
+/// has already passed integrity verification. The newest backup is always retained.
+pub(crate) fn retention_paths_to_delete(
+    mut candidates: Vec<RetentionCandidate>,
+    mode: RetentionMode,
+    count: usize,
+    max_age_days: u64,
+    now: SystemTime,
+) -> Vec<PathBuf> {
+    candidates.sort_by(|left, right| {
+        right
+            .modified
+            .cmp(&left.modified)
+            .then_with(|| left.path.cmp(&right.path))
+    });
+    if candidates.len() <= 1 {
+        return Vec::new();
+    }
+
+    let mut keep = HashSet::<PathBuf>::new();
+    if let Some(newest) = candidates.first() {
+        keep.insert(newest.path.clone());
+    }
+
+    match mode {
+        RetentionMode::Count => {
+            for candidate in candidates.iter().take(count.max(1)) {
+                keep.insert(candidate.path.clone());
+            }
+        }
+        RetentionMode::Age => {
+            for candidate in &candidates {
+                if age_days(now, candidate.modified) <= max_age_days {
+                    keep.insert(candidate.path.clone());
+                }
+            }
+        }
+        RetentionMode::CountAndAge => {
+            for candidate in candidates.iter().take(count.max(1)) {
+                if age_days(now, candidate.modified) <= max_age_days {
+                    keep.insert(candidate.path.clone());
+                }
+            }
+        }
+        RetentionMode::Tiered => {
+            // GFS-style history: one representative per recent day, then per week-age bucket,
+            // calendar month, and calendar year. This preserves long-range recovery points while
+            // bounding growth without pretending a single directory satisfies 3-2-1 storage.
+            let mut buckets = HashSet::<String>::new();
+            for candidate in &candidates {
+                let days = age_days(now, candidate.modified);
+                let bucket = if days <= 7 {
+                    filename_calendar_key(&candidate.path, 10)
+                        .map(|key| format!("day:{key}"))
+                        .unwrap_or_else(|| format!("day-age:{days}"))
+                } else if days <= 35 {
+                    format!("week-age:{}", days / 7)
+                } else if days <= 400 {
+                    filename_calendar_key(&candidate.path, 7)
+                        .map(|key| format!("month:{key}"))
+                        .unwrap_or_else(|| format!("month-age:{}", days / 30))
+                } else if days <= 5 * 366 {
+                    filename_calendar_key(&candidate.path, 4)
+                        .map(|key| format!("year:{key}"))
+                        .unwrap_or_else(|| format!("year-age:{}", days / 365))
+                } else {
+                    continue;
+                };
+                if buckets.insert(bucket) {
+                    keep.insert(candidate.path.clone());
+                }
+            }
+        }
+    }
+
+    candidates
+        .into_iter()
+        .filter(|candidate| !keep.contains(&candidate.path))
+        .map(|candidate| candidate.path)
+        .collect()
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -66,6 +200,8 @@ pub(crate) struct BackupSummary {
     pub workspace_count: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recovery_backup_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 impl BackupDocument {
@@ -232,6 +368,7 @@ impl BackupDocument {
                 .and_then(Value::as_array)
                 .map_or(0, Vec::len),
             recovery_backup_path: None,
+            warnings: Vec::new(),
         }
     }
 }
@@ -239,6 +376,11 @@ impl BackupDocument {
 impl BackupSummary {
     pub(crate) fn with_recovery_backup_path(mut self, path: &Path) -> Self {
         self.recovery_backup_path = Some(path.to_string_lossy().into_owned());
+        self
+    }
+
+    pub(crate) fn with_warning(mut self, warning: impl Into<String>) -> Self {
+        self.warnings.push(warning.into());
         self
     }
 }
@@ -459,6 +601,263 @@ mod tests {
         assert_eq!(
             summary.recovery_backup_path.as_deref(),
             Some("backups/pre-restore-123.json")
+        );
+    }
+
+    fn candidate(name: &str, age_days: u64, now: SystemTime) -> RetentionCandidate {
+        RetentionCandidate {
+            path: PathBuf::from(name),
+            modified: now - std::time::Duration::from_secs(age_days * DAY_SECS),
+        }
+    }
+
+    #[test]
+    fn count_retention_keeps_newest_n_and_never_deletes_only_backup() {
+        let now = UNIX_EPOCH + std::time::Duration::from_secs(2_000 * DAY_SECS);
+        let items = vec![
+            candidate("tauridium-auto-backup-2026-08-19-120000-000.json", 0, now),
+            candidate("tauridium-auto-backup-2026-08-18-120000-000.json", 1, now),
+            candidate("tauridium-auto-backup-2026-08-17-120000-000.json", 2, now),
+        ];
+        let deleted = retention_paths_to_delete(items, RetentionMode::Count, 2, 90, now);
+        assert_eq!(deleted.len(), 1);
+        assert!(deleted[0].to_string_lossy().contains("2026-08-17"));
+        assert!(retention_paths_to_delete(
+            vec![candidate(
+                "tauridium-auto-backup-2026-08-19-120000-000.json",
+                0,
+                now
+            )],
+            RetentionMode::Count,
+            1,
+            90,
+            now
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn age_retention_always_keeps_newest_even_when_every_backup_is_old() {
+        let now = UNIX_EPOCH + std::time::Duration::from_secs(2_000 * DAY_SECS);
+        let items = vec![
+            candidate("tauridium-auto-backup-2026-01-01-120000-000.json", 120, now),
+            candidate("tauridium-auto-backup-2025-12-01-120000-000.json", 150, now),
+        ];
+        let deleted = retention_paths_to_delete(items, RetentionMode::Age, 10, 30, now);
+        assert_eq!(deleted.len(), 1);
+        assert!(deleted[0].to_string_lossy().contains("2025-12-01"));
+    }
+
+    #[test]
+    fn count_and_age_requires_both_limits_but_keeps_newest() {
+        let now = UNIX_EPOCH + std::time::Duration::from_secs(2_000 * DAY_SECS);
+        let items = vec![
+            candidate("tauridium-auto-backup-2026-08-19-120000-000.json", 0, now),
+            candidate("tauridium-auto-backup-2026-08-10-120000-000.json", 9, now),
+            candidate("tauridium-auto-backup-2026-07-01-120000-000.json", 49, now),
+        ];
+        let deleted = retention_paths_to_delete(items, RetentionMode::CountAndAge, 2, 14, now);
+        assert_eq!(deleted.len(), 1);
+        assert!(deleted[0].to_string_lossy().contains("2026-07-01"));
+    }
+
+    #[test]
+    fn tiered_retention_keeps_daily_weekly_monthly_and_yearly_representatives() {
+        let now = UNIX_EPOCH + std::time::Duration::from_secs(2_000 * DAY_SECS);
+        let items = vec![
+            candidate("tauridium-auto-backup-2026-08-19-120000-000.json", 0, now),
+            candidate("tauridium-auto-backup-2026-08-19-080000-000.json", 0, now),
+            candidate("tauridium-auto-backup-2026-08-12-120000-000.json", 7, now),
+            candidate("tauridium-auto-backup-2026-08-05-120000-000.json", 14, now),
+            candidate("tauridium-auto-backup-2026-08-04-120000-000.json", 15, now),
+            candidate("tauridium-auto-backup-2026-06-15-120000-000.json", 65, now),
+            candidate("tauridium-auto-backup-2026-06-01-120000-000.json", 79, now),
+            candidate("tauridium-auto-backup-2025-01-01-120000-000.json", 600, now),
+            candidate("tauridium-auto-backup-2025-02-01-120000-000.json", 570, now),
+            candidate(
+                "tauridium-auto-backup-2019-01-01-120000-000.json",
+                2_500,
+                now,
+            ),
+        ];
+        let deleted = retention_paths_to_delete(items, RetentionMode::Tiered, 10, 90, now);
+        let names = deleted
+            .iter()
+            .filter_map(|path| path.file_name().and_then(|name| name.to_str()))
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"tauridium-auto-backup-2026-08-19-080000-000.json"));
+        assert!(names.contains(&"tauridium-auto-backup-2026-08-04-120000-000.json"));
+        assert!(names.contains(&"tauridium-auto-backup-2026-06-01-120000-000.json"));
+        assert!(
+            names.contains(&"tauridium-auto-backup-2025-01-01-120000-000.json")
+                || names.contains(&"tauridium-auto-backup-2025-02-01-120000-000.json")
+        );
+        assert!(names.contains(&"tauridium-auto-backup-2019-01-01-120000-000.json"));
+    }
+    #[test]
+    fn retention_mode_parser_accepts_only_supported_modes() {
+        assert_eq!(RetentionMode::parse("count").unwrap(), RetentionMode::Count);
+        assert_eq!(RetentionMode::parse("age").unwrap(), RetentionMode::Age);
+        assert_eq!(
+            RetentionMode::parse("countAndAge").unwrap(),
+            RetentionMode::CountAndAge
+        );
+        assert_eq!(
+            RetentionMode::parse("tiered").unwrap(),
+            RetentionMode::Tiered
+        );
+        assert!(RetentionMode::parse("forever").is_err());
+    }
+
+    #[test]
+    fn backup_rejects_empty_destination_and_missing_source() {
+        assert!(save(Path::new(""), &sample())
+            .unwrap_err()
+            .contains("destination path is empty"));
+        let missing = std::env::temp_dir().join(format!(
+            "tauridium-missing-backup-{}-{}.json",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        assert!(load(&missing)
+            .unwrap_err()
+            .contains("Unable to inspect backup"));
+    }
+
+    #[test]
+    fn backup_save_replaces_existing_valid_target_with_verified_content() {
+        let root = std::env::temp_dir().join(format!(
+            "tauridium-backup-replace-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("backup.json");
+        let first = sample();
+        save(&path, &first).unwrap();
+        let mut second = sample();
+        second.app_settings["theme"] = Value::String("blackOled".into());
+        second.refresh_integrity();
+        save(&path, &second).unwrap();
+        let loaded = load(&path).unwrap();
+        assert_eq!(loaded.app_settings()["theme"], "blackOled");
+        assert!(!backup_staging_path(&path).unwrap().exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn backup_save_clears_stale_staging_file_before_verified_write() {
+        let root = std::env::temp_dir().join(format!(
+            "tauridium-backup-stale-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("backup.json");
+        let staging = backup_staging_path(&path).unwrap();
+        fs::write(&staging, "incomplete backup").unwrap();
+        save(&path, &sample()).unwrap();
+        assert!(!staging.exists());
+        load(&path).unwrap();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn backup_load_rejects_truncated_json_and_integrity_tampering() {
+        let root = std::env::temp_dir().join(format!(
+            "tauridium-backup-corrupt-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let truncated = root.join("truncated.json");
+        fs::write(&truncated, "{\"format\":\"tauridium-backup\"").unwrap();
+        assert!(load(&truncated).unwrap_err().contains("Unable to parse"));
+
+        let tampered = root.join("tampered.json");
+        let mut value = serde_json::to_value(sample()).unwrap();
+        value["integrity"]["payloadSha256"] = Value::String("0".repeat(64));
+        fs::write(&tampered, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+        assert!(load(&tampered)
+            .unwrap_err()
+            .contains("integrity check failed"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn backup_summary_accumulates_nonfatal_warnings() {
+        let summary = sample()
+            .summary(Path::new("backup.json"))
+            .with_warning("first")
+            .with_warning("second");
+        assert_eq!(summary.warnings, vec!["first", "second"]);
+    }
+
+    #[test]
+    fn count_retention_is_deterministic_when_timestamps_match() {
+        let now = UNIX_EPOCH + std::time::Duration::from_secs(2_000 * DAY_SECS);
+        let items = vec![
+            candidate("tauridium-auto-backup-2026-08-19-120000-002.json", 0, now),
+            candidate("tauridium-auto-backup-2026-08-19-120000-001.json", 0, now),
+            candidate("tauridium-auto-backup-2026-08-19-120000-003.json", 0, now),
+        ];
+        let deleted = retention_paths_to_delete(items, RetentionMode::Count, 1, 90, now);
+        let kept = [
+            "tauridium-auto-backup-2026-08-19-120000-001.json",
+            "tauridium-auto-backup-2026-08-19-120000-002.json",
+            "tauridium-auto-backup-2026-08-19-120000-003.json",
+        ]
+        .into_iter()
+        .filter(|name| !deleted.iter().any(|path| path.as_path() == Path::new(name)))
+        .collect::<Vec<_>>();
+        assert_eq!(
+            kept,
+            vec!["tauridium-auto-backup-2026-08-19-120000-001.json"]
+        );
+    }
+
+    #[test]
+    fn future_modified_time_is_treated_as_recent_not_expired() {
+        let now = UNIX_EPOCH + std::time::Duration::from_secs(2_000 * DAY_SECS);
+        let future = RetentionCandidate {
+            path: PathBuf::from("tauridium-auto-backup-2026-08-20-120000-000.json"),
+            modified: now + std::time::Duration::from_secs(DAY_SECS),
+        };
+        let old = candidate("tauridium-auto-backup-2026-01-01-120000-000.json", 200, now);
+        let deleted = retention_paths_to_delete(vec![future, old], RetentionMode::Age, 10, 30, now);
+        assert_eq!(
+            deleted,
+            vec![PathBuf::from(
+                "tauridium-auto-backup-2026-01-01-120000-000.json"
+            )]
+        );
+    }
+
+    #[test]
+    fn calendar_keys_require_expected_automatic_backup_prefix_and_shape() {
+        assert_eq!(
+            filename_calendar_key(
+                Path::new("tauridium-auto-backup-2026-08-19-120000-000.json"),
+                10
+            )
+            .as_deref(),
+            Some("2026-08-19")
+        );
+        assert!(filename_calendar_key(Path::new("other-2026-08-19.json"), 10).is_none());
+        assert!(
+            filename_calendar_key(Path::new("tauridium-auto-backup-2026_AB_19.json"), 10).is_none()
         );
     }
 }

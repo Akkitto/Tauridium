@@ -40,12 +40,11 @@ class Patch0318Tests(unittest.TestCase):
   def test_automatic_backup_serializes_and_prunes_only_after_verified_save(self) -> None:
     body = self.main.split('fn create_automatic_backup', 1)[1].split('fn restore_recovery_backup_path', 1)[0]
     self.assertIn('backup::save(&path, &document)?', body)
-    self.assertIn('prune_automatic_backups(&root, retention)?', body)
-    self.assertLess(body.index('backup::save(&path, &document)?'), body.index('prune_automatic_backups(&root, retention)?'))
+    self.assertIn('prune_automatic_backups(&root, retention_mode, retention, max_age_days)', body)
+    self.assertLess(body.index('backup::save(&path, &document)?'), body.index('prune_automatic_backups(&root, retention_mode, retention, max_age_days)'))
     prune = self.main.split('fn prune_automatic_backups', 1)[1].split('#[tauri::command]', 1)[0]
-    self.assertIn('name.starts_with("tauridium-auto-backup-")', prune)
-    self.assertIn('name.ends_with(".json")', prune)
-    self.assertIn('.skip(retention)', prune)
+    self.assertIn('validate_automatic_backup_filename(name).is_ok()', prune)
+    self.assertIn('retention_paths_to_delete', prune)
 
   def test_automatic_backup_scheduler_avoids_concurrent_runs(self) -> None:
     body = self.app.split('async function maybeRunAutomaticBackup', 1)[1].split('function backupSummaryText', 1)[0]
