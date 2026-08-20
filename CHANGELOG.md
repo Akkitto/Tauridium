@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.12] - 2026-08-20
+
+### Fixed
+
+- Removed the stale `is_local_recipe` field from the website-icon Tauri request model after the frontend stopped sending or using it, clearing the Windows-native Clippy `dead_code` release blocker without a lint suppression.
+
+### Release quality
+
+- Added dedicated 0.4.12 regressions and release invariants that require the icon request model and frontend payload to contain only runtime-used fields and reject reintroducing the stale field.
+- Retained the mandatory Rust 1.97.1 formatter, locked metadata, English-only, Git cleanliness, source-manifest, and extracted-source validation gates.
+
 ## [0.4.11] - 2026-08-20
 
 ### Fixed
