@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.4.16] - 2026-08-20
+
+### Changed
+
+- Completely redesigned the per-service **Workspace membership** list in Service Settings around direct selection instead of narrow per-row Add/Remove buttons.
+- Workspace rows are now fixed, consistently aligned selection targets with a checkbox, workspace identity, service count, and persistent **Included / Not included** state.
+- Replaced the membership filter select with a three-way segmented **All / Included / Not included** control and clarified the interaction text and create action wording.
+
+### UX and accessibility
+
+- The entire workspace row is clickable, substantially increasing the target area and removing the conditional-column layout that caused Add/Remove controls to shift horizontally.
+- Added explicit checkbox semantics and focus styling while preserving immediate persistence, search, filtering, pagination, and busy-state protection.
+- Added a responsive narrow-window layout that stacks search/filter controls and hides only the redundant textual state while retaining the checkbox and workspace identity.
+
+### Release quality
+
+- Added dedicated 0.4.16 regression coverage for full-row click targets, stable row alignment, segmented filtering, scalable list behavior, and responsive layout.
+- Retained the mandatory Rust 1.97.1 formatter, locked metadata, English-only, Git cleanliness, source-manifest, ZIP-integrity, and independently extracted-source validation gates.
+
 ## [0.4.15] - 2026-08-20
 
 ### Fixed
