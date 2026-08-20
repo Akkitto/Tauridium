@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.17] - 2026-08-21
+
+### Fixed
+
+- Removed the large unused vertical gap between the per-service **Shortcut priority** explanation and its selector in Service Settings.
+- Replaced the conflicting flex sizing with an explicit two-column grid so explanatory copy and the priority selector align predictably without reserving artificial height.
+
+### UX and accessibility
+
+- Aligned the shortcut heading, description, selector, and effective-behavior text to a compact shared layout with consistent spacing and no inherited description indent.
+- Added a narrow-window fallback that stacks the selector directly below the explanatory copy while retaining full-width controls and keyboard focus behavior.
+
+### Release quality
+
+- Added dedicated 0.4.17 regression coverage preventing the former `flex-basis: 320px` spacing regression and enforcing the compact responsive layout.
+- Retained the established formatting, regression, release-invariant, clean-tree, source-manifest, and deterministic packaging gates.
+
 ## [0.4.16] - 2026-08-20
 
 ### Changed
