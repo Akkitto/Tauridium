@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.19] - 2026-08-21
+
+### Fixed
+
+- Corrected the native service-toast security regression test to validate the canonical `serde_json`-encoded JavaScript argument instead of expecting an extra backslash that is not part of valid JSON string encoding.
+- Added an explicit assertion that the raw hostile test payload never appears verbatim in the generated one-shot overlay script, preserving the intended injection-safety guarantee while allowing the Windows Rust test suite to pass.
+
+### Release quality
+
+- Added dedicated 0.4.19 regression and release-invariant coverage for the service-toast encoding contract exposed by the Windows-native `cargo test` gate.
+- Retained the established exact Rust 1.97.1 formatting, Clippy/check/test, frontend, clean-tree, source-manifest, and deterministic packaging requirements.
+
 ## [0.4.18] - 2026-08-21
 
 ### Added
