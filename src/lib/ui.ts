@@ -238,6 +238,47 @@ export function reorderVisibleSubset(
   return fullIds.map((id) => (visibleSet.has(id) ? subset[nextVisible++] : id));
 }
 
+
+export type WorkspaceQuickSwitchOrder =
+  | "custom"
+  | "customReverse"
+  | "alphabetical"
+  | "alphabeticalReverse"
+  | "recent"
+  | "recentReverse";
+
+export function orderWorkspacesForQuickSwitch<T extends { id: string; name: string }>(
+  workspaces: T[],
+  mode: WorkspaceQuickSwitchOrder,
+  lastUsed: Record<string, number>,
+): T[] {
+  const custom = [...workspaces];
+  const customRank = new Map(custom.map((workspace, index) => [workspace.id, index]));
+  const alphabetical = (a: T, b: T) =>
+    a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }) ||
+    a.id.localeCompare(b.id);
+  const recent = (a: T, b: T) =>
+    (lastUsed[b.id] ?? 0) - (lastUsed[a.id] ?? 0) ||
+    (customRank.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+      (customRank.get(b.id) ?? Number.MAX_SAFE_INTEGER);
+
+  switch (mode) {
+    case "customReverse":
+      return custom.reverse();
+    case "alphabetical":
+      return custom.sort(alphabetical);
+    case "alphabeticalReverse":
+      return custom.sort((a, b) => alphabetical(b, a));
+    case "recent":
+      return custom.sort(recent);
+    case "recentReverse":
+      return custom.sort((a, b) => recent(b, a));
+    case "custom":
+    default:
+      return custom;
+  }
+}
+
 export function serviceLabel(service: { name?: string | null; recipeId?: string | null }): string {
   const name = service.name?.trim();
   if (name) return name;

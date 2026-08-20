@@ -310,6 +310,8 @@ export interface AppSettings {
   serviceCustomUrlTemplates: Record<string, ServiceCustomUrlTemplate>;
   serviceOrder: string[];
   workspaceOrder: string[];
+  workspaceQuickSwitchOrder: "custom" | "customReverse" | "alphabetical" | "alphabeticalReverse" | "recent" | "recentReverse";
+  workspaceLastUsed: Record<string, number>;
   keybindings: Record<string, string>;
   sandboxes: SandboxDefinition[];
   serviceSandboxes: Record<string, string>;

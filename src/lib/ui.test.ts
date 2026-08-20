@@ -9,6 +9,7 @@ import {
   hslToHex,
   iconSrc,
   normalizeHexColor,
+  orderWorkspacesForQuickSwitch,
   paged,
   recipeIcon,
   shortcutConflicts,
@@ -53,6 +54,36 @@ describe("0.4.0 appearance and navigation helpers", () => {
     const values = Array.from({ length: 250 }, (_, index) => index);
     expect(paged(values, 1, 100)).toEqual(values.slice(100, 200));
     expect(values).toHaveLength(250);
+  });
+});
+
+describe("0.4.13 workspace ordering helpers", () => {
+  const workspaces = [
+    { id: "gamma", name: "Gamma" },
+    { id: "alpha", name: "Alpha" },
+    { id: "beta", name: "Beta" },
+  ];
+  const ids = (mode: Parameters<typeof orderWorkspacesForQuickSwitch>[1]) =>
+    orderWorkspacesForQuickSwitch(workspaces, mode, { gamma: 20, alpha: 10, beta: 30 }).map((workspace) => workspace.id);
+
+  it("supports custom and reverse-custom quick-switch ordering", () => {
+    expect(ids("custom")).toEqual(["gamma", "alpha", "beta"]);
+    expect(ids("customReverse")).toEqual(["beta", "alpha", "gamma"]);
+  });
+
+  it("supports alphabetical ordering in both directions", () => {
+    expect(ids("alphabetical")).toEqual(["alpha", "beta", "gamma"]);
+    expect(ids("alphabeticalReverse")).toEqual(["gamma", "beta", "alpha"]);
+  });
+
+  it("supports recent-use ordering in both directions with custom-order tie breaking", () => {
+    expect(ids("recent")).toEqual(["beta", "gamma", "alpha"]);
+    expect(ids("recentReverse")).toEqual(["alpha", "gamma", "beta"]);
+    expect(orderWorkspacesForQuickSwitch(workspaces, "recent", {}).map((workspace) => workspace.id)).toEqual([
+      "gamma",
+      "alpha",
+      "beta",
+    ]);
   });
 });
 

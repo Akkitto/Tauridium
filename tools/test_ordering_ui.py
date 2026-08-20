@@ -50,7 +50,8 @@ class OrderingAndSidebarTests(unittest.TestCase):
     self.assertIn("async function reconcileSavedOrders()", self.app)
     self.assertIn("orderedBySavedIds(services, appSettings.serviceOrder)", self.app)
     self.assertIn("orderedBySavedIds(workspaces, appSettings.workspaceOrder)", self.app)
-    self.assertIn("setAppSettings({ serviceOrder, workspaceOrder })", self.app)
+    self.assertIn("setAppSettings({ serviceOrder, workspaceOrder, workspaceLastUsed })", self.app)
+    self.assertIn("workspaceIds.has(workspaceId)", self.app)
     self.assertGreaterEqual(self.app.count("await reconcileSavedOrders();"), 4)
 
   def test_drag_reorder_is_one_atomic_persistence_operation(self) -> None:
@@ -100,10 +101,11 @@ class OrderingAndSidebarTests(unittest.TestCase):
     self.assertIn("overscroll-behavior: contain", css)
     self.assertIn("scrollbar-gutter: stable", css)
 
-  def test_workspace_tabs_scroll_but_settings_tabs_wrap_without_horizontal_scroll(self) -> None:
-    self.assertIn("overflow-x: auto", self.app.split(".wspills {", 1)[1].split(".pill {", 1)[0])
-    self.assertIn("flex-wrap: nowrap", self.app.split(".wspills {", 1)[1].split(".pill {", 1)[0])
-    settings_css = self.app.split(".settings-tabs {", 1)[1].split(".settings-tab {", 1)[0]
+  def test_sidebar_has_no_workspace_strip_and_settings_tabs_wrap_without_horizontal_scroll(self) -> None:
+    sidebar = self.app.split('<aside class="sidebar">', 1)[1].split("</aside>", 1)[0]
+    self.assertNotIn('class="wspills"', sidebar)
+    self.assertNotIn('class="pill"', sidebar)
+    settings_css = self.app.split(".settings-tabs {", 1)[1].split(".setting-tab {", 1)[0]
     self.assertIn("border-radius", settings_css)
     self.assertIn("background", settings_css)
     self.assertIn("flex-wrap: wrap", settings_css)

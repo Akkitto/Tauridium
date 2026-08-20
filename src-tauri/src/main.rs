@@ -2472,6 +2472,8 @@ fn default_app_settings_value() -> Value {
         "serviceCustomUrlTemplates": {},
         "serviceOrder": [],
         "workspaceOrder": [],
+        "workspaceQuickSwitchOrder": "custom",
+        "workspaceLastUsed": {},
         "keybindings": {
             "quickWorkspaceSwitch": "Ctrl+D",
             "quickServiceSwitch": "Ctrl+S",
@@ -2642,6 +2644,37 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         .unwrap_or_default();
     if !matches!(sidebar_width_mode, "pixels" | "percent") {
         return Err("App setting sidebarWidthMode is invalid".into());
+    }
+    let workspace_quick_switch_order = object
+        .get("workspaceQuickSwitchOrder")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if !matches!(
+        workspace_quick_switch_order,
+        "custom"
+            | "customReverse"
+            | "alphabetical"
+            | "alphabeticalReverse"
+            | "recent"
+            | "recentReverse"
+    ) {
+        return Err("App setting workspaceQuickSwitchOrder is invalid".into());
+    }
+    let workspace_last_used = object
+        .get("workspaceLastUsed")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "App setting workspaceLastUsed must be an object".to_string())?;
+    if workspace_last_used.len() > 10_000 {
+        return Err("App setting workspaceLastUsed contains too many entries".into());
+    }
+    for (workspace_id, timestamp) in workspace_last_used {
+        if workspace_id.trim().is_empty()
+            || !timestamp
+                .as_f64()
+                .is_some_and(|number| number.is_finite() && number >= 0.0)
+        {
+            return Err("App setting workspaceLastUsed is invalid".into());
+        }
     }
     let backup_schedule = object
         .get("automaticBackupSchedule")
@@ -3960,6 +3993,22 @@ mod tests {
         assert!(validate_app_settings_value(&settings).is_err());
         settings["automaticBackupRetention"] = json!(365);
         assert!(validate_app_settings_value(&settings).is_ok());
+    }
+
+    #[test]
+    fn feature_0413_settings_validate_workspace_quick_switch_order_and_recency() {
+        let mut settings = default_app_settings_value();
+        settings["workspaceQuickSwitchOrder"] = json!("recent");
+        settings["workspaceLastUsed"] = json!({"workspace-a": 1_766_000_000_000_f64});
+        assert!(validate_app_settings_value(&settings).is_ok());
+
+        settings["workspaceQuickSwitchOrder"] = json!("unsupported");
+        assert!(validate_app_settings_value(&settings).is_err());
+        settings["workspaceQuickSwitchOrder"] = json!("custom");
+        settings["workspaceLastUsed"] = json!({"": 1});
+        assert!(validate_app_settings_value(&settings).is_err());
+        settings["workspaceLastUsed"] = json!({"workspace-a": -1});
+        assert!(validate_app_settings_value(&settings).is_err());
     }
 
     #[test]

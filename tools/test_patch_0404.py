@@ -175,7 +175,7 @@ class Patch0404Tests(unittest.TestCase):
     for marker in (
       "workspacePortablePayload(workspaceId?: string)",
       'doPortableExport("workspaces", "all workspaces", workspacePortablePayload())',
-      'doPortableExport("workspace", `workspace ${ws.name}`, workspacePortablePayload(ws.id))',
+      'doPortableExport("workspace", `workspace ${selectedWorkspaceName}`, workspacePortablePayload(selectedWorkspaceId))',
       "selectedWorkspaces.flatMap((workspace) => workspace.services)",
     ):
       self.assertIn(marker, self.app)

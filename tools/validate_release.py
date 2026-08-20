@@ -932,6 +932,39 @@ def main() -> int:
   if "Service position" in app:
     fail("obsolete Service position wording remains in the Settings UI")
 
+  workspace_test = read("tools/test_workspace_settings_0413.py")
+  for marker in (
+    '["workspaces", "Workspaces"]',
+    'workspaceQuickSwitchOrder: "custom" | "customReverse" | "alphabetical" | "alphabeticalReverse" | "recent" | "recentReverse"',
+    'workspaceLastUsed: Record<string, number>',
+    'orderWorkspacesForQuickSwitch(',
+    'managedWorkspaceServiceRows',
+    'toggleManagedWorkspaceService',
+    'moveManagedWorkspace',
+    'closeManagedWorkspace',
+    'workspaceUsagePersist = workspaceUsagePersist.then(async () => {',
+    'workspaceIds.has(workspaceId)',
+  ):
+    if marker not in app + api_ts + read("src/lib/ui.ts"):
+      fail(f"0.4.13 workspace-management invariant is missing: {marker}")
+  if 'class="wspills"' in app or 'view === "workspaces"' in app:
+    fail("0.4.13 sidebar/standalone workspace UI was reintroduced")
+  for marker in (
+    '"workspaceQuickSwitchOrder": "custom"',
+    '"workspaceLastUsed": {}',
+    'App setting workspaceQuickSwitchOrder is invalid',
+  ):
+    if marker not in main_rs:
+      fail(f"0.4.13 workspace settings backend invariant is missing: {marker}")
+  for test_marker in (
+    "test_sidebar_workspace_strip_is_removed",
+    "test_settings_has_workspace_management_tab",
+    "test_workspace_management_scales_and_preserves_canonical_order",
+    "test_quick_switch_order_is_independent_and_portable",
+  ):
+    if test_marker not in workspace_test:
+      fail(f"0.4.13 workspace regression coverage is missing: {test_marker}")
+
   for marker in (
     '["keybindings", "Keybinds"]',
     '["sandbox", "Sandbox"]',
@@ -982,7 +1015,7 @@ def main() -> int:
       fail(f"canonical frontend ordering API is missing: {marker}")
   for marker in (
     'async function reconcileSavedOrders()',
-    'setAppSettings({ serviceOrder, workspaceOrder })',
+    'setAppSettings({ serviceOrder, workspaceOrder, workspaceLastUsed })',
     'setServiceOrder(nextIds)',
     'setWorkspaceOrder(nextIds)',
     'reorderVisibleSubset(previousIds, visibleIds, from, target.id)',

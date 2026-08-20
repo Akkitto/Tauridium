@@ -12,6 +12,7 @@
     websiteName,
     looksLikeWebsite,
     orderedBySavedIds,
+    orderWorkspacesForQuickSwitch,
     reorderVisibleSubset,
     serviceLabel,
     backupTimestamp,
@@ -132,7 +133,7 @@
   let dragOverId = $state<string | null>(null);
   let activeWorkspace = $state<string | null>(null);
 
-  type View = "service" | "svcSettings" | "add" | "appSettings" | "workspaces";
+  type View = "service" | "svcSettings" | "add" | "appSettings";
   let view = $state<View>("service");
   let settingsSvc = $state<Service | null>(null);
   let svcDirty = $state(false); // Service settings changed but not saved yet.
@@ -145,12 +146,20 @@
   let serviceWorkspaceBusy = $state(false);
   let newWorkspaceName = $state("");
 
-  type Tab = "general" | "services" | "appearance" | "keybindings" | "sandbox" | "privacy" | "backup" | "audit" | "advanced" | "updates" | "about";
+  type Tab = "general" | "services" | "workspaces" | "appearance" | "keybindings" | "sandbox" | "privacy" | "backup" | "audit" | "advanced" | "updates" | "about";
   let settingsTab = $state<Tab>("general");
 
   let managedServiceQuery = $state("");
   let managedWorkspaceFilter = $state("all");
   let managedServicePage = $state(0);
+  let managedWorkspaceQuery = $state("");
+  let managedWorkspacePage = $state(0);
+  let managedWorkspaceId = $state<string | null>(null);
+  let managedWorkspaceServiceQuery = $state("");
+  let managedWorkspaceServicePage = $state(0);
+  let managedWorkspaceBusy = $state(false);
+  let managedWorkspaceNameDraft = $state("");
+  let workspaceUsagePersist: Promise<void> = Promise.resolve();
   const MANAGED_SERVICE_PAGE_SIZE = 100;
   const MAX_SIDEBAR_WIDTH_PX = 1200;
 
@@ -229,6 +238,8 @@
     serviceCustomUrlTemplates: {},
     serviceOrder: [],
     workspaceOrder: [],
+    workspaceQuickSwitchOrder: "custom",
+    workspaceLastUsed: {},
     keybindings: { ...DEFAULT_KEYBINDINGS },
     sandboxes: [],
     serviceSandboxes: {},
@@ -275,6 +286,40 @@
   const sortedWorkspaces = $derived(
     orderedBySavedIds(workspaces, appSettings.workspaceOrder),
   );
+  const quickSwitcherWorkspaces = $derived(
+    orderWorkspacesForQuickSwitch(
+      sortedWorkspaces,
+      appSettings.workspaceQuickSwitchOrder,
+      appSettings.workspaceLastUsed,
+    ),
+  );
+  const managedWorkspaces = $derived.by(() => {
+    const query = managedWorkspaceQuery.trim().toLowerCase();
+    return sortedWorkspaces.filter((workspace) =>
+      !query || workspace.name.toLowerCase().includes(query),
+    );
+  });
+  const managedWorkspacePageCount = $derived(
+    Math.max(1, Math.ceil(managedWorkspaces.length / MANAGED_SERVICE_PAGE_SIZE)),
+  );
+  const managedWorkspaceRows = $derived(
+    paged(managedWorkspaces, managedWorkspacePage, MANAGED_SERVICE_PAGE_SIZE),
+  );
+  const managedWorkspace = $derived(
+    workspaces.find((workspace) => workspace.id === managedWorkspaceId) ?? null,
+  );
+  const managedWorkspaceServices = $derived.by(() => {
+    const query = managedWorkspaceServiceQuery.trim().toLowerCase();
+    return sorted.filter((service) =>
+      !query || `${serviceLabel(service)} ${service.recipeId}`.toLowerCase().includes(query),
+    );
+  });
+  const managedWorkspaceServicePageCount = $derived(
+    Math.max(1, Math.ceil(managedWorkspaceServices.length / MANAGED_SERVICE_PAGE_SIZE)),
+  );
+  const managedWorkspaceServiceRows = $derived(
+    paged(managedWorkspaceServices, managedWorkspaceServicePage, MANAGED_SERVICE_PAGE_SIZE),
+  );
   const visibleServices = $derived.by(() => {
     let list = sorted;
     if (activeWorkspace) {
@@ -312,7 +357,7 @@
   const quickSwitcherItems = $derived.by(() => {
     const query = quickSwitcherQuery.trim().toLowerCase();
     if (quickSwitcherMode === "workspace") {
-      return [{ id: "__all__", name: "All services" }, ...sortedWorkspaces]
+      return [{ id: "__all__", name: "All services" }, ...quickSwitcherWorkspaces]
         .filter((workspace) => !query || workspace.name.toLowerCase().includes(query))
         .map((workspace) => ({ id: workspace.id, label: workspace.name, kind: "workspace" as const }));
     }
@@ -609,9 +654,18 @@
   async function reconcileSavedOrders() {
     const serviceOrder = orderedBySavedIds(services, appSettings.serviceOrder).map((service) => service.id);
     const workspaceOrder = orderedBySavedIds(workspaces, appSettings.workspaceOrder).map((workspace) => workspace.id);
-    if (sameIds(serviceOrder, appSettings.serviceOrder) && sameIds(workspaceOrder, appSettings.workspaceOrder)) return;
+    const workspaceIds = new Set(workspaces.map((workspace) => workspace.id));
+    const workspaceLastUsed = Object.fromEntries(
+      Object.entries(appSettings.workspaceLastUsed).filter(([workspaceId]) => workspaceIds.has(workspaceId)),
+    );
+    const usageHistoryChanged = Object.keys(workspaceLastUsed).length !== Object.keys(appSettings.workspaceLastUsed).length;
+    if (
+      sameIds(serviceOrder, appSettings.serviceOrder) &&
+      sameIds(workspaceOrder, appSettings.workspaceOrder) &&
+      !usageHistoryChanged
+    ) return;
     try {
-      const persisted = await setAppSettings({ serviceOrder, workspaceOrder });
+      const persisted = await setAppSettings({ serviceOrder, workspaceOrder, workspaceLastUsed });
       if (!sameIds(persisted.serviceOrder, serviceOrder) || !sameIds(persisted.workspaceOrder, workspaceOrder)) {
         throw new Error("Tauridium could not verify the reconciled service/workspace order");
       }
@@ -1273,16 +1327,17 @@
     }
   }
 
-  function openWorkspaces() {
-    error = null;
-    view = "workspaces";
-    newWorkspaceName = "";
-    hideServices();
-  }
-
   async function reloadWorkspaces() {
     workspaces = await getWorkspaces();
     await reconcileSavedOrders();
+    if (managedWorkspaceId && !workspaces.some((workspace) => workspace.id === managedWorkspaceId)) {
+      managedWorkspaceId = null;
+      managedWorkspaceNameDraft = "";
+    }
+    const query = managedWorkspaceQuery.trim().toLowerCase();
+    const matchingCount = workspaces.filter((workspace) => !query || workspace.name.toLowerCase().includes(query)).length;
+    const lastPage = Math.max(0, Math.ceil(matchingCount / MANAGED_SERVICE_PAGE_SIZE) - 1);
+    managedWorkspacePage = Math.min(managedWorkspacePage, lastPage);
   }
 
   async function persistWorkspaceIds(nextIds: string[], previousIds: string[]) {
@@ -1300,23 +1355,85 @@
     }
   }
 
-  async function moveWorkspace(workspaceId: string, delta: number) {
-    const previousIds = sortedWorkspaces.map((workspace) => workspace.id);
-    const index = previousIds.indexOf(workspaceId);
+  async function moveManagedWorkspace(workspaceId: string, delta: number) {
+    const visibleIds = managedWorkspaces.map((workspace) => workspace.id);
+    const index = visibleIds.indexOf(workspaceId);
     const target = index + delta;
-    if (index < 0 || target < 0 || target >= previousIds.length) return;
-    const nextIds = [...previousIds];
-    [nextIds[index], nextIds[target]] = [nextIds[target], nextIds[index]];
+    if (index < 0 || target < 0 || target >= visibleIds.length) return;
+    const previousIds = sortedWorkspaces.map((workspace) => workspace.id);
+    const nextIds = reorderVisibleSubset(
+      previousIds,
+      visibleIds,
+      workspaceId,
+      visibleIds[target],
+    );
     await persistWorkspaceIds(nextIds, previousIds).catch(() => {});
+  }
+
+  function manageWorkspace(workspace: Workspace) {
+    managedWorkspaceId = workspace.id;
+    managedWorkspaceNameDraft = workspace.name;
+    managedWorkspaceServiceQuery = "";
+    managedWorkspaceServicePage = 0;
+  }
+
+  async function closeManagedWorkspace() {
+    if (
+      managedWorkspace &&
+      managedWorkspaceNameDraft.trim() !== managedWorkspace.name &&
+      !(await confirmAsk("Discard unsaved workspace name changes?"))
+    ) return;
+    managedWorkspaceId = null;
+    managedWorkspaceNameDraft = "";
+    managedWorkspaceServiceQuery = "";
+    managedWorkspaceServicePage = 0;
+  }
+
+  async function saveManagedWorkspaceName() {
+    if (!managedWorkspace || managedWorkspaceBusy) return;
+    const name = managedWorkspaceNameDraft.trim();
+    if (!name || name === managedWorkspace.name) return;
+    managedWorkspaceBusy = true;
+    try {
+      await updateWorkspace(managedWorkspace.id, name, managedWorkspace.services);
+      await reloadWorkspaces();
+      managedWorkspaceNameDraft = name;
+    } catch (err) {
+      error = `Unable to rename workspace: ${err}`;
+      managedWorkspaceNameDraft = managedWorkspace.name;
+    } finally {
+      managedWorkspaceBusy = false;
+    }
+  }
+
+  async function toggleManagedWorkspaceService(serviceId: string, member: boolean) {
+    if (!managedWorkspace || managedWorkspaceBusy) return;
+    managedWorkspaceBusy = true;
+    try {
+      await toggleServiceInWorkspace(managedWorkspace, serviceId, member);
+    } finally {
+      managedWorkspaceBusy = false;
+    }
+  }
+
+  async function resetWorkspaceUsageHistory() {
+    await saveAppSetting("workspaceLastUsed", {});
+  }
+
+  async function deleteManagedWorkspace() {
+    if (!managedWorkspace) return;
+    await handleDeleteWorkspace(managedWorkspace);
   }
 
   async function handleCreateWorkspace() {
     const name = newWorkspaceName.trim();
     if (!name) return;
     try {
-      await createWorkspace(name);
+      const created = await createWorkspace(name);
       newWorkspaceName = "";
       await reloadWorkspaces();
+      const workspace = workspaces.find((candidate) => candidate.id === created.id) ?? created;
+      manageWorkspace(workspace);
     } catch (err) {
       error = String(err);
     }
@@ -1389,6 +1506,13 @@
     try {
       await deleteWorkspace(ws.id);
       if (activeWorkspace === ws.id) activeWorkspace = null;
+      if (managedWorkspaceId === ws.id) {
+        managedWorkspaceId = null;
+        managedWorkspaceNameDraft = "";
+      }
+      const workspaceLastUsed = { ...appSettings.workspaceLastUsed };
+      delete workspaceLastUsed[ws.id];
+      appSettings = await setAppSettings({ workspaceLastUsed });
       await reloadWorkspaces();
     } catch (err) {
       error = String(err);
@@ -2031,6 +2155,21 @@
 
   function chooseWorkspace(workspaceId: string | null) {
     activeWorkspace = workspaceId;
+    if (workspaceId) {
+      const previousWorkspaceLastUsed = appSettings.workspaceLastUsed;
+      const workspaceLastUsed = { ...previousWorkspaceLastUsed, [workspaceId]: Date.now() };
+      appSettings = { ...appSettings, workspaceLastUsed };
+      workspaceUsagePersist = workspaceUsagePersist.then(async () => {
+        try {
+          await setAppSettings({ workspaceLastUsed });
+        } catch (err) {
+          if (appSettings.workspaceLastUsed === workspaceLastUsed) {
+            appSettings = { ...appSettings, workspaceLastUsed: previousWorkspaceLastUsed };
+          }
+          error = `Unable to save workspace usage history: ${err}`;
+        }
+      });
+    }
     const candidate = sorted.find(
       (service) =>
         service.isEnabled !== false &&
@@ -2319,21 +2458,6 @@
         <button class="link" onclick={handleLogout}>sign out</button>
       </div>
 
-
-      <div class="wspills">
-        <button
-          class="pill"
-          class:on={activeWorkspace === null}
-          onclick={() => chooseWorkspace(null)}>All</button>
-        {#each sortedWorkspaces as w (w.id)}
-          <button
-            class="pill"
-            class:on={activeWorkspace === w.id}
-            onclick={() => chooseWorkspace(w.id)}>{w.name}</button>
-        {/each}
-        <button class="pill mng" onclick={openWorkspaces} title="Manage workspaces">⚙</button>
-      </div>
-
       <div class="svcarea">
         <div class="svclist">
           {#each visibleServices as s (s.id)}{@render row(s)}{/each}
@@ -2620,55 +2744,6 @@
             </div>
           {/if}
         </div>
-      {:else if view === "workspaces"}
-        <div class="panel">
-          <div class="panel-head">
-            <h2>Workspaces</h2>
-            <button class="link" onclick={backToService}>✕ close</button>
-          </div>
-
-          <div class="searchrow">
-            <input bind:value={newWorkspaceName} placeholder="New workspace name" />
-            <button class="primary" onclick={handleCreateWorkspace}>Create</button>
-            <button class="secondary" disabled={!sortedWorkspaces.length} onclick={() => doPortableExport("workspaces", "all workspaces", workspacePortablePayload())}>Export all…</button>
-          </div>
-          {#if portableExportStatus}<p class="sub">{portableExportStatus}</p>{/if}
-          {#if error}<p class="error">{error}</p>{/if}
-
-          {#each sortedWorkspaces as ws, workspaceIndex (ws.id)}
-            <div class="wsedit">
-              <div class="wsedit-head">
-                <input
-                  class="wsname"
-                  value={ws.name}
-                  onblur={(e) => renameWorkspace(ws, e.currentTarget.value)}
-                />
-                <div class="workspace-actions">
-                  <button class="icon-button compact" disabled={workspaceIndex === 0} aria-label={`Move ${ws.name} up`} title="Move up" onclick={() => moveWorkspace(ws.id, -1)}>↑</button>
-                  <button class="icon-button compact" disabled={workspaceIndex === sortedWorkspaces.length - 1} aria-label={`Move ${ws.name} down`} title="Move down" onclick={() => moveWorkspace(ws.id, 1)}>↓</button>
-                  <button class="secondary sm" onclick={() => doPortableExport("workspace", `workspace ${ws.name}`, workspacePortablePayload(ws.id))}>Export…</button>
-                  <button class="link danger-link" onclick={() => handleDeleteWorkspace(ws)}>delete</button>
-                </div>
-              </div>
-              <div class="set-title">Services in this workspace</div>
-              <div class="wsservices">
-                {#each sorted as s (s.id)}
-                  <label class="row-toggle">
-                    <input
-                      type="checkbox"
-                      checked={ws.services.includes(s.id)}
-                      onchange={(e) =>
-                        toggleServiceInWorkspace(ws, s.id, e.currentTarget.checked)}
-                    />
-                    <span>{serviceLabel(s)}</span>
-                  </label>
-                {/each}
-              </div>
-            </div>
-          {:else}
-            <p class="sub">No workspace yet. Create one above.</p>
-          {/each}
-        </div>
       {:else if view === "appSettings"}
         <div class="panel settings-panel">
           <div class="panel-head settings-head">
@@ -2680,7 +2755,7 @@
           </div>
 
           <nav class="settings-tabs" aria-label="Settings sections">
-            {#each [["general", "General"], ["services", "Services"], ["appearance", "Appearance"], ["keybindings", "Keybinds"], ["sandbox", "Sandbox"], ["privacy", "Privacy"], ["backup", "Backup"], ["audit", "Audit log"], ["advanced", "Advanced"], ["updates", "Updates"], ["about", "About"]] as [id, label] (id)}
+            {#each [["general", "General"], ["services", "Services"], ["workspaces", "Workspaces"], ["appearance", "Appearance"], ["keybindings", "Keybinds"], ["sandbox", "Sandbox"], ["privacy", "Privacy"], ["backup", "Backup"], ["audit", "Audit log"], ["advanced", "Advanced"], ["updates", "Updates"], ["about", "About"]] as [id, label] (id)}
               <button
                 class="setting-tab"
                 class:on={settingsTab === id}
@@ -2796,6 +2871,165 @@
                   {@render appToggle("Preload services", "Load services in the background after startup for faster switching. This uses more memory.", "preloadServices", appSettings.preloadServices)}
                 </div>
               </section>
+            {:else if settingsTab === "workspaces"}
+              {#if managedWorkspace}
+                {@const selectedWorkspaceId = managedWorkspace.id}
+                {@const selectedWorkspaceName = managedWorkspace.name}
+                {@const selectedWorkspaceServices = managedWorkspace.services}
+                <section class="settings-section workspace-detail-section" aria-labelledby="settings-workspace-detail">
+                  <div class="section-heading workspace-detail-heading">
+                    <div>
+                      <h3 id="settings-workspace-detail">Workspace settings · {selectedWorkspaceName}</h3>
+                      <p>Rename this workspace and manage exactly which services belong to it.</p>
+                    </div>
+                    <button class="secondary sm" onclick={closeManagedWorkspace}>← Workspaces</button>
+                  </div>
+                  <div class="settings-list">
+                    <div class="setting-card">
+                      <div class="setting-copy">
+                        <span class="setting-label">Name</span>
+                        <span class="setting-description">Used in the quick switcher and Navigate menu.</span>
+                      </div>
+                      <div class="workspace-name-control">
+                        <input class="setting-text-input" bind:value={managedWorkspaceNameDraft} maxlength="80" aria-label="Workspace name" />
+                        <button class="primary" disabled={managedWorkspaceBusy || !managedWorkspaceNameDraft.trim() || managedWorkspaceNameDraft.trim() === selectedWorkspaceName} onclick={saveManagedWorkspaceName}>Save</button>
+                      </div>
+                    </div>
+                    <div class="setting-card setting-card-stack workspace-membership-card">
+                      <div class="setting-copy">
+                        <span class="setting-label">Services</span>
+                        <span class="setting-description">Membership changes are saved immediately. Search and pagination keep this usable with large service collections.</span>
+                      </div>
+                      <input
+                        class="setting-text-input"
+                        type="search"
+                        placeholder="Search services…"
+                        bind:value={managedWorkspaceServiceQuery}
+                        oninput={() => (managedWorkspaceServicePage = 0)}
+                        aria-label={`Search services in ${selectedWorkspaceName}`}
+                      />
+                      <div class="workspace-service-list" role="list" aria-label={`Services in ${selectedWorkspaceName}`}>
+                        {#each managedWorkspaceServiceRows as service (service.id)}
+                          <label class="workspace-service-row" role="listitem">
+                            <span>
+                              <strong>{serviceLabel(service)}</strong>
+                              <small>{service.recipeId || "Unknown recipe"}{service.isEnabled === false ? " · Disabled" : ""}</small>
+                            </span>
+                            <input
+                              type="checkbox"
+                              checked={selectedWorkspaceServices.includes(service.id)}
+                              disabled={managedWorkspaceBusy}
+                              onchange={(event) => toggleManagedWorkspaceService(service.id, event.currentTarget.checked)}
+                              aria-label={`${selectedWorkspaceServices.includes(service.id) ? "Remove" : "Add"} ${serviceLabel(service)} ${selectedWorkspaceServices.includes(service.id) ? "from" : "to"} ${selectedWorkspaceName}`}
+                            />
+                          </label>
+                        {:else}
+                          <div class="managed-empty"><strong>No services match this search</strong><span>Change the search to manage other services.</span></div>
+                        {/each}
+                      </div>
+                      {#if managedWorkspaceServices.length > MANAGED_SERVICE_PAGE_SIZE}
+                        <div class="pagination" aria-label="Workspace service pages">
+                          <button class="secondary sm" disabled={managedWorkspaceServicePage === 0} onclick={() => (managedWorkspaceServicePage = Math.max(0, managedWorkspaceServicePage - 1))}>Previous</button>
+                          <span>Page {managedWorkspaceServicePage + 1} of {managedWorkspaceServicePageCount} · {managedWorkspaceServices.length} services</span>
+                          <button class="secondary sm" disabled={managedWorkspaceServicePage >= managedWorkspaceServicePageCount - 1} onclick={() => (managedWorkspaceServicePage = Math.min(managedWorkspaceServicePageCount - 1, managedWorkspaceServicePage + 1))}>Next</button>
+                        </div>
+                      {/if}
+                      <div class="workspace-detail-actions">
+                        <button class="secondary" onclick={() => doPortableExport("workspace", `workspace ${selectedWorkspaceName}`, workspacePortablePayload(selectedWorkspaceId))}>Export workspace…</button>
+                        <button class="secondary danger-button" onclick={deleteManagedWorkspace}>Delete workspace</button>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              {:else}
+                <section class="settings-section" aria-labelledby="settings-workspaces-switcher">
+                  <div class="section-heading">
+                    <h3 id="settings-workspaces-switcher">Quick workspace switcher</h3>
+                    <p>Choose how Ctrl+D orders workspaces. “All services” always remains first so you can leave a workspace filter quickly.</p>
+                  </div>
+                  <div class="settings-list">
+                    <div class="setting-card">
+                      <div class="setting-copy">
+                        <span class="setting-label">Workspace switch order</span>
+                        <span class="setting-description">Custom order is managed below. Recent modes use the last time each workspace was selected.</span>
+                      </div>
+                      <select
+                        class="select setting-control workspace-order-select"
+                        aria-label="Workspace switch order"
+                        bind:value={appSettings.workspaceQuickSwitchOrder}
+                        onchange={() => saveAppSetting("workspaceQuickSwitchOrder", appSettings.workspaceQuickSwitchOrder)}
+                      >
+                        <option value="custom">Custom</option>
+                        <option value="customReverse">Custom — reverse</option>
+                        <option value="alphabetical">Alphabetical — A to Z</option>
+                        <option value="alphabeticalReverse">Alphabetical — Z to A</option>
+                        <option value="recent">Most recently used</option>
+                        <option value="recentReverse">Least recently used</option>
+                      </select>
+                    </div>
+                    <div class="setting-card">
+                      <div class="setting-copy">
+                        <span class="setting-label">Workspace usage history</span>
+                        <span class="setting-description">Clear remembered workspace-use times without changing custom ordering or membership.</span>
+                      </div>
+                      <button class="secondary" disabled={Object.keys(appSettings.workspaceLastUsed).length === 0} onclick={resetWorkspaceUsageHistory}>Reset history</button>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="settings-section" aria-labelledby="settings-workspaces-configured">
+                  <div class="section-heading">
+                    <h3 id="settings-workspaces-configured">Configured workspaces <span class="section-count">{workspaces.length}</span></h3>
+                    <p>Create, search, reorder, export, and manage workspace membership. Reordering a filtered result moves only the matching workspace slots in the canonical custom order.</p>
+                  </div>
+                  <div class="managed-toolbar workspace-managed-toolbar">
+                    <input
+                      class="setting-text-input"
+                      type="search"
+                      placeholder="Search configured workspaces…"
+                      bind:value={managedWorkspaceQuery}
+                      oninput={() => (managedWorkspacePage = 0)}
+                      aria-label="Search configured workspaces"
+                    />
+                    <button class="secondary" disabled={!sortedWorkspaces.length} onclick={() => doPortableExport("workspaces", "all workspaces", workspacePortablePayload())}>Export all…</button>
+                  </div>
+                  <div class="workspace-create-row">
+                    <input class="setting-text-input" bind:value={newWorkspaceName} maxlength="80" placeholder="New workspace name" aria-label="New workspace name" />
+                    <button class="primary" disabled={!newWorkspaceName.trim()} onclick={handleCreateWorkspace}>Create workspace</button>
+                  </div>
+                  {#if portableExportStatus}<p class="settings-status">{portableExportStatus}</p>{/if}
+                  <div class="managed-list" role="list" aria-label="Configured workspaces">
+                    {#each managedWorkspaceRows as workspace, index (workspace.id)}
+                      <div class="managed-row" class:selected={managedWorkspaceId === workspace.id} role="listitem">
+                        <div class="managed-identity workspace-managed-identity">
+                          <span class="workspace-avatar" aria-hidden="true">{workspace.name.slice(0, 1).toUpperCase()}</span>
+                          <div class="managed-copy">
+                            <strong>{workspace.name}</strong>
+                            <span>{workspace.services.length} service{workspace.services.length === 1 ? "" : "s"}</span>
+                          </div>
+                        </div>
+                        <div class="managed-actions">
+                          <button class="icon-button compact" disabled={managedWorkspacePage * MANAGED_SERVICE_PAGE_SIZE + index === 0} aria-label={`Move ${workspace.name} up`} title="Move up" onclick={() => moveManagedWorkspace(workspace.id, -1)}>↑</button>
+                          <button class="icon-button compact" disabled={managedWorkspacePage * MANAGED_SERVICE_PAGE_SIZE + index === managedWorkspaces.length - 1} aria-label={`Move ${workspace.name} down`} title="Move down" onclick={() => moveManagedWorkspace(workspace.id, 1)}>↓</button>
+                          <button class="secondary sm" onclick={() => manageWorkspace(workspace)}>Workspace settings</button>
+                        </div>
+                      </div>
+                    {:else}
+                      <div class="managed-empty">
+                        <strong>{workspaces.length ? "No workspaces match this search" : "No workspaces configured"}</strong>
+                        <span>{workspaces.length ? "Change the search to see more workspaces." : "Create a workspace above, then add services to it."}</span>
+                      </div>
+                    {/each}
+                  </div>
+                  {#if managedWorkspaces.length > MANAGED_SERVICE_PAGE_SIZE}
+                    <div class="pagination" aria-label="Configured workspace pages">
+                      <button class="secondary sm" disabled={managedWorkspacePage === 0} onclick={() => (managedWorkspacePage = Math.max(0, managedWorkspacePage - 1))}>Previous</button>
+                      <span>Page {managedWorkspacePage + 1} of {managedWorkspacePageCount} · {managedWorkspaces.length} workspaces</span>
+                      <button class="secondary sm" disabled={managedWorkspacePage >= managedWorkspacePageCount - 1} onclick={() => (managedWorkspacePage = Math.min(managedWorkspacePageCount - 1, managedWorkspacePage + 1))}>Next</button>
+                    </div>
+                  {/if}
+                </section>
+              {/if}
             {:else if settingsTab === "appearance"}
               <section class="settings-section" aria-labelledby="settings-appearance-app">
                 <div class="section-heading">
@@ -3358,25 +3592,6 @@
   :global(body[data-svcloc="bottom"]) .svclist { margin-top: auto; }
   .account { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
   .link { background: none; border: none; color: var(--link); cursor: pointer; font-size: 12px; text-decoration: underline; }
-  .wspills {
-    display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; overflow-x: auto;
-    min-height: 32px; padding: 3px; border: 1px solid var(--border); border-radius: 10px;
-    background: color-mix(in srgb, var(--input) 72%, transparent); scrollbar-width: thin;
-  }
-  .pill {
-    flex: none; background: transparent; border: 1px solid transparent; color: var(--muted);
-    border-radius: 7px; padding: 5px 9px; cursor: pointer; font-size: 12px; font-weight: 600;
-    line-height: 1.2; transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-  }
-  .pill:hover { background: var(--hover); color: var(--text2); }
-  .pill.on {
-    background: var(--accent); border-color: color-mix(in srgb, var(--accent) 70%, var(--border2));
-    color: var(--accent-fg); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.16);
-  }
-  .pill.mng {
-    background: transparent; border-color: var(--border2); color: var(--muted);
-    font-size: 14px; line-height: 1; padding: 4px 8px;
-  }
   .svclist { display: flex; flex: none; flex-direction: column; gap: 2px; padding-right: 0; }
 
   .srow-wrap { display: flex; align-items: center; position: relative; width: 100%; }
@@ -3451,13 +3666,6 @@
   .swatch.on { outline: 2px solid var(--text); outline-offset: 2px; }
   .searchrow { display: flex; gap: 8px; }
   .searchrow input { flex: 1; }
-  .wsedit {
-    display: flex; flex-direction: column; gap: 8px; padding: 12px;
-    border: 1px solid var(--border); border-radius: 10px; background: var(--input);
-  }
-  .wsedit-head { display: flex; gap: 10px; align-items: center; }
-  .wsname { flex: 1; }
-  .wsservices { display: flex; flex-direction: column; gap: 4px; max-height: 30vh; overflow-y: auto; }
   .block { gap: 6px; }
   .num-row { display: flex; gap: 12px; }
   .num-row label { flex: 1; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
@@ -3507,7 +3715,6 @@
   .code-input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1.4; }
   .security-note { margin-top: -4px; }
 
-  .workspace-actions { display: inline-flex; align-items: center; gap: 4px; flex: none; }
   .danger-link { color: #e77d8e; }
   .icon-button.compact { width: 30px; height: 30px; border-color: var(--border); background: var(--input); }
   .icon-button.compact:disabled { opacity: 0.35; cursor: default; }
@@ -3619,6 +3826,26 @@
   .range-control { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; min-width: 180px; }
   .settings-panel .range { width: 140px; margin-left: 0; }
   .managed-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, 220px); gap: 8px; }
+  .workspace-managed-toolbar { grid-template-columns: minmax(0, 1fr) auto; }
+  .workspace-create-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+  .workspace-order-select { min-width: 210px; max-width: 280px; }
+  .workspace-managed-identity { min-width: 0; flex: 1 1 auto; }
+  .workspace-avatar { width: 34px; height: 34px; display: grid; place-items: center; flex: none; border-radius: 8px; background: var(--hover); color: var(--text2); font-size: 13px; font-weight: 750; }
+  .managed-row.selected { border-color: color-mix(in srgb, var(--accent) 62%, var(--border)); background: color-mix(in srgb, var(--accent) 8%, var(--input)); }
+  .workspace-detail-section { padding-top: 4px; border-top: 1px solid var(--border); }
+  .workspace-detail-heading { flex-direction: row; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .workspace-detail-heading > div { min-width: 0; }
+  .workspace-name-control { min-width: min(430px, 48vw); display: grid; grid-template-columns: minmax(160px, 1fr) auto; gap: 8px; align-items: center; }
+  .workspace-membership-card { gap: 9px; }
+  .workspace-service-list { display: flex; flex-direction: column; gap: 5px; max-height: min(46vh, 520px); overflow-y: auto; overscroll-behavior: contain; padding: 3px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg); }
+  .workspace-service-row { min-height: 46px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 9px; border-radius: 7px; cursor: pointer; }
+  .workspace-service-row:hover { background: var(--hover); }
+  .workspace-service-row > span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .workspace-service-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text2); font-size: 13px; }
+  .workspace-service-row small { color: var(--muted); font-size: 11px; }
+  .workspace-service-row input { width: 18px; height: 18px; flex: none; accent-color: var(--accent); }
+  .workspace-detail-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+  .danger-button { color: #ff9b9b; border-color: color-mix(in srgb, #ff7373 45%, var(--border2)); }
   .pagination { display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--muted); font-size: 12px; }
   .custom-swatch-wrap { position: relative; display: inline-flex; align-items: center; }
   .swatch-remove { position: absolute; top: -8px; right: -8px; width: 18px; height: 18px; display: grid; place-items: center; padding: 0; border: 1px solid var(--border2); border-radius: 999px; background: var(--panel); color: var(--muted); cursor: pointer; font-size: 12px; line-height: 1; }
@@ -3718,11 +3945,13 @@
     .setting-number { width: 100%; text-align: left; }
     .setting-actions { justify-content: flex-start; }
     .managed-row { align-items: flex-start; flex-direction: column; }
-    .managed-actions { width: 100%; justify-content: flex-end; }
+    .managed-actions { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
+    .workspace-detail-heading { align-items: center; }
+    .workspace-name-control { min-width: 0; }
     .settings-panel .swatches { justify-content: flex-start; max-width: none; }
     .range-control { min-width: 0; }
     .settings-panel .range { flex: 1; width: auto; }
-    .managed-toolbar, .sandbox-create-row, .backup-location-row, .audit-toolbar { grid-template-columns: 1fr; }
+    .managed-toolbar, .workspace-create-row, .workspace-name-control, .sandbox-create-row, .backup-location-row, .audit-toolbar { grid-template-columns: 1fr; }
     .color-picker-preview-row { grid-template-columns: 48px minmax(0, 1fr); }
     .color-preview { display: none; }
     .slider-field { grid-template-columns: 1fr; gap: 5px; }
