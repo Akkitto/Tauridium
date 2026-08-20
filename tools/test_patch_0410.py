@@ -100,7 +100,7 @@ class Patch0410Tests(unittest.TestCase):
   def test_service_settings_workspace_manager_is_searchable_scrollable_and_transactional(self) -> None:
     self.assertIn('placeholder="Search workspaces…"', self.app)
     self.assertIn('class="service-workspace-list"', self.app)
-    self.assertIn("max-height: min(38vh, 420px); overflow-y: auto", self.app)
+    self.assertIn("max-height: min(42vh, 460px); overflow-y: auto", self.app)
     self.assertIn("serviceWorkspaceRows", self.app)
     self.assertIn("serviceWorkspacePageCount", self.app)
     self.assertIn("MANAGED_SERVICE_PAGE_SIZE", self.app)

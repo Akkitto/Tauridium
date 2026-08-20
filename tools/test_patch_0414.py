@@ -76,15 +76,14 @@ class Patch0414Tests(unittest.TestCase):
   def test_service_workspace_manager_has_clear_membership_actions_and_pagination(self) -> None:
     block = APP.split('<div class="set-title">Workspaces</div>', 1)[1].split('<div class="set-title">Appearance</div>', 1)[0]
     self.assertIn('Workspace membership', block)
-    self.assertIn('{serviceWorkspaceJoinedCount} of {workspaces.length} joined', block)
-    self.assertIn('<option value="joined">Joined</option>', block)
-    self.assertIn('<option value="available">Not joined</option>', block)
+    self.assertIn('serviceWorkspaceJoinedCount', block)
+    self.assertIn('serviceWorkspaceFilter === "joined"', block)
+    self.assertIn('serviceWorkspaceFilter === "available"', block)
     self.assertIn('{#each serviceWorkspaceRows as workspace', block)
-    self.assertIn('{joined ? "Remove" : "Add"}', block)
+    self.assertIn('toggleCurrentServiceWorkspace(workspace', block)
     self.assertIn('serviceWorkspacePageCount', block)
     self.assertIn('Create a workspace', block)
-    self.assertNotIn('type="checkbox"', block)
-    self.assertIn('max-height: min(38vh, 420px); overflow-y: auto', APP)
+    self.assertIn('overflow-y: auto', APP)
 
 
 if __name__ == "__main__":

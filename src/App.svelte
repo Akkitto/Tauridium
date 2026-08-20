@@ -1524,6 +1524,11 @@
     }
   }
 
+  function setServiceWorkspaceFilter(filter: "all" | "joined" | "available") {
+    serviceWorkspaceFilter = filter;
+    serviceWorkspacePage = 0;
+  }
+
   async function toggleCurrentServiceWorkspace(workspace: Workspace, member: boolean) {
     if (!settingsSvc || serviceWorkspaceBusy) return;
     serviceWorkspaceBusy = true;
@@ -2649,53 +2654,68 @@
             <div class="service-workspace-overview">
               <div class="setting-copy">
                 <strong>Workspace membership</strong>
-                <p class="desc">Add or remove this service from workspaces. Membership changes are saved immediately.</p>
+                <p class="desc">Select the workspaces that include this service. Click anywhere in a row to change membership; changes are saved immediately.</p>
               </div>
-              <span class="status-badge">{serviceWorkspaceJoinedCount} of {workspaces.length} joined</span>
+              <span class="status-badge">{serviceWorkspaceJoinedCount} of {workspaces.length} included</span>
             </div>
             <div class="service-workspace-toolbar">
               <input
+                class="service-workspace-search"
                 type="search"
                 bind:value={serviceWorkspaceQuery}
                 oninput={() => (serviceWorkspacePage = 0)}
                 placeholder="Search workspaces…"
                 aria-label="Search workspaces for this service"
               />
-              <select
-                class="select"
-                bind:value={serviceWorkspaceFilter}
-                onchange={() => (serviceWorkspacePage = 0)}
-                aria-label="Filter workspace membership"
-              >
-                <option value="all">All workspaces</option>
-                <option value="joined">Joined</option>
-                <option value="available">Not joined</option>
-              </select>
+              <div class="service-workspace-filters" role="group" aria-label="Filter workspace membership">
+                <button
+                  type="button"
+                  class:active={serviceWorkspaceFilter === "all"}
+                  aria-pressed={serviceWorkspaceFilter === "all"}
+                  onclick={() => setServiceWorkspaceFilter("all")}
+                >All</button>
+                <button
+                  type="button"
+                  class:active={serviceWorkspaceFilter === "joined"}
+                  aria-pressed={serviceWorkspaceFilter === "joined"}
+                  onclick={() => setServiceWorkspaceFilter("joined")}
+                >Included</button>
+                <button
+                  type="button"
+                  class:active={serviceWorkspaceFilter === "available"}
+                  aria-pressed={serviceWorkspaceFilter === "available"}
+                  onclick={() => setServiceWorkspaceFilter("available")}
+                >Not included</button>
+              </div>
             </div>
-            <div class="service-workspace-list" role="list" aria-label={`Workspace membership for ${serviceLabel(settingsSvc)}`}>
+            <ul class="service-workspace-list" aria-label={`Workspace membership for ${serviceLabel(settingsSvc)}`}>
               {#each serviceWorkspaceRows as workspace (workspace.id)}
                 {@const joined = workspace.services.includes(settingsServiceId)}
-                <div class="service-workspace-row" class:joined role="listitem">
-                  <span class="workspace-avatar service-workspace-avatar" aria-hidden="true">{workspace.name.slice(0, 1).toUpperCase()}</span>
-                  <span class="service-workspace-copy">
-                    <strong>{workspace.name}</strong>
-                    <small>{workspace.services.length} service{workspace.services.length === 1 ? "" : "s"}</small>
-                  </span>
-                  {#if joined}<span class="status-badge workspace-membership-badge">Joined</span>{/if}
-                  <button
-                    class={joined ? "secondary sm" : "primary sm"}
-                    disabled={serviceWorkspaceBusy}
-                    onclick={() => toggleCurrentServiceWorkspace(workspace, !joined)}
-                    aria-label={`${joined ? "Remove" : "Add"} ${serviceLabel(settingsSvc)} ${joined ? "from" : "to"} ${workspace.name}`}
-                  >{joined ? "Remove" : "Add"}</button>
-                </div>
+                <li class="service-workspace-item">
+                  <label class="service-workspace-option" class:joined class:busy={serviceWorkspaceBusy}>
+                    <input
+                      class="service-workspace-checkbox"
+                      type="checkbox"
+                      checked={joined}
+                      disabled={serviceWorkspaceBusy}
+                      onchange={(event) => toggleCurrentServiceWorkspace(workspace, event.currentTarget.checked)}
+                      aria-label={`Include ${serviceLabel(settingsSvc)} in ${workspace.name}`}
+                    />
+                    <span class="workspace-avatar service-workspace-avatar" aria-hidden="true">{workspace.name.slice(0, 1).toUpperCase()}</span>
+                    <span class="service-workspace-copy">
+                      <strong>{workspace.name}</strong>
+                      <small>{workspace.services.length} service{workspace.services.length === 1 ? "" : "s"}</small>
+                    </span>
+                    <span class="service-workspace-state" aria-hidden="true">{joined ? "Included" : "Not included"}</span>
+                  </label>
+                </li>
               {:else}
-                <div class="managed-empty">
+                <li class="managed-empty">
                   <strong>No workspaces match</strong>
                   <span>{workspaces.length ? "Change the search or membership filter." : "Create a workspace below to organize this service."}</span>
-                </div>
+                </li>
               {/each}
-            </div>
+            </ul>
             {#if serviceWorkspaceCandidates.length > MANAGED_SERVICE_PAGE_SIZE}
               <div class="pagination" aria-label="Service workspace pages">
                 <button class="secondary sm" disabled={serviceWorkspacePage === 0} onclick={() => (serviceWorkspacePage = Math.max(0, serviceWorkspacePage - 1))}>Previous</button>
@@ -2706,11 +2726,11 @@
             <div class="service-workspace-create-card">
               <div class="setting-copy">
                 <strong>Create a workspace</strong>
-                <p class="desc">Create a new workspace and add this service to it immediately.</p>
+                <p class="desc">Create a new workspace and include this service immediately.</p>
               </div>
               <div class="service-workspace-create">
                 <input bind:value={serviceWorkspaceNewName} maxlength="80" placeholder="Workspace name" aria-label="New workspace name for this service" />
-                <button class="secondary sm" disabled={serviceWorkspaceBusy || !serviceWorkspaceNewName.trim()} onclick={createWorkspaceForCurrentService}>Create & add</button>
+                <button class="secondary sm" disabled={serviceWorkspaceBusy || !serviceWorkspaceNewName.trim()} onclick={createWorkspaceForCurrentService}>Create and include</button>
               </div>
             </div>
           </div>
@@ -4041,22 +4061,35 @@
   .service-shortcut-policy > div { min-width: 0; flex: 1 1 320px; }
   .service-shortcut-policy .select { min-width: 230px; max-width: 320px; }
   .service-shortcut-effective { flex-basis: 100%; margin-top: 2px; }
-  .service-workspace-manager { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--panel) 88%, var(--bg)); }
+  .service-workspace-manager { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--panel) 88%, var(--bg)); }
   .service-workspace-overview { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
   .service-workspace-overview .setting-copy { min-width: 0; }
-  .service-workspace-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 210px); gap: 8px; align-items: center; }
-  .service-workspace-toolbar input, .service-workspace-toolbar select { width: 100%; box-sizing: border-box; }
-  .service-workspace-list { display: flex; flex-direction: column; gap: 5px; max-height: min(38vh, 420px); overflow-y: auto; overscroll-behavior: contain; padding: 4px; border: 1px solid var(--border); border-radius: 9px; background: var(--input); }
-  .service-workspace-row { min-height: 48px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 9px; padding: 7px 8px; border: 1px solid transparent; border-radius: 7px; }
-  .service-workspace-row:hover { background: var(--hover); border-color: var(--border); }
-  .service-workspace-row.joined { background: color-mix(in srgb, var(--accent) 7%, transparent); }
-  .service-workspace-avatar { width: 30px; height: 30px; border-radius: 7px; }
+  .service-workspace-toolbar { display: flex; align-items: stretch; gap: 8px; }
+  .service-workspace-search { min-width: 0; min-height: 40px; flex: 1 1 280px; box-sizing: border-box; }
+  .service-workspace-filters { display: inline-grid; grid-template-columns: repeat(3, auto); align-items: stretch; flex: none; padding: 3px; border: 1px solid var(--border); border-radius: 9px; background: var(--input); }
+  .service-workspace-filters button { min-height: 32px; padding: 5px 10px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 12px; font-weight: 650; white-space: nowrap; }
+  .service-workspace-filters button:hover { background: var(--hover); color: var(--text2); }
+  .service-workspace-filters button.active { border-color: var(--border2); background: var(--panel); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14); }
+  .service-workspace-filters button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .service-workspace-list { display: flex; flex-direction: column; gap: 4px; max-height: min(42vh, 460px); overflow-y: auto; overscroll-behavior: contain; margin: 0; padding: 4px; border: 1px solid var(--border); border-radius: 9px; background: var(--input); }
+  .service-workspace-item { margin: 0; padding: 0; list-style: none; }
+  .service-workspace-option { width: 100%; min-height: 54px; box-sizing: border-box; display: grid; grid-template-columns: 20px 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid transparent; border-radius: 7px; cursor: pointer; user-select: none; transition: background 0.12s ease, border-color 0.12s ease; }
+  .service-workspace-option:hover { background: var(--hover); border-color: var(--border); }
+  .service-workspace-option:focus-within { border-color: var(--accent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 62%, transparent); }
+  .service-workspace-option.joined { border-color: color-mix(in srgb, var(--accent) 32%, var(--border)); background: color-mix(in srgb, var(--accent) 8%, var(--input)); }
+  .service-workspace-option.busy { cursor: wait; opacity: 0.68; }
+  .service-workspace-checkbox { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+  .service-workspace-checkbox:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .service-workspace-checkbox:disabled { cursor: wait; }
+  .service-workspace-avatar { width: 34px; height: 34px; border-radius: 8px; }
   .service-workspace-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .service-workspace-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text2); font-size: 13px; }
   .service-workspace-copy small { color: var(--muted); font-size: 11px; }
-  .workspace-membership-badge { white-space: nowrap; }
-  .service-workspace-create-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 46%); align-items: center; gap: 12px; padding-top: 2px; }
-  .service-workspace-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+  .service-workspace-state { min-width: 74px; color: var(--muted); font-size: 11px; font-weight: 650; text-align: right; white-space: nowrap; }
+  .service-workspace-option.joined .service-workspace-state { color: var(--text2); }
+  .service-workspace-create-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(290px, 48%); align-items: center; gap: 14px; padding-top: 3px; border-top: 1px solid var(--border); }
+  .service-workspace-create-card .setting-copy { padding-top: 9px; }
+  .service-workspace-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding-top: 9px; }
   .danger-link { color: #ff9b9b; }
   .service-context-backdrop { position: fixed; inset: 0; z-index: 1200; }
   .service-context-menu { position: fixed; width: 226px; padding: 5px; border: 1px solid var(--border2); border-radius: 9px; background: var(--panel); box-shadow: 0 14px 42px rgba(0, 0, 0, 0.45); }
@@ -4110,9 +4143,13 @@
     .settings-panel .swatches { justify-content: flex-start; max-width: none; }
     .range-control { min-width: 0; }
     .settings-panel .range { flex: 1; width: auto; }
-    .managed-toolbar, .workspace-create-row, .workspace-name-control, .sandbox-create-row, .backup-location-row, .audit-toolbar, .service-workspace-toolbar, .service-workspace-create, .service-workspace-create-card { grid-template-columns: 1fr; }
-    .service-workspace-row { grid-template-columns: auto minmax(0, 1fr) auto; }
-    .workspace-membership-badge { display: none; }
+    .managed-toolbar, .workspace-create-row, .workspace-name-control, .sandbox-create-row, .backup-location-row, .audit-toolbar, .service-workspace-create, .service-workspace-create-card { grid-template-columns: 1fr; }
+    .service-workspace-overview { flex-direction: column; }
+    .service-workspace-toolbar { flex-direction: column; }
+    .service-workspace-filters { width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .service-workspace-filters button { padding-inline: 6px; }
+    .service-workspace-option { grid-template-columns: 20px 34px minmax(0, 1fr); }
+    .service-workspace-state { display: none; }
     .service-shortcut-policy .select { width: 100%; max-width: none; }
     .color-picker-preview-row { grid-template-columns: 48px minmax(0, 1fr); }
     .color-preview { display: none; }

@@ -597,7 +597,7 @@ def main() -> int:
   for marker in (
     '{@const settingsServiceId = settingsSvc.id}',
     '{@const joined = workspace.services.includes(settingsServiceId)}',
-    'toggleCurrentServiceWorkspace(workspace, !joined)',
+    'toggleCurrentServiceWorkspace(workspace',
   ):
     if marker not in app:
       fail(f"0.4.11 Service Settings nullability invariant is missing: {marker}")
@@ -1022,6 +1022,41 @@ def main() -> int:
   ):
     if test_marker not in patch_0415:
       fail(f"0.4.15 regression coverage is missing: {test_marker}")
+
+  patch_0416 = read("tools/test_patch_0416.py")
+  service_workspace_block = app.split('<div class="set-title">Workspaces</div>', 1)[1].split(
+    '<div class="set-title">Appearance</div>', 1
+  )[0]
+  for marker in (
+    'class="service-workspace-filters" role="group"',
+    '<ul class="service-workspace-list"',
+    '<label class="service-workspace-option"',
+    'class="service-workspace-checkbox"',
+    '{joined ? "Included" : "Not included"}',
+    'Create and include',
+  ):
+    if marker not in service_workspace_block:
+      fail(f"0.4.16 service-workspace UX invariant is missing: {marker}")
+  for marker in (
+    'grid-template-columns: 20px 34px minmax(0, 1fr) auto',
+    '.service-workspace-filters button { min-height: 32px;',
+    '.service-workspace-toolbar { flex-direction: column; }',
+  ):
+    if marker not in app:
+      fail(f"0.4.16 service-workspace layout invariant is missing: {marker}")
+  if 'class="service-workspace-row"' in service_workspace_block:
+    fail("0.4.16 obsolete service-workspace action row was reintroduced")
+  if '{joined ? "Remove" : "Add"}' in service_workspace_block:
+    fail("0.4.16 narrow per-row Add/Remove controls were reintroduced")
+  for test_marker in (
+    "test_workspace_membership_uses_full_row_checkbox_targets",
+    "test_workspace_rows_have_stable_alignment_and_membership_state",
+    "test_workspace_filter_is_large_segmented_control",
+    "test_workspace_manager_explains_direct_interaction_and_scales",
+    "test_workspace_layout_has_narrow_screen_fallback",
+  ):
+    if test_marker not in patch_0416:
+      fail(f"0.4.16 regression coverage is missing: {test_marker}")
 
   for marker in (
     '["keybindings", "Keybinds"]',

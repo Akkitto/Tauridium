@@ -14,7 +14,7 @@ class Patch0411Tests(unittest.TestCase):
     block = self.app.split('{:else if view === "svcSettings" && settingsSvc}', 1)[1].split('{:else if view === "settings"}', 1)[0]
     self.assertIn('{@const settingsServiceId = settingsSvc.id}', block)
     self.assertIn('workspace.services.includes(serviceId)).length', self.app)
-    self.assertIn('{serviceWorkspaceJoinedCount} of {workspaces.length} joined', block)
+    self.assertIn('serviceWorkspaceJoinedCount', block)
     self.assertIn('{@const joined = workspace.services.includes(settingsServiceId)}', block)
     self.assertNotIn('workspace.services.includes(settingsSvc.id)', block)
 
