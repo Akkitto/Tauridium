@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.4.14] - 2026-08-20
+
+### Added
+
+- Added a default-enabled **Capture Tauridium shortcuts inside services** Advanced setting so configured Tauridium shortcuts continue to work while a hosted service owns keyboard focus.
+- Added a per-service **Shortcut priority** override with inheritance from the global policy, allowing hotkey-heavy websites to receive matching shortcuts instead.
+- Added **Add Workspace** to the native Tauridium application menu directly below **Add Service**.
+
+### Changed
+
+- Renamed the native application-menu items **Settings…** to **Settings** and **Add Service…** to **Add Service**.
+- Redesigned Service Settings workspace membership as a coherent searchable, filterable, paginated manager with joined-state badges and explicit **Add**/**Remove** actions, plus a separate **Create & add** card.
+- Service-webview shortcut capture supports all configured single-stroke and two-stroke Tauridium bindings rather than only the developer-tools shortcut.
+
+### Reliability and UX
+
+- Shortcut capture intercepts only configured Tauridium shortcut sequences; normal typing remains untouched unless explicitly assigned as a shortcut.
+- Per-service shortcut overrides are copied on service duplication, removed when the service is deleted, persisted in portable application settings, and applied by recreating the affected service webview.
+- Global shortcut-policy or keybinding changes recreate open service webviews so the effective keyboard policy applies consistently without changing persistent sessions.
+- Consolidated the Rust shortcut action list so validation, service-webview injection, and backend dispatch share one authoritative action set.
+
+### Release quality
+
+- Added dedicated 0.4.14 regressions for global/per-service shortcut priority, single-stroke and chord capture, override lifecycle, native menu wording and Add Workspace routing, and scalable Service Settings workspace management.
+- Retained mandatory Rust 1.97.1 formatting, locked Cargo metadata, strict frontend TypeScript validation, English-only, Git cleanliness, source-manifest, ZIP-integrity, and independently extracted-source validation gates.
+
 ## [0.4.13] - 2026-08-20
 
 ### Changed
