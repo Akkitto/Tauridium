@@ -592,6 +592,25 @@ def main() -> int:
     if marker not in patch_0410_test:
       fail(f"0.4.10 regression coverage is missing: {marker}")
 
+  patch_0411_test = read("tools/test_patch_0411.py")
+  for marker in (
+    '{@const settingsServiceId = settingsSvc.id}',
+    'workspace.services.includes(settingsServiceId)).length} joined',
+    'checked={workspace.services.includes(settingsServiceId)}',
+  ):
+    if marker not in app:
+      fail(f"0.4.11 Service Settings nullability invariant is missing: {marker}")
+  for marker in (
+    'test_service_settings_captures_non_nullable_service_id_for_workspace_callbacks',
+    'test_fix_does_not_use_non_null_assertion_or_type_suppression',
+  ):
+    if marker not in patch_0411_test:
+      fail(f"0.4.11 regression coverage is missing: {marker}")
+  if 'workspace.services.includes(settingsSvc.id)' in app:
+    fail("0.4.11 workspace UI still captures nullable settingsSvc inside callbacks")
+  if 'settingsSvc!.id' in app:
+    fail("0.4.11 Service Settings nullability fix regressed to a non-null assertion")
+
   if 'invoke("start_local_session")' not in api_ts:
     fail("frontend API does not expose the accountless session command")
   if "vi.hoisted" not in api_test_ts or "invoke: vi.fn()" not in api_test_ts:

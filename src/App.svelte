@@ -2367,6 +2367,7 @@
           <div class="placeholder"><p>No service selected.</p></div>
         {/if}
       {:else if view === "svcSettings" && settingsSvc}
+        {@const settingsServiceId = settingsSvc.id}
         <div class="panel">
           <div class="panel-head">
             <h2>Settings — {serviceLabel(settingsSvc)}</h2>
@@ -2428,13 +2429,13 @@
           <div class="service-workspace-manager">
             <div class="service-workspace-toolbar">
               <input type="search" bind:value={serviceWorkspaceQuery} placeholder="Search workspaces…" aria-label="Search workspaces for this service" />
-              <span class="status-badge">{workspaces.filter((workspace) => workspace.services.includes(settingsSvc.id)).length} joined</span>
+              <span class="status-badge">{workspaces.filter((workspace) => workspace.services.includes(settingsServiceId)).length} joined</span>
             </div>
             <div class="service-workspace-list" role="list" aria-label={`Workspaces containing ${serviceLabel(settingsSvc)}`}>
               {#each sortedWorkspaces.filter((workspace) => !serviceWorkspaceQuery.trim() || workspace.name.toLowerCase().includes(serviceWorkspaceQuery.trim().toLowerCase())).slice(0, 200) as workspace (workspace.id)}
                 <label class="service-workspace-row" role="listitem">
                   <span><strong>{workspace.name}</strong><small>{workspace.services.length} service{workspace.services.length === 1 ? "" : "s"}</small></span>
-                  <input type="checkbox" checked={workspace.services.includes(settingsSvc.id)} disabled={serviceWorkspaceBusy} onchange={(event) => toggleCurrentServiceWorkspace(workspace, event.currentTarget.checked)} />
+                  <input type="checkbox" checked={workspace.services.includes(settingsServiceId)} disabled={serviceWorkspaceBusy} onchange={(event) => toggleCurrentServiceWorkspace(workspace, event.currentTarget.checked)} />
                 </label>
               {:else}
                 <div class="managed-empty"><strong>No workspaces match</strong><span>Change the search text or create a workspace below.</span></div>
