@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.4.9] - 2026-08-20
+
+### Fixed
+
+- Fixed the sidebar service context-menu **Settings** action so it captures the selected service before clearing reactive menu state, eliminating the runtime null dereference reported against 0.4.8.
+- Added a narrowly scoped remote-service compatibility shim for hosted applications that detect Tauri internals and call `plugin:webview|internal_toggle_devtools`; only that devtools command becomes a harmless no-op, while Tauridium's remote-service capability/ACL boundary remains closed.
+- Kept duplication of Tauridium-local **Custom Website** services on the local profile path instead of accidentally attempting remote Ferdium API creation in account mode.
+
+### Added
+
+- Added **Duplicate** to the service context menu between **Reload** and the enable/disable action. Copies preserve service configuration, workspace memberships, sandbox assignment, custom URL template data, enabled state, and canonical ordering next to the source service, with rollback of partial changes on failure.
+- Added collision-safe duplicate names (`Name Copy`, `Name Copy 2`, and so on).
+
+### Changed
+
+- Shortened the context-menu state action to **Enable** / **Disable**.
+- Increased context-menu placement bounds for the additional action while preserving keyboard navigation.
+
+### Release quality
+
+- Added dedicated 0.4.9 regressions for the context-menu null-state bug, requested menu order/labels, duplication and rollback behavior, local custom-website ownership, menu geometry, and remote-service capability isolation.
+- Added strict isolated TypeScript validation of the complete `App.svelte` script; it caught and fixed an additional nullable duplicate-selection path before release.
+- Executed the remote compatibility shim in an isolated JavaScript runtime to verify that the devtools command is neutralized, unrelated commands still forward, and reinjection remains idempotent.
+
 ## [0.4.8] - 2026-08-20
 
 ### Fixed
