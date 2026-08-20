@@ -73,6 +73,7 @@ export const DEFAULT_KEYBINDINGS = {
   quickServiceSwitch: "Ctrl+S",
   openSettings: "Ctrl+,",
   addService: "Ctrl+N",
+  addWorkspace: "Ctrl+Shift+N",
   nextService: "Ctrl+Tab",
   previousService: "Ctrl+Shift+Tab",
   nextWorkspace: "Ctrl+Alt+ArrowDown",

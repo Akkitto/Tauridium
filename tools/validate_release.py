@@ -1087,6 +1087,105 @@ def main() -> int:
     if test_marker not in patch_0417:
       fail(f"0.4.17 regression coverage is missing: {test_marker}")
 
+  patch_0418 = read("tools/test_patch_0418.py")
+  ui_ts = read("src/lib/ui.ts")
+  api_ts = read("src/lib/api.ts")
+  recipes_rs = read("src-tauri/src/recipes.rs")
+  tauri_conf = json.loads(read("src-tauri/tauri.conf.json"))
+
+  for marker in (
+    'addWorkspace: "Ctrl+Shift+N"',
+    'case "addWorkspace": openAddWorkspace(); break;',
+    '["addWorkspace", "Add workspace", "Create a new workspace."]',
+  ):
+    if marker not in ui_ts + app:
+      fail(f"0.4.18 Add Workspace keybinding invariant is missing: {marker}")
+  for marker in (
+    'keybindings.insert("addWorkspace".into(), "Ctrl+Shift+N".into());',
+    'shortcut("addWorkspace")',
+    'if key == "keybindings"',
+    'app_settings_merge_preserves_existing_keybindings_and_adds_new_defaults',
+  ):
+    if marker not in main_rs:
+      fail(f"0.4.18 shortcut backend/migration invariant is missing: {marker}")
+
+  reload_ui = app.split("async function reloadServiceFromUi", 1)[1].split(
+    "async function refetchAllServiceIcons", 1
+  )[0]
+  for marker in (
+    'pendingReloadToasts.set(service.id',
+    'pendingReloadToasts.get(e.payload.id)',
+    'showToast(reloadToast)',
+    'showServiceToastOverlay(activeId, message)',
+  ):
+    if marker not in app:
+      fail(f"0.4.18 service-independent reload-toast invariant is missing: {marker}")
+  if 'showToast(`${serviceLabel(service)} reloaded.`)' in reload_ui:
+    fail("0.4.18 reload toast must begin after the replacement service reaches ready state")
+  for marker in (
+    'invoke("show_service_toast_overlay", { serviceId, message })',
+    'fn service_toast_overlay_script(',
+    "host.attachShadow({{mode:'closed'}})",
+    'fn show_service_toast_overlay(',
+  ):
+    if marker not in api_ts + main_rs:
+      fail(f"0.4.18 service toast overlay invariant is missing: {marker}")
+  if "window.__tauridiumShowToast" in main_rs.split("#[cfg(test)]", 1)[0]:
+    fail("0.4.18 hosted pages must not receive a callable Tauridium toast API")
+
+  requested_recipes = {
+    "woodpecker": "http://localhost:8000/",
+    "codeberg": "https://codeberg.org/",
+    "sourcehut": "https://sr.ht/",
+    "fritzbox": "http://192.168.178.1/",
+    "artifacts-mmo": "https://artifactsmmo.com/",
+    "lumo": "https://lumo.proton.me/",
+    "suno": "https://suno.com/create",
+    "midjourney": "https://www.midjourney.com/imagine",
+    "sora": "https://sora.chatgpt.com/sunset",
+    "grafana": "http://localhost:3000/",
+    "graylog": "http://localhost:9000/",
+    "kibana": "http://localhost:5601/",
+    "anytype": "https://anytype.io/",
+  }
+  for recipe_id, url in requested_recipes.items():
+    if f'"{recipe_id}",' not in recipes_rs or f'"{url}",' not in recipes_rs:
+      fail(f"0.4.18 bundled recipe invariant is missing for {recipe_id}")
+  for marker in (
+    '"codeberg" => Some("https://codeberg.org/{teamId}")',
+    '"sourcehut" => Some("https://sr.ht/~{teamId}/")',
+    'feature_0418_recipes_use_expected_endpoints_and_custom_instance_policy',
+    'feature_0418_forge_recipes_support_namespace_workspace_routes',
+  ):
+    if marker not in recipes_rs:
+      fail(f"0.4.18 bundled recipe routing invariant is missing: {marker}")
+
+  main_windows = tauri_conf.get("app", {}).get("windows", [])
+  if not main_windows or main_windows[0].get("visible") is not False:
+    fail("0.4.18 main window must start hidden for off-screen state restoration")
+  reveal_window = main_rs.split("fn reveal_main_window_after_startup_restore", 1)[1].split(
+    "fn show_main", 1
+  )[0]
+  if reveal_window.index("restore_main_window_state(&window);") > reveal_window.index("window.show();"):
+    fail("0.4.18 main window must restore state before first show")
+  for marker in (
+    'reveal_main_window_after_startup_restore(app.handle(), start_minimized);',
+    'StateFlags::FULLSCREEN',
+  ):
+    if marker not in main_rs:
+      fail(f"0.4.18 direct fullscreen restoration invariant is missing: {marker}")
+
+  for test_marker in (
+    "test_add_workspace_has_default_shortcut_everywhere",
+    "test_keybinding_merge_adds_new_defaults_without_resetting_existing_bindings",
+    "test_reload_toast_waits_for_replacement_webview_ready_and_uses_overlay",
+    "test_requested_bundled_recipes_have_expected_service_urls",
+    "test_codeberg_and_sourcehut_support_workspace_namespace_routes",
+    "test_main_window_starts_hidden_until_restored_state_is_applied",
+  ):
+    if test_marker not in patch_0418:
+      fail(f"0.4.18 regression coverage is missing: {test_marker}")
+
   for marker in (
     '["keybindings", "Keybinds"]',
     '["sandbox", "Sandbox"]',

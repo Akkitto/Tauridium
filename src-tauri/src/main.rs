@@ -189,7 +189,7 @@ fn build_native_application_menu(
         "open-add-workspace",
         "Add Workspace",
         true,
-        None::<&str>,
+        shortcut("addWorkspace"),
     )?;
     let app_sub = Submenu::with_items(
         app,
@@ -1107,11 +1107,41 @@ const REMOTE_TAURI_COMPAT_JS: &str = r#"(function(){
   } catch(e){}
 })();"#;
 
-const SHORTCUT_ACTIONS: [&str; 11] = [
+// Build a one-shot Tauridium-owned notification layer inside a native service child webview.
+// The shell DOM sits below those child webviews, so a normal shell toast would be covered while
+// a service is visible. Keep the rendering code private to native eval instead of exposing a page
+// global that a hosted website could call to impersonate Tauridium notifications.
+fn service_toast_overlay_script(message: &str, duration_ms: u64) -> Result<String, String> {
+    let encoded = serde_json::to_string(message)
+        .map_err(|error| format!("Unable to encode service overlay toast: {error}"))?;
+    let duration_ms = duration_ms.clamp(500, 10_000);
+    Ok(format!(
+        r#"(function(message,duration){{
+  try {{
+    var previous = document.getElementById('__tauridium-toast-overlay');
+    if (previous) previous.remove();
+    var host = document.createElement('div');
+    host.id = '__tauridium-toast-overlay';
+    host.style.cssText = 'all:initial!important;position:fixed!important;z-index:2147483647!important;left:50%!important;bottom:24px!important;transform:translateX(-50%)!important;pointer-events:none!important;';
+    var shadow = host.attachShadow({{mode:'closed'}});
+    var toast = document.createElement('div');
+    toast.setAttribute('role', 'status');
+    toast.style.cssText = 'all:initial;box-sizing:border-box;display:block;max-width:min(520px,calc(100vw - 32px));padding:10px 14px;border:1px solid rgba(255,255,255,.18);border-radius:9px;background:#20242b;color:#f6f7f9;box-shadow:0 10px 34px rgba(0,0,0,.42);font:13px/1.4 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow-wrap:anywhere;';
+    toast.textContent = String(message || '');
+    shadow.appendChild(toast);
+    (document.documentElement || document.body).appendChild(host);
+    window.setTimeout(function(){{ if (host && host.isConnected) host.remove(); }}, duration);
+  }} catch(e){{}}
+}})({encoded},{duration_ms});"#
+    ))
+}
+
+const SHORTCUT_ACTIONS: [&str; 12] = [
     "quickWorkspaceSwitch",
     "quickServiceSwitch",
     "openSettings",
     "addService",
+    "addWorkspace",
     "nextService",
     "previousService",
     "nextWorkspace",
@@ -2642,6 +2672,7 @@ fn default_app_settings_value() -> Value {
     keybindings.insert("quickServiceSwitch".into(), "Ctrl+S".into());
     keybindings.insert("openSettings".into(), "Ctrl+,".into());
     keybindings.insert("addService".into(), "Ctrl+N".into());
+    keybindings.insert("addWorkspace".into(), "Ctrl+Shift+N".into());
     keybindings.insert("nextService".into(), "Ctrl+Tab".into());
     keybindings.insert("previousService".into(), "Ctrl+Shift+Tab".into());
     keybindings.insert("nextWorkspace".into(), "Ctrl+Alt+ArrowDown".into());
@@ -3007,7 +3038,20 @@ fn merge_app_settings_value(stored: &Value) -> Result<Value, String> {
         .as_object_mut()
         .ok_or_else(|| "Internal app settings defaults are invalid".to_string())?;
     for (key, setting) in stored {
-        base.insert(key.clone(), setting.clone());
+        if key == "keybindings" {
+            let stored_bindings = setting
+                .as_object()
+                .ok_or_else(|| "App setting keybindings must be an object".to_string())?;
+            let default_bindings = base
+                .get_mut("keybindings")
+                .and_then(Value::as_object_mut)
+                .ok_or_else(|| "Internal app keybinding defaults are invalid".to_string())?;
+            for (action, binding) in stored_bindings {
+                default_bindings.insert(action.clone(), binding.clone());
+            }
+        } else {
+            base.insert(key.clone(), setting.clone());
+        }
     }
     validate_app_settings_value(&value)?;
     Ok(value)
@@ -3735,6 +3779,18 @@ fn restore_main_window_state(window: &tauri::Window<Wry>) {
     }
 }
 
+fn reveal_main_window_after_startup_restore(app: &AppHandle, start_minimized: bool) {
+    if let Some(window) = app.get_window("main") {
+        // The configured main window starts hidden. Restore geometry and mode while it cannot
+        // flash on screen, then reveal the already-restored window in its final state.
+        restore_main_window_state(&window);
+        if !start_minimized {
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }
+}
+
 fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_window("main") {
         if !w.is_visible().unwrap_or(false) {
@@ -3839,6 +3895,28 @@ fn reload_active_service_command(app: AppHandle) {
 #[tauri::command]
 fn reload_app_command(app: AppHandle) {
     reload_app(&app);
+}
+
+#[tauri::command]
+fn show_service_toast_overlay(
+    app: AppHandle,
+    service_id: String,
+    message: String,
+) -> Result<(), String> {
+    let message = message.trim();
+    if message.is_empty() {
+        return Ok(());
+    }
+    if message.chars().count() > 240 {
+        return Err("Service overlay toast is too long".into());
+    }
+    let Some(webview) = app.get_webview(&format!("svc-{service_id}")) else {
+        return Ok(());
+    };
+    let script = service_toast_overlay_script(message, 2600)?;
+    webview
+        .eval(script)
+        .map_err(|error| format!("Unable to show service overlay toast: {error}"))
 }
 
 #[tauri::command]
@@ -4032,16 +4110,13 @@ fn main() {
                     let _ = app.notification().request_permission();
                 }
             }
-            // Start in background: hide the window at launch.
-            if read_app_settings_value(app.handle())
+            // The main window is configured hidden so fullscreen/maximized restoration happens
+            // off-screen. Reveal it only after restoration unless startup-in-background is enabled.
+            let start_minimized = read_app_settings_value(app.handle())
                 .get("startMinimized")
                 .and_then(Value::as_bool)
-                .unwrap_or(false)
-            {
-                if let Some(w) = app.get_window("main") {
-                    let _ = w.hide();
-                }
-            }
+                .unwrap_or(false);
+            reveal_main_window_after_startup_restore(app.handle(), start_minimized);
 
             start_badge_poller(app.handle().clone());
             Ok(())
@@ -4091,6 +4166,7 @@ fn main() {
             get_app_metadata,
             reload_active_service_command,
             reload_app_command,
+            show_service_toast_overlay,
             toggle_devtools_command
         ])
         .build(tauri::generate_context!())
@@ -4109,6 +4185,15 @@ fn main() {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn service_toast_overlay_script_encodes_untrusted_text_without_page_global() {
+        let script =
+            service_toast_overlay_script("quote \" and newline\n);alert(1)//", 2600).unwrap();
+        assert!(script.contains(r#"quote \\\" and newline\n);alert(1)//"#));
+        assert!(!script.contains("window.__tauridiumShowToast"));
+        assert!(script.contains("attachShadow"));
+    }
 
     #[test]
     fn persisted_window_state_tracks_geometry_without_visibility() {
@@ -4214,6 +4299,25 @@ mod tests {
         settings["automaticBackupRetentionMode"] = json!("age");
         settings["automaticBackupMaxAgeDays"] = json!(0);
         assert!(validate_app_settings_value(&settings).is_err());
+    }
+
+    #[test]
+    fn app_settings_merge_preserves_existing_keybindings_and_adds_new_defaults() {
+        let merged = merge_app_settings_value(&json!({
+            "keybindings": {
+                "addService": "Alt+N",
+                "quickWorkspaceSwitch": "Ctrl+K Ctrl+W"
+            }
+        }))
+        .unwrap();
+
+        assert_eq!(merged["keybindings"]["addService"], json!("Alt+N"));
+        assert_eq!(
+            merged["keybindings"]["quickWorkspaceSwitch"],
+            json!("Ctrl+K Ctrl+W")
+        );
+        assert_eq!(merged["keybindings"]["addWorkspace"], json!("Ctrl+Shift+N"));
+        assert!(validate_app_settings_value(&merged).is_ok());
     }
 
     #[test]

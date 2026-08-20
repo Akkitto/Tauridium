@@ -87,7 +87,107 @@ fn bundled_recipes() -> Vec<(&'static str, &'static str, &'static str, bool, &'s
             true,
             "OpenCode browser client with optional workspace-specific routing.",
         ),
+        (
+            "woodpecker",
+            "Woodpecker",
+            "http://localhost:8000/",
+            true,
+            "Woodpecker CI web UI. Set Custom URL to the user-facing URL of your Woodpecker server.",
+        ),
+        (
+            "codeberg",
+            "Codeberg",
+            "https://codeberg.org/",
+            false,
+            "Codeberg software collaboration. A website workspace ID can open a user or organization namespace directly.",
+        ),
+        (
+            "sourcehut",
+            "SourceHut",
+            "https://sr.ht/",
+            false,
+            "SourceHut software forge. A website workspace ID can open a ~user namespace directly.",
+        ),
+        (
+            "fritzbox",
+            "Fritz!Box",
+            "http://192.168.178.1/",
+            true,
+            "Fritz!Box router administration. Custom URL supports routers using another local address.",
+        ),
+        (
+            "artifacts-mmo",
+            "Artifacts MMO",
+            "https://artifactsmmo.com/",
+            false,
+            "Artifacts MMO web experience for the programming MMORPG.",
+        ),
+        (
+            "lumo",
+            "Lumo",
+            "https://lumo.proton.me/",
+            false,
+            "Proton Lumo AI web app.",
+        ),
+        (
+            "suno",
+            "Suno",
+            "https://suno.com/create",
+            false,
+            "Suno AI music creation web app.",
+        ),
+        (
+            "midjourney",
+            "Midjourney",
+            "https://www.midjourney.com/imagine",
+            false,
+            "Midjourney Create web app.",
+        ),
+        (
+            "sora",
+            "Sora",
+            "https://sora.chatgpt.com/sunset",
+            false,
+            "OpenAI Sora legacy content export. The Sora web/app product was discontinued in April 2026.",
+        ),
+        (
+            "grafana",
+            "Grafana",
+            "http://localhost:3000/",
+            true,
+            "Grafana web UI. Set Custom URL to your Grafana instance.",
+        ),
+        (
+            "graylog",
+            "Graylog",
+            "http://localhost:9000/",
+            true,
+            "Graylog web interface. Set Custom URL to your Graylog instance.",
+        ),
+        (
+            "kibana",
+            "Kibana",
+            "http://localhost:5601/",
+            true,
+            "Kibana web interface. Set Custom URL to your Kibana instance.",
+        ),
+        (
+            "anytype",
+            "Anytype",
+            "https://anytype.io/",
+            false,
+            "Anytype website.",
+        ),
     ]
+}
+
+fn bundled_team_url(recipe_id: &str) -> Option<&'static str> {
+    match recipe_id {
+        "opencode" => Some("https://opencode.ai/workspace/{teamId}/go"),
+        "codeberg" => Some("https://codeberg.org/{teamId}"),
+        "sourcehut" => Some("https://sr.ht/~{teamId}/"),
+        _ => None,
+    }
 }
 
 pub(crate) fn is_bundled_recipe(recipe_id: &str) -> bool {
@@ -99,6 +199,7 @@ fn bundled_recipe(recipe_id: &str) -> Option<Value> {
         .into_iter()
         .find(|recipe| recipe.0 == recipe_id)
         .map(|(id, name, service_url, has_custom_url, description)| {
+            let team_url = bundled_team_url(id);
             json!({
                 "id": id,
                 "name": name,
@@ -106,9 +207,9 @@ fn bundled_recipe(recipe_id: &str) -> Option<Value> {
                 "version": "1.0.0",
                 "config": {
                     "serviceURL": service_url,
-                    "teamURL": if id == "opencode" { Some("https://opencode.ai/workspace/{teamId}/go") } else { None },
+                    "teamURL": team_url,
                     "hasCustomUrl": has_custom_url,
-                    "hasTeamId": id == "opencode"
+                    "hasTeamId": team_url.is_some()
                 }
             })
         })
@@ -689,6 +790,59 @@ mod tests {
                 .and_then(Value::as_str),
             Some("https://opencode.ai/go")
         );
+    }
+
+    #[test]
+    fn feature_0418_recipes_use_expected_endpoints_and_custom_instance_policy() {
+        let expected = [
+            ("woodpecker", "http://localhost:8000/", true),
+            ("codeberg", "https://codeberg.org/", false),
+            ("sourcehut", "https://sr.ht/", false),
+            ("fritzbox", "http://192.168.178.1/", true),
+            ("artifacts-mmo", "https://artifactsmmo.com/", false),
+            ("lumo", "https://lumo.proton.me/", false),
+            ("suno", "https://suno.com/create", false),
+            ("midjourney", "https://www.midjourney.com/imagine", false),
+            ("sora", "https://sora.chatgpt.com/sunset", false),
+            ("grafana", "http://localhost:3000/", true),
+            ("graylog", "http://localhost:9000/", true),
+            ("kibana", "http://localhost:5601/", true),
+            ("anytype", "https://anytype.io/", false),
+        ];
+
+        for (id, url, custom) in expected {
+            let recipe = bundled_recipe(id).unwrap();
+            assert_eq!(
+                recipe.pointer("/config/serviceURL").and_then(Value::as_str),
+                Some(url),
+                "unexpected endpoint for {id}"
+            );
+            assert_eq!(
+                recipe
+                    .pointer("/config/hasCustomUrl")
+                    .and_then(Value::as_bool),
+                Some(custom),
+                "unexpected custom-URL policy for {id}"
+            );
+        }
+    }
+
+    #[test]
+    fn feature_0418_forge_recipes_support_namespace_workspace_routes() {
+        for (id, expected) in [
+            ("codeberg", "https://codeberg.org/{teamId}"),
+            ("sourcehut", "https://sr.ht/~{teamId}/"),
+        ] {
+            let recipe = bundled_recipe(id).unwrap();
+            assert_eq!(
+                recipe.pointer("/config/teamURL").and_then(Value::as_str),
+                Some(expected)
+            );
+            assert_eq!(
+                recipe.pointer("/config/hasTeamId").and_then(Value::as_bool),
+                Some(true)
+            );
+        }
     }
 
     #[test]

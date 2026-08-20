@@ -80,6 +80,7 @@
     getAppMetadata,
     openExternalUrl,
     reloadTauridium,
+    showServiceToastOverlay,
     toggleDeveloperTools,
     DEFAULT_SERVER,
     type MeUser,
@@ -184,6 +185,7 @@
   let serviceContextMenu = $state<{ serviceId: string; x: number; y: number } | null>(null);
   let toastMessage = $state("");
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
+  const pendingReloadToasts = new Map<string, string>();
   let appMetadata = $state<AppMetadata | null>(null);
   const projectRepository = $derived((appMetadata?.repository || "https://github.com/Gizmo091/Tauridium").replace(/\/$/, ""));
 
@@ -459,9 +461,16 @@
     });
     listen<{ id: string; status: "loading" | "ready" }>("svc-status", (e) => {
       statusMap = { ...statusMap, [e.payload.id]: e.payload.status };
-      // The requested service loaded, so clear any previous opening error.
-      if (e.payload.status === "ready" && e.payload.id === activeId) {
-        serviceLoadError = null;
+      if (e.payload.status === "ready") {
+        // Start reload notifications only after the replacement service page is actually ready.
+        // This prevents the notification from being destroyed together with the old webview.
+        const reloadToast = pendingReloadToasts.get(e.payload.id);
+        if (reloadToast) {
+          pendingReloadToasts.delete(e.payload.id);
+          showToast(reloadToast);
+        }
+        // The requested service loaded, so clear any previous opening error.
+        if (e.payload.id === activeId) serviceLoadError = null;
       }
     });
     // Native Services menu events use stable IDs so filtering/workspace changes cannot
@@ -559,6 +568,12 @@
 
   function showToast(message: string) {
     toastMessage = message;
+    // Service webviews are native child webviews and render above the shell DOM. Mirror the
+    // shell toast into Tauridium's isolated service overlay so notifications remain visible
+    // without depending on the hosted website's layout or reload lifecycle.
+    if (view === "service" && activeId) {
+      void showServiceToastOverlay(activeId, message).catch(() => {});
+    }
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
       toastMessage = "";
@@ -1267,6 +1282,8 @@
   async function reloadServiceFromUi(service: Service) {
     closeServiceContextMenu();
     if (service.isEnabled === false) return;
+    if (appSettings.reloadToasts) pendingReloadToasts.set(service.id, `${serviceLabel(service)} reloaded.`);
+    else pendingReloadToasts.delete(service.id);
     try {
       statusMap = { ...statusMap, [service.id]: "loading" };
       await closeService(service.id);
@@ -1274,8 +1291,8 @@
       statusMap = rest;
       if (activeId === service.id) selectService(service);
       else await preloadService(service);
-      if (appSettings.reloadToasts) showToast(`${serviceLabel(service)} reloaded.`);
     } catch (err) {
+      pendingReloadToasts.delete(service.id);
       error = `Unable to reload ${serviceLabel(service)}: ${err}`;
     }
   }
@@ -2301,6 +2318,7 @@
       case "quickServiceSwitch": openQuickSwitcher("service"); break;
       case "openSettings": openAppSettings(); break;
       case "addService": openAdd(); break;
+      case "addWorkspace": openAddWorkspace(); break;
       case "nextService": cycleService(1); break;
       case "previousService": cycleService(-1); break;
       case "nextWorkspace": cycleWorkspace(1); break;
@@ -3317,6 +3335,7 @@
                     ["quickServiceSwitch", "Quick service search", "Search and switch services in the active workspace."],
                     ["openSettings", "Open Settings", "Open Tauridium application settings."],
                     ["addService", "Add service", "Open the add-service screen."],
+                    ["addWorkspace", "Add workspace", "Create a new workspace."],
                     ["nextService", "Next service", "Move to the next enabled service."],
                     ["previousService", "Previous service", "Move to the previous enabled service."],
                     ["nextWorkspace", "Next workspace", "Move to the next workspace."],

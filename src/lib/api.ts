@@ -181,6 +181,10 @@ export function reloadTauridium(): Promise<void> {
   return invoke("reload_app_command");
 }
 
+export function showServiceToastOverlay(serviceId: string, message: string): Promise<void> {
+  return invoke("show_service_toast_overlay", { serviceId, message });
+}
+
 export function toggleDeveloperTools(): Promise<void> {
   return invoke("toggle_devtools_command");
 }
