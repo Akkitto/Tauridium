@@ -57,7 +57,9 @@ class Patch0410Tests(unittest.TestCase):
     self.assertIn('"toggleDevtools"', actions)
     self.assertIn('for action in SHORTCUT_ACTIONS', bridge)
     self.assertIn("window.addEventListener('keydown'", bridge)
-    self.assertIn("dispatch_service_shortcut", bridge)
+    self.assertIn("tauridium-shortcut://bridge/", bridge)
+    self.assertIn("service_shortcut_action_from_url", self.main)
+    self.assertNotIn("fn dispatch_service_shortcut", self.main)
     self.assertIn(".initialization_script(script)", self.main)
     toggle = self.main.split("fn toggle_devtools(app", 1)[1].split("fn reload_active_service", 1)[0]
     self.assertIn('#[cfg(target_os = "windows")]', toggle)

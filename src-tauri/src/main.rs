@@ -23,7 +23,10 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    LazyLock, Mutex,
+};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -1118,6 +1121,47 @@ const SHORTCUT_ACTIONS: [&str; 11] = [
     "toggleDevtools",
 ];
 
+static SERVICE_SHORTCUT_NONCE_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+fn next_service_shortcut_nonce(service_id: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(service_id.as_bytes());
+    hasher.update(std::process::id().to_le_bytes());
+    hasher.update(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+            .to_le_bytes(),
+    );
+    hasher.update(
+        SERVICE_SHORTCUT_NONCE_COUNTER
+            .fetch_add(1, Ordering::Relaxed)
+            .to_le_bytes(),
+    );
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let digest = hasher.finalize();
+    let mut nonce = String::with_capacity(digest.len() * 2);
+    for byte in digest.iter().copied() {
+        nonce.push(char::from(HEX[(byte >> 4) as usize]));
+        nonce.push(char::from(HEX[(byte & 0x0f) as usize]));
+    }
+    nonce
+}
+
+fn service_shortcut_action_from_url(url: &Url, expected_nonce: &str) -> Option<String> {
+    if url.scheme() != "tauridium-shortcut" || url.host_str() != Some("bridge") {
+        return None;
+    }
+    let mut segments = url.path_segments()?;
+    let nonce = segments.next()?;
+    let action = segments.next()?;
+    if segments.next().is_some() || nonce != expected_nonce || !SHORTCUT_ACTIONS.contains(&action) {
+        return None;
+    }
+    Some(action.to_string())
+}
+
 fn effective_service_shortcut_capture(settings: &Value, service_id: &str) -> bool {
     let global = settings
         .get("captureServiceShortcuts")
@@ -1131,7 +1175,7 @@ fn effective_service_shortcut_capture(settings: &Value, service_id: &str) -> boo
         .unwrap_or(global)
 }
 
-fn service_shortcut_bridge_js(settings: &Value, service_id: &str) -> Option<String> {
+fn service_shortcut_bridge_js(settings: &Value, service_id: &str, nonce: &str) -> Option<String> {
     if !effective_service_shortcut_capture(settings, service_id) {
         return None;
     }
@@ -1151,9 +1195,11 @@ fn service_shortcut_bridge_js(settings: &Value, service_id: &str) -> Option<Stri
         return None;
     }
     let bindings_json = serde_json::to_string(&captured).ok()?;
+    let nonce_json = serde_json::to_string(nonce).ok()?;
     Some(format!(
         r#"(function(){{
   var bindings = {bindings_json};
+  var token = {nonce_json};
   var pending = null;
   var pendingAt = 0;
   var timeoutMs = 1800;
@@ -1172,9 +1218,7 @@ fn service_shortcut_bridge_js(settings: &Value, service_id: &str) -> Option<Stri
   }}
   function dispatch(action){{
     try {{
-      var internals = window.__TAURI_INTERNALS__;
-      if (!internals || typeof internals.invoke !== 'function') return;
-      Promise.resolve(internals.invoke('dispatch_service_shortcut', {{ action: action }})).catch(function(){{}});
+      window.location.href = 'tauridium-shortcut://bridge/' + token + '/' + action;
     }} catch (_) {{}}
   }}
   window.addEventListener('keydown', function(e){{
@@ -1457,11 +1501,33 @@ async fn create_service_webview(
         }
     };
 
-    let service_shortcut_bridge =
-        service_shortcut_bridge_js(&state.settings.lock().unwrap(), service_id);
+    // Remote pages are intentionally not granted Tauri IPC permissions. Tauri 2.11+
+    // enforces ACL checks for remote origins, including application commands, so captured
+    // shortcuts use a private per-webview navigation nonce instead. The navigation handler
+    // below consumes only that exact internal URL and cancels the navigation before the
+    // hosted service can leave its page.
+    let service_shortcut_nonce = next_service_shortcut_nonce(service_id);
+    let service_shortcut_bridge = service_shortcut_bridge_js(
+        &state.settings.lock().unwrap(),
+        service_id,
+        &service_shortcut_nonce,
+    );
 
     // IPC shim injected into ALL services (Synology Chat and others depend on it).
+    let shortcut_app = win.app_handle().clone();
+    let shortcut_nonce_for_navigation = service_shortcut_nonce.clone();
     let mut builder = WebviewBuilder::new(label, WebviewUrl::External(url))
+        .on_navigation(move |url| {
+            if url.scheme() != "tauridium-shortcut" {
+                return true;
+            }
+            if let Some(action) =
+                service_shortcut_action_from_url(url, &shortcut_nonce_for_navigation)
+            {
+                let _ = shortcut_app.emit("shortcut-action", action);
+            }
+            false
+        })
         .user_agent(&ua)
         .initialization_script(IPC_SHIM_JS)
         .initialization_script(REMOTE_TAURI_COMPAT_JS)
@@ -3760,15 +3826,6 @@ fn reload_app_command(app: AppHandle) {
 }
 
 #[tauri::command]
-fn dispatch_service_shortcut(app: AppHandle, action: String) -> Result<(), String> {
-    if !SHORTCUT_ACTIONS.contains(&action.as_str()) {
-        return Err("Unsupported Tauridium shortcut action".into());
-    }
-    app.emit("shortcut-action", action)
-        .map_err(|error| error.to_string())
-}
-
-#[tauri::command]
 fn toggle_devtools_command(app: AppHandle) {
     toggle_devtools(&app);
 }
@@ -4018,8 +4075,7 @@ fn main() {
             get_app_metadata,
             reload_active_service_command,
             reload_app_command,
-            toggle_devtools_command,
-            dispatch_service_shortcut
+            toggle_devtools_command
         ])
         .build(tauri::generate_context!())
         .expect("failed to launch the Tauri application")
@@ -4205,22 +4261,53 @@ mod tests {
                 "quickServiceSwitch": "Ctrl+K Ctrl+S"
             }
         });
-        let script = service_shortcut_bridge_js(&settings, "default")
+        let nonce = "0123456789abcdef";
+        let script = service_shortcut_bridge_js(&settings, "default", nonce)
             .expect("global shortcut capture should inject the bridge");
         assert!(script.contains("Ctrl+Alt+I"));
         assert!(script.contains("Ctrl+K Ctrl+S"));
-        assert!(script.contains("dispatch_service_shortcut"));
+        assert!(script.contains("tauridium-shortcut://bridge/"));
+        assert!(script.contains(nonce));
         assert!(script.contains("stopImmediatePropagation"));
-        assert!(service_shortcut_bridge_js(&settings, "website-first").is_none());
-        assert!(service_shortcut_bridge_js(&settings, "forced").is_some());
+        assert!(!script.contains("__TAURI_INTERNALS__"));
+        assert!(service_shortcut_bridge_js(&settings, "website-first", nonce).is_none());
+        assert!(service_shortcut_bridge_js(&settings, "forced", nonce).is_some());
+
+        let valid = Url::parse(&format!(
+            "tauridium-shortcut://bridge/{nonce}/toggleDevtools"
+        ))
+        .unwrap();
+        assert_eq!(
+            service_shortcut_action_from_url(&valid, nonce).as_deref(),
+            Some("toggleDevtools")
+        );
+        let wrong_nonce =
+            Url::parse("tauridium-shortcut://bridge/not-the-nonce/toggleDevtools").unwrap();
+        assert!(service_shortcut_action_from_url(&wrong_nonce, nonce).is_none());
+        let unsupported = Url::parse(&format!(
+            "tauridium-shortcut://bridge/{nonce}/deleteEverything"
+        ))
+        .unwrap();
+        assert!(service_shortcut_action_from_url(&unsupported, nonce).is_none());
 
         let global_off = json!({
             "captureServiceShortcuts": false,
             "serviceShortcutCaptureOverrides": { "forced": true },
             "keybindings": { "reloadService": "Ctrl+R" }
         });
-        assert!(service_shortcut_bridge_js(&global_off, "default").is_none());
-        assert!(service_shortcut_bridge_js(&global_off, "forced").is_some());
+        assert!(service_shortcut_bridge_js(&global_off, "default", nonce).is_none());
+        assert!(service_shortcut_bridge_js(&global_off, "forced", nonce).is_some());
+    }
+
+    #[test]
+    fn service_shortcut_nonces_are_unique_and_fixed_width() {
+        let first = next_service_shortcut_nonce("service-a");
+        let second = next_service_shortcut_nonce("service-a");
+        assert_eq!(first.len(), 64);
+        assert_eq!(second.len(), 64);
+        assert!(first.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert!(second.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert_ne!(first, second);
     }
 
     #[test]

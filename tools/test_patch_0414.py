@@ -29,8 +29,12 @@ class Patch0414Tests(unittest.TestCase):
     self.assertIn('seq.length === 2', bridge)
     self.assertIn('e.preventDefault()', bridge)
     self.assertIn('e.stopImmediatePropagation()', bridge)
-    self.assertIn("internals.invoke('dispatch_service_shortcut'", bridge)
-    self.assertNotIn("toggle_devtools_command", bridge)
+    self.assertIn("tauridium-shortcut://bridge/", bridge)
+    self.assertIn("window.location.href", bridge)
+    self.assertNotIn("__TAURI_INTERNALS__", bridge)
+    self.assertIn("service_shortcut_action_from_url", RUST)
+    self.assertIn(".on_navigation(move |url|", RUST)
+    self.assertNotIn("fn dispatch_service_shortcut", RUST)
 
   def test_service_override_is_inheritance_aware_and_recreates_webview(self) -> None:
     self.assertIn('serviceShortcutCaptureMode(serviceId: string)', APP)

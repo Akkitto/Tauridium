@@ -19,7 +19,8 @@
 - Shortcut capture intercepts only configured Tauridium shortcut sequences; normal typing remains untouched unless explicitly assigned as a shortcut.
 - Per-service shortcut overrides are copied on service duplication, removed when the service is deleted, persisted in portable application settings, and applied by recreating the affected service webview.
 - Global shortcut-policy or keybinding changes recreate open service webviews so the effective keyboard policy applies consistently without changing persistent sessions.
-- Consolidated the Rust shortcut action list so validation, service-webview injection, and backend dispatch share one authoritative action set.
+- Consolidated the Rust shortcut action list so validation, service-webview injection, and native dispatch share one authoritative action set.
+- Routed service-webview shortcuts through a private per-webview navigation nonce that Tauridium intercepts and cancels natively, avoiding any remote Tauri IPC capability while remaining compatible with Tauri 2.11+ remote-origin ACL enforcement.
 
 ### Release quality
 

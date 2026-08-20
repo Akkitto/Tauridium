@@ -572,8 +572,9 @@ def main() -> int:
       fail(f"0.4.10 frontend invariant is missing: {marker}")
   for marker in (
     'let should_fetch = request.prefer_website_icon;',
-    'fn service_shortcut_bridge_js(settings: &Value, service_id: &str)',
-    'dispatch_service_shortcut',
+    'fn service_shortcut_bridge_js(settings: &Value, service_id: &str, nonce: &str)',
+    'service_shortcut_action_from_url',
+    'tauridium-shortcut://bridge/',
     'app.emit("shortcut-action", "reloadService".to_string())',
     'fn copy_service_icon_cache(',
   ):
@@ -981,7 +982,8 @@ def main() -> int:
   for marker in (
     'fn effective_service_shortcut_capture',
     'fn service_shortcut_bridge_js',
-    'dispatch_service_shortcut',
+    'service_shortcut_action_from_url',
+    'tauridium-shortcut://bridge/',
     '"captureServiceShortcuts": true',
     '"serviceShortcutCaptureOverrides": {}',
     'App setting serviceShortcutCaptureOverrides is invalid',
