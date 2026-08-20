@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.4.13] - 2026-08-20
+
+### Changed
+
+- Removed the workspace strip above the sidebar service list so the sidebar dedicates its vertical space to services; workspace switching remains available through the configurable quick switcher and Navigate shortcuts.
+- Added a dedicated **Settings → Workspaces** tab with Services-style search, 100-row pagination, creation, portable export, verified custom ordering, deletion, and per-workspace settings.
+- Workspace settings now open in place of the long workspace list and provide searchable, paginated service membership management plus rename, export, and delete actions.
+- Added quick-switch workspace ordering modes for **Custom**, **Custom — reverse**, **Alphabetical — A to Z**, **Alphabetical — Z to A**, **Most recently used**, and **Least recently used**, while keeping **All services** pinned first.
+
+### Reliability and UX
+
+- Kept quick-switch ordering independent from Tauridium's canonical custom workspace order so alphabetical/recent modes cannot mutate persisted workspace ordering.
+- Preserved filtered workspace reordering semantics by moving only visible workspace slots while hidden search results retain their canonical positions.
+- Serialized workspace recency persistence to avoid rapid-switch write races, pruned usage history for deleted workspaces, and included the new ordering/history settings in portable application settings and backups.
+- Added discard confirmation for an unsaved workspace rename and clamped workspace-list pagination after deletions or external workspace changes.
+
+### Release quality
+
+- Expanded the offline regression suite with dedicated 0.4.13 coverage for sidebar removal, scalable workspace management, filtered canonical reordering, all six quick-switch ordering modes, recency persistence/pruning, in-place workspace settings, and portable settings coverage.
+- Retained mandatory Rust 1.97.1 formatting, locked Cargo metadata, English-only, Git cleanliness, source-manifest, ZIP-integrity, and independently extracted-source validation gates.
+
 ## [0.4.12] - 2026-08-20
 
 ### Fixed
