@@ -13,8 +13,9 @@ class Patch0411Tests(unittest.TestCase):
   def test_service_settings_captures_non_nullable_service_id_for_workspace_callbacks(self) -> None:
     block = self.app.split('{:else if view === "svcSettings" && settingsSvc}', 1)[1].split('{:else if view === "settings"}', 1)[0]
     self.assertIn('{@const settingsServiceId = settingsSvc.id}', block)
-    self.assertIn('workspace.services.includes(settingsServiceId)).length} joined', block)
-    self.assertIn('checked={workspace.services.includes(settingsServiceId)}', block)
+    self.assertIn('workspace.services.includes(serviceId)).length', self.app)
+    self.assertIn('{serviceWorkspaceJoinedCount} of {workspaces.length} joined', block)
+    self.assertIn('{@const joined = workspace.services.includes(settingsServiceId)}', block)
     self.assertNotIn('workspace.services.includes(settingsSvc.id)', block)
 
   def test_fix_does_not_use_non_null_assertion_or_type_suppression(self) -> None:

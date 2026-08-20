@@ -53,9 +53,11 @@ class Patch0410Tests(unittest.TestCase):
 
   def test_devtools_shortcut_reaches_focused_service_webview_and_windows_opens(self) -> None:
     bridge = self.main.split("fn service_shortcut_bridge_js", 1)[1].split("const IPC_SHIM_JS", 1)[0]
-    self.assertIn('bindings.get("toggleDevtools")', bridge)
-    self.assertIn("document.addEventListener('keydown'", bridge)
-    self.assertIn("internals.invoke('toggle_devtools_command')", bridge)
+    actions = self.main.split('const SHORTCUT_ACTIONS', 1)[1].split('fn effective_service_shortcut_capture', 1)[0]
+    self.assertIn('"toggleDevtools"', actions)
+    self.assertIn('for action in SHORTCUT_ACTIONS', bridge)
+    self.assertIn("window.addEventListener('keydown'", bridge)
+    self.assertIn("dispatch_service_shortcut", bridge)
     self.assertIn(".initialization_script(script)", self.main)
     toggle = self.main.split("fn toggle_devtools(app", 1)[1].split("fn reload_active_service", 1)[0]
     self.assertIn('#[cfg(target_os = "windows")]', toggle)
@@ -64,7 +66,7 @@ class Patch0410Tests(unittest.TestCase):
   def test_keybinding_copy_explains_shift_and_recreates_service_webviews(self) -> None:
     self.assertIn("Shift is required only when <strong>Shift</strong> is explicitly present", self.app)
     save = self.app.split("async function saveAppSetting", 1)[1].split("async function moveManagedService", 1)[0]
-    self.assertIn('if (key === "keybindings")', save)
+    self.assertIn('if (key === "keybindings" || key === "captureServiceShortcuts")', save)
     self.assertIn("await closeServices();", save)
     self.assertIn("selectService(restore)", save)
 
@@ -96,8 +98,10 @@ class Patch0410Tests(unittest.TestCase):
   def test_service_settings_workspace_manager_is_searchable_scrollable_and_transactional(self) -> None:
     self.assertIn('placeholder="Search workspaces…"', self.app)
     self.assertIn('class="service-workspace-list"', self.app)
-    self.assertIn("max-height: min(34vh, 360px); overflow-y: auto", self.app)
-    self.assertIn("slice(0, 200)", self.app)
+    self.assertIn("max-height: min(38vh, 420px); overflow-y: auto", self.app)
+    self.assertIn("serviceWorkspaceRows", self.app)
+    self.assertIn("serviceWorkspacePageCount", self.app)
+    self.assertIn("MANAGED_SERVICE_PAGE_SIZE", self.app)
     create = self.app.split("async function createWorkspaceForCurrentService", 1)[1].split("async function renameWorkspace", 1)[0]
     self.assertIn("created = await createWorkspace(name)", create)
     self.assertIn("await updateWorkspace(created.id, created.name, [settingsSvc.id])", create)

@@ -411,7 +411,7 @@ def main() -> int:
     fail("release packager still rejects inert configured devUrl bytes")
   menu_builder = main_rs.split("fn build_native_application_menu", 1)[-1].split("#[derive(Clone, Copy)]", 1)[0]
   native_menu = main_rs.split("// Native application menu", 1)[-1].split("// Request notification", 1)[0]
-  for marker in ('"open-settings"', '"Settings…"', '"open-add-service"', '"Add Service…"'):
+  for marker in ('"open-settings"', '"Settings"', '"open-add-service"', '"Add Service"', '"open-add-workspace"', '"Add Workspace"'):
     if marker not in menu_builder:
       fail(f"native Tauridium menu builder is incomplete: {marker}")
   for marker in (
@@ -572,8 +572,8 @@ def main() -> int:
       fail(f"0.4.10 frontend invariant is missing: {marker}")
   for marker in (
     'let should_fetch = request.prefer_website_icon;',
-    'fn service_shortcut_bridge_js(settings: &Value)',
-    'internals.invoke(\'toggle_devtools_command\')',
+    'fn service_shortcut_bridge_js(settings: &Value, service_id: &str)',
+    'dispatch_service_shortcut',
     'app.emit("shortcut-action", "reloadService".to_string())',
     'fn copy_service_icon_cache(',
   ):
@@ -595,8 +595,8 @@ def main() -> int:
   patch_0411_test = read("tools/test_patch_0411.py")
   for marker in (
     '{@const settingsServiceId = settingsSvc.id}',
-    'workspace.services.includes(settingsServiceId)).length} joined',
-    'checked={workspace.services.includes(settingsServiceId)}',
+    '{@const joined = workspace.services.includes(settingsServiceId)}',
+    'toggleCurrentServiceWorkspace(workspace, !joined)',
   ):
     if marker not in app:
       fail(f"0.4.11 Service Settings nullability invariant is missing: {marker}")
@@ -964,6 +964,40 @@ def main() -> int:
   ):
     if test_marker not in workspace_test:
       fail(f"0.4.13 workspace regression coverage is missing: {test_marker}")
+
+  patch_0414 = read("tools/test_patch_0414.py")
+  for marker in (
+    'captureServiceShortcuts: boolean;',
+    'serviceShortcutCaptureOverrides: Record<string, boolean>;',
+    'Capture Tauridium shortcuts inside services',
+    'serviceShortcutCaptureMode(serviceId: string)',
+    'serviceWorkspaceRows',
+    'Workspace membership',
+    '"Add Workspace"',
+    'open-add-workspace',
+  ):
+    if marker not in app + api_ts + main_rs:
+      fail(f"0.4.14 frontend/menu invariant is missing: {marker}")
+  for marker in (
+    'fn effective_service_shortcut_capture',
+    'fn service_shortcut_bridge_js',
+    'dispatch_service_shortcut',
+    '"captureServiceShortcuts": true',
+    '"serviceShortcutCaptureOverrides": {}',
+    'App setting serviceShortcutCaptureOverrides is invalid',
+  ):
+    if marker not in main_rs:
+      fail(f"0.4.14 shortcut backend invariant is missing: {marker}")
+  if '"Settings…"' in main_rs or '"Add Service…"' in main_rs:
+    fail("0.4.14 obsolete native menu ellipsis wording remains")
+  for test_marker in (
+    "test_service_shortcut_capture_defaults_on_and_is_portable",
+    "test_service_webview_bridge_captures_single_shortcuts_and_chords",
+    "test_native_menu_wording_and_add_workspace_action",
+    "test_service_workspace_manager_has_clear_membership_actions_and_pagination",
+  ):
+    if test_marker not in patch_0414:
+      fail(f"0.4.14 regression coverage is missing: {test_marker}")
 
   for marker in (
     '["keybindings", "Keybinds"]',

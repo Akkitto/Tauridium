@@ -144,6 +144,8 @@
   let serviceWorkspaceQuery = $state("");
   let serviceWorkspaceNewName = $state("");
   let serviceWorkspaceBusy = $state(false);
+  let serviceWorkspaceFilter = $state<"all" | "joined" | "available">("all");
+  let serviceWorkspacePage = $state(0);
   let newWorkspaceName = $state("");
 
   type Tab = "general" | "services" | "workspaces" | "appearance" | "keybindings" | "sandbox" | "privacy" | "backup" | "audit" | "advanced" | "updates" | "about";
@@ -234,6 +236,8 @@
     preloadServices: true,
     fetchMissingServiceIcons: true,
     reloadToasts: true,
+    captureServiceShortcuts: true,
+    serviceShortcutCaptureOverrides: {},
     customUrlTemplatesEnabled: false,
     serviceCustomUrlTemplates: {},
     serviceOrder: [],
@@ -319,6 +323,28 @@
   );
   const managedWorkspaceServiceRows = $derived(
     paged(managedWorkspaceServices, managedWorkspaceServicePage, MANAGED_SERVICE_PAGE_SIZE),
+  );
+  const serviceWorkspaceJoinedCount = $derived.by(() => {
+    const serviceId = settingsSvc?.id;
+    if (!serviceId) return 0;
+    return workspaces.filter((workspace) => workspace.services.includes(serviceId)).length;
+  });
+  const serviceWorkspaceCandidates = $derived.by(() => {
+    const serviceId = settingsSvc?.id;
+    if (!serviceId) return [];
+    const query = serviceWorkspaceQuery.trim().toLowerCase();
+    return sortedWorkspaces.filter((workspace) => {
+      const joined = workspace.services.includes(serviceId);
+      if (serviceWorkspaceFilter === "joined" && !joined) return false;
+      if (serviceWorkspaceFilter === "available" && joined) return false;
+      return !query || workspace.name.toLowerCase().includes(query);
+    });
+  });
+  const serviceWorkspacePageCount = $derived(
+    Math.max(1, Math.ceil(serviceWorkspaceCandidates.length / MANAGED_SERVICE_PAGE_SIZE)),
+  );
+  const serviceWorkspaceRows = $derived(
+    paged(serviceWorkspaceCandidates, serviceWorkspacePage, MANAGED_SERVICE_PAGE_SIZE),
   );
   const visibleServices = $derived.by(() => {
     let list = sorted;
@@ -447,6 +473,7 @@
     // Native menu actions always route through the shell so service webviews cannot cover them.
     listen("open-settings", openAppSettings);
     listen("open-add-service", openAdd);
+    listen("open-add-workspace", openAddWorkspace);
     listen("open-about", openAbout);
     listen<string>("shortcut-action", (event) => executeShortcutAction(event.payload as KeybindingAction));
     window.addEventListener("keydown", handleGlobalKeydown, true);
@@ -933,6 +960,8 @@
     serviceTemplateDirty = false;
     serviceWorkspaceQuery = "";
     serviceWorkspaceNewName = "";
+    serviceWorkspaceFilter = "all";
+    serviceWorkspacePage = 0;
     serviceWorkspaceBusy = false;
     svcDirty = false;
     svcReload = false;
@@ -1164,6 +1193,7 @@
     const changedWorkspaces: Workspace[] = [];
     const previousTemplates = { ...appSettings.serviceCustomUrlTemplates };
     const previousSandboxes = { ...appSettings.serviceSandboxes };
+    const previousShortcutOverrides = { ...appSettings.serviceShortcutCaptureOverrides };
     let copiedAppSettings = false;
     try {
       const result = await createDuplicateService(service, name);
@@ -1190,10 +1220,12 @@
 
       const serviceCustomUrlTemplates = { ...appSettings.serviceCustomUrlTemplates };
       const serviceSandboxes = { ...appSettings.serviceSandboxes };
+      const serviceShortcutCaptureOverrides = { ...appSettings.serviceShortcutCaptureOverrides };
       if (serviceCustomUrlTemplates[service.id]) serviceCustomUrlTemplates[newId] = { ...serviceCustomUrlTemplates[service.id] };
       if (serviceSandboxes[service.id]) serviceSandboxes[newId] = serviceSandboxes[service.id];
-      if (serviceCustomUrlTemplates[newId] || serviceSandboxes[newId]) {
-        appSettings = await setAppSettings({ serviceCustomUrlTemplates, serviceSandboxes });
+      if (service.id in serviceShortcutCaptureOverrides) serviceShortcutCaptureOverrides[newId] = serviceShortcutCaptureOverrides[service.id];
+      if (serviceCustomUrlTemplates[newId] || serviceSandboxes[newId] || newId in serviceShortcutCaptureOverrides) {
+        appSettings = await setAppSettings({ serviceCustomUrlTemplates, serviceSandboxes, serviceShortcutCaptureOverrides });
         copiedAppSettings = true;
       }
 
@@ -1217,6 +1249,7 @@
         appSettings = await setAppSettings({
           serviceCustomUrlTemplates: previousTemplates,
           serviceSandboxes: previousSandboxes,
+          serviceShortcutCaptureOverrides: previousShortcutOverrides,
         }).catch(() => appSettings);
       }
       if (newId) await deleteService(newId).catch(() => {});
@@ -1281,12 +1314,14 @@
       const { [s.id]: _, ...rest } = statusMap;
       statusMap = rest;
       services = services.filter((x) => x.id !== s.id);
-      if (appSettings.serviceSandboxes[s.id] || appSettings.serviceCustomUrlTemplates[s.id]) {
+      if (appSettings.serviceSandboxes[s.id] || appSettings.serviceCustomUrlTemplates[s.id] || s.id in appSettings.serviceShortcutCaptureOverrides) {
         const serviceSandboxes = { ...appSettings.serviceSandboxes };
         const serviceCustomUrlTemplates = { ...appSettings.serviceCustomUrlTemplates };
+        const serviceShortcutCaptureOverrides = { ...appSettings.serviceShortcutCaptureOverrides };
         delete serviceSandboxes[s.id];
         delete serviceCustomUrlTemplates[s.id];
-        appSettings = await setAppSettings({ serviceSandboxes, serviceCustomUrlTemplates });
+        delete serviceShortcutCaptureOverrides[s.id];
+        appSettings = await setAppSettings({ serviceSandboxes, serviceCustomUrlTemplates, serviceShortcutCaptureOverrides });
       }
       await reconcileSavedOrders();
       await refreshNativeServicesMenu();
@@ -1460,11 +1495,41 @@
     }
   }
 
+  function serviceShortcutCaptureMode(serviceId: string): "inherit" | "tauridium" | "website" {
+    if (!(serviceId in appSettings.serviceShortcutCaptureOverrides)) return "inherit";
+    return appSettings.serviceShortcutCaptureOverrides[serviceId] ? "tauridium" : "website";
+  }
+
+  function effectiveServiceShortcutCapture(serviceId: string): boolean {
+    return appSettings.serviceShortcutCaptureOverrides[serviceId] ?? appSettings.captureServiceShortcuts;
+  }
+
+  async function setServiceShortcutCaptureMode(
+    serviceId: string,
+    mode: "inherit" | "tauridium" | "website",
+  ) {
+    const previous = { ...appSettings.serviceShortcutCaptureOverrides };
+    const serviceShortcutCaptureOverrides = { ...previous };
+    if (mode === "inherit") delete serviceShortcutCaptureOverrides[serviceId];
+    else serviceShortcutCaptureOverrides[serviceId] = mode === "tauridium";
+    appSettings = { ...appSettings, serviceShortcutCaptureOverrides };
+    try {
+      appSettings = await setAppSettings({ serviceShortcutCaptureOverrides });
+      await closeService(serviceId).catch(() => {});
+      const { [serviceId]: _, ...rest } = statusMap;
+      statusMap = rest;
+    } catch (err) {
+      appSettings = { ...appSettings, serviceShortcutCaptureOverrides: previous };
+      error = `Unable to save shortcut handling: ${err}`;
+    }
+  }
+
   async function toggleCurrentServiceWorkspace(workspace: Workspace, member: boolean) {
     if (!settingsSvc || serviceWorkspaceBusy) return;
     serviceWorkspaceBusy = true;
     try {
       await toggleServiceInWorkspace(workspace, settingsSvc.id, member);
+      serviceWorkspacePage = 0;
     } finally {
       serviceWorkspaceBusy = false;
     }
@@ -1481,6 +1546,8 @@
       const updated = await updateWorkspace(created.id, created.name, [settingsSvc.id]);
       workspaces = [...workspaces, updated];
       serviceWorkspaceNewName = "";
+      serviceWorkspaceFilter = "joined";
+      serviceWorkspacePage = 0;
       await reconcileSavedOrders();
     } catch (err) {
       if (created) await deleteWorkspace(created.id).catch(() => {});
@@ -1699,6 +1766,15 @@
     error = null;
     view = "appSettings";
     hideServices();
+  }
+
+  function openAddWorkspace() {
+    error = null;
+    managedWorkspaceId = null;
+    managedWorkspaceNameDraft = "";
+    settingsTab = "workspaces";
+    openAppSettings();
+    setTimeout(() => document.querySelector<HTMLInputElement>(".workspace-create-row input")?.focus(), 0);
   }
 
   function openAbout() {
@@ -2013,8 +2089,8 @@
       if (key === "automaticBackupSchedule" && value !== "startup") {
         void maybeRunAutomaticBackup(false);
       }
-      if (key === "keybindings") {
-        await refreshNativeServicesMenu();
+      if (key === "keybindings" || key === "captureServiceShortcuts") {
+        if (key === "keybindings") await refreshNativeServicesMenu();
         const restore = view === "service" ? activeService : null;
         await closeServices();
         statusMap = {};
@@ -2549,26 +2625,93 @@
           {@render toggle("Open links externally", "Open clicked links in your default browser instead of inside the service.", "trapLinkClicks", settingsSvc.trapLinkClicks === true)}
           {@render toggle("Allow wake up", "Wake this service from hibernation on new activity.", "isWakeUpEnabled", settingsSvc.isWakeUpEnabled === true)}
 
+          <div class="set-title">Keyboard shortcuts</div>
+          <div class="setrow service-shortcut-policy">
+            <div>
+              <strong>Shortcut priority</strong>
+              <p class="desc">Choose who receives configured Tauridium shortcuts while this website has keyboard focus. Normal typing remains untouched unless a key or key sequence is explicitly assigned as a Tauridium shortcut.</p>
+            </div>
+            <select
+              class="select"
+              aria-label={`Shortcut priority for ${serviceLabel(settingsSvc)}`}
+              value={serviceShortcutCaptureMode(settingsServiceId)}
+              onchange={(event) => setServiceShortcutCaptureMode(settingsServiceId, event.currentTarget.value as "inherit" | "tauridium" | "website")}
+            >
+              <option value="inherit">Use global setting ({appSettings.captureServiceShortcuts ? "Tauridium" : "Website"})</option>
+              <option value="tauridium">Tauridium shortcuts first</option>
+              <option value="website">Website shortcuts first</option>
+            </select>
+            <p class="desc service-shortcut-effective">Effective behavior: <strong>{effectiveServiceShortcutCapture(settingsServiceId) ? "Tauridium shortcuts work while the website is focused" : "the website receives matching shortcuts while focused"}</strong>. Applied when this service webview is next opened.</p>
+          </div>
+
           <div class="set-title">Workspaces</div>
           <div class="service-workspace-manager">
-            <div class="service-workspace-toolbar">
-              <input type="search" bind:value={serviceWorkspaceQuery} placeholder="Search workspaces…" aria-label="Search workspaces for this service" />
-              <span class="status-badge">{workspaces.filter((workspace) => workspace.services.includes(settingsServiceId)).length} joined</span>
+            <div class="service-workspace-overview">
+              <div class="setting-copy">
+                <strong>Workspace membership</strong>
+                <p class="desc">Add or remove this service from workspaces. Membership changes are saved immediately.</p>
+              </div>
+              <span class="status-badge">{serviceWorkspaceJoinedCount} of {workspaces.length} joined</span>
             </div>
-            <div class="service-workspace-list" role="list" aria-label={`Workspaces containing ${serviceLabel(settingsSvc)}`}>
-              {#each sortedWorkspaces.filter((workspace) => !serviceWorkspaceQuery.trim() || workspace.name.toLowerCase().includes(serviceWorkspaceQuery.trim().toLowerCase())).slice(0, 200) as workspace (workspace.id)}
-                <label class="service-workspace-row" role="listitem">
-                  <span><strong>{workspace.name}</strong><small>{workspace.services.length} service{workspace.services.length === 1 ? "" : "s"}</small></span>
-                  <input type="checkbox" checked={workspace.services.includes(settingsServiceId)} disabled={serviceWorkspaceBusy} onchange={(event) => toggleCurrentServiceWorkspace(workspace, event.currentTarget.checked)} />
-                </label>
+            <div class="service-workspace-toolbar">
+              <input
+                type="search"
+                bind:value={serviceWorkspaceQuery}
+                oninput={() => (serviceWorkspacePage = 0)}
+                placeholder="Search workspaces…"
+                aria-label="Search workspaces for this service"
+              />
+              <select
+                class="select"
+                bind:value={serviceWorkspaceFilter}
+                onchange={() => (serviceWorkspacePage = 0)}
+                aria-label="Filter workspace membership"
+              >
+                <option value="all">All workspaces</option>
+                <option value="joined">Joined</option>
+                <option value="available">Not joined</option>
+              </select>
+            </div>
+            <div class="service-workspace-list" role="list" aria-label={`Workspace membership for ${serviceLabel(settingsSvc)}`}>
+              {#each serviceWorkspaceRows as workspace (workspace.id)}
+                {@const joined = workspace.services.includes(settingsServiceId)}
+                <div class="service-workspace-row" class:joined role="listitem">
+                  <span class="workspace-avatar service-workspace-avatar" aria-hidden="true">{workspace.name.slice(0, 1).toUpperCase()}</span>
+                  <span class="service-workspace-copy">
+                    <strong>{workspace.name}</strong>
+                    <small>{workspace.services.length} service{workspace.services.length === 1 ? "" : "s"}</small>
+                  </span>
+                  {#if joined}<span class="status-badge workspace-membership-badge">Joined</span>{/if}
+                  <button
+                    class={joined ? "secondary sm" : "primary sm"}
+                    disabled={serviceWorkspaceBusy}
+                    onclick={() => toggleCurrentServiceWorkspace(workspace, !joined)}
+                    aria-label={`${joined ? "Remove" : "Add"} ${serviceLabel(settingsSvc)} ${joined ? "from" : "to"} ${workspace.name}`}
+                  >{joined ? "Remove" : "Add"}</button>
+                </div>
               {:else}
-                <div class="managed-empty"><strong>No workspaces match</strong><span>Change the search text or create a workspace below.</span></div>
+                <div class="managed-empty">
+                  <strong>No workspaces match</strong>
+                  <span>{workspaces.length ? "Change the search or membership filter." : "Create a workspace below to organize this service."}</span>
+                </div>
               {/each}
             </div>
-            {#if sortedWorkspaces.filter((workspace) => !serviceWorkspaceQuery.trim() || workspace.name.toLowerCase().includes(serviceWorkspaceQuery.trim().toLowerCase())).length > 200}<p class="desc">Showing the first 200 matches. Refine the search to narrow the list.</p>{/if}
-            <div class="service-workspace-create">
-              <input bind:value={serviceWorkspaceNewName} maxlength="80" placeholder="New workspace name" aria-label="New workspace name for this service" />
-              <button class="secondary sm" disabled={serviceWorkspaceBusy || !serviceWorkspaceNewName.trim()} onclick={createWorkspaceForCurrentService}>Create & add</button>
+            {#if serviceWorkspaceCandidates.length > MANAGED_SERVICE_PAGE_SIZE}
+              <div class="pagination" aria-label="Service workspace pages">
+                <button class="secondary sm" disabled={serviceWorkspacePage === 0} onclick={() => (serviceWorkspacePage = Math.max(0, serviceWorkspacePage - 1))}>Previous</button>
+                <span>Page {serviceWorkspacePage + 1} of {serviceWorkspacePageCount} · {serviceWorkspaceCandidates.length} workspaces</span>
+                <button class="secondary sm" disabled={serviceWorkspacePage >= serviceWorkspacePageCount - 1} onclick={() => (serviceWorkspacePage = Math.min(serviceWorkspacePageCount - 1, serviceWorkspacePage + 1))}>Next</button>
+              </div>
+            {/if}
+            <div class="service-workspace-create-card">
+              <div class="setting-copy">
+                <strong>Create a workspace</strong>
+                <p class="desc">Create a new workspace and add this service to it immediately.</p>
+              </div>
+              <div class="service-workspace-create">
+                <input bind:value={serviceWorkspaceNewName} maxlength="80" placeholder="Workspace name" aria-label="New workspace name for this service" />
+                <button class="secondary sm" disabled={serviceWorkspaceBusy || !serviceWorkspaceNewName.trim()} onclick={createWorkspaceForCurrentService}>Create & add</button>
+              </div>
             </div>
           </div>
 
@@ -3302,6 +3445,13 @@
               </section>
 
             {:else if settingsTab === "advanced"}
+              <section class="settings-section" aria-labelledby="settings-advanced-shortcuts">
+                <div class="section-heading"><h3 id="settings-advanced-shortcuts">Keyboard shortcut priority</h3><p>Control whether Tauridium shortcuts continue to work while a service website has keyboard focus.</p></div>
+                <div class="settings-list">
+                  {@render appToggle("Capture Tauridium shortcuts inside services", "Enabled by default. Matching configured Tauridium shortcuts are intercepted before the focused website. Normal typing remains untouched unless explicitly assigned as a Tauridium shortcut. Disable this if websites should receive matching shortcuts by default. Individual services can override this in Service Settings.", "captureServiceShortcuts", appSettings.captureServiceShortcuts)}
+                  <p class="settings-note">Changing this setting recreates open service webviews so the keyboard policy applies immediately while preserving their persistent sessions.</p>
+                </div>
+              </section>
               <section class="settings-section" aria-labelledby="settings-advanced-browser">
                 <div class="section-heading"><h3 id="settings-advanced-browser">Browser identity</h3><p>Advanced compatibility controls for services that depend on browser identification.</p></div>
                 <div class="settings-list">
@@ -3889,15 +4039,26 @@
   .sandbox-card { align-items: start; }
   .sandbox-name { max-width: 320px; }
   .sandbox-select { min-width: 180px; }
-  .service-workspace-manager { display: flex; flex-direction: column; gap: 9px; }
-  .service-workspace-toolbar, .service-workspace-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
-  .service-workspace-list { display: flex; flex-direction: column; gap: 5px; max-height: min(34vh, 360px); overflow-y: auto; overscroll-behavior: contain; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--input); }
-  .service-workspace-row { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 9px; border-radius: 6px; cursor: pointer; }
-  .service-workspace-row:hover { background: var(--hover); }
-  .service-workspace-row > span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .service-workspace-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text2); font-size: 13px; }
-  .service-workspace-row small { color: var(--muted); font-size: 11px; }
-  .service-workspace-row input { width: 18px; height: 18px; flex: none; accent-color: var(--accent); }
+  .service-shortcut-policy { align-items: flex-start; }
+  .service-shortcut-policy > div { min-width: 0; flex: 1 1 320px; }
+  .service-shortcut-policy .select { min-width: 230px; max-width: 320px; }
+  .service-shortcut-effective { flex-basis: 100%; margin-top: 2px; }
+  .service-workspace-manager { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--panel) 88%, var(--bg)); }
+  .service-workspace-overview { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .service-workspace-overview .setting-copy { min-width: 0; }
+  .service-workspace-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 210px); gap: 8px; align-items: center; }
+  .service-workspace-toolbar input, .service-workspace-toolbar select { width: 100%; box-sizing: border-box; }
+  .service-workspace-list { display: flex; flex-direction: column; gap: 5px; max-height: min(38vh, 420px); overflow-y: auto; overscroll-behavior: contain; padding: 4px; border: 1px solid var(--border); border-radius: 9px; background: var(--input); }
+  .service-workspace-row { min-height: 48px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 9px; padding: 7px 8px; border: 1px solid transparent; border-radius: 7px; }
+  .service-workspace-row:hover { background: var(--hover); border-color: var(--border); }
+  .service-workspace-row.joined { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  .service-workspace-avatar { width: 30px; height: 30px; border-radius: 7px; }
+  .service-workspace-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .service-workspace-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text2); font-size: 13px; }
+  .service-workspace-copy small { color: var(--muted); font-size: 11px; }
+  .workspace-membership-badge { white-space: nowrap; }
+  .service-workspace-create-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 46%); align-items: center; gap: 12px; padding-top: 2px; }
+  .service-workspace-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
   .danger-link { color: #ff9b9b; }
   .service-context-backdrop { position: fixed; inset: 0; z-index: 1200; }
   .service-context-menu { position: fixed; width: 226px; padding: 5px; border: 1px solid var(--border2); border-radius: 9px; background: var(--panel); box-shadow: 0 14px 42px rgba(0, 0, 0, 0.45); }
@@ -3951,7 +4112,10 @@
     .settings-panel .swatches { justify-content: flex-start; max-width: none; }
     .range-control { min-width: 0; }
     .settings-panel .range { flex: 1; width: auto; }
-    .managed-toolbar, .workspace-create-row, .workspace-name-control, .sandbox-create-row, .backup-location-row, .audit-toolbar { grid-template-columns: 1fr; }
+    .managed-toolbar, .workspace-create-row, .workspace-name-control, .sandbox-create-row, .backup-location-row, .audit-toolbar, .service-workspace-toolbar, .service-workspace-create, .service-workspace-create-card { grid-template-columns: 1fr; }
+    .service-workspace-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+    .workspace-membership-badge { display: none; }
+    .service-shortcut-policy .select { width: 100%; max-width: none; }
     .color-picker-preview-row { grid-template-columns: 48px minmax(0, 1fr); }
     .color-preview { display: none; }
     .slider-field { grid-template-columns: 1fr; gap: 5px; }

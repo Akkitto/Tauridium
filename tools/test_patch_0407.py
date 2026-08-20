@@ -87,7 +87,8 @@ class Patch0407Tests(unittest.TestCase):
     body = self.app.split('async function handleDelete', 1)[1].split('async function handleClearCache', 1)[0]
     self.assertIn('const serviceCustomUrlTemplates = { ...appSettings.serviceCustomUrlTemplates };', body)
     self.assertIn('delete serviceCustomUrlTemplates[s.id];', body)
-    self.assertIn('setAppSettings({ serviceSandboxes, serviceCustomUrlTemplates })', body)
+    self.assertIn('delete serviceShortcutCaptureOverrides[s.id];', body)
+    self.assertIn('setAppSettings({ serviceSandboxes, serviceCustomUrlTemplates, serviceShortcutCaptureOverrides })', body)
 
   def test_website_icons_are_persistently_positive_and_negative_cached(self) -> None:
     for marker in (

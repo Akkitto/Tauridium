@@ -116,15 +116,19 @@ class OrderingAndSidebarTests(unittest.TestCase):
     builder = self.main.split("fn build_native_application_menu", 1)[1].split("#[derive(Clone, Copy)]", 1)[0]
     events = self.main.split("// Native application menu", 1)[1].split("// Request notification", 1)[0]
     self.assertIn('"open-settings"', builder)
-    self.assertIn('"Settings…"', builder)
+    self.assertIn('"Settings"', builder)
     self.assertIn('"open-add-service"', builder)
-    self.assertIn('"Add Service…"', builder)
+    self.assertIn('"Add Service"', builder)
+    self.assertIn('"open-add-workspace"', builder)
+    self.assertIn('"Add Workspace"', builder)
     self.assertIn('app.emit("open-settings", ())', events)
     self.assertIn('app.emit("open-add-service", ())', events)
+    self.assertIn('app.emit("open-add-workspace", ())', events)
     self.assertNotIn('"About Tauridium"', builder + events)
     self.assertNotIn("PredefinedMenuItem::about", builder + events)
     self.assertIn('listen("open-settings", openAppSettings)', self.app)
     self.assertIn('listen("open-add-service", openAdd)', self.app)
+    self.assertIn('listen("open-add-workspace", openAddWorkspace)', self.app)
 
 
   def test_native_services_menu_tracks_actual_services_and_stable_ids(self) -> None:
@@ -158,7 +162,7 @@ class OrderingAndSidebarTests(unittest.TestCase):
     self.assertNotIn("select-index", startup)
 
   def test_settings_menu_preserves_last_settings_tab(self) -> None:
-    body = self.app.split("function openAppSettings()", 1)[1].split("function openAbout()", 1)[0]
+    body = self.app.split("function openAppSettings()", 1)[1].split("function openAddWorkspace()", 1)[0]
     self.assertIn('view = "appSettings"', body)
     self.assertNotIn("settingsTab =", body)
 

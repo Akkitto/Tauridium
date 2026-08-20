@@ -306,6 +306,8 @@ export interface AppSettings {
   preloadServices: boolean;
   fetchMissingServiceIcons: boolean;
   reloadToasts: boolean;
+  captureServiceShortcuts: boolean;
+  serviceShortcutCaptureOverrides: Record<string, boolean>;
   customUrlTemplatesEnabled: boolean;
   serviceCustomUrlTemplates: Record<string, ServiceCustomUrlTemplate>;
   serviceOrder: string[];

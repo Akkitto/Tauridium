@@ -170,16 +170,23 @@ fn build_native_application_menu(
     let settings_item = MenuItem::with_id(
         app,
         "open-settings",
-        "Settings…",
+        "Settings",
         true,
         shortcut("openSettings"),
     )?;
     let add_service_item = MenuItem::with_id(
         app,
         "open-add-service",
-        "Add Service…",
+        "Add Service",
         true,
         shortcut("addService"),
+    )?;
+    let add_workspace_item = MenuItem::with_id(
+        app,
+        "open-add-workspace",
+        "Add Workspace",
+        true,
+        None::<&str>,
     )?;
     let app_sub = Submenu::with_items(
         app,
@@ -188,6 +195,7 @@ fn build_native_application_menu(
         &[
             &settings_item,
             &add_service_item,
+            &add_workspace_item,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::hide(app, None)?,
             &PredefinedMenuItem::hide_others(app, None)?,
@@ -1096,37 +1104,110 @@ const REMOTE_TAURI_COMPAT_JS: &str = r#"(function(){
   } catch(e){}
 })();"#;
 
-fn service_shortcut_bridge_js(settings: &Value) -> Option<String> {
-    let binding = settings
-        .get("keybindings")
+const SHORTCUT_ACTIONS: [&str; 11] = [
+    "quickWorkspaceSwitch",
+    "quickServiceSwitch",
+    "openSettings",
+    "addService",
+    "nextService",
+    "previousService",
+    "nextWorkspace",
+    "previousWorkspace",
+    "reloadService",
+    "reloadApp",
+    "toggleDevtools",
+];
+
+fn effective_service_shortcut_capture(settings: &Value, service_id: &str) -> bool {
+    let global = settings
+        .get("captureServiceShortcuts")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    settings
+        .get("serviceShortcutCaptureOverrides")
         .and_then(Value::as_object)
-        .and_then(|bindings| bindings.get("toggleDevtools"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|binding| !binding.is_empty() && !binding.contains(char::is_whitespace))?;
-    let binding_json = serde_json::to_string(binding).ok()?;
+        .and_then(|overrides| overrides.get(service_id))
+        .and_then(Value::as_bool)
+        .unwrap_or(global)
+}
+
+fn service_shortcut_bridge_js(settings: &Value, service_id: &str) -> Option<String> {
+    if !effective_service_shortcut_capture(settings, service_id) {
+        return None;
+    }
+    let bindings = settings.get("keybindings").and_then(Value::as_object)?;
+    let mut captured = serde_json::Map::new();
+    for action in SHORTCUT_ACTIONS {
+        if let Some(binding) = bindings
+            .get(action)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|binding| !binding.is_empty())
+        {
+            captured.insert(action.to_string(), Value::String(binding.to_string()));
+        }
+    }
+    if captured.is_empty() {
+        return None;
+    }
+    let bindings_json = serde_json::to_string(&captured).ok()?;
     Some(format!(
         r#"(function(){{
-  var expected = {binding_json};
+  var bindings = {bindings_json};
+  var pending = null;
+  var pendingAt = 0;
+  var timeoutMs = 1800;
+  function strokes(binding){{ return String(binding || '').trim().split(/\s+/).filter(Boolean).slice(0, 2); }}
   function stroke(e){{
+    if (['Control','Shift','Alt','Meta'].indexOf(e.key) !== -1) return null;
     var parts = [];
     if (e.ctrlKey) parts.push('Ctrl');
     if (e.altKey) parts.push('Alt');
     if (e.shiftKey) parts.push('Shift');
     if (e.metaKey) parts.push('Meta');
     var key = e.key === ' ' ? 'Space' : (e.key && e.key.length === 1 ? e.key.toUpperCase() : e.key);
+    if (!key) return null;
     parts.push(key);
     return parts.join('+');
   }}
-  document.addEventListener('keydown', function(e){{
-    if (!e.isTrusted || stroke(e) !== expected) return;
+  function dispatch(action){{
     try {{
       var internals = window.__TAURI_INTERNALS__;
       if (!internals || typeof internals.invoke !== 'function') return;
+      Promise.resolve(internals.invoke('dispatch_service_shortcut', {{ action: action }})).catch(function(){{}});
+    }} catch (_) {{}}
+  }}
+  window.addEventListener('keydown', function(e){{
+    if (!e.isTrusted) return;
+    var current = stroke(e);
+    if (!current) return;
+    var entries = Object.entries(bindings);
+    var now = Date.now();
+    if (pending && now - pendingAt >= timeoutMs) pending = null;
+    if (pending) {{
+      var chord = entries.find(function(entry){{ var seq = strokes(entry[1]); return seq.length === 2 && seq[0] === pending && seq[1] === current; }});
+      pending = null;
+      if (chord) {{
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        dispatch(chord[0]);
+        return;
+      }}
+    }}
+    var hasPrefix = entries.some(function(entry){{ var seq = strokes(entry[1]); return seq.length === 2 && seq[0] === current; }});
+    if (hasPrefix) {{
       e.preventDefault();
       e.stopImmediatePropagation();
-      Promise.resolve(internals.invoke('toggle_devtools_command')).catch(function(){{}});
-    }} catch (_) {{}}
+      pending = current;
+      pendingAt = now;
+      return;
+    }}
+    var single = entries.find(function(entry){{ var seq = strokes(entry[1]); return seq.length === 1 && seq[0] === current; }});
+    if (single) {{
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      dispatch(single[0]);
+    }}
   }}, true);
 }})();"#
     ))
@@ -1376,7 +1457,8 @@ async fn create_service_webview(
         }
     };
 
-    let service_shortcut_bridge = service_shortcut_bridge_js(&state.settings.lock().unwrap());
+    let service_shortcut_bridge =
+        service_shortcut_bridge_js(&state.settings.lock().unwrap(), service_id);
 
     // IPC shim injected into ALL services (Synology Chat and others depend on it).
     let mut builder = WebviewBuilder::new(label, WebviewUrl::External(url))
@@ -2468,6 +2550,8 @@ fn default_app_settings_value() -> Value {
         "preloadServices": true,
         "fetchMissingServiceIcons": true,
         "reloadToasts": true,
+        "captureServiceShortcuts": true,
+        "serviceShortcutCaptureOverrides": {},
         "customUrlTemplatesEnabled": false,
         "serviceCustomUrlTemplates": {},
         "serviceOrder": [],
@@ -2507,23 +2591,10 @@ fn is_hex_color(value: &str) -> bool {
 }
 
 fn validate_keybindings(value: Option<&Value>) -> Result<(), String> {
-    const ACTIONS: [&str; 11] = [
-        "quickWorkspaceSwitch",
-        "quickServiceSwitch",
-        "openSettings",
-        "addService",
-        "nextService",
-        "previousService",
-        "nextWorkspace",
-        "previousWorkspace",
-        "reloadService",
-        "reloadApp",
-        "toggleDevtools",
-    ];
     let bindings = value
         .and_then(Value::as_object)
         .ok_or_else(|| "App setting keybindings must be an object".to_string())?;
-    for action in ACTIONS {
+    for action in SHORTCUT_ACTIONS {
         let binding = bindings
             .get(action)
             .and_then(Value::as_str)
@@ -2618,6 +2689,7 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         "preloadServices",
         "fetchMissingServiceIcons",
         "reloadToasts",
+        "captureServiceShortcuts",
         "customUrlTemplatesEnabled",
     ] {
         if !object.get(key).is_some_and(Value::is_boolean) {
@@ -2754,6 +2826,23 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
     {
         return Err("App setting customSidebarWidths is invalid".into());
     }
+    let shortcut_overrides = object
+        .get("serviceShortcutCaptureOverrides")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            "App setting serviceShortcutCaptureOverrides must be an object".to_string()
+        })?;
+    if shortcut_overrides.len() > 10_000
+        || shortcut_overrides.iter().any(|(service_id, capture)| {
+            service_id.trim().is_empty()
+                || service_id.len() > 256
+                || service_id.chars().any(char::is_control)
+                || !capture.is_boolean()
+        })
+    {
+        return Err("App setting serviceShortcutCaptureOverrides is invalid".into());
+    }
+
     let service_templates = object
         .get("serviceCustomUrlTemplates")
         .and_then(Value::as_object)
@@ -3671,6 +3760,15 @@ fn reload_app_command(app: AppHandle) {
 }
 
 #[tauri::command]
+fn dispatch_service_shortcut(app: AppHandle, action: String) -> Result<(), String> {
+    if !SHORTCUT_ACTIONS.contains(&action.as_str()) {
+        return Err("Unsupported Tauridium shortcut action".into());
+    }
+    app.emit("shortcut-action", action)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn toggle_devtools_command(app: AppHandle) {
     toggle_devtools(&app);
 }
@@ -3826,6 +3924,12 @@ fn main() {
                             show_main(app);
                             let _ = app.emit("open-add-service", ());
                         }
+                        "open-add-workspace" => {
+                            let state = app.state::<AppState>();
+                            hide_service_webviews(app, &state);
+                            show_main(app);
+                            let _ = app.emit("open-add-workspace", ());
+                        }
                         "toggle-devtools" => toggle_devtools(app),
                         "reload-service" => {
                             let _ = app.emit("shortcut-action", "reloadService".to_string());
@@ -3914,7 +4018,8 @@ fn main() {
             get_app_metadata,
             reload_active_service_command,
             reload_app_command,
-            toggle_devtools_command
+            toggle_devtools_command,
+            dispatch_service_shortcut
         ])
         .build(tauri::generate_context!())
         .expect("failed to launch the Tauri application")
@@ -4091,15 +4196,31 @@ mod tests {
     }
 
     #[test]
-    fn service_shortcut_bridge_uses_configured_single_stroke_and_rejects_chords() {
-        let settings = json!({ "keybindings": { "toggleDevtools": "Ctrl+Alt+I" } });
-        let script =
-            service_shortcut_bridge_js(&settings).expect("single-stroke binding should work");
+    fn service_shortcut_bridge_captures_all_configured_bindings_and_honours_overrides() {
+        let settings = json!({
+            "captureServiceShortcuts": true,
+            "serviceShortcutCaptureOverrides": { "website-first": false, "forced": true },
+            "keybindings": {
+                "toggleDevtools": "Ctrl+Alt+I",
+                "quickServiceSwitch": "Ctrl+K Ctrl+S"
+            }
+        });
+        let script = service_shortcut_bridge_js(&settings, "default")
+            .expect("global shortcut capture should inject the bridge");
         assert!(script.contains("Ctrl+Alt+I"));
-        assert!(script.contains("toggle_devtools_command"));
+        assert!(script.contains("Ctrl+K Ctrl+S"));
+        assert!(script.contains("dispatch_service_shortcut"));
+        assert!(script.contains("stopImmediatePropagation"));
+        assert!(service_shortcut_bridge_js(&settings, "website-first").is_none());
+        assert!(service_shortcut_bridge_js(&settings, "forced").is_some());
 
-        let chord = json!({ "keybindings": { "toggleDevtools": "Ctrl+K Ctrl+I" } });
-        assert!(service_shortcut_bridge_js(&chord).is_none());
+        let global_off = json!({
+            "captureServiceShortcuts": false,
+            "serviceShortcutCaptureOverrides": { "forced": true },
+            "keybindings": { "reloadService": "Ctrl+R" }
+        });
+        assert!(service_shortcut_bridge_js(&global_off, "default").is_none());
+        assert!(service_shortcut_bridge_js(&global_off, "forced").is_some());
     }
 
     #[test]

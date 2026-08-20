@@ -215,10 +215,12 @@ class ReleaseWorkflowTests(unittest.TestCase):
     native_menu = main.split("// Native application menu", 1)[1].split("// Request notification", 1)[0]
 
     self.assertIn('"open-settings"', menu_builder)
-    self.assertIn('"Settings…"', menu_builder)
+    self.assertIn('"Settings"', menu_builder)
     self.assertIn('app.emit("open-settings", ())', native_menu)
     self.assertIn('"open-add-service"', menu_builder)
-    self.assertIn('"Add Service…"', menu_builder)
+    self.assertIn('"Add Service"', menu_builder)
+    self.assertIn('"Add Workspace"', menu_builder)
+    self.assertIn('app.emit("open-add-workspace", ())', native_menu)
     self.assertIn("hide_service_webviews(app, &state);", native_menu)
     self.assertNotIn('"About Tauridium"', menu_builder + native_menu)
     self.assertNotIn("PredefinedMenuItem::about", menu_builder + native_menu)
