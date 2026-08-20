@@ -505,6 +505,26 @@ def main() -> int:
   if 'class="cog"' in app:
     fail("sidebar service cogwheel was reintroduced")
 
+  patch_0408_test = read("tools/test_patch_0408.py")
+  for marker in (
+    'if (service && service.isEnabled !== false) selectService(service);',
+    '<K extends keyof ServiceCustomUrlTemplate>',
+    'onerror={() => markIconFailed(service)}',
+    'role="menu" tabindex="-1"',
+  ):
+    if marker not in app:
+      fail(f"0.4.8 frontend quality invariant is missing: {marker}")
+  for marker in (
+    'test_native_menu_selection_narrows_optional_service_before_use',
+    'test_custom_url_template_setter_preserves_field_types_without_unsafe_record_cast',
+    'test_managed_service_icon_failure_passes_service_not_service_id',
+    'test_context_menu_role_is_programmatically_focusable',
+  ):
+    if marker not in patch_0408_test:
+      fail(f"0.4.8 regression coverage is missing: {marker}")
+  if 'markIconFailed(service.id)' in app:
+    fail("managed service icon failure handler regressed to passing only a service id")
+
   if 'invoke("start_local_session")' not in api_ts:
     fail("frontend API does not expose the accountless session command")
   if "vi.hoisted" not in api_test_ts or "invoke: vi.fn()" not in api_test_ts:

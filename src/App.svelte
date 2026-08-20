@@ -392,7 +392,7 @@
     // make a numbered menu item select the wrong service.
     listen<string>("select-service-id", (e) => {
       const service = services.find((candidate) => candidate.id === e.payload);
-      if (service?.isEnabled !== false) selectService(service);
+      if (service && service.isEnabled !== false) selectService(service);
     });
     // Native menu actions always route through the shell so service webviews cannot cover them.
     listen("open-settings", openAppSettings);
@@ -957,8 +957,11 @@
     if (reload) svcReload = true;
   }
 
-  function saveServiceTemplateField(key: keyof ServiceCustomUrlTemplate, value: boolean | string) {
-    (serviceTemplateDraft as Record<string, unknown>)[key] = value;
+  function saveServiceTemplateField<K extends keyof ServiceCustomUrlTemplate>(
+    key: K,
+    value: ServiceCustomUrlTemplate[K],
+  ) {
+    serviceTemplateDraft = { ...serviceTemplateDraft, [key]: value };
     serviceTemplateDirty = true;
     svcReload = true;
   }
@@ -2508,7 +2511,7 @@
                         {#if failedIcons.has(service.id)}
                           <span class="managed-icon fallback">{serviceLabel(service).slice(0, 1).toUpperCase()}</span>
                         {:else}
-                          <img class="managed-icon" src={iconSrc(service)} alt="" onerror={() => markIconFailed(service.id)} />
+                          <img class="managed-icon" src={iconSrc(service)} alt="" onerror={() => markIconFailed(service)} />
                         {/if}
                         <div class="managed-copy">
                           <strong>{serviceLabel(service)}</strong>
@@ -2941,7 +2944,7 @@
   {@const contextService = services.find((service) => service.id === serviceContextMenu?.serviceId) ?? null}
   <div class="service-context-backdrop" role="presentation" onclick={(event) => event.currentTarget === event.target && closeServiceContextMenu()} oncontextmenu={(event) => { event.preventDefault(); if (event.currentTarget === event.target) closeServiceContextMenu(); }}>
     {#if contextService}
-      <div class="service-context-menu" role="menu" aria-label={`${serviceLabel(contextService)} actions`} style={`left:${serviceContextMenu.x}px;top:${serviceContextMenu.y}px`} onkeydown={handleServiceContextMenuKeydown}>
+      <div class="service-context-menu" role="menu" tabindex="-1" aria-label={`${serviceLabel(contextService)} actions`} style={`left:${serviceContextMenu.x}px;top:${serviceContextMenu.y}px`} onkeydown={handleServiceContextMenuKeydown}>
         <button role="menuitem" onclick={() => { closeServiceContextMenu(); openServiceSettings(contextService); }}>Settings</button>
         <button role="menuitem" disabled={contextService.isEnabled === false} onclick={() => reloadServiceFromUi(contextService)}>Reload</button>
         <div class="service-context-separator" aria-hidden="true"></div>
