@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.4.8] - 2026-08-20
+
+### Fixed
+
+- Fixed the native Services-menu selection handler so TypeScript narrows a missing service before passing it to the service-selection path.
+- Made custom URL template editing type-safe with a key-aware generic setter instead of an unsafe record cast.
+- Fixed the configured-services icon error handler to pass the complete service object expected by persistent website-icon fallback logic.
+- Made the service context-menu container explicitly programmatically focusable, clearing Svelte's `a11y_interactive_supports_focus` warning while preserving keyboard focus on the first enabled menu action.
+
+### Release quality
+
+- Added dedicated 0.4.8 regressions and release invariants for all four Windows-native `svelte-check` diagnostics reported against 0.4.7.
+- Performed an isolated strict TypeScript compilation pass for the complete `App.svelte` script and Tauridium frontend modules as additional release evidence, alongside the existing Svelte and Vitest release gates.
+- Retained the mandatory Rust 1.97.1 formatter, locked Cargo metadata, English-only, Git cleanliness, and source-package integrity gates.
+
 ## [0.4.7] - 2026-08-19
 
 ### Changed
