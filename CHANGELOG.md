@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.15] - 2026-08-20
+
+### Fixed
+
+- Fixed Windows Rust 1.97.1 builds failing with `recursion limit reached while expanding $crate::json_internal!` while compiling the default application settings.
+
+### Reliability
+
+- Replaced the growing top-level `serde_json::json!` settings-default macro with direct `serde_json::Map` construction, preserving the existing JSON shape without raising the crate-wide macro recursion limit.
+- Added regression coverage that prevents the large recursive settings macro from being reintroduced while preserving critical 0.4.14 defaults.
+- Removed two stale `.searchrow` CSS selectors reported by `svelte-check`, keeping the frontend diagnostics clean.
+
 ## [0.4.14] - 2026-08-20
 
 ### Added
