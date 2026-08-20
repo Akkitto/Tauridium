@@ -42,7 +42,7 @@ uses the Ferdium REST API; accountless mode keeps service/workspace state local.
 - **Accountless local mode** — no Ferdium account, server, or token required
 - **Local custom recipes** — add folders manually, import them through the GUI, or create them with the built-in lightweight recipe creator
 - **Custom Website** fallback — add any HTTP(S) site even when no preset recipe exists
-- Bundled AI recipes for **NanoGPT**, **Chutes**, and **OpenCode**
+- Bundled local recipes for common AI, developer, observability, forge, router, and web services
 - Optional Ferdium server sign-in — account, services and workspaces stay synced
 - Each service in an **isolated, persistent session** (native WebView)
 - **Native notifications** + dock unread badges
@@ -54,7 +54,7 @@ uses the Ferdium REST API; accountless mode keeps service/workspace state local.
 - **App settings in tabs**: General / Services / Appearance / Keybinds / Sandbox / Privacy / Backup / Audit log / Advanced / Updates / About, using a consistent settings-card layout with responsive control alignment
 - **Sidebar customization** aligned with Ferdium (icon size, service-list alignment, grayscale + dim level, fixed 160–420 px widths with Slim / Normal / Wide/custom presets, or a responsive percentage of the window)
 - Theme (system / dark / **Black OLED** / light) + preset or custom accent colors using a native color picker and HSL sliders
-- **Configurable keybindings** for navigation and application actions, including `Ctrl+D` workspace switching, `Ctrl+S` service search, and optional two-stroke chords
+- **Configurable keybindings** for navigation and application actions, including `Ctrl+D` workspace switching, `Ctrl+S` service search, `Ctrl+Shift+N` workspace creation, and optional two-stroke chords
 - **Shared sandboxes** that let compatible services deliberately share one persistent webview data store/login session while unassigned services remain isolated; one or all sandboxes can be exported with their services and referenced custom recipes
 - Scalable Settings → Services management with search, workspace filtering, 100-row paging, and filtered reordering that preserves hidden global-order slots
 - **Portable workspace exports** for one or all workspaces, including referenced services, sandboxes, assignments, and custom recipes
@@ -99,10 +99,13 @@ filesystem access, reserves its bundled recipe ids, and writes GUI-created recip
 atomically. A local `webview.js` runs inside the service page and can access its DOM,
 so only use scripts you trust.
 
-Bundled local recipes include **Custom Website**, **NanoGPT**, **Chutes**, and
-**OpenCode**. OpenCode defaults to `https://opencode.ai/go`. Set its website-specific
-workspace ID to use `https://opencode.ai/workspace/{teamId}/go`, or override the URL
-with a custom URL when needed.
+Bundled local recipes include **Custom Website**, **NanoGPT**, **Chutes**, **OpenCode**,
+**Woodpecker**, **Codeberg**, **SourceHut**, **Fritz!Box**, **Artifacts MMO**, **Lumo**,
+**Suno**, **Midjourney**, **Sora**, **Grafana**, **Graylog**, **Kibana**, and **Anytype**.
+Self-hosted recipes expose a custom instance URL where appropriate. OpenCode, Codeberg,
+and SourceHut also support website-specific workspace/namespace routing. The Sora preset
+opens OpenAI's legacy Sora export endpoint because the Sora web/app product was
+discontinued in April 2026.
 
 Local recipes are owned by Tauridium even during a Ferdium-server session. They are
 therefore not sent to the server as unknown recipe ids and are merged into the service
@@ -111,7 +114,7 @@ server login.
 
 ## Window state
 
-Tauridium persists the main window's normal size, screen position, maximized state, and fullscreen state in `window-state.json` under the OS application-config directory. The state is saved before hiding to the tray and before quitting, then restored before the window is shown again and on the next launch.
+Tauridium persists the main window's normal size, screen position, maximized state, and fullscreen state in `window-state.json` under the OS application-config directory. The state is saved before hiding to the tray and before quitting. On launch the main window stays hidden while that state is restored, then appears directly in its final windowed, maximized, or fullscreen mode instead of visibly transitioning after startup.
 
 Visibility is intentionally excluded from persisted window state so **Start minimized** remains an independent explicit setting. Persistence is limited to the main Tauridium window; service child webviews are not treated as desktop windows. If saved coordinates no longer intersect an available monitor, the window-state restore logic falls back instead of restoring the window off-screen.
 
@@ -266,8 +269,8 @@ before tagging:
 3. Tag and push:
 
 ```text
-git tag -a v0.4.17 -m "Tauridium 0.4.17"
-git push origin v0.4.17
+git tag -a v0.4.18 -m "Tauridium 0.4.18"
+git push origin v0.4.18
 ```
 
 If no matching `CHANGELOG.md` section exists, the workflow falls back to generic
@@ -284,7 +287,7 @@ For a local validated release, run:
 just release
 ```
 
-Runtime ZIPs are target-qualified using the binary's actual Rust compilation target, so artifacts from different native builds can coexist in the same `release/` directory. Common examples are `tauridium-0.4.17-run-win-x64.zip`, `tauridium-0.4.17-run-win-arm64.zip`, `tauridium-0.4.17-run-linux-x64.zip`, `tauridium-0.4.17-run-linux-arm64.zip`, and `tauridium-0.4.17-run-macos-arm64.zip`. Source and documentation ZIP names remain target-neutral.
+Runtime ZIPs are target-qualified using the binary's actual Rust compilation target, so artifacts from different native builds can coexist in the same `release/` directory. Common examples are `tauridium-0.4.18-run-win-x64.zip`, `tauridium-0.4.18-run-win-arm64.zip`, `tauridium-0.4.18-run-linux-x64.zip`, `tauridium-0.4.18-run-linux-arm64.zip`, and `tauridium-0.4.18-run-macos-arm64.zip`. Source and documentation ZIP names remain target-neutral.
 
 `tools/package_release.py --build-handoff` emits an explicit `run-build-handoff` ZIP when a native runtime cannot be proven in the current environment. It never labels that archive as a validated executable. `tools/package_release.py` also accepts repeated `--runtime` arguments and groups supplied binaries by their reported compilation target, emitting one run ZIP per target instead of overwriting a generic runtime archive.
 

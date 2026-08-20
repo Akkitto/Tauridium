@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.4.18] - 2026-08-21
+
+### Added
+
+- Added `Ctrl+Shift+N` as the default **Add workspace** shortcut across shell and focused-service shortcut handling, including the native application menu.
+- Added bundled local recipes for **Woodpecker**, **Codeberg**, **SourceHut**, **Fritz!Box**, **Artifacts MMO**, **Lumo**, **Suno**, **Midjourney**, **Sora**, **Grafana**, **Graylog**, **Kibana**, and **Anytype**.
+- Added website-workspace/namespace routing for Codeberg and SourceHut, while self-hosted Woodpecker, Fritz!Box, Grafana, Graylog, and Kibana recipes allow per-service custom instance URLs.
+
+### Fixed
+
+- Reload notifications now begin only after the replacement service webview reports that its page is ready, so `Ctrl+R` no longer destroys its own success toast during the reload.
+- Service-visible notifications are mirrored through a native one-shot overlay above the service child webview while retaining the shell ARIA-live toast; hosted pages are not given a callable Tauridium notification API.
+- Existing saved keybinding maps are merged with newly introduced defaults, preserving user customizations while supplying `Ctrl+Shift+N` on upgrade.
+- The main window now starts hidden, restores persisted size/position/maximized/fullscreen state off-screen, and is shown only afterward, eliminating the visible windowed-to-fullscreen startup transition.
+
+### Compatibility
+
+- The Sora bundled recipe targets OpenAI's legacy Sora content-export endpoint because the Sora web/app product was discontinued in April 2026.
+
+### Release quality
+
+- Added 0.4.18 regression and release-invariant coverage for keybinding migration, post-ready reload notifications, native service toast overlays, all new bundled recipes and workspace routes, and hidden-before-restore fullscreen startup.
+- Retained the established exact Rust 1.97.1 formatting, regression, release-invariant, clean-tree, source-manifest, and deterministic packaging gates.
+
 ## [0.4.17] - 2026-08-21
 
 ### Fixed
