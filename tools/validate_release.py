@@ -1186,6 +1186,24 @@ def main() -> int:
     if test_marker not in patch_0418:
       fail(f"0.4.18 regression coverage is missing: {test_marker}")
 
+  patch_0419 = read("tools/test_patch_0419.py")
+  toast_test = main_rs.split(
+    "fn service_toast_overlay_script_encodes_untrusted_text_without_page_global()", 1
+  )[1].split("#[test]", 1)[0]
+  for marker in (
+    'let encoded = serde_json::to_string(message).unwrap();',
+    'assert!(script.contains(&format!(")({encoded},2600);")));',
+    'assert!(!script.contains(message));',
+  ):
+    if marker not in toast_test:
+      fail(f"0.4.19 service-toast encoding-test invariant is missing: {marker}")
+  for test_marker in (
+    "test_service_toast_security_test_uses_canonical_json_encoding",
+    "test_service_toast_overlay_still_encodes_before_native_eval",
+  ):
+    if test_marker not in patch_0419:
+      fail(f"0.4.19 regression coverage is missing: {test_marker}")
+
   for marker in (
     '["keybindings", "Keybinds"]',
     '["sandbox", "Sandbox"]',
