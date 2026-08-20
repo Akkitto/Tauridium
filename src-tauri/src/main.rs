@@ -1659,8 +1659,6 @@ struct ServiceIconRequest {
     custom_url: Option<String>,
     team: Option<String>,
     #[serde(default)]
-    is_local_recipe: bool,
-    #[serde(default)]
     prefer_website_icon: bool,
 }
 

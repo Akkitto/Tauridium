@@ -611,6 +611,17 @@ def main() -> int:
   if 'settingsSvc!.id' in app:
     fail("0.4.11 Service Settings nullability fix regressed to a non-null assertion")
 
+  patch_0412_test = read("tools/test_patch_0412.py")
+  icon_request_block = main_rs.split("struct ServiceIconRequest {", 1)[1].split("}\n\n#[tauri::command]", 1)[0]
+  if "is_local_recipe" in icon_request_block:
+    fail("0.4.12 service icon request still contains the unused is_local_recipe field")
+  for marker in (
+    "test_service_icon_request_contains_only_runtime_used_fields",
+    "test_frontend_does_not_send_removed_icon_request_field",
+  ):
+    if marker not in patch_0412_test:
+      fail(f"0.4.12 regression coverage is missing: {marker}")
+
   if 'invoke("start_local_session")' not in api_ts:
     fail("frontend API does not expose the accountless session command")
   if "vi.hoisted" not in api_test_ts or "invoke: vi.fn()" not in api_test_ts:
