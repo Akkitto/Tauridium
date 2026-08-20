@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.11] - 2026-08-20
+
+### Fixed
+
+- Fixed the Service Settings workspace-membership status badge failing `svelte-check` because the nullable `settingsSvc` value was captured inside an array callback. The already-narrowed service ID is now captured once for the Service Settings block and reused throughout workspace membership rendering.
+- Applied the same stable service ID to workspace membership checkboxes, avoiding the same reactive nullability hazard in adjacent UI.
+
+### Release quality
+
+- Added dedicated 0.4.11 regressions and release invariants that reject callback use of nullable `settingsSvc.id`, non-null assertions, and TypeScript suppression comments for this flow.
+- Retained mandatory Rust 1.97.1 formatter, locked metadata, English-only, Git cleanliness, source-manifest, and extracted-source validation gates.
+
 ## [0.4.10] - 2026-08-20
 
 ### Fixed
