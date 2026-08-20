@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.4.10] - 2026-08-20
+
+### Fixed
+
+- Restricted automatic and bulk website-icon fetching to services whose **Use website icon** preference is enabled, with the same rule enforced in the Rust backend so forced refreshes cannot bypass it.
+- Routed native **Ctrl+R** reload actions through the frontend reload path so the configurable reload notification is shown consistently.
+- Restored the configured service-webview devtools shortcut on Windows by bridging the active service webview to Tauridium's native devtools command; Windows opens devtools directly instead of relying on unsupported toggle/close behavior.
+- Made service-name edits dirty immediately on the first input event, and kept service/template forms dirty when persistence fails instead of incorrectly showing them as saved.
+- Added an unsaved-changes confirmation before closing Service Settings.
+- Preserved website-icon preference, assigned custom-recipe icons, and persistent cached website icons when duplicating services.
+
+### Added
+
+- Added searchable, scrollable per-service workspace membership management to Service Settings, including transactional **Create & add** behavior with rollback if membership persistence fails.
+- Added explicit shortcut guidance that uppercase key labels do not imply Shift unless **Shift** is shown in the binding.
+
+### Changed
+
+- Newly created custom-recipe and Custom Website services now prefer a fetched website icon by default.
+- Improved alignment and responsive spacing of accent-color presets and the **Custom…** button.
+- Moved **Only favorites in unread count** immediately after **Indirect message badge**.
+- Changing keybindings now recreates service webviews so service-focused shortcut bridges immediately use the latest configured binding.
+
+### Release quality
+
+- Added dedicated 0.4.10 regressions for icon-preference scoping, custom-recipe defaults, duplicate cache semantics, reload notifications, devtools shortcut bridging, Shift wording, immediate dirty-state behavior, failed-save preservation, unsaved-close confirmation, workspace management, setting order, and accent-picker layout.
+- Added a frontend API contract test for persistent service-icon cache copying and a Rust unit test for single-stroke devtools shortcut injection versus unsupported chords.
+- Retained mandatory Rust 1.97.1 formatting, locked metadata, English-only, Git cleanliness, source-manifest, and extracted-source release gates.
+
 ## [0.4.9] - 2026-08-20
 
 ### Fixed
