@@ -2632,7 +2632,7 @@
 
           <div class="set-title">Keyboard shortcuts</div>
           <div class="setrow service-shortcut-policy">
-            <div>
+            <div class="service-shortcut-copy">
               <strong>Shortcut priority</strong>
               <p class="desc">Choose who receives configured Tauridium shortcuts while this website has keyboard focus. Normal typing remains untouched unless a key or key sequence is explicitly assigned as a Tauridium shortcut.</p>
             </div>
@@ -4057,10 +4057,11 @@
   .sandbox-card { align-items: start; }
   .sandbox-name { max-width: 320px; }
   .sandbox-select { min-width: 180px; }
-  .service-shortcut-policy { align-items: flex-start; }
-  .service-shortcut-policy > div { min-width: 0; flex: 1 1 320px; }
-  .service-shortcut-policy .select { min-width: 230px; max-width: 320px; }
-  .service-shortcut-effective { flex-basis: 100%; margin-top: 2px; }
+  .service-shortcut-policy { display: grid; grid-template-columns: minmax(0, 1fr) minmax(230px, 320px); align-items: start; gap: 8px 18px; }
+  .service-shortcut-copy { min-width: 0; }
+  .service-shortcut-policy .desc { margin-left: 0; }
+  .service-shortcut-policy .select { width: 100%; min-width: 0; max-width: none; margin-left: 0; }
+  .service-shortcut-effective { grid-column: 1 / -1; margin-top: 0; }
   .service-workspace-manager { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--panel) 88%, var(--bg)); }
   .service-workspace-overview { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
   .service-workspace-overview .setting-copy { min-width: 0; }
@@ -4150,7 +4151,8 @@
     .service-workspace-filters button { padding-inline: 6px; }
     .service-workspace-option { grid-template-columns: 20px 34px minmax(0, 1fr); }
     .service-workspace-state { display: none; }
-    .service-shortcut-policy .select { width: 100%; max-width: none; }
+    .service-shortcut-policy { grid-template-columns: 1fr; }
+    .service-shortcut-effective { grid-column: auto; }
     .color-picker-preview-row { grid-template-columns: 48px minmax(0, 1fr); }
     .color-preview { display: none; }
     .slider-field { grid-template-columns: 1fr; gap: 5px; }

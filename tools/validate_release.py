@@ -1058,6 +1058,35 @@ def main() -> int:
     if test_marker not in patch_0416:
       fail(f"0.4.16 regression coverage is missing: {test_marker}")
 
+  patch_0417 = read("tools/test_patch_0417.py")
+  service_shortcut_block = app.split('<div class="set-title">Keyboard shortcuts</div>', 1)[1].split(
+    '<div class="set-title">Workspaces</div>', 1
+  )[0]
+  for marker in (
+    'class="service-shortcut-copy"',
+    'Shortcut priority',
+    'aria-label={`Shortcut priority for ${serviceLabel(settingsSvc)}`}',
+  ):
+    if marker not in service_shortcut_block:
+      fail(f"0.4.17 shortcut-priority UX invariant is missing: {marker}")
+  for marker in (
+    '.service-shortcut-policy { display: grid; grid-template-columns: minmax(0, 1fr) minmax(230px, 320px);',
+    '.service-shortcut-policy .desc { margin-left: 0; }',
+    '.service-shortcut-effective { grid-column: 1 / -1; margin-top: 0; }',
+    '.service-shortcut-policy { grid-template-columns: 1fr; }',
+  ):
+    if marker not in app:
+      fail(f"0.4.17 shortcut-priority layout invariant is missing: {marker}")
+  if '.service-shortcut-policy > div { min-width: 0; flex: 1 1 320px; }' in app:
+    fail("0.4.17 obsolete shortcut flex-basis spacing regression was reintroduced")
+  for test_marker in (
+    "test_shortcut_priority_uses_compact_grid_without_flex_height_reservation",
+    "test_shortcut_priority_copy_and_control_align_without_inherited_offsets",
+    "test_shortcut_priority_stacks_cleanly_on_narrow_windows",
+  ):
+    if test_marker not in patch_0417:
+      fail(f"0.4.17 regression coverage is missing: {test_marker}")
+
   for marker in (
     '["keybindings", "Keybinds"]',
     '["sandbox", "Sandbox"]',
