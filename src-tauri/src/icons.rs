@@ -213,7 +213,7 @@ pub(crate) async fn cached_or_fetch(
     should_fetch: bool,
 ) -> Result<Option<String>, String> {
     let path = cache_path(app, service_id)?;
-    if !force && !should_fetch {
+    if !should_fetch {
         return Ok(None);
     }
     let previous = read_cache(&path);
@@ -244,6 +244,25 @@ pub(crate) async fn cached_or_fetch(
             Err(error)
         }
     }
+}
+
+pub(crate) fn copy_cached(
+    app: &AppHandle,
+    source_service_id: &str,
+    target_service_id: &str,
+) -> Result<(), String> {
+    let source = cache_path(app, source_service_id)?;
+    if !source.is_file() {
+        return Ok(());
+    }
+    let value = fs::read_to_string(&source)
+        .map_err(|error| format!("Unable to read source service icon cache: {error}"))?;
+    if read_cache(&source).is_none() {
+        return Err("Source service icon cache is invalid".into());
+    }
+    let target = cache_path(app, target_service_id)?;
+    write_atomic(&target, &value)
+        .map_err(|error| format!("Unable to copy service icon cache: {error}"))
 }
 
 pub(crate) fn remove_cached(app: &AppHandle, service_id: &str) {

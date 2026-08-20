@@ -230,11 +230,14 @@ export function getServiceIcon(
       recipeId: service.recipeId,
       customUrl: service.customUrl ?? null,
       team: service.team ?? null,
-      isLocalRecipe: service.isLocalRecipe === true,
       preferWebsiteIcon,
     },
     force,
   });
+}
+
+export function copyServiceIconCache(sourceServiceId: string, targetServiceId: string): Promise<void> {
+  return invoke("copy_service_icon_cache", { sourceServiceId, targetServiceId });
 }
 
 export function clearSandbox(sandboxId: string): Promise<void> {

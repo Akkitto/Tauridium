@@ -1096,6 +1096,42 @@ const REMOTE_TAURI_COMPAT_JS: &str = r#"(function(){
   } catch(e){}
 })();"#;
 
+fn service_shortcut_bridge_js(settings: &Value) -> Option<String> {
+    let binding = settings
+        .get("keybindings")
+        .and_then(Value::as_object)
+        .and_then(|bindings| bindings.get("toggleDevtools"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|binding| !binding.is_empty() && !binding.contains(char::is_whitespace))?;
+    let binding_json = serde_json::to_string(binding).ok()?;
+    Some(format!(
+        r#"(function(){{
+  var expected = {binding_json};
+  function stroke(e){{
+    var parts = [];
+    if (e.ctrlKey) parts.push('Ctrl');
+    if (e.altKey) parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.metaKey) parts.push('Meta');
+    var key = e.key === ' ' ? 'Space' : (e.key && e.key.length === 1 ? e.key.toUpperCase() : e.key);
+    parts.push(key);
+    return parts.join('+');
+  }}
+  document.addEventListener('keydown', function(e){{
+    if (!e.isTrusted || stroke(e) !== expected) return;
+    try {{
+      var internals = window.__TAURI_INTERNALS__;
+      if (!internals || typeof internals.invoke !== 'function') return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      Promise.resolve(internals.invoke('toggle_devtools_command')).catch(function(){{}});
+    }} catch (_) {{}}
+  }}, true);
+}})();"#
+    ))
+}
+
 const IPC_SHIM_JS: &str = r#"(function(){
   window.__PAKE_SHIM__ = (window.__PAKE_SHIM__ || 0) + 1;
   window.__pakeUnread = window.__pakeUnread || 0;
@@ -1340,6 +1376,8 @@ async fn create_service_webview(
         }
     };
 
+    let service_shortcut_bridge = service_shortcut_bridge_js(&state.settings.lock().unwrap());
+
     // IPC shim injected into ALL services (Synology Chat and others depend on it).
     let mut builder = WebviewBuilder::new(label, WebviewUrl::External(url))
         .user_agent(&ua)
@@ -1363,6 +1401,9 @@ async fn create_service_webview(
                 NewWindowResponse::Deny
             },
         );
+    if let Some(script) = service_shortcut_bridge {
+        builder = builder.initialization_script(script);
+    }
     // Emit loading state to the shell (spinner transitions from loading to ready).
     let sid_evt = service_id.to_string();
     builder = builder.on_page_load(move |wv, payload| {
@@ -1647,8 +1688,7 @@ async fn get_service_icon(
         request.team.as_deref(),
         &templates,
     )?;
-    let has_preset = recipes::has_preset_icon(&app, &request.recipe_id, request.is_local_recipe);
-    let should_fetch = request.prefer_website_icon || !has_preset;
+    let should_fetch = request.prefer_website_icon;
     let result = icons::cached_or_fetch(
         &app,
         &HTTP,
@@ -1680,6 +1720,15 @@ async fn get_service_icon(
         _ => {}
     }
     result
+}
+
+#[tauri::command]
+fn copy_service_icon_cache(
+    app: AppHandle,
+    source_service_id: String,
+    target_service_id: String,
+) -> Result<(), String> {
+    icons::copy_cached(&app, &source_service_id, &target_service_id)
 }
 
 fn hide_service_webviews(app: &AppHandle, state: &AppState) {
@@ -1851,9 +1900,19 @@ async fn create_service(
         } else {
             None
         };
+        let prefer_website_icon = local_recipe && !recipes::is_bundled_recipe(&recipe_id);
         let mut profile = state.local_profile.lock().unwrap();
         let mut next = profile.clone();
-        let service = next.create_service(name, recipe_id, icon_url, local_recipe)?;
+        let mut service = next.create_service(name, recipe_id, icon_url, local_recipe)?;
+        if prefer_website_icon {
+            let service_id = service
+                .get("id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "Created custom-recipe service has no id".to_string())?
+                .to_string();
+            service =
+                next.update_service(&service_id, &serde_json::json!({ "useFavicon": true }))?;
+        }
         save_local_profile(&app, &next)?;
         *profile = next;
         return Ok(service);
@@ -1904,7 +1963,10 @@ fn create_custom_website_service(
         .and_then(Value::as_str)
         .ok_or_else(|| "Created custom website service has no id".to_string())?
         .to_string();
-    service = next.update_service(&service_id, &serde_json::json!({ "customUrl": url }))?;
+    service = next.update_service(
+        &service_id,
+        &serde_json::json!({ "customUrl": url, "useFavicon": true }),
+    )?;
     save_local_profile(&app, &next)?;
     *profile = next;
     Ok(service)
@@ -3500,6 +3562,9 @@ fn toggle_devtools(app: &AppHandle) {
     let active = app.state::<AppState>().active.lock().unwrap().clone();
     if let Some(sid) = active {
         if let Some(wv) = app.get_webview(&format!("svc-{sid}")) {
+            #[cfg(target_os = "windows")]
+            wv.open_devtools();
+            #[cfg(not(target_os = "windows"))]
             if wv.is_devtools_open() {
                 wv.close_devtools();
             } else {
@@ -3731,7 +3796,9 @@ fn main() {
                             let _ = app.emit("open-add-service", ());
                         }
                         "toggle-devtools" => toggle_devtools(app),
-                        "reload-service" => reload_active_service(app),
+                        "reload-service" => {
+                            let _ = app.emit("shortcut-action", "reloadService".to_string());
+                        }
                         "reload-app" => reload_app(app),
                         _ => {
                             if let Some(action) = id.strip_prefix("shortcut:") {
@@ -3780,6 +3847,7 @@ fn main() {
             show_service,
             preload_service,
             get_service_icon,
+            copy_service_icon_cache,
             hide_all_services,
             close_service,
             set_sidebar_width,
@@ -3973,6 +4041,18 @@ mod tests {
             .unwrap()
             .to_string_lossy()
             .starts_with("sandbox-"));
+    }
+
+    #[test]
+    fn service_shortcut_bridge_uses_configured_single_stroke_and_rejects_chords() {
+        let settings = json!({ "keybindings": { "toggleDevtools": "Ctrl+Alt+I" } });
+        let script =
+            service_shortcut_bridge_js(&settings).expect("single-stroke binding should work");
+        assert!(script.contains("Ctrl+Alt+I"));
+        assert!(script.contains("toggle_devtools_command"));
+
+        let chord = json!({ "keybindings": { "toggleDevtools": "Ctrl+K Ctrl+I" } });
+        assert!(service_shortcut_bridge_js(&chord).is_none());
     }
 
     #[test]

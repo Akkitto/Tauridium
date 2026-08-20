@@ -54,6 +54,7 @@
     deleteService,
     clearServiceCache,
     getServiceIcon,
+    copyServiceIconCache,
     clearSandbox,
     listRecipes,
     getRecipeStorageInfo,
@@ -139,6 +140,9 @@
   let serviceSettingsReturnToSettings = $state(false);
   let serviceTemplateDraft = $state<ServiceCustomUrlTemplate>({ enabled: false, customId1: "", customId2: "" });
   let serviceTemplateDirty = $state(false);
+  let serviceWorkspaceQuery = $state("");
+  let serviceWorkspaceNewName = $state("");
+  let serviceWorkspaceBusy = $state(false);
   let newWorkspaceName = $state("");
 
   type Tab = "general" | "services" | "appearance" | "keybindings" | "sandbox" | "privacy" | "backup" | "audit" | "advanced" | "updates" | "about";
@@ -520,17 +524,15 @@
   }
 
   function hydrateServiceIcons() {
-    if (!appSettings.fetchMissingServiceIcons && !services.some((service) => service.useFavicon === true)) return;
+    if (!appSettings.fetchMissingServiceIcons) return;
     for (const service of services) {
-      if (appSettings.fetchMissingServiceIcons || service.useFavicon === true) {
-        void loadServiceIcon(service);
-      }
+      if (service.useFavicon === true) void loadServiceIcon(service);
     }
   }
 
   function markIconFailed(service: Service) {
     failedIcons = new Set(failedIcons).add(service.id);
-    if (appSettings.fetchMissingServiceIcons || service.useFavicon === true) {
+    if (appSettings.fetchMissingServiceIcons && service.useFavicon === true) {
       void loadServiceIcon(service, false, false, true);
     }
   }
@@ -875,13 +877,20 @@
     settingsSvc = { ...s }; // Editable copy; applied to the server on Save.
     serviceTemplateDraft = { ...(appSettings.serviceCustomUrlTemplates[s.id] ?? { enabled: false, customId1: "", customId2: "" }) };
     serviceTemplateDirty = false;
+    serviceWorkspaceQuery = "";
+    serviceWorkspaceNewName = "";
+    serviceWorkspaceBusy = false;
     svcDirty = false;
     svcReload = false;
     view = "svcSettings";
     hideServices();
   }
 
-  function closeServiceSettings() {
+  async function closeServiceSettings() {
+    if (svcDirty || serviceTemplateDirty) {
+      const discard = await confirmAsk("Discard unsaved service changes?");
+      if (!discard) return;
+    }
     error = null;
     if (serviceSettingsReturnToSettings) {
       serviceSettingsReturnToSettings = false;
@@ -897,11 +906,9 @@
     backToService();
   }
 
-  async function persistService(reload = false) {
-    if (!settingsSvc) return;
-    const s = settingsSvc;
-    const idx = services.findIndex((x) => x.id === s.id);
-    if (idx >= 0) services[idx] = { ...s };
+  async function persistService(reload = false): Promise<boolean> {
+    if (!settingsSvc) return false;
+    const s = { ...settingsSvc };
     try {
       await updateService(s.id, {
         name: s.name,
@@ -930,15 +937,19 @@
         team: s.team ?? "",
         userAgentPref: s.userAgentPref ?? "",
       });
+      const idx = services.findIndex((candidate) => candidate.id === s.id);
+      if (idx >= 0) services = services.map((candidate, index) => index === idx ? { ...s } : candidate);
       await setServiceFlags(s);
       await refreshNativeServicesMenu();
       if (reload) {
-        await closeService(s.id); // recreated on next open with new params
+        await closeService(s.id);
         const { [s.id]: _, ...rest } = statusMap;
         statusMap = rest;
       }
+      return true;
     } catch (err) {
-      error = String(err);
+      error = `Unable to save ${serviceLabel(s)}: ${err}`;
+      return false;
     }
   }
 
@@ -983,17 +994,27 @@
   }
 
   async function saveServiceSettings() {
-    await persistService(svcReload);
-    if (settingsSvc && serviceTemplateDirty) {
-      appSettings = await setAppSettings({
-        serviceCustomUrlTemplates: {
-          ...appSettings.serviceCustomUrlTemplates,
-          [settingsSvc.id]: { ...serviceTemplateDraft },
-        },
-      });
-      serviceTemplateDirty = false;
+    error = null;
+    const needsServiceSave = svcDirty || svcReload;
+    if (needsServiceSave) {
+      const saved = await persistService(svcReload);
+      if (!saved) return;
+      svcDirty = false;
     }
-    svcDirty = false;
+    if (settingsSvc && serviceTemplateDirty) {
+      try {
+        appSettings = await setAppSettings({
+          serviceCustomUrlTemplates: {
+            ...appSettings.serviceCustomUrlTemplates,
+            [settingsSvc.id]: { ...serviceTemplateDraft },
+          },
+        });
+        serviceTemplateDirty = false;
+      } catch (err) {
+        error = `Unable to save custom URL placeholders: ${err}`;
+        return;
+      }
+    }
     svcReload = false;
   }
 
@@ -1037,7 +1058,7 @@
   }
 
   function duplicatedServicePatch(service: Service): Record<string, unknown> {
-    return {
+    const patch: Record<string, unknown> = {
       isEnabled: service.isEnabled !== false,
       isNotificationEnabled: service.isNotificationEnabled,
       isMuted: service.isMuted,
@@ -1063,6 +1084,8 @@
       team: service.team ?? "",
       userAgentPref: service.userAgentPref ?? "",
     };
+    if (service.isLocalRecipe === true) patch.iconUrl = service.iconUrl ?? null;
+    return patch;
   }
 
   function createdServiceId(result: unknown): string | null {
@@ -1098,6 +1121,10 @@
       if (!newId) throw new Error("Duplicated service did not return a service id");
 
       await updateService(newId, duplicatedServicePatch(service));
+      if (service.useFavicon === true) {
+        await copyServiceIconCache(service.id, newId);
+        if (serviceIcons[service.id]) serviceIcons = { ...serviceIcons, [newId]: serviceIcons[service.id] };
+      }
 
       for (const workspace of workspaces.filter((candidate) => candidate.services.includes(service.id))) {
         const members = [...workspace.services];
@@ -1125,6 +1152,7 @@
       await persistServiceIds(nextIds, previousIds);
       await Promise.all(services.map((candidate) => setServiceFlags(candidate).catch(() => {})));
       const duplicate = services.find((candidate) => candidate.id === newId) ?? null;
+      if (duplicate && service.useFavicon === true) await loadServiceIcon(duplicate, false, false, true);
       if (duplicate && duplicate.isEnabled !== false) selectService(duplicate);
       showToast(`Duplicated ${serviceLabel(service)} as ${name}.`);
     } catch (err) {
@@ -1166,10 +1194,15 @@
   }
 
   async function refetchAllServiceIcons() {
-    if (!(await confirmAsk("Refetch and replace cached website icons for all services? This can contact every configured service website."))) return;
+    const preferred = services.filter((service) => service.useFavicon === true);
+    if (preferred.length === 0) {
+      showToast("No services currently prefer website icons.");
+      return;
+    }
+    if (!(await confirmAsk(`Refetch website icons for ${preferred.length} service${preferred.length === 1 ? "" : "s"} that currently prefer them?`))) return;
     let success = 0;
     const failures: string[] = [];
-    for (const service of services) {
+    for (const service of preferred) {
       iconFetchAttempted.delete(`${service.id}:default`);
       iconFetchAttempted.delete(`${service.id}:website`);
       try {
@@ -1182,7 +1215,7 @@
         failures.push(serviceLabel(service));
       }
     }
-    showToast(`Refetched ${success} of ${services.length} service icons.`);
+    showToast(`Refetched ${success} of ${preferred.length} preferred website icons.`);
     if (failures.length) error = `No website icon was available for ${failures.length} service${failures.length === 1 ? "" : "s"}.`;
   }
 
@@ -1293,17 +1326,51 @@
     ws: Workspace,
     serviceId: string,
     member: boolean,
-  ) {
-    const set = new Set(ws.services);
+  ): Promise<boolean> {
+    const previous = [...ws.services];
+    const set = new Set(previous);
     if (member) set.add(serviceId);
     else set.delete(serviceId);
     const list = [...set];
-    const idx = workspaces.findIndex((w) => w.id === ws.id);
-    if (idx >= 0) workspaces[idx].services = list;
+    workspaces = workspaces.map((candidate) => candidate.id === ws.id ? { ...candidate, services: list } : candidate);
     try {
       await updateWorkspace(ws.id, ws.name, list);
+      return true;
     } catch (err) {
-      error = String(err);
+      workspaces = workspaces.map((candidate) => candidate.id === ws.id ? { ...candidate, services: previous } : candidate);
+      error = `Unable to update workspace ${ws.name}: ${err}`;
+      return false;
+    }
+  }
+
+  async function toggleCurrentServiceWorkspace(workspace: Workspace, member: boolean) {
+    if (!settingsSvc || serviceWorkspaceBusy) return;
+    serviceWorkspaceBusy = true;
+    try {
+      await toggleServiceInWorkspace(workspace, settingsSvc.id, member);
+    } finally {
+      serviceWorkspaceBusy = false;
+    }
+  }
+
+  async function createWorkspaceForCurrentService() {
+    if (!settingsSvc || serviceWorkspaceBusy) return;
+    const name = serviceWorkspaceNewName.trim();
+    if (!name) return;
+    serviceWorkspaceBusy = true;
+    let created: Workspace | null = null;
+    try {
+      created = await createWorkspace(name);
+      const updated = await updateWorkspace(created.id, created.name, [settingsSvc.id]);
+      workspaces = [...workspaces, updated];
+      serviceWorkspaceNewName = "";
+      await reconcileSavedOrders();
+    } catch (err) {
+      if (created) await deleteWorkspace(created.id).catch(() => {});
+      error = `Unable to create workspace and add ${serviceLabel(settingsSvc)}: ${err}`;
+      await reloadWorkspaces().catch(() => {});
+    } finally {
+      serviceWorkspaceBusy = false;
     }
   }
 
@@ -1361,18 +1428,26 @@
   const filteredRecipes = $derived(filterRecipes(allRecipes, recipeQuery));
   const customRecipes = $derived(allRecipes.filter((recipe) => recipe.source === "custom"));
 
-  async function activateCreated(result: unknown, recipeId: string) {
+  async function activateCreated(result: unknown, recipeId: string, preferWebsiteIcon = false) {
     const newId = createdServiceId(result);
     [services, workspaces] = await Promise.all([getServices(), getWorkspaces()]);
+    let created =
+      (newId ? services.find((service) => service.id === newId) : null) ??
+      [...services].reverse().find((service) => service.recipeId === recipeId) ??
+      null;
+    if (created && preferWebsiteIcon && created.useFavicon !== true) {
+      const createdId = created.id;
+      await updateService(createdId, { useFavicon: true });
+      services = services.map((service) => service.id === createdId ? { ...service, useFavicon: true } : service);
+      created = services.find((service) => service.id === createdId) ?? created;
+    }
     await reconcileSavedOrders();
     await refreshNativeServicesMenu();
     await Promise.all(services.map((service) => setServiceFlags(service).catch(() => {})));
-    const created =
-      (newId && services.find((service) => service.id === newId)) ??
-      [...services].reverse().find((service) => service.recipeId === recipeId) ??
-      null;
-    if (created) selectService(created);
-    else view = "service";
+    if (created) {
+      if (created.useFavicon === true && appSettings.fetchMissingServiceIcons) void loadServiceIcon(created);
+      selectService(created);
+    } else view = "service";
   }
 
   function openCustomWebsite(prefill = "") {
@@ -1395,7 +1470,7 @@
         newServiceName.trim() || websiteName(url),
         url,
       );
-      await activateCreated(result, "custom-website");
+      await activateCreated(result, "custom-website", true);
     } catch (err) {
       error = String(err);
     }
@@ -1446,7 +1521,7 @@
       await refreshRecipes();
       if (addService) {
         const result = await createService(newServiceName.trim() || draft.name, draft.id);
-        await activateCreated(result, draft.id);
+        await activateCreated(result, draft.id, true);
       } else {
         addMode = "catalog";
         recipeQuery = draft.id;
@@ -1490,7 +1565,7 @@
     try {
       error = null;
       const result = await createService(newServiceName.trim() || r.name, r.id);
-      await activateCreated(result, r.id);
+      await activateCreated(result, r.id, r.source === "custom" || !r.icons?.svg);
     } catch (err) {
       error = String(err);
     }
@@ -1814,7 +1889,13 @@
       if (key === "automaticBackupSchedule" && value !== "startup") {
         void maybeRunAutomaticBackup(false);
       }
-      if (key === "keybindings") await refreshNativeServicesMenu();
+      if (key === "keybindings") {
+        await refreshNativeServicesMenu();
+        const restore = view === "service" ? activeService : null;
+        await closeServices();
+        statusMap = {};
+        if (restore && restore.isEnabled !== false) selectService(restore);
+      }
     } catch (err) {
       error = String(err);
     }
@@ -2301,7 +2382,7 @@
           <div class="set-title">General</div>
           <label class="block">
             Name
-            <input value={settingsSvc.name} onchange={(e) => saveText("name", e.currentTarget.value)} />
+            <input value={settingsSvc.name} oninput={(e) => saveText("name", e.currentTarget.value)} />
           </label>
           <div class="setrow">
             <label class="block">
@@ -2337,11 +2418,34 @@
           {@render toggle("Muted", "Silence this service — no notifications at all.", "isMuted", settingsSvc.isMuted === true)}
           {@render toggle("Unread badge", `Count this service's unread messages in the ${dockWord} badge.`, "isBadgeEnabled", settingsSvc.isBadgeEnabled !== false)}
           {@render toggle("Indirect message badge", "Also count indirect (group / channel) messages in the badge.", "isIndirectMessageBadgeEnabled", settingsSvc.isIndirectMessageBadgeEnabled === true)}
+          {@render toggle("Only favorites in unread count", "Count unread messages only from favorite chats in this service.", "onlyShowFavoritesInUnreadCount", settingsSvc.onlyShowFavoritesInUnreadCount === true)}
           {@render toggle("Media badge", "Count calls / media activity in the badge.", "isMediaBadgeEnabled", settingsSvc.isMediaBadgeEnabled === true)}
           {@render toggle("Allow hibernation", "Let this service sleep when inactive to save memory.", "isHibernationEnabled", settingsSvc.isHibernationEnabled === true)}
           {@render toggle("Open links externally", "Open clicked links in your default browser instead of inside the service.", "trapLinkClicks", settingsSvc.trapLinkClicks === true)}
           {@render toggle("Allow wake up", "Wake this service from hibernation on new activity.", "isWakeUpEnabled", settingsSvc.isWakeUpEnabled === true)}
-          {@render toggle("Only favorites in unread count", "Count unread messages only from favorite chats in this service.", "onlyShowFavoritesInUnreadCount", settingsSvc.onlyShowFavoritesInUnreadCount === true)}
+
+          <div class="set-title">Workspaces</div>
+          <div class="service-workspace-manager">
+            <div class="service-workspace-toolbar">
+              <input type="search" bind:value={serviceWorkspaceQuery} placeholder="Search workspaces…" aria-label="Search workspaces for this service" />
+              <span class="status-badge">{workspaces.filter((workspace) => workspace.services.includes(settingsSvc.id)).length} joined</span>
+            </div>
+            <div class="service-workspace-list" role="list" aria-label={`Workspaces containing ${serviceLabel(settingsSvc)}`}>
+              {#each sortedWorkspaces.filter((workspace) => !serviceWorkspaceQuery.trim() || workspace.name.toLowerCase().includes(serviceWorkspaceQuery.trim().toLowerCase())).slice(0, 200) as workspace (workspace.id)}
+                <label class="service-workspace-row" role="listitem">
+                  <span><strong>{workspace.name}</strong><small>{workspace.services.length} service{workspace.services.length === 1 ? "" : "s"}</small></span>
+                  <input type="checkbox" checked={workspace.services.includes(settingsSvc.id)} disabled={serviceWorkspaceBusy} onchange={(event) => toggleCurrentServiceWorkspace(workspace, event.currentTarget.checked)} />
+                </label>
+              {:else}
+                <div class="managed-empty"><strong>No workspaces match</strong><span>Change the search text or create a workspace below.</span></div>
+              {/each}
+            </div>
+            {#if sortedWorkspaces.filter((workspace) => !serviceWorkspaceQuery.trim() || workspace.name.toLowerCase().includes(serviceWorkspaceQuery.trim().toLowerCase())).length > 200}<p class="desc">Showing the first 200 matches. Refine the search to narrow the list.</p>{/if}
+            <div class="service-workspace-create">
+              <input bind:value={serviceWorkspaceNewName} maxlength="80" placeholder="New workspace name" aria-label="New workspace name for this service" />
+              <button class="secondary sm" disabled={serviceWorkspaceBusy || !serviceWorkspaceNewName.trim()} onclick={createWorkspaceForCurrentService}>Create & add</button>
+            </div>
+          </div>
 
           <div class="set-title">Appearance</div>
           {@render toggle("Dark mode", "Force a dark theme on this service (via Dark Reader). Reloads the service when changed.", "isDarkModeEnabled", settingsSvc.isDarkModeEnabled === true)}
@@ -2710,22 +2814,24 @@
                       <option value="light">Light</option>
                     </select>
                   </div>
-                  <div class="setting-card">
+                  <div class="setting-card setting-card-stack accent-setting-card">
                     <div class="setting-copy">
                       <span class="setting-label">Accent color</span>
                       <span class="setting-description">Used for selected navigation, primary actions, and active-service emphasis.</span>
                     </div>
-                    <div class="swatches" role="group" aria-label="Accent color">
-                      {#each ["#ffc131", "#4f46e5", "#2563eb", "#0891b2", "#16a34a", "#d97706", "#dc2626", "#db2777", "#7c3aed"] as c (c)}
-                        <button class="swatch" class:on={appSettings.accentColor === c} style="background:{c}" aria-label={`Use accent color ${c}`} aria-pressed={appSettings.accentColor === c} onclick={() => saveAppSetting("accentColor", c)}></button>
-                      {/each}
-                      {#each appSettings.customAccentColors as c (c)}
-                        <span class="custom-swatch-wrap">
-                          <button class="swatch" class:on={appSettings.accentColor === c} style="background:{c}" aria-label={`Use custom accent color ${c}`} aria-pressed={appSettings.accentColor === c} onclick={() => saveAppSetting("accentColor", c)}></button>
-                          <button class="swatch-remove" aria-label={`Remove custom accent ${c}`} title="Remove preset" onclick={() => removeCustomAccent(c)}>×</button>
-                        </span>
-                      {/each}
-                      <button class="secondary sm" onclick={openCustomColorPicker}>Custom…</button>
+                    <div class="accent-picker-control">
+                      <div class="swatches" role="group" aria-label="Accent color presets">
+                        {#each ["#ffc131", "#4f46e5", "#2563eb", "#0891b2", "#16a34a", "#d97706", "#dc2626", "#db2777", "#7c3aed"] as c (c)}
+                          <button class="swatch" class:on={appSettings.accentColor === c} style="background:{c}" aria-label={`Use accent color ${c}`} aria-pressed={appSettings.accentColor === c} onclick={() => saveAppSetting("accentColor", c)}></button>
+                        {/each}
+                        {#each appSettings.customAccentColors as c (c)}
+                          <span class="custom-swatch-wrap">
+                            <button class="swatch" class:on={appSettings.accentColor === c} style="background:{c}" aria-label={`Use custom accent color ${c}`} aria-pressed={appSettings.accentColor === c} onclick={() => saveAppSetting("accentColor", c)}></button>
+                            <button class="swatch-remove" aria-label={`Remove custom accent ${c}`} title="Remove preset" onclick={() => removeCustomAccent(c)}>×</button>
+                          </span>
+                        {/each}
+                      </div>
+                      <button class="secondary sm accent-custom-button" onclick={openCustomColorPicker}>Custom…</button>
                     </div>
                   </div>
                   {#if customColorOpen}
@@ -2806,7 +2912,7 @@
               </section>
             {:else if settingsTab === "keybindings"}
               <section class="settings-section" aria-labelledby="settings-keybindings-main">
-                <div class="section-heading"><h3 id="settings-keybindings-main">Keybindings</h3><p>Customize application navigation. Bindings may be a single shortcut or a two-stroke chord such as Ctrl+K Ctrl+S. Press Delete while recording to clear a binding.</p></div>
+                <div class="section-heading"><h3 id="settings-keybindings-main">Keybindings</h3><p>Customize application navigation. Bindings may be a single shortcut or a two-stroke chord such as Ctrl+K Ctrl+S. Letter keys are shown as uppercase key labels; Shift is required only when <strong>Shift</strong> is explicitly present. Press Delete while recording to clear a binding.</p></div>
                 <div class="settings-list keybinding-list">
                   {#each [
                     ["quickWorkspaceSwitch", "Quick workspace switcher", "Search and switch workspaces."],
@@ -2973,9 +3079,9 @@
               <section class="settings-section" aria-labelledby="settings-advanced-service-icons">
                 <div class="section-heading"><h3 id="settings-advanced-service-icons">Service icons</h3><p>Control durable website-icon discovery and refresh.</p></div>
                 <div class="settings-list">
-                  {@render appToggle("Fetch missing website icons", "When a service has no preset recipe icon, fetch its website icon once and keep the result in Tauridium's persistent cache. Enabled by default.", "fetchMissingServiceIcons", appSettings.fetchMissingServiceIcons)}
+                  {@render appToggle("Fetch preferred website icons automatically", "For services with Use website icon enabled, fetch the website icon once and keep it in Tauridium's persistent cache. Services that do not prefer website icons are never fetched automatically.", "fetchMissingServiceIcons", appSettings.fetchMissingServiceIcons)}
                   <div class="setting-card">
-                    <div class="setting-copy"><span class="setting-label">Refetch all service icons</span><span class="setting-description">Discard cached icon results and contact every configured service to discover its current website icon again.</span></div>
+                    <div class="setting-copy"><span class="setting-label">Refetch preferred website icons</span><span class="setting-description">Refresh only services whose Use website icon preference is enabled. Recipe-icon services are left untouched.</span></div>
                     <button class="secondary sm" onclick={refetchAllServiceIcons}>Refetch all…</button>
                   </div>
                 </div>
@@ -3504,6 +3610,10 @@
   .settings-panel .primary, .settings-panel .secondary { min-height: 34px; display: inline-flex; align-items: center; justify-content: center; }
   .settings-panel .primary.sm, .settings-panel .secondary.sm { min-height: 30px; }
   .settings-panel .swatches { margin-left: 0; justify-content: flex-end; flex-wrap: wrap; max-width: 250px; }
+  .accent-setting-card { align-items: stretch; }
+  .accent-picker-control { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; }
+  .accent-picker-control .swatches { flex: 1 1 auto; justify-content: flex-start; max-width: none; }
+  .accent-custom-button { flex: 0 0 auto; min-width: 92px; }
   .settings-panel .swatch { width: 24px; height: 24px; border: 1px solid rgba(255,255,255,0.18); }
   .range-control { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; min-width: 180px; }
   .settings-panel .range { width: 140px; margin-left: 0; }
@@ -3551,6 +3661,15 @@
   .sandbox-card { align-items: start; }
   .sandbox-name { max-width: 320px; }
   .sandbox-select { min-width: 180px; }
+  .service-workspace-manager { display: flex; flex-direction: column; gap: 9px; }
+  .service-workspace-toolbar, .service-workspace-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+  .service-workspace-list { display: flex; flex-direction: column; gap: 5px; max-height: min(34vh, 360px); overflow-y: auto; overscroll-behavior: contain; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--input); }
+  .service-workspace-row { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 9px; border-radius: 6px; cursor: pointer; }
+  .service-workspace-row:hover { background: var(--hover); }
+  .service-workspace-row > span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .service-workspace-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text2); font-size: 13px; }
+  .service-workspace-row small { color: var(--muted); font-size: 11px; }
+  .service-workspace-row input { width: 18px; height: 18px; flex: none; accent-color: var(--accent); }
   .danger-link { color: #ff9b9b; }
   .service-context-backdrop { position: fixed; inset: 0; z-index: 1200; }
   .service-context-menu { position: fixed; width: 226px; padding: 5px; border: 1px solid var(--border2); border-radius: 9px; background: var(--panel); box-shadow: 0 14px 42px rgba(0, 0, 0, 0.45); }

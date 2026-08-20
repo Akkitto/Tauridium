@@ -93,7 +93,7 @@ class Patch0407Tests(unittest.TestCase):
     for marker in (
       'const ICON_CACHE_DIR: &str = "service-icons";',
       'const MISSING_SENTINEL: &str = "missing";',
-      'if !force && !should_fetch',
+      'if !should_fetch',
       'if let Some(cached) = previous',
       'write_atomic(&path, &format!("{MISSING_SENTINEL}\\n"))',
       'pub(crate) fn remove_cached',
@@ -101,10 +101,10 @@ class Patch0407Tests(unittest.TestCase):
     ):
       self.assertIn(marker, self.icons)
     self.assertIn('"fetchMissingServiceIcons": true', self.main)
-    self.assertIn('Fetch missing website icons', self.app)
-    self.assertIn('Refetch all service icons', self.app)
+    self.assertIn('Fetch preferred website icons automatically', self.app)
+    self.assertIn('Refetch preferred website icons', self.app)
     self.assertIn('Refetch icon', self.app)
-    self.assertIn('confirmAsk("Refetch and replace cached website icons for all services?', self.app)
+    self.assertIn('Refetch website icons for ${preferred.length}', self.app)
 
   def test_broken_recipe_icon_uses_cached_fallback_without_forcing_network(self) -> None:
     body = self.app.split('function markIconFailed', 1)[1].split('function closeServiceContextMenu', 1)[0]

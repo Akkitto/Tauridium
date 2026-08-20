@@ -428,23 +428,6 @@ pub(crate) fn local_webview_js(app: &AppHandle, recipe_id: &str) -> Option<Strin
     fs::read_to_string(path).ok()
 }
 
-pub(crate) fn has_preset_icon(app: &AppHandle, recipe_id: &str, is_local_recipe: bool) -> bool {
-    if recipe_id == "custom-website" {
-        return false;
-    }
-    if is_bundled_recipe(recipe_id) {
-        return true;
-    }
-    if !is_local_recipe || validate_recipe_id(recipe_id).is_err() {
-        return true;
-    }
-    custom_recipes_dir(app)
-        .ok()
-        .map(|root| root.join(recipe_id).join(ICON_FILE))
-        .and_then(|path| fs::metadata(path).ok())
-        .is_some_and(|metadata| metadata.is_file() && metadata.len() > 0)
-}
-
 pub(crate) fn local_icon_url(app: &AppHandle, recipe_id: &str) -> Option<String> {
     if validate_recipe_id(recipe_id).is_err() {
         return None;

@@ -64,7 +64,7 @@ class CustomRecipeReleaseTests(unittest.TestCase):
       "// Delete a service", 1
     )[0]
     self.assertIn('"custom-website".into()', command)
-    self.assertIn('serde_json::json!({ "customUrl": url })', command)
+    self.assertIn('serde_json::json!({ "customUrl": url, "useFavicon": true })', command)
     self.assertIn("save_local_profile", command)
     self.assertIn('invoke("create_custom_website_service"', self.api)
 

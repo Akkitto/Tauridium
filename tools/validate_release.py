@@ -489,7 +489,7 @@ def main() -> int:
     '>Settings</button>',
     '>Reload</button>',
     '"Enable" : "Disable"',
-    'Fetch missing website icons',
+    'Fetch preferred website icons automatically',
     'Enable custom URL placeholders for all services',
     'Show reload notifications',
   ):
@@ -555,6 +555,42 @@ def main() -> int:
     fail("0.4.9 context Settings action can still invalidate contextService before use")
   if 'duplicate?.isEnabled !== false' in app:
     fail("0.4.9 duplicate selection still accepts a null service")
+
+  patch_0410_test = read("tools/test_patch_0410.py")
+  for marker in (
+    'const preferred = services.filter((service) => service.useFavicon === true);',
+    'await copyServiceIconCache(service.id, newId);',
+    'async function closeServiceSettings()',
+    'confirmAsk("Discard unsaved service changes?")',
+    'async function persistService(reload = false): Promise<boolean>',
+    'if (!saved) return;',
+    'placeholder="Search workspaces…"',
+    'class="accent-picker-control"',
+    'Shift is required only when <strong>Shift</strong> is explicitly present',
+  ):
+    if marker not in app:
+      fail(f"0.4.10 frontend invariant is missing: {marker}")
+  for marker in (
+    'let should_fetch = request.prefer_website_icon;',
+    'fn service_shortcut_bridge_js(settings: &Value)',
+    'internals.invoke(\'toggle_devtools_command\')',
+    'app.emit("shortcut-action", "reloadService".to_string())',
+    'fn copy_service_icon_cache(',
+  ):
+    if marker not in main_rs:
+      fail(f"0.4.10 backend invariant is missing: {marker}")
+  if 'if !should_fetch {' not in read("src-tauri/src/icons.rs"):
+    fail("0.4.10 icon backend can still fetch when website-icon preference is disabled")
+  for marker in (
+    'test_automatic_and_bulk_icon_fetching_respect_service_preference',
+    'test_duplicate_preserves_assigned_icon_and_cached_website_icon_policy',
+    'test_native_reload_routes_through_frontend_toast_path',
+    'test_devtools_shortcut_reaches_focused_service_webview_and_windows_opens',
+    'test_failed_service_save_keeps_dirty_state_and_does_not_optimistically_commit',
+    'test_service_settings_workspace_manager_is_searchable_scrollable_and_transactional',
+  ):
+    if marker not in patch_0410_test:
+      fail(f"0.4.10 regression coverage is missing: {marker}")
 
   if 'invoke("start_local_session")' not in api_ts:
     fail("frontend API does not expose the accountless session command")

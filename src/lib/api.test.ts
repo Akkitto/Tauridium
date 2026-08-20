@@ -167,3 +167,19 @@ describe("external links", () => {
     });
   });
 });
+
+describe("service icon cache commands", () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    mocks.invoke.mockResolvedValue(undefined);
+  });
+
+  it("copies a persistent cached icon when duplicating a service", async () => {
+    const { copyServiceIconCache } = await import("./api");
+    await copyServiceIconCache("source-service", "duplicate-service");
+    expect(mocks.invoke).toHaveBeenCalledWith("copy_service_icon_cache", {
+      sourceServiceId: "source-service",
+      targetServiceId: "duplicate-service",
+    });
+  });
+});
