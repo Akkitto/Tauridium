@@ -33,7 +33,7 @@ class Patch0407Tests(unittest.TestCase):
     self.assertIn('>Reload</button>', self.app)
     self.assertIn('onkeydown={handleServiceContextMenuKeydown}', self.app)
     self.assertIn('event.key === \"ArrowDown\"', self.app)
-    self.assertIn('"Enable Service" : "Disable Service"', self.app)
+    self.assertIn('"Enable" : "Disable"', self.app)
 
   def test_disabled_services_are_closed_and_never_selected_or_preloaded(self) -> None:
     self.assertIn('if (s.isEnabled === false) return;', self.app)

@@ -1078,6 +1078,24 @@ fn service_rect(
 // (vendor/wry) to make it mutable, then AUGMENTS it here by adding Electron
 // methods as no-ops without changing postMessage. The full bridge (sendToHost routed to
 // native badge/notification routing plus recipe webview.js support comes in Phase 3.
+// Tauri injects its runtime marker and IPC internals into every webview, including remote
+// service pages. Some hosted apps also ship a Tauri build and therefore detect Tauridium as
+// their own native shell. Keep Tauridium's remote-service ACL closed, but make their request
+// to toggle *their* devtools a harmless no-op instead of an unhandled rejected Promise.
+// Never broaden this list to privileged filesystem/process/window commands.
+const REMOTE_TAURI_COMPAT_JS: &str = r#"(function(){
+  try {
+    var internals = window.__TAURI_INTERNALS__;
+    if (!internals || typeof internals.invoke !== 'function' || internals.__tauridiumRemoteCompat) return;
+    var invoke = internals.invoke.bind(internals);
+    internals.invoke = function(cmd, args, options){
+      if (cmd === 'plugin:webview|internal_toggle_devtools') return Promise.resolve(null);
+      return invoke(cmd, args, options);
+    };
+    internals.__tauridiumRemoteCompat = true;
+  } catch(e){}
+})();"#;
+
 const IPC_SHIM_JS: &str = r#"(function(){
   window.__PAKE_SHIM__ = (window.__PAKE_SHIM__ || 0) + 1;
   window.__pakeUnread = window.__pakeUnread || 0;
@@ -1326,6 +1344,7 @@ async fn create_service_webview(
     let mut builder = WebviewBuilder::new(label, WebviewUrl::External(url))
         .user_agent(&ua)
         .initialization_script(IPC_SHIM_JS)
+        .initialization_script(REMOTE_TAURI_COMPAT_JS)
         // Prevent duplicated keystrokes caused by duplicate native WKWebView `textInput` events (see Discord search).
         .initialization_script(KEY_DEDUP_JS)
         // `target="_blank"` links / `window.open`: without a handler WKWebView ignores them

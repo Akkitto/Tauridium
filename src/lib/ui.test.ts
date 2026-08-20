@@ -3,6 +3,7 @@ import {
   DEFAULT_KEYBINDINGS,
   accentFg,
   bindingStrokes,
+  duplicateServiceName,
   filterRecipes,
   hexToHsl,
   hslToHex,
@@ -52,6 +53,14 @@ describe("0.4.0 appearance and navigation helpers", () => {
     const values = Array.from({ length: 250 }, (_, index) => index);
     expect(paged(values, 1, 100)).toEqual(values.slice(100, 200));
     expect(values).toHaveLength(250);
+  });
+});
+
+describe("0.4.9 service duplication helpers", () => {
+  it("creates stable non-conflicting copy names", () => {
+    expect(duplicateServiceName("Slack", ["Slack"])).toBe("Slack Copy");
+    expect(duplicateServiceName("Slack", ["Slack", "slack copy"])).toBe("Slack Copy 2");
+    expect(duplicateServiceName("", ["Service Copy"])).toBe("Service Copy 2");
   });
 });
 

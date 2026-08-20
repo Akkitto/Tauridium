@@ -108,6 +108,18 @@ export function bindingStrokes(binding: string): string[] {
     .slice(0, 2);
 }
 
+export function duplicateServiceName(name: string, existingNames: string[]): string {
+  const normalizedName = name.trim() || "Service";
+  const base = `${normalizedName} Copy`;
+  const used = new Set(existingNames.map((candidate) => candidate.trim().toLocaleLowerCase()));
+  if (!used.has(base.toLocaleLowerCase())) return base;
+  for (let index = 2; index < 10_000; index += 1) {
+    const candidate = `${base} ${index}`;
+    if (!used.has(candidate.toLocaleLowerCase())) return candidate;
+  }
+  return `${base} 10000`;
+}
+
 export function shortcutConflicts(bindings: Record<string, string>): Map<string, string[]> {
   const grouped = new Map<string, string[]>();
   for (const [action, binding] of Object.entries(bindings)) {

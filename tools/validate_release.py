@@ -488,7 +488,7 @@ def main() -> int:
     'oncontextmenu={(e) => openServiceContextMenu(e, s)}',
     '>Settings</button>',
     '>Reload</button>',
-    '"Enable Service" : "Disable Service"',
+    '"Enable" : "Disable"',
     'Fetch missing website icons',
     'Enable custom URL placeholders for all services',
     'Show reload notifications',
@@ -524,6 +524,37 @@ def main() -> int:
       fail(f"0.4.8 regression coverage is missing: {marker}")
   if 'markIconFailed(service.id)' in app:
     fail("managed service icon failure handler regressed to passing only a service id")
+
+  patch_0409_test = read("tools/test_patch_0409.py")
+  for marker in (
+    'openContextServiceSettings(contextService)',
+    '>Duplicate</button>',
+    '? "Enable" : "Disable"',
+    'async function duplicateServiceFromUi(service: Service)',
+    'service.isLocalRecipe === true && service.recipeId === "custom-website"',
+    'return createCustomWebsiteService(name, url);',
+    'if (duplicate && duplicate.isEnabled !== false) selectService(duplicate);',
+  ):
+    if marker not in app:
+      fail(f"0.4.9 context-menu invariant is missing: {marker}")
+  for marker in (
+    'plugin:webview|internal_toggle_devtools',
+    '.initialization_script(REMOTE_TAURI_COMPAT_JS)',
+  ):
+    if marker not in main_rs:
+      fail(f"0.4.9 remote-service compatibility invariant is missing: {marker}")
+  for marker in (
+    'test_context_settings_captures_service_before_clearing_menu_state',
+    'test_context_menu_has_requested_order_and_short_toggle_labels',
+    'test_duplicate_clones_service_workspace_and_tauridium_metadata_transactionally',
+    'test_remote_tauri_devtools_compat_is_narrow_and_does_not_expand_acl',
+  ):
+    if marker not in patch_0409_test:
+      fail(f"0.4.9 regression coverage is missing: {marker}")
+  if 'closeServiceContextMenu(); openServiceSettings(contextService)' in app:
+    fail("0.4.9 context Settings action can still invalidate contextService before use")
+  if 'duplicate?.isEnabled !== false' in app:
+    fail("0.4.9 duplicate selection still accepts a null service")
 
   if 'invoke("start_local_session")' not in api_ts:
     fail("frontend API does not expose the accountless session command")

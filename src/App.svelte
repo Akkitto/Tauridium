@@ -23,6 +23,7 @@
     keyStrokeFromEvent,
     normalizeHexColor,
     paged,
+    duplicateServiceName,
     shortcutConflicts,
     type KeybindingAction,
   } from "./lib/ui";
@@ -538,11 +539,18 @@
     serviceContextMenu = null;
   }
 
+  function openContextServiceSettings(service: Service) {
+    // Capture the service object before clearing the reactive context-menu state.
+    // Clearing first can make the derived contextService become null synchronously.
+    openServiceSettings(service);
+    closeServiceContextMenu();
+  }
+
   function openServiceContextMenu(event: MouseEvent, service: Service) {
     event.preventDefault();
     event.stopPropagation();
     const width = 226;
-    const height = 154;
+    const height = 194;
     serviceContextMenu = {
       serviceId: service.id,
       x: Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)),
@@ -558,7 +566,7 @@
     serviceContextMenu = {
       serviceId: service.id,
       x: rect ? Math.min(rect.left + 28, window.innerWidth - 234) : 12,
-      y: rect ? Math.min(rect.bottom, window.innerHeight - 162) : 12,
+      y: rect ? Math.min(rect.bottom, window.innerHeight - 202) : 12,
     };
     requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".service-context-menu button:not(:disabled)")?.focus());
   }
@@ -1028,6 +1036,119 @@
     await setServiceEnabled(service, service.isEnabled === false);
   }
 
+  function duplicatedServicePatch(service: Service): Record<string, unknown> {
+    return {
+      isEnabled: service.isEnabled !== false,
+      isNotificationEnabled: service.isNotificationEnabled,
+      isMuted: service.isMuted,
+      isBadgeEnabled: service.isBadgeEnabled,
+      isMediaBadgeEnabled: service.isMediaBadgeEnabled,
+      isIndirectMessageBadgeEnabled: service.isIndirectMessageBadgeEnabled,
+      isHibernationEnabled: service.isHibernationEnabled,
+      isWakeUpEnabled: service.isWakeUpEnabled,
+      trapLinkClicks: service.trapLinkClicks,
+      useFavicon: service.useFavicon,
+      isDarkModeEnabled: service.isDarkModeEnabled,
+      isProgressbarEnabled: service.isProgressbarEnabled,
+      onlyShowFavoritesInUnreadCount: service.onlyShowFavoritesInUnreadCount,
+      darkReaderBrightness: service.darkReaderBrightness,
+      darkReaderContrast: service.darkReaderContrast,
+      darkReaderSepia: service.darkReaderSepia,
+      isProxyFeatureEnabled: service.isProxyFeatureEnabled,
+      proxyHost: service.proxyHost ?? "",
+      proxyPort: service.proxyPort ?? "",
+      proxyUser: service.proxyUser ?? "",
+      proxyPassword: service.proxyPassword ?? "",
+      customUrl: service.customUrl ?? "",
+      team: service.team ?? "",
+      userAgentPref: service.userAgentPref ?? "",
+    };
+  }
+
+  function createdServiceId(result: unknown): string | null {
+    const value = result as { id?: string; data?: { id?: string }; service?: { id?: string } };
+    return value?.id ?? value?.data?.id ?? value?.service?.id ?? null;
+  }
+
+  function createDuplicateService(service: Service, name: string): Promise<unknown> {
+    if (service.isLocalRecipe === true && service.recipeId === "custom-website") {
+      const url = service.customUrl?.trim();
+      if (!url) return Promise.reject(new Error("Custom website service has no URL to duplicate"));
+      return createCustomWebsiteService(name, url);
+    }
+    return createService(name, service.recipeId);
+  }
+
+  async function duplicateServiceFromUi(service: Service) {
+    closeServiceContextMenu();
+    error = null;
+    const name = duplicateServiceName(serviceLabel(service), services.map((candidate) => serviceLabel(candidate)));
+    let newId: string | null = null;
+    const changedWorkspaces: Workspace[] = [];
+    const previousTemplates = { ...appSettings.serviceCustomUrlTemplates };
+    const previousSandboxes = { ...appSettings.serviceSandboxes };
+    let copiedAppSettings = false;
+    try {
+      const result = await createDuplicateService(service, name);
+      newId = createdServiceId(result);
+      if (!newId) {
+        const refreshed = await getServices();
+        newId = [...refreshed].reverse().find((candidate) => candidate.name === name && candidate.recipeId === service.recipeId)?.id ?? null;
+      }
+      if (!newId) throw new Error("Duplicated service did not return a service id");
+
+      await updateService(newId, duplicatedServicePatch(service));
+
+      for (const workspace of workspaces.filter((candidate) => candidate.services.includes(service.id))) {
+        const members = [...workspace.services];
+        const sourceIndex = members.indexOf(service.id);
+        members.splice(sourceIndex + 1, 0, newId);
+        await updateWorkspace(workspace.id, workspace.name, members);
+        changedWorkspaces.push(workspace);
+      }
+
+      const serviceCustomUrlTemplates = { ...appSettings.serviceCustomUrlTemplates };
+      const serviceSandboxes = { ...appSettings.serviceSandboxes };
+      if (serviceCustomUrlTemplates[service.id]) serviceCustomUrlTemplates[newId] = { ...serviceCustomUrlTemplates[service.id] };
+      if (serviceSandboxes[service.id]) serviceSandboxes[newId] = serviceSandboxes[service.id];
+      if (serviceCustomUrlTemplates[newId] || serviceSandboxes[newId]) {
+        appSettings = await setAppSettings({ serviceCustomUrlTemplates, serviceSandboxes });
+        copiedAppSettings = true;
+      }
+
+      [services, workspaces] = await Promise.all([getServices(), getWorkspaces()]);
+      await reconcileSavedOrders();
+      const previousIds = orderedBySavedIds(services, appSettings.serviceOrder).map((candidate) => candidate.id);
+      const nextIds = previousIds.filter((id) => id !== newId);
+      const sourceIndex = nextIds.indexOf(service.id);
+      nextIds.splice(sourceIndex >= 0 ? sourceIndex + 1 : nextIds.length, 0, newId);
+      await persistServiceIds(nextIds, previousIds);
+      await Promise.all(services.map((candidate) => setServiceFlags(candidate).catch(() => {})));
+      const duplicate = services.find((candidate) => candidate.id === newId) ?? null;
+      if (duplicate && duplicate.isEnabled !== false) selectService(duplicate);
+      showToast(`Duplicated ${serviceLabel(service)} as ${name}.`);
+    } catch (err) {
+      for (const workspace of [...changedWorkspaces].reverse()) {
+        await updateWorkspace(workspace.id, workspace.name, workspace.services).catch(() => {});
+      }
+      if (copiedAppSettings) {
+        appSettings = await setAppSettings({
+          serviceCustomUrlTemplates: previousTemplates,
+          serviceSandboxes: previousSandboxes,
+        }).catch(() => appSettings);
+      }
+      if (newId) await deleteService(newId).catch(() => {});
+      try {
+        [services, workspaces] = await Promise.all([getServices(), getWorkspaces()]);
+      } catch {
+        // Keep the last known in-memory state if rollback refresh itself is unavailable.
+      }
+      await reconcileSavedOrders().catch(() => {});
+      await refreshNativeServicesMenu().catch(() => {});
+      error = `Unable to duplicate ${serviceLabel(service)}: ${err}`;
+    }
+  }
+
   async function reloadServiceFromUi(service: Service) {
     closeServiceContextMenu();
     if (service.isEnabled === false) return;
@@ -1241,8 +1362,7 @@
   const customRecipes = $derived(allRecipes.filter((recipe) => recipe.source === "custom"));
 
   async function activateCreated(result: unknown, recipeId: string) {
-    const res = result as { id?: string; data?: { id?: string }; service?: { id?: string } };
-    const newId = res?.id ?? res?.data?.id ?? res?.service?.id;
+    const newId = createdServiceId(result);
     [services, workspaces] = await Promise.all([getServices(), getWorkspaces()]);
     await reconcileSavedOrders();
     await refreshNativeServicesMenu();
@@ -2945,10 +3065,11 @@
   <div class="service-context-backdrop" role="presentation" onclick={(event) => event.currentTarget === event.target && closeServiceContextMenu()} oncontextmenu={(event) => { event.preventDefault(); if (event.currentTarget === event.target) closeServiceContextMenu(); }}>
     {#if contextService}
       <div class="service-context-menu" role="menu" tabindex="-1" aria-label={`${serviceLabel(contextService)} actions`} style={`left:${serviceContextMenu.x}px;top:${serviceContextMenu.y}px`} onkeydown={handleServiceContextMenuKeydown}>
-        <button role="menuitem" onclick={() => { closeServiceContextMenu(); openServiceSettings(contextService); }}>Settings</button>
+        <button role="menuitem" onclick={() => openContextServiceSettings(contextService)}>Settings</button>
         <button role="menuitem" disabled={contextService.isEnabled === false} onclick={() => reloadServiceFromUi(contextService)}>Reload</button>
+        <button role="menuitem" onclick={() => duplicateServiceFromUi(contextService)}>Duplicate</button>
         <div class="service-context-separator" aria-hidden="true"></div>
-        <button role="menuitem" class:context-danger={contextService.isEnabled !== false} onclick={() => toggleServiceEnabled(contextService)}>{contextService.isEnabled === false ? "Enable Service" : "Disable Service"}</button>
+        <button role="menuitem" class:context-danger={contextService.isEnabled !== false} onclick={() => toggleServiceEnabled(contextService)}>{contextService.isEnabled === false ? "Enable" : "Disable"}</button>
       </div>
     {/if}
   </div>
