@@ -42,7 +42,7 @@ class Patch0404Tests(unittest.TestCase):
 
   def test_automatic_backup_directory_is_persisted_validated_and_user_selectable(self) -> None:
     for marker in (
-      '"automaticBackupDirectory": ""',
+      'settings.insert("automaticBackupDirectory".into(), "".into());',
       'automaticBackupDirectory: string;',
       'automatic_backup_root(&app, &app_settings)',
       'title: "Choose automatic backup folder"',
@@ -220,11 +220,11 @@ class Patch0404Tests(unittest.TestCase):
 
   def test_new_settings_are_part_of_app_settings_and_therefore_backup_payload(self) -> None:
     for marker in (
-      '"sidebarWidthMode": "pixels"',
-      '"sidebarWidthPercent": 20',
-      '"automaticBackupDirectory": ""',
-      '"automaticBackupRetentionMode": "count"',
-      '"automaticBackupMaxAgeDays": 90',
+      'settings.insert("sidebarWidthMode".into(), "pixels".into());',
+      'settings.insert("sidebarWidthPercent".into(), 20.into());',
+      'settings.insert("automaticBackupDirectory".into(), "".into());',
+      'settings.insert("automaticBackupRetentionMode".into(), "count".into());',
+      'settings.insert("automaticBackupMaxAgeDays".into(), 90.into());',
     ):
       self.assertIn(marker, self.main)
     export = self.main.split("fn export_backup", 1)[1].split("fn automatic_backup_root", 1)[0]

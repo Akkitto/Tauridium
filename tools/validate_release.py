@@ -888,11 +888,11 @@ def main() -> int:
       fail(f"0.4.4 regression coverage is missing: {marker}")
 
   for marker in (
-    '"automaticBackupDirectory": ""',
-    '"automaticBackupRetentionMode": "count"',
-    '"automaticBackupMaxAgeDays": 90',
-    '"sidebarWidthMode": "pixels"',
-    '"sidebarWidthPercent": 20',
+    'settings.insert("automaticBackupDirectory".into(), "".into());',
+    'settings.insert("automaticBackupRetentionMode".into(), "count".into());',
+    'settings.insert("automaticBackupMaxAgeDays".into(), 90.into());',
+    'settings.insert("sidebarWidthMode".into(), "pixels".into());',
+    'settings.insert("sidebarWidthPercent".into(), 20.into());',
     'apply_autostart_setting(app, &app_settings)',
     'Backup data restored successfully',
     'prune_automatic_backups(&root, retention_mode, retention, max_age_days, &path)',
@@ -951,8 +951,8 @@ def main() -> int:
   if 'class="wspills"' in app or 'view === "workspaces"' in app:
     fail("0.4.13 sidebar/standalone workspace UI was reintroduced")
   for marker in (
-    '"workspaceQuickSwitchOrder": "custom"',
-    '"workspaceLastUsed": {}',
+    'settings.insert("workspaceQuickSwitchOrder".into(), "custom".into());',
+    '"workspaceLastUsed".into(),',
     'App setting workspaceQuickSwitchOrder is invalid',
   ):
     if marker not in main_rs:
@@ -984,8 +984,8 @@ def main() -> int:
     'fn service_shortcut_bridge_js',
     'service_shortcut_action_from_url',
     'tauridium-shortcut://bridge/',
-    '"captureServiceShortcuts": true',
-    '"serviceShortcutCaptureOverrides": {}',
+    'settings.insert("captureServiceShortcuts".into(), true.into());',
+    '"serviceShortcutCaptureOverrides".into(),',
     'App setting serviceShortcutCaptureOverrides is invalid',
   ):
     if marker not in main_rs:
@@ -1001,6 +1001,28 @@ def main() -> int:
     if test_marker not in patch_0414:
       fail(f"0.4.14 regression coverage is missing: {test_marker}")
 
+  patch_0415 = read("tools/test_patch_0415.py")
+  default_settings_block = main_rs.split("fn default_app_settings_value() -> Value {", 1)[1].split(
+    "\nfn is_hex_color", 1
+  )[0]
+  for marker in (
+    "serde_json::Map::<String, Value>::new()",
+    "Value::Object(settings)",
+  ):
+    if marker not in default_settings_block:
+      fail(f"0.4.15 settings-default construction invariant is missing: {marker}")
+  if "serde_json::json!" in default_settings_block:
+    fail("0.4.15 recursive json! macro was reintroduced into default app settings")
+  if "#![recursion_limit" in main_rs:
+    fail("0.4.15 must fix settings construction without a crate-wide recursion-limit override")
+  for test_marker in (
+    "test_default_settings_avoid_large_recursive_json_macro",
+    "test_default_settings_preserve_critical_0414_values",
+    "test_stale_searchrow_css_is_removed",
+  ):
+    if test_marker not in patch_0415:
+      fail(f"0.4.15 regression coverage is missing: {test_marker}")
+
   for marker in (
     '["keybindings", "Keybinds"]',
     '["sandbox", "Sandbox"]',
@@ -1014,8 +1036,8 @@ def main() -> int:
   for marker in (
     'fn sandbox_for_service',
     'fn clear_sandbox',
-    '"sandboxes": []',
-    '"serviceSandboxes": {}',
+    'settings.insert("sandboxes".into(), Value::Array(Vec::new()));',
+    '"serviceSandboxes".into(),',
   ):
     if marker not in main_rs:
       fail(f"0.4.0 sandbox backend invariant is missing: {marker}")

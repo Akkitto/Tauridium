@@ -27,7 +27,7 @@ class Feature0400Tests(unittest.TestCase):
       'Save current preset',
     ):
       self.assertIn(marker, self.app)
-    for marker in ('"customAccentColors": []', '"customSidebarWidths": []', '"system" | "dark" | "oled" | "light"'):
+    for marker in ('settings.insert("customAccentColors".into(), Value::Array(Vec::new()));', 'settings.insert("customSidebarWidths".into(), Value::Array(Vec::new()));', '"system" | "dark" | "oled" | "light"'):
       self.assertIn(marker, self.main)
 
   def test_service_management_scales_and_preserves_global_slots(self) -> None:
@@ -56,8 +56,8 @@ class Feature0400Tests(unittest.TestCase):
 
   def test_shared_sandboxes_are_backend_authoritative(self) -> None:
     for marker in (
-      '"sandboxes": []',
-      '"serviceSandboxes": {}',
+      'settings.insert("sandboxes".into(), Value::Array(Vec::new()));',
+      '"serviceSandboxes".into(),',
       'fn sandbox_for_service',
       'fn sandbox_storage_name',
       'fn storage_directory',

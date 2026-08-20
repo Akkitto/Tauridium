@@ -69,8 +69,8 @@ class Patch0407Tests(unittest.TestCase):
 
   def test_custom_url_placeholder_feature_is_opt_in_and_backed_up_as_app_settings(self) -> None:
     for marker in (
-      '"customUrlTemplatesEnabled": false',
-      '"serviceCustomUrlTemplates": {}',
+      'settings.insert("customUrlTemplatesEnabled".into(), false.into());',
+      '"serviceCustomUrlTemplates".into(),',
       'service_custom_url_template_values',
       '"{{custom_id_1}}"',
       '"{{custom_id_2}}"',
@@ -101,7 +101,7 @@ class Patch0407Tests(unittest.TestCase):
       'fs::create_dir_all(&root)',
     ):
       self.assertIn(marker, self.icons)
-    self.assertIn('"fetchMissingServiceIcons": true', self.main)
+    self.assertIn('settings.insert("fetchMissingServiceIcons".into(), true.into());', self.main)
     self.assertIn('Fetch preferred website icons automatically', self.app)
     self.assertIn('Refetch preferred website icons', self.app)
     self.assertIn('Refetch icon', self.app)
@@ -119,7 +119,7 @@ class Patch0407Tests(unittest.TestCase):
     body = self.app.split('async function reloadServiceFromUi', 1)[1].split('async function refetchAllServiceIcons', 1)[0]
     self.assertIn('if (appSettings.reloadToasts)', body)
     self.assertIn('reloaded.`', body)
-    self.assertIn('"reloadToasts": true', self.main)
+    self.assertIn('settings.insert("reloadToasts".into(), true.into());', self.main)
     self.assertIn('Show reload notifications', self.app)
 
   def test_about_uses_build_and_cargo_metadata_instead_of_ui_literals(self) -> None:

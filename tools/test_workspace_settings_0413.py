@@ -39,8 +39,8 @@ class WorkspaceSettings0413Tests(unittest.TestCase):
     self.assertIn('...quickSwitcherWorkspaces', APP)
     self.assertIn('workspaceLastUsed = { ...previousWorkspaceLastUsed, [workspaceId]: Date.now() }', APP)
     self.assertIn('workspaceUsagePersist = workspaceUsagePersist.then(async () => {', APP)
-    self.assertIn('"workspaceQuickSwitchOrder": "custom"', RUST)
-    self.assertIn('"workspaceLastUsed": {}', RUST)
+    self.assertIn('settings.insert("workspaceQuickSwitchOrder".into(), "custom".into());', RUST)
+    self.assertIn('"workspaceLastUsed".into(),', RUST)
     for mode in ['customReverse', 'alphabetical', 'alphabeticalReverse', 'recent', 'recentReverse']:
       self.assertIn(f'"{mode}"', RUST)
 

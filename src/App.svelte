@@ -3814,8 +3814,6 @@
     width: 22px; height: 22px; border-radius: 999px; border: none; padding: 0; cursor: pointer;
   }
   .swatch.on { outline: 2px solid var(--text); outline-offset: 2px; }
-  .searchrow { display: flex; gap: 8px; }
-  .searchrow input { flex: 1; }
   .block { gap: 6px; }
   .num-row { display: flex; gap: 12px; }
   .num-row label { flex: 1; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }

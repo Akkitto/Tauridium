@@ -27,8 +27,8 @@ class OrderingAndSidebarTests(unittest.TestCase):
     ):
       self.assertIn(marker, self.api)
     for marker in (
-      '"serviceOrder": []',
-      '"workspaceOrder": []',
+      'settings.insert("serviceOrder".into(), Value::Array(Vec::new()));',
+      'settings.insert("workspaceOrder".into(), Value::Array(Vec::new()));',
       "fn set_service_order",
       "fn set_workspace_order",
       'persist_order_setting(&app, &state, "serviceOrder"',

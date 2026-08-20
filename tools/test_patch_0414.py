@@ -14,8 +14,8 @@ class Patch0414Tests(unittest.TestCase):
     self.assertIn('serviceShortcutCaptureOverrides: Record<string, boolean>;', API)
     self.assertIn('captureServiceShortcuts: true', APP)
     self.assertIn('serviceShortcutCaptureOverrides: {}', APP)
-    self.assertIn('"captureServiceShortcuts": true', RUST)
-    self.assertIn('"serviceShortcutCaptureOverrides": {}', RUST)
+    self.assertIn('settings.insert("captureServiceShortcuts".into(), true.into());', RUST)
+    self.assertIn('"serviceShortcutCaptureOverrides".into(),', RUST)
     self.assertIn('App setting serviceShortcutCaptureOverrides is invalid', RUST)
 
   def test_service_webview_bridge_captures_single_shortcuts_and_chords(self) -> None:

@@ -2592,60 +2592,76 @@ fn app_settings_path(app: &AppHandle) -> Option<PathBuf> {
 }
 
 fn default_app_settings_value() -> Value {
-    serde_json::json!({
-        "autostart": false,
-        "startMinimized": false,
-        "theme": "system",
-        "accentColor": "#ffc131",
-        "customAccentColors": [],
-        "closeToSystemTray": true,
-        "privateNotifications": false,
-        "showDisabledServices": true,
-        "showServiceName": true,
-        "showMessageBadgeWhenMuted": true,
-        "userAgentPref": "",
-        "sidebarWidth": 240,
-        "sidebarWidthMode": "pixels",
-        "sidebarWidthPercent": 20,
-        "customSidebarWidths": [],
-        "iconSize": 24,
-        "grayscaleServices": false,
-        "grayscaleDim": 50,
-        "sidebarServicesLocation": "top",
-        "hibernationTimer": 0,
-        "preloadServices": true,
-        "fetchMissingServiceIcons": true,
-        "reloadToasts": true,
-        "captureServiceShortcuts": true,
-        "serviceShortcutCaptureOverrides": {},
-        "customUrlTemplatesEnabled": false,
-        "serviceCustomUrlTemplates": {},
-        "serviceOrder": [],
-        "workspaceOrder": [],
-        "workspaceQuickSwitchOrder": "custom",
-        "workspaceLastUsed": {},
-        "keybindings": {
-            "quickWorkspaceSwitch": "Ctrl+D",
-            "quickServiceSwitch": "Ctrl+S",
-            "openSettings": "Ctrl+,",
-            "addService": "Ctrl+N",
-            "nextService": "Ctrl+Tab",
-            "previousService": "Ctrl+Shift+Tab",
-            "nextWorkspace": "Ctrl+Alt+ArrowDown",
-            "previousWorkspace": "Ctrl+Alt+ArrowUp",
-            "reloadService": "Ctrl+R",
-            "reloadApp": "Ctrl+Shift+R",
-            "toggleDevtools": "Ctrl+Alt+I"
-        },
-        "sandboxes": [],
-        "serviceSandboxes": {},
-        "automaticBackupSchedule": "off",
-        "automaticBackupDirectory": "",
-        "automaticBackupRetentionMode": "count",
-        "automaticBackupRetention": 10,
-        "automaticBackupMaxAgeDays": 90,
-        "lastAutomaticBackupAt": 0
-    })
+    // Keep the defaults as direct map inserts rather than one large `json!` invocation.
+    // `json!` is recursive for every object entry and eventually exceeds rustc's default
+    // macro recursion limit as settings are added. Direct construction scales without a
+    // crate-wide recursion-limit override and keeps the serialized shape unchanged.
+    let mut settings = serde_json::Map::<String, Value>::new();
+    settings.insert("autostart".into(), false.into());
+    settings.insert("startMinimized".into(), false.into());
+    settings.insert("theme".into(), "system".into());
+    settings.insert("accentColor".into(), "#ffc131".into());
+    settings.insert("customAccentColors".into(), Value::Array(Vec::new()));
+    settings.insert("closeToSystemTray".into(), true.into());
+    settings.insert("privateNotifications".into(), false.into());
+    settings.insert("showDisabledServices".into(), true.into());
+    settings.insert("showServiceName".into(), true.into());
+    settings.insert("showMessageBadgeWhenMuted".into(), true.into());
+    settings.insert("userAgentPref".into(), "".into());
+    settings.insert("sidebarWidth".into(), 240.into());
+    settings.insert("sidebarWidthMode".into(), "pixels".into());
+    settings.insert("sidebarWidthPercent".into(), 20.into());
+    settings.insert("customSidebarWidths".into(), Value::Array(Vec::new()));
+    settings.insert("iconSize".into(), 24.into());
+    settings.insert("grayscaleServices".into(), false.into());
+    settings.insert("grayscaleDim".into(), 50.into());
+    settings.insert("sidebarServicesLocation".into(), "top".into());
+    settings.insert("hibernationTimer".into(), 0.into());
+    settings.insert("preloadServices".into(), true.into());
+    settings.insert("fetchMissingServiceIcons".into(), true.into());
+    settings.insert("reloadToasts".into(), true.into());
+    settings.insert("captureServiceShortcuts".into(), true.into());
+    settings.insert(
+        "serviceShortcutCaptureOverrides".into(),
+        Value::Object(serde_json::Map::new()),
+    );
+    settings.insert("customUrlTemplatesEnabled".into(), false.into());
+    settings.insert(
+        "serviceCustomUrlTemplates".into(),
+        Value::Object(serde_json::Map::new()),
+    );
+    settings.insert("serviceOrder".into(), Value::Array(Vec::new()));
+    settings.insert("workspaceOrder".into(), Value::Array(Vec::new()));
+    settings.insert("workspaceQuickSwitchOrder".into(), "custom".into());
+    settings.insert(
+        "workspaceLastUsed".into(),
+        Value::Object(serde_json::Map::new()),
+    );
+    let mut keybindings = serde_json::Map::<String, Value>::new();
+    keybindings.insert("quickWorkspaceSwitch".into(), "Ctrl+D".into());
+    keybindings.insert("quickServiceSwitch".into(), "Ctrl+S".into());
+    keybindings.insert("openSettings".into(), "Ctrl+,".into());
+    keybindings.insert("addService".into(), "Ctrl+N".into());
+    keybindings.insert("nextService".into(), "Ctrl+Tab".into());
+    keybindings.insert("previousService".into(), "Ctrl+Shift+Tab".into());
+    keybindings.insert("nextWorkspace".into(), "Ctrl+Alt+ArrowDown".into());
+    keybindings.insert("previousWorkspace".into(), "Ctrl+Alt+ArrowUp".into());
+    keybindings.insert("reloadService".into(), "Ctrl+R".into());
+    keybindings.insert("reloadApp".into(), "Ctrl+Shift+R".into());
+    keybindings.insert("toggleDevtools".into(), "Ctrl+Alt+I".into());
+    settings.insert("keybindings".into(), Value::Object(keybindings));
+    settings.insert("sandboxes".into(), Value::Array(Vec::new()));
+    settings.insert(
+        "serviceSandboxes".into(),
+        Value::Object(serde_json::Map::new()),
+    );
+    settings.insert("automaticBackupSchedule".into(), "off".into());
+    settings.insert("automaticBackupDirectory".into(), "".into());
+    settings.insert("automaticBackupRetentionMode".into(), "count".into());
+    settings.insert("automaticBackupRetention".into(), 10.into());
+    settings.insert("automaticBackupMaxAgeDays".into(), 90.into());
+    settings.insert("lastAutomaticBackupAt".into(), 0.into());
+    Value::Object(settings)
 }
 
 fn is_hex_color(value: &str) -> bool {
