@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.27] - 2026-08-21
+
+### Fixed
+
+- Fixed the frontend service-view API tests after the workspace-aware service request added `workspaceId`. The default `show_service` and `preload_service` payload expectations now require `workspaceId: null`, matching the production API contract.
+- Added explicit coverage that `showService` forwards a non-null workspace ID when a workspace context is provided, protecting workspace-specific download preference resolution instead of weakening the assertion.
+
+### Release quality
+
+- Added focused 0.4.27 regression and release-invariant coverage for the service-view workspace request contract so the Windows-native Vitest gate cannot regress silently.
+
 ## [0.4.26] - 2026-08-21
 
 ### Fixed
