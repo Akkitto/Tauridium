@@ -333,6 +333,11 @@ fn build_native_application_menu(
         true,
         shortcut("addWorkspace"),
     )?;
+    let signed_in = {
+        let state = app.state::<AppState>();
+        *state.local_mode.lock().unwrap() || state.token.lock().unwrap().is_some()
+    };
+    let sign_out_item = MenuItem::with_id(app, "sign-out", "Sign out", signed_in, None::<&str>)?;
     let app_sub = Submenu::with_items(
         app,
         "Tauridium",
@@ -345,6 +350,8 @@ fn build_native_application_menu(
             &PredefinedMenuItem::hide(app, None)?,
             &PredefinedMenuItem::hide_others(app, None)?,
             &PredefinedMenuItem::show_all(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &sign_out_item,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::quit(app, None)?,
         ],
@@ -4668,6 +4675,12 @@ fn main() {
                         "open-project-homepage" => open_external(PROJECT_HOMEPAGE),
                         "open-project-source" => open_external(PROJECT_SOURCE_CODE),
                         "open-author-homepage" => open_external(AUTHOR_HOMEPAGE),
+                        "sign-out" => {
+                            let state = app.state::<AppState>();
+                            hide_service_webviews(app, &state);
+                            show_main(app);
+                            let _ = app.emit("sign-out", ());
+                        }
                         "toggle-devtools" => toggle_devtools(app),
                         "reload-service" => {
                             let _ = app.emit("shortcut-action", "reloadService".to_string());

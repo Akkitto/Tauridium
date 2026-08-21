@@ -396,6 +396,11 @@
     const sandboxId = serviceSandboxId(serviceId);
     return appSettings.sandboxes.find((sandbox) => sandbox.id === sandboxId)?.name ?? "Isolated";
   });
+  const activeWorkspaceName = $derived(
+    activeWorkspace
+      ? workspaces.find((workspace) => workspace.id === activeWorkspace)?.name ?? "All services"
+      : "All services",
+  );
   const visibleServices = $derived.by(() => {
     let list = sorted;
     if (activeWorkspace) {
@@ -532,6 +537,7 @@
     listen("open-add-service", openAdd);
     listen("open-add-workspace", openAddWorkspace);
     listen("open-about", openAbout);
+    listen("sign-out", handleLogout);
     listen<string>("shortcut-action", (event) => executeShortcutAction(event.payload as KeybindingAction));
     window.addEventListener("keydown", handleGlobalKeydown, true);
     window.addEventListener("resize", handleWindowResize);
@@ -3087,8 +3093,8 @@
   <div class="shell">
     <aside class="sidebar">
       <div class="account">
-        <strong>{me.local ? "Local" : me.firstname || me.email}</strong>
-        <button class="link" onclick={handleLogout}>sign out</button>
+        <strong title={me.local ? "Local" : me.firstname || me.email}>{me.local ? "Local" : me.firstname || me.email}</strong>
+        <span class="workspace-scope" title={activeWorkspaceName} aria-label={`Workspace: ${activeWorkspaceName}`}>{activeWorkspaceName}</span>
       </div>
 
       <div class="svcarea" role="region" aria-label="Service list drop area" ondragover={onServiceAreaDragOver} ondrop={onServiceAreaDrop}>
@@ -4556,7 +4562,9 @@
   }
   :global(body[data-svcloc="center"]) .svclist { margin-block: auto; }
   :global(body[data-svcloc="bottom"]) .svclist { margin-top: auto; }
-  .account { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+  .account { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
+  .account strong { flex: 0 1 auto; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .workspace-scope { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted2); }
   .link { background: none; border: none; color: var(--link); cursor: pointer; font-size: 12px; text-decoration: underline; }
   .svclist { display: flex; flex: none; flex-direction: column; gap: 2px; padding-right: 0; }
 
