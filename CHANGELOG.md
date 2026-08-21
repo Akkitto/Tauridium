@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.28] - 2026-08-21
+
+### Added
+
+- Added a per-service **Invert service icon colors** appearance preference for dark or black service icons that would otherwise disappear against the Black OLED theme. The setting is backup-backed, validated, copied on service duplication, cleaned on deletion, and applied consistently to sidebar, configured-service, and workspace icon-selection surfaces.
+
+### Fixed
+
+- Replaced the shell-rendered service right-click menu with a native Tauri popup menu so it remains above service child webviews even when opened at the far right edge of the sidebar. Mouse and keyboard context-menu invocation retain Settings, Reload, Duplicate, and Enable/Disable actions.
+- Tightened the per-service **Sandbox assignment** search UI to a compact 240 px maximum width with normal control height, left alignment, and reduced manager spacing instead of stretching across the settings panel.
+- Fixed false **Tauridium could not verify the service download settings** failures. Download preference verification now compares `directory` and `askEachDownload` semantically instead of relying on JSON object property order. Workspace download preference verification uses the same robust comparison.
+
+### Release quality
+
+- Added focused 0.4.28 regression and release-invariant coverage for service icon inversion lifecycle, native context-menu layering, compact Sandbox assignment layout, and property-order-independent download preference verification.
+- Retained exact Rust 1.97.1 formatting, locked dependency metadata, English-only validation, clean-tree verification, source-manifest verification, and deterministic three-archive packaging requirements.
+
 ## [0.4.27] - 2026-08-21
 
 ### Fixed
