@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.24] - 2026-08-21
+
+### Added
+
+- Added per-workspace icon assignment in **Settings → Workspaces → Workspace settings**. Workspace icons are selected from the same resolved service-icon sources Tauridium already uses, including preferred website icons and custom/local recipe icons.
+- Workspace icon assignments are stored in app settings, included automatically in full backups, and embedded directly in portable workspace and sandbox exports so the chosen icon travels with exported workspace data.
+
+### Fixed
+
+- Constrained the per-service **Search sandboxes…** field to the same compact control scale as **Search workspaces…** instead of stretching across the settings panel.
+- Added an explicit accessible region role and label to the sidebar service drop area, eliminating the Svelte accessibility warning reported by the Windows-native 0.4.23 quality gate.
+- Workspace icon settings now validate supported HTTP(S)/image-data sources, reject malformed or oversized values, clean stale entries when workspaces disappear, and fall back safely when an assigned image cannot load.
+
+### Release quality
+
+- Added focused 0.4.24 regression and release-invariant coverage for compact Sandbox search sizing, sidebar drag/drop accessibility, workspace icon validation and cleanup, resolved-icon assignment, workspace-surface fallbacks, portable export embedding, and backup inclusion.
+- Retained the established exact Rust 1.97.1 formatter cleanliness, frontend/Rust checks and tests when dependencies are available, clean-tree validation, source-manifest verification, and deterministic three-archive packaging requirements.
+
 ## [0.4.23] - 2026-08-21
 
 ### Added
