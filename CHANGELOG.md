@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.21] - 2026-08-21
+
+### Fixed
+
+- Fixed sidebar service drag-and-drop showing the forbidden/stop cursor on Windows instead of accepting a drop. The main Tauridium shell now disables Tauri's native WebView2 drag/drop interception so standard frontend HTML5 `dragstart`, `dragover`, and `drop` events reach the sidebar.
+- Preserved the hardened 0.4.20 canonical ordering path unchanged: visible-service reordering still preserves hidden/filter-excluded slots, persists only once on drop, verifies the saved order, rolls back on failure, and serializes settings writes.
+
+### Release quality
+
+- Added dedicated 0.4.21 regression and release-invariant coverage requiring `dragDropEnabled: false` on the configured main webview and verifying that sidebar ordering continues to use HTML5 move semantics rather than Tauri native file-drop events.
+- Retained the established exact Rust 1.97.1 formatter cleanliness, frontend/Rust checks and tests when dependencies are available, clean-tree validation, source-manifest verification, and deterministic three-archive packaging requirements.
+
 ## [0.4.20] - 2026-08-21
 
 ### Added
