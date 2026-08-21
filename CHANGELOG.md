@@ -292,7 +292,7 @@
 - Removed the workspace strip above the sidebar service list so the sidebar dedicates its vertical space to services; workspace switching remains available through the configurable quick switcher and Navigate shortcuts.
 - Added a dedicated **Settings → Workspaces** tab with Services-style search, 100-row pagination, creation, portable export, verified custom ordering, deletion, and per-workspace settings.
 - Workspace settings now open in place of the long workspace list and provide searchable, paginated service membership management plus rename, export, and delete actions.
-- Added quick-switch workspace ordering modes for **Custom**, **Custom — reverse**, **Alphabetical — A to Z**, **Alphabetical — Z to A**, **Most recently used**, and **Least recently used**, while keeping **All services** pinned first.
+- Added quick-switch workspace ordering modes for **Custom**, **Custom - reverse**, **Alphabetical - A to Z**, **Alphabetical - Z to A**, **Most recently used**, and **Least recently used**, while keeping **All services** pinned first.
 
 ### Reliability and UX
 
@@ -526,7 +526,7 @@
 
 - Added a true-black **Black OLED** theme with near-black elevated surfaces, retained focus treatment, and existing system/dark/light modes.
 - Added accent presets plus saved custom accent colors with a native color input and keyboard-accessible hue, saturation, and lightness sliders.
-- Added a 160–420 px sidebar-width slider, Slim/Normal/Wide presets, and persisted custom width presets.
+- Added a 160-420 px sidebar-width slider, Slim/Normal/Wide presets, and persisted custom width presets.
 - Added **Keybinds** settings for application/navigation actions. Defaults include `Ctrl+D` for the workspace switcher and `Ctrl+S` for service search; two-stroke chords are recordable and exact conflicts are surfaced.
 - Added searchable keyboard-driven quick workspace/service switchers with bounded result rendering for large installations.
 - Added **Sandbox** settings. Compatible services can share a Tauridium-owned persistent webview data store/session; isolated services retain their existing per-service store. Shared stores can be cleared as a group and are not deleted when only one member service is removed.
@@ -648,7 +648,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 > Release notes **must be written in English**. The section of the tagged
 > version is picked up **automatically** as the GitHub Release notes (see
 > `.github/workflows/release.yml`), so fill in the section **before** pushing
-> the `vX.Y.Z` tag. Entries for 0.1.0–0.1.8 were back-filled from the commit
+> the `vX.Y.Z` tag. Entries for 0.1.0-0.1.8 were back-filled from the commit
 > history, so they are more terse than the process going forward.
 
 ## [Unreleased]
@@ -1087,7 +1087,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [0.1.8] - 2026-07-06
 ### Added
 - Per-service dark mode via Dark Reader.
-- Reorder services by drag & drop, plus ⌘1–9 shortcuts to switch services.
+- Reorder services by drag & drop, plus ⌘1-9 shortcuts to switch services.
 - Per-service loading / error indicator with retry.
 - Per-service "Clear cache", and data-store purge when a service is removed.
 - Auto-reconnect screen when the Ferdium server is unreachable.
@@ -1117,7 +1117,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.1.4] - 2026-07-02
 ### Added
-- Auto-updater (`tauri-plugin-updater`) with an Updates tab — first release with
+- Auto-updater (`tauri-plugin-updater`) with an Updates tab - first release with
   automatic updates.
 - Google compatibility (user-agent / spoofing), cross-platform session
   isolation, and service hibernation (inspired by Ferx).
@@ -1141,7 +1141,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - Maintenance re-tag to exercise the release pipeline; no functional changes.
 
 ## [0.1.0] - 2026-07-01
-Initial release — a lightweight Ferdium client built with Tauri v2.
+Initial release - a lightweight Ferdium client built with Tauri v2.
 ### Added
 - Render each Ferdium service in its own isolated child webview.
 - Sidebar with unread badges and workspaces (selector + management).

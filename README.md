@@ -15,36 +15,36 @@
   <a href="https://github.com/Akkitto/Tauridium/commits"><img src="https://badgen.net/github/last-commit/Akkitto/Tauridium" alt="Latest commit" /></a>
 </p>
 
+Forget Franz, Ferdi, Ferdium and the rest. This is THE absolute best web app hub of all. I swear. Performant, beautiful and it just works™.
 
-A lightweight desktop client for [Ferdium](https://ferdium.org), built with
-**Tauri v2** (Rust + native WebView) instead of Electron. Use a Ferdium server
-for synchronized data, or run accountless with services and workspaces stored locally.
-
-The name is a nod to the lineage **Franz → Ferdi → Ferdium**, with the `-ium`
-suffix kept and **Tauri** baked in.
+Speedy Gonzales level desktop client for [Ferdium](https://ferdium.org) style web app service-workspace management & usage, built with **Tauri v2** (Rust + native WebView) instead of Electron. Use a Ferdium server for synchronised data, or run accountless with services and workspaces stored locally.
 
 ## Why
 
-Ferdium is great, but Electron makes it heavy. Tauridium renders each service in
-its own **isolated native WebView** (per-service persistent sessions). Server mode
-uses the Ferdium REST API; accountless mode keeps service/workspace state local.
+I got sick and tired of the official [Ferdium](https://ferdium.org) client having long-standing bugs in the most basic features, like re-ordering services, workspace ordering & switching and numerous other functionalities. It feels like vibe-coded slop, before LLM based coding was even possible.
+
+If that wasn't bad enough, Electron made everything so extremely fat, that I had to disable a lot of web apps in the client, because Ferdium was slowing them down so much, to the point of unability of use. Then, I asked myself, what even the point of the desktop client is, if I cannot even use some of the most important web apps in it.
+
+Within a fairly short amount of time, I pimped up Tauridium to be simply overall better, more reliable and bug-free for the most important features, I use sometimes, frequently and every day. All possible due to spec-driven AI Engineering, rather than blindfolded vibe-coding.
+
+To my knowledge, this is, as of now, the only fully open source, fully free of cost web app hub desktop application, which does *NOT* rely on Electron or be otherwise super buggy and badly designed.
 
 ## Features
 
-- **Accountless local mode** — no Ferdium account, server, or token required
-- **Local custom recipes** — add folders manually, import them through the GUI, or create them with the built-in lightweight recipe creator
-- **Custom Website** fallback — add any HTTP(S) site even when no preset recipe exists
+- **Accountless local mode** - no Ferdium account, server, or token required
+- **Local custom recipes** - add folders manually, import them through the GUI, or create them with the built-in lightweight recipe creator
+- **Custom Website** fallback - add any HTTP(S) site even when no preset recipe exists
 - Bundled local recipes for common AI, developer, observability, forge, router, and web services
-- Optional Ferdium server sign-in — account, services and workspaces stay synced
+- Optional Ferdium server sign-in - account, services and workspaces stay synced
 - Each service in an **isolated, persistent session** (native WebView)
 - **Native notifications** + dock unread badges
 - **Close-to-tray**, run in background, launch at login
-- **Persistent window state** — restores the main window's size, screen position, maximized state, and fullscreen state across tray hides and full restarts
+- **Persistent window state** - restores the main window's size, screen position, maximized state, and fullscreen state across tray hides and full restarts
 - **Per-service settings** (name, custom URL, team, notifications, mute, badges,
-  hibernation, dark mode, favicon, proxy, custom user agent…) — synced in server
+  hibernation, dark mode, favicon, proxy, custom user agent…) - synced in server
   mode and persisted locally in accountless mode
 - **App settings in tabs**: General / Services / Appearance / Keybinds / Sandbox / Privacy / Backup / Audit log / Advanced / Updates / About, using a consistent settings-card layout with responsive control alignment
-- **Sidebar customization** aligned with Ferdium (icon size, service-list alignment, grayscale + dim level, fixed 160–420 px widths with Slim / Normal / Wide/custom presets, or a responsive percentage of the window)
+- **Sidebar customization** aligned with Ferdium (icon size, service-list alignment, grayscale + dim level, fixed 160-420 px widths with Slim / Normal / Wide/custom presets, or a responsive percentage of the window)
 - Theme (system / dark / **Black OLED** / light) + preset or custom accent colors using a native color picker and HSL sliders
 - **Configurable keybindings** for navigation and application actions, including `Ctrl+D` workspace switching, `Ctrl+S` service search, `Ctrl+Shift+N` workspace creation, and optional two-stroke chords
 - **Shared sandboxes** that let compatible services deliberately share one persistent webview data store/login session while unassigned services remain isolated; assignments can be changed globally or directly from each service settings page without navigating away from Settings, and one or all sandboxes can be exported with their services and referenced custom recipes
@@ -58,92 +58,12 @@ uses the Ferdium REST API; accountless mode keeps service/workspace state local.
 - **Hardened backups** with integrity-verified transactional restore, selectable automatic-backup directory, startup/daily/weekly/monthly scheduling, count/age/combined/tiered retention, and pre-restore recovery points
 - **Local structured audit log** for settings, backup/restore/retention/export operations, warnings, and failures, with secret-field redaction and bounded rotation
 
-## Accountless local mode
-
-On the sign-in screen, choose **Use Tauridium without an account**. Tauridium
-stores services and workspaces in `local_profile.json` under its OS application-data
-directory and restores that local session without contacting a Ferdium server.
-
-Remote recipe discovery still uses the public
-[`ferdium/ferdium-recipes`](https://github.com/ferdium/ferdium-recipes) repository
-and is cached locally. Tauridium's bundled recipes and user-owned local recipes remain
-available without that catalog, so accountless mode can add those recipes offline; the
-actual service website still needs whatever network connectivity that site requires.
-
-## Local recipes
-
-Open **Add a service** to use any of these paths:
-
-- search the normal recipe catalog; when nothing matches, choose **Add a custom website**;
-- choose **Custom website** directly and enter any HTTP(S) URL;
-- choose **Recipe creator** to save a reusable local recipe;
-- choose **Import folder…** for an existing recipe folder;
-- choose **Import package.json…** for a recipe package file;
-- place recipe folders manually in the local recipe directory shown by the Add Service UI, then press **Refresh**.
-
-The on-disk layout is deliberately small and Ferdium-compatible at its core:
-
-```text
-<Tauridium OS config>/recipes/<recipe-id>/
-  package.json     # required; config.serviceURL must be HTTP(S)
-  icon.svg         # optional
-  webview.js       # optional
-```
-
-`package.json` needs a `config.serviceURL`; `config.hasCustomUrl` and
-`config.hasTeamId` are optional booleans. Tauridium validates recipe ids before
-filesystem access, reserves its bundled recipe ids, and writes GUI-created recipes
-atomically. A local `webview.js` runs inside the service page and can access its DOM,
-so only use scripts you trust.
-
-Bundled local recipes include **Custom Website**, **NanoGPT**, **Chutes**, **OpenCode**,
-**Woodpecker**, **Codeberg**, **SourceHut**, **Fritz!Box**, **Artifacts MMO**, **Lumo**,
-**Suno**, **Midjourney**, **Sora**, **Grafana**, **Graylog**, **Kibana**, and **Anytype**.
-Self-hosted recipes expose a custom instance URL where appropriate. OpenCode, Codeberg,
-and SourceHut also support website-specific workspace/namespace routing. The Sora preset
-opens OpenAI's legacy Sora export endpoint because the Sora web/app product was
-discontinued in April 2026.
-
-Local recipes are owned by Tauridium even during a Ferdium-server session. They are
-therefore not sent to the server as unknown recipe ids and are merged into the service
-list locally. Ordinary accountless-mode services are not implicitly overlaid after a
-server login.
-
-## Window state
-
-Tauridium persists the main window's normal size, screen position, maximized state, and fullscreen state in `window-state.json` under the OS application-config directory. The state is saved before hiding to the tray and before quitting. On launch the main window stays hidden while that state is restored, then appears directly in its final windowed, maximized, or fullscreen mode instead of visibly transitioning after startup.
-
-Visibility is intentionally excluded from persisted window state so **Start minimized** remains an independent explicit setting. Persistence is limited to the main Tauridium window; service child webviews are not treated as desktop windows. If saved coordinates no longer intersect an available monitor, the window-state restore logic falls back instead of restoring the window off-screen.
-
-## Backups
-
-Open **Settings → Backup** to export Tauridium-owned local state to one portable
-`tauridium-backup-YYYY-MM-DD.json` file. The backup contains app settings, local
-services/workspaces, and complete custom recipes including optional `icon.svg` and
-`webview.js` files.
-
-**Restore backup…** validates the backup schema, settings, local profile, and every recipe
-before writing persistent state. Restoring replaces local settings/services/workspaces and
-overwrites custom recipes with matching ids; unrelated existing custom recipes are retained.
-The app reloads after a successful restore.
-
-Ferdium login/session credentials, website cookies/storage, remote recipe caches, and monitor-specific `window-state.json` geometry are intentionally excluded. Window geometry remains local to each installation so restoring a portable backup on a different display setup cannot import stale monitor coordinates. A backup can still contain sensitive local service configuration (for example proxy credentials), so store backup files accordingly.
-
-## About and project links
-
-**Settings → About** presents Tauridium's application identity, installed version, project
-summary, MIT licence, author information, and the main open-source project
-destinations. The native **About** menu beside **Services** also provides quick links to the
-project homepage, source tree, and author homepage. Source, release, issue, licence,
-author, Tauri, and Ferdium links open in the operating system's default browser rather
-than inside a service webview.
-
 ## Tech stack
 
-- **Tauri v2** (Rust) — multi-webview, tray, native notifications
-- **Svelte 5** + TypeScript — the shell UI
-- **reqwest** (rustls) — server calls from Rust (no CORS, token kept out of JS)
-- Vendored + patched **wry** — unfreezes `window.ipc` so Electron-style recipe
+- **Tauri v2** (Rust) - multi-webview, tray, native notifications
+- **Svelte 5** + TypeScript - the shell UI
+- **reqwest** (rustls) - server calls from Rust (no CORS, token kept out of JS)
+- Vendored + patched **wry** - unfreezes `window.ipc` so Electron-style recipe
   IPC works (e.g. Synology Chat)
 
 ## Develop
@@ -151,7 +71,7 @@ than inside a service webview.
 Tauridium supports first-class native development on Linux, macOS, and Windows 11.
 The project uses [`just`](https://github.com/casey/just) as the command runner.
 
-### Windows 11 — PowerShell only
+### Windows 11 - PowerShell only
 
 No WSL, Git Bash, Bash, or Nushell is required. Run the workflow from Windows
 PowerShell 5.1 or PowerShell 7 (`pwsh.exe`). `just` executes Windows recipes with
@@ -254,7 +174,7 @@ APPLE_SIGNING_IDENTITY="Apple Development: …" cargo tauri build --debug
 
 Pushing a `v*` tag triggers GitHub Actions, which runs the tests, builds for
 **macOS** (universal), **Linux** (x86_64 / ARM64) and **Windows** (x86_64 /
-ARM64), then — once every build passes — publishes a GitHub Release with the
+ARM64), then - once every build passes - publishes a GitHub Release with the
 bundles attached.
 
 Release notes come from [`CHANGELOG.md`](CHANGELOG.md): the workflow extracts the
@@ -262,7 +182,7 @@ section matching the tagged version and uses it as the GitHub Release body. So,
 before tagging:
 
 1. Move the relevant `## [Unreleased]` entries into a new `## [X.Y.Z] - DATE`
-   section (**write them in English** — this is the project convention).
+   section (**write them in English** - this is the project convention).
 2. Bump the version in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and
    `src-tauri/Cargo.lock`, then commit.
 3. Tag and push:
@@ -301,39 +221,6 @@ checkout with the release commit/tag/history available to `git log`, while the m
 independently verifies every packaged tracked source file by SHA-256. Source packaging
 requires a real, clean Git checkout so release archives cannot silently omit history.
 
-## Install
-
-Grab the asset for your platform from the
-[latest release](../../releases/latest).
-
-**macOS** builds are **unsigned** (no paid Apple Developer account), so Gatekeeper
-blocks them on first launch (*"Tauridium can't be opened…"*). Open the `.dmg`,
-drag Tauridium to Applications, then either:
-
-- **macOS ≤ 14**: right-click the app → **Open** → confirm; or
-- **macOS 15+**: try to open it, then **System Settings → Privacy & Security →
-  Open Anyway**; or
-- run once in Terminal: `xattr -cr /Applications/Tauridium.app`
-
-**Linux**: `.deb` / `.rpm` / `.AppImage` (x86_64 and ARM64).
-**Windows**: `.msi` or `-setup.exe` (x64 and ARM64).
-
-## Known limitations
-
-- **Passkeys / biometric sign-in (Touch ID, security keys) don't work.** This is
-  a WebKit limitation: WebAuthn is disabled in an embedded `WKWebView` unless the
-  app holds Apple's restricted *Web Browser* entitlement (granted only to real
-  browsers). It affects every service, not just Google. **Workaround:** on the
-  login screen pick "try another way" and use a **password + an authenticator
-  code (TOTP) or a phone prompt** instead of a passkey. See
-  [tauri-apps/tauri#7926](https://github.com/tauri-apps/tauri/issues/7926).
-- **The native right-click "Download Image" doesn't work.** WKWebView handles
-  that context-menu item through an internal path that isn't exposed to the app.
-  Downloads triggered from within a service are handled normally by Tauridium and
-  respect Advanced/service/workspace download preferences, including the browser's
-  suggested filename and extension. **Workaround for the context-menu item:** use
-  the service's own download button instead.
-
 ## Licence
 
 Copyright © 2026 [Daniel Braniewski](https://brani.dev)
@@ -341,16 +228,3 @@ Copyright © 2026 [Daniel Braniewski](https://brani.dev)
 Tauridium is free software released under the [MIT License](LICENSE). You may use, copy,
 modify, merge, publish, distribute, sublicense, and/or sell copies subject to the complete
 license terms. The software is provided **AS IS**, without warranty of any kind.
-
-## Status & caveats
-
-- **Windows 11, Linux, and macOS are first-class development/build targets.**
-  Platform-specific packaging and signing constraints still apply.
-- macOS builds are **unsigned** (see [Install](#install)) — proper Developer ID
-  signing + notarization needs a paid Apple Developer account, wired in CI and
-  ready to activate via secrets.
-- Not affiliated with Ferdium.
-
-### Bootstrap identity
-
-`just init` prints its Tauridium release version before making system changes and aborts when the platform initializer and `package.json` come from different releases. Extract each release into a new empty directory rather than overlaying an older tree. On Windows use `just init-native`; on Linux use `python3 tools/init.py --native-only` to validate/install only native Tauri prerequisites.
