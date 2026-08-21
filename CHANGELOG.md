@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1] - 2026-08-21
+
+### Changed
+
+- Condensed and reorganized README development/release guidance around Windows 11-first support, secondary Linux coverage, and best-effort untested macOS participation while preserving the existing introduction, Why, Features, Tech stack, and Licence sections.
+- Added a compact root `AGENTS.md` with Tauridium's architecture, development direction, Git/release conventions, and non-negotiable quality gates for future AI-assisted development.
+- Restored `.tauridium-source-manifest.json` to generated release metadata instead of tracked source and included `AGENTS.md` in documentation archives.
+
 ## [0.5.0] - 2026-08-21
 
 ### Changed
