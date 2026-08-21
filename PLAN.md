@@ -98,8 +98,9 @@ Key finding: WKWebView ignores `data_directory`; use `data_store_identifier` on 
 - Aggregate unread state and dock badge where supported.
 
 ### Phase 4 — Parity and usability ✅ IN PROGRESS
-- Service/workspace editing.
+- Service/workspace editing, including self-contained workspace icon assignment from configured services or arbitrary HTTP(S) image/website URLs.
 - Per-service dark mode.
+- Browser-style downloads with server-suggested filename preservation, configurable global destination/prompt behavior, and service/workspace overrides.
 - Shortcuts, startup behavior, reload/debug controls, and offline resilience.
 
 ### Phase 5 — Local recipes ✅ COMPLETE (0.3.0)

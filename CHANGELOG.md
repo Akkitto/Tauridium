@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.4.25] - 2026-08-21
+
+### Added
+
+- Added arbitrary HTTP(S) workspace icon fetching in **Settings → Workspaces → Workspace settings**. A direct image URL is used as-is after validation; a normal website URL uses Tauridium's existing favicon discovery. The fetched icon is stored as self-contained image data so full backups and portable workspace/sandbox exports remain independent of the source website.
+- Added **Advanced → Downloads** settings for a configurable default download directory and an **Ask where to save each download** toggle.
+- Added per-service and per-workspace download overrides. Effective download behavior resolves in deterministic priority order: **service override → active workspace override → global Advanced defaults**.
+
+### Fixed
+
+- Fixed authenticated and opaque attachment downloads, including Proton Mail-style attachment URLs, losing their server/browser-suggested filename and extension. Tauridium now preserves the WebView engine's suggested destination filename first and only falls back to deriving a name from the URL when no usable suggestion exists.
+- Download filenames are sanitized only for filesystem-invalid/control characters, retain useful extensions, handle Windows reserved device names, and use collision-safe destination paths when saving automatically.
+- **Ask where to save each download** keeps the original authenticated WebView download rather than issuing a second HTTP request. The native Save dialog starts in the effective configured directory with the website/server-suggested filename.
+- Reworked the synchronous Save-dialog path to use the underlying `rfd` native dialog directly from Wry's synchronous download callback, avoiding the main-thread deadlock that would occur if `tauri-plugin-dialog`'s blocking wrapper were dispatched back to the already-waiting main thread.
+- Download workspace context is updated whenever an existing or preloaded service is shown, so workspace-specific overrides apply immediately without recreating the service session.
+- Service duplication copies download overrides; deleting services/workspaces and order reconciliation remove stale download settings without disturbing unrelated settings.
+
+### Release quality
+
+- Added focused 0.4.25 Rust/Python regression and release-invariant coverage for workspace icon URL fetching, download-setting migration/validation, precedence, filename preservation and sanitization, authenticated-download handling, settings cleanup/duplication, and the non-deadlocking native Save-dialog architecture.
+- Retained exact Rust 1.97.1 formatter cleanliness, locked dependency metadata, English-only validation, clean-tree verification, source-manifest verification, and deterministic three-archive packaging requirements.
+
 ## [0.4.24] - 2026-08-21
 
 ### Added

@@ -58,7 +58,9 @@ uses the Ferdium REST API; accountless mode keeps service/workspace state local.
 - **Shared sandboxes** that let compatible services deliberately share one persistent webview data store/login session while unassigned services remain isolated; assignments can be changed globally or directly from each service settings page without navigating away from Settings, and one or all sandboxes can be exported with their services and referenced custom recipes
 - Scalable Settings → Services management with search, workspace filtering, 100-row paging, and filtered reordering that preserves hidden global-order slots
 - Optional Advanced setting for direct sidebar service drag-and-drop ordering (enabled by default), using the same verified canonical service order and preserving hidden/filter-excluded slots; Shift+click selects a contiguous temporary drag group, and the empty sidebar area below the last service remains a drop-at-end target; the main shell disables Tauri native drag/drop interception so standard HTML5 dragging reaches the frontend reliably on Windows/WebView2
-- **Portable workspace exports** for one or all workspaces, including referenced services, sandboxes, assignments, and custom recipes
+- **Workspace icons** selectable from resolved service icons or fetched from an arbitrary HTTP(S) image/website URL; selected icons are stored self-contained and travel with backups and portable workspace/sandbox exports
+- **Browser-style download controls** with a configurable global download directory, optional Save prompt for every download, server-suggested filename/extension preservation, and per-service/per-workspace overrides with service → workspace → global precedence
+- **Portable workspace exports** for one or all workspaces, including referenced services, sandboxes, assignments, custom recipes, and self-contained workspace icons
 - **Hardened backups** with integrity-verified transactional restore, selectable automatic-backup directory, startup/daily/weekly/monthly scheduling, count/age/combined/tiered retention, and pre-restore recovery points
 - **Local structured audit log** for settings, backup/restore/retention/export operations, warnings, and failures, with secret-field redaction and bounded rotation
 
@@ -270,8 +272,8 @@ before tagging:
 3. Tag and push:
 
 ```text
-git tag -a v0.4.24 -m "Tauridium 0.4.24"
-git push origin v0.4.24
+git tag -a v0.4.25 -m "Tauridium 0.4.25"
+git push origin v0.4.25
 ```
 
 If no matching `CHANGELOG.md` section exists, the workflow falls back to generic
@@ -288,7 +290,7 @@ For a local validated release, run:
 just release
 ```
 
-Runtime ZIPs are target-qualified using the binary's actual Rust compilation target, so artifacts from different native builds can coexist in the same `release/` directory. Common examples are `tauridium-0.4.24-run-win-x64.zip`, `tauridium-0.4.24-run-win-arm64.zip`, `tauridium-0.4.24-run-linux-x64.zip`, `tauridium-0.4.24-run-linux-arm64.zip`, and `tauridium-0.4.24-run-macos-arm64.zip`. Source and documentation ZIP names remain target-neutral.
+Runtime ZIPs are target-qualified using the binary's actual Rust compilation target, so artifacts from different native builds can coexist in the same `release/` directory. Common examples are `tauridium-0.4.25-run-win-x64.zip`, `tauridium-0.4.25-run-win-arm64.zip`, `tauridium-0.4.25-run-linux-x64.zip`, `tauridium-0.4.25-run-linux-arm64.zip`, and `tauridium-0.4.25-run-macos-arm64.zip`. Source and documentation ZIP names remain target-neutral.
 
 `tools/package_release.py --build-handoff` emits an explicit `run-build-handoff` ZIP when a native runtime cannot be proven in the current environment. It never labels that archive as a validated executable. `tools/package_release.py` also accepts repeated `--runtime` arguments and groups supplied binaries by their reported compilation target, emitting one run ZIP per target instead of overwriting a generic runtime archive.
 
@@ -331,9 +333,10 @@ drag Tauridium to Applications, then either:
   [tauri-apps/tauri#7926](https://github.com/tauri-apps/tauri/issues/7926).
 - **The native right-click "Download Image" doesn't work.** WKWebView handles
   that context-menu item through an internal path that isn't exposed to the app.
-  Downloads triggered from within a service (in-page download buttons, e.g.
-  WhatsApp or ChatGPT) do work and save to your Downloads folder. **Workaround:**
-  use the service's own download button instead of the right-click menu.
+  Downloads triggered from within a service are handled normally by Tauridium and
+  respect Advanced/service/workspace download preferences, including the browser's
+  suggested filename and extension. **Workaround for the context-menu item:** use
+  the service's own download button instead.
 
 ## Status & caveats
 
