@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.22] - 2026-08-21
+
+### Fixed
+
+- Fixed **Settings → Services → Configured services** bypassing each service's icon preference and rendering the raw recipe/custom icon source instead of the resolved service icon. The list now uses the same icon-resolution path as the sidebar.
+- Website-icon cache entries are used only while that service's **Use website icon** preference is enabled, so stale in-memory website icons cannot override a service after the preference is disabled.
+- Enabling **Use website icon** now hydrates the preferred website icon immediately when automatic preferred-icon fetching is enabled, without requiring an application restart.
+- Unified icon failure/fallback handling between the sidebar and Configured services so custom/local recipes and dynamically fetched icons degrade consistently to the service initial only when the selected icon actually fails.
+
+### Release quality
+
+- Added focused 0.4.22 regression and release-invariant coverage for per-service icon preference resolution, Configured services/sidebar parity, immediate preference hydration, and stale-cache suppression.
+- Retained the established exact Rust 1.97.1 formatter cleanliness, frontend/Rust checks and tests when dependencies are available, clean-tree validation, source-manifest verification, and deterministic three-archive packaging requirements.
+
 ## [0.4.21] - 2026-08-21
 
 ### Fixed
