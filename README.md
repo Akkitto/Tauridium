@@ -272,8 +272,8 @@ before tagging:
 3. Tag and push:
 
 ```text
-git tag -a v0.4.25 -m "Tauridium 0.4.25"
-git push origin v0.4.25
+git tag -a v0.4.26 -m "Tauridium 0.4.26"
+git push origin v0.4.26
 ```
 
 If no matching `CHANGELOG.md` section exists, the workflow falls back to generic
@@ -290,7 +290,7 @@ For a local validated release, run:
 just release
 ```
 
-Runtime ZIPs are target-qualified using the binary's actual Rust compilation target, so artifacts from different native builds can coexist in the same `release/` directory. Common examples are `tauridium-0.4.25-run-win-x64.zip`, `tauridium-0.4.25-run-win-arm64.zip`, `tauridium-0.4.25-run-linux-x64.zip`, `tauridium-0.4.25-run-linux-arm64.zip`, and `tauridium-0.4.25-run-macos-arm64.zip`. Source and documentation ZIP names remain target-neutral.
+Runtime ZIPs are target-qualified using the binary's actual Rust compilation target, so artifacts from different native builds can coexist in the same `release/` directory. Common examples are `tauridium-0.4.26-run-win-x64.zip`, `tauridium-0.4.26-run-win-arm64.zip`, `tauridium-0.4.26-run-linux-x64.zip`, `tauridium-0.4.26-run-linux-arm64.zip`, and `tauridium-0.4.26-run-macos-arm64.zip`. Source and documentation ZIP names remain target-neutral.
 
 `tools/package_release.py --build-handoff` emits an explicit `run-build-handoff` ZIP when a native runtime cannot be proven in the current environment. It never labels that archive as a validated executable. `tools/package_release.py` also accepts repeated `--runtime` arguments and groups supplied binaries by their reported compilation target, emitting one run ZIP per target instead of overwriting a generic runtime archive.
 

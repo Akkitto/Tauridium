@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.4.26] - 2026-08-21
+
+### Fixed
+
+- Fixed Cloudflare Turnstile compatibility for remote services such as Daily.Dev on Windows. Remote HTTP(S) service webviews now disable WebView2 Tracking Prevention so cross-site challenge storage/network access is not blocked, while local Tauridium application content keeps tracking prevention enabled. Windows services also use WebView2's native browser user agent by default instead of presenting the Chromium engine as Safari; explicit per-service/global user-agent overrides remain authoritative.
+- Fixed per-service **Unread badge** being ignored by the sidebar. A disabled unread badge now hides that service's unread counter immediately and remains hidden after restart, matching the already-persisted/native badge behavior.
+- Replaced the generic custom-ID checkbox wording with **Enable custom URL placeholders for this service** (or the corresponding global-enabled status), clearly identifying what the control enables.
+- Successful workspace membership changes and sandbox assignments made from per-service settings now show a green **Saved** toast after persistence has been verified.
+- Fixed the Windows `cargo check --locked` release gate after the 0.4.25 synchronous download-dialog addition by aligning Tauridium's direct `rfd` feature set with `tauri-plugin-dialog` (`default-features = false`, `common-controls-v6`), avoiding platform-dependent lockfile mutation.
+
+### Release quality
+
+- Added focused 0.4.26 regression and release-invariant coverage for Turnstile/WebView2 compatibility, native Windows user-agent behavior, lockfile-stable `rfd` features, sidebar badge preferences, customer-facing custom-ID wording, and verified green Saved toasts.
+- Retained exact Rust 1.97.1 formatting, locked dependency metadata, English-only validation, clean-tree verification, source-manifest verification, and deterministic three-archive packaging requirements.
+
 ## [0.4.25] - 2026-08-21
 
 ### Added
