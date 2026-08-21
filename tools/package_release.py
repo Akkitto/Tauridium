@@ -569,7 +569,7 @@ def build_docs(
   checksum_lines.extend(f"{sha256(run_zip)}  {run_zip.name}" for run_zip in run_zips)
   checksums = ("\n".join(checksum_lines) + "\n").encode()
   with zipfile.ZipFile(output, "w") as zf:
-    for name in ("README.md", "CHANGELOG.md", "LICENSE"):
+    for name in ("README.md", "CHANGELOG.md", "AGENTS.md", "LICENSE"):
       add_file(zf, ROOT / name, prefix + name)
     add_bytes(zf, checksums, prefix + "SHA256SUMS")
     add_bytes(zf, (manifest_git_log(context) + "\n").encode(), prefix + "GIT-LOG.txt")

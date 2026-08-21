@@ -1603,12 +1603,13 @@ def main() -> int:
 
   readme = read("README.md")
   for marker in (
-    f'git tag -a v{version} -m "Tauridium {version}"',
-    f'git push origin v{version}',
-    f'tauridium-{version}-run-win-x64.zip',
+    "node tools/sync_version.mjs X.Y.Z",
+    "Create the annotated `vX.Y.Z` tag",
+    "`just release`",
+    "`just package-handoff`",
   ):
     if marker not in readme:
-      fail(f"README release example differs from release version: {marker}")
+      fail(f"README release workflow is missing required guidance: {marker}")
 
   changelog = read("CHANGELOG.md")
   if f"## [{version}]" not in changelog:

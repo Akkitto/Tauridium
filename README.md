@@ -68,29 +68,26 @@ To my knowledge, this is, as of now, the only fully open source, fully free of c
 
 ## Develop
 
-Tauridium supports first-class native development on Linux, macOS, and Windows 11.
-The project uses [`just`](https://github.com/casey/just) as the command runner.
+Tauridium uses [`just`](https://github.com/casey/just) as the single development entry point.
+**Windows 11 is the primary and most-tested platform; its native release binary is considered stable.**
+Linux is supported secondarily and is not yet tested as completely.
 
-### Windows 11 - PowerShell only
+### Windows 11
 
-No WSL, Git Bash, Bash, or Nushell is required. Run the workflow from Windows
-PowerShell 5.1 or PowerShell 7 (`pwsh.exe`). `just` executes Windows recipes with
-the built-in `powershell.exe`, so a fresh Windows 11 machine can bootstrap before
-PowerShell 7 or any Unix shell exists.
-
-If `just` is not installed yet, prefer Scoop:
+Use native Windows PowerShell 5.1 or PowerShell 7 (`pwsh.exe`); WSL, Bash, Git Bash,
+and Nushell are not required. Install `just` with Scoop (preferred):
 
 ```powershell
 scoop install just
 ```
 
-If Scoop is unavailable, use WinGet as the fallback:
+If Scoop is unavailable:
 
 ```powershell
 winget install --id Casey.Just --exact --source winget
 ```
 
-Validate the bootstrap itself, then initialize and run Tauridium:
+Bootstrap and run:
 
 ```powershell
 just init-self-test
@@ -98,128 +95,58 @@ just init
 just run
 ```
 
-On Windows, `just init` verifies Windows 11 and reloads the persisted Machine/User
-PATH before prerequisite discovery so tools installed by a previous bootstrap run
-are immediately visible. Scoop is the preferred package manager for Node.js LTS,
-Python 3, Git, and rustup; WinGet is the fallback. System-integrated Microsoft C++
-Build Tools, the Windows 11 SDK, and WebView2 Runtime use the Windows/WinGet path.
-After every package-manager change, the initializer reloads PATH and validates the
-required executable instead of treating a package-manager exit code alone as the
-source of truth. Python-dependent Windows recipes use `tools/python.ps1`, which
-resolves a usable Python 3 through `py.exe`, `python.exe`, or `python3.exe`. The
-initializer also installs `cargo-tauri` and `cargo-audit` when absent, ensures
-`rustfmt`/Clippy are present, checks the VBSCRIPT optional feature needed for MSI
-bundling, runs reproducible `npm ci`, audits high-severity npm advisories, and
-verifies esbuild locally. The checked-in `.vsconfig` covers both x64 and ARM64
-MSVC tools. The Windows initializer is deliberately function-free and executes
-prerequisite handling linearly for compatibility with Windows PowerShell 5.1.
-Expected failures from native capability probes are isolated from strict
-PowerShell error handling so a missing tool can reach its installation branch
-instead of aborting initialization.
+`just init` validates the Windows 11 toolchain and prerequisites, including Node.js,
+Python, Git, the pinned Rust/Tauri toolchain, MSVC/Windows SDK, and WebView2. Use
+`just init-native` for native prerequisites only. To forbid system changes, run
+`tools/init.ps1 -NoSystemChanges` from PowerShell.
 
-Use `just init-native` to validate/install only the native Windows prerequisites.
-Use `powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/init.ps1 -NoSystemChanges` when system changes
-must be forbidden; the initializer will fail with the missing prerequisite instead.
+### Linux
 
-Windows prerequisites follow Tauri's documented requirements:
-https://v2.tauri.app/start/prerequisites/
-
-### Linux / macOS
-
-Requirements: Rust (stable), Node 20+, Python 3, and `just`. On Linux, `just init`
-detects and installs missing Tauri v2 native prerequisites for supported
-Debian/Ubuntu, Fedora/RHEL, Arch/Manjaro, Alpine, and openSUSE families. It
-also verifies the Tauri v2 Cargo CLI and installs `tauri-cli` with Cargo when
-`cargo tauri` is unavailable. It invokes `sudo` only when system packages are
-actually missing.
+Linux is the second-most-tested platform, but coverage is not exhaustive. Install
+Rust via rustup, Node.js 20+, Python 3, and `just`, then run:
 
 ```sh
 just init
 just run
 ```
 
-`just init` performs reproducible `npm ci`, checks for high-severity npm
-advisories, verifies the reviewed `esbuild` install-script policy, and executes the
-local esbuild binary through `npm exec --offline` as a bootstrap smoke test. Set
-`TAURIDIUM_INIT_SYSTEM_DEPS=0` to forbid automatic Linux system-package changes.
-Debian/Ubuntu `libxdo-dev` is validated by compiling/linking a tiny probe because
-Debian does not ship `xdo.pc`; the remaining native libraries are checked through
-`pkg-config`.
+`just init` can install missing Tauri native packages on supported Debian/Ubuntu,
+Fedora/RHEL, Arch/Manjaro, Alpine, and openSUSE families. Set
+`TAURIDIUM_INIT_SYSTEM_DEPS=0` to forbid automatic system-package changes.
 
-### Tests
+### macOS
 
-The same commands work from PowerShell on Windows and the native shell on Unix:
+macOS is not a project focus and is not tested. Contributions and independent testing
+are welcome; the project does not intentionally prevent anyone from making Tauridium
+work there.
+
+### Validate changes
 
 ```text
+just fmt-check
+just lint
 just check
 just test
-```
-
-## Build
-
-```text
-cargo tauri build              # release bundle for your platform
-cargo tauri build --debug      # faster debug bundle
-```
-
-On macOS, signing locally with your own identity avoids repeated Keychain
-prompts (WebView session stores are Keychain-encrypted; a stable signature makes
-"Always Allow" stick):
-
-```bash
-APPLE_SIGNING_IDENTITY="Apple Development: …" cargo tauri build --debug
+just build
 ```
 
 ## Releases
 
-Pushing a `v*` tag triggers GitHub Actions, which runs the tests, builds for
-**macOS** (universal), **Linux** (x86_64 / ARM64) and **Windows** (x86_64 /
-ARM64), then - once every build passes - publishes a GitHub Release with the
-bundles attached.
+Release notes come from [`CHANGELOG.md`](CHANGELOG.md). For `X.Y.Z`:
 
-Release notes come from [`CHANGELOG.md`](CHANGELOG.md): the workflow extracts the
-section matching the tagged version and uses it as the GitHub Release body. So,
-before tagging:
+1. Move the relevant `Unreleased` entries into `## [X.Y.Z] - YYYY-MM-DD` in English.
+2. Run `node tools/sync_version.mjs X.Y.Z` and commit the release state.
+3. Create the annotated `vX.Y.Z` tag on that clean commit.
+4. Run `just release`; only after it passes, push `master` and the tag.
 
-1. Move the relevant `## [Unreleased]` entries into a new `## [X.Y.Z] - DATE`
-   section (**write them in English** - this is the project convention).
-2. Bump the version in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and
-   `src-tauri/Cargo.lock`, then commit.
-3. Tag and push:
+A `v*` tag triggers the GitHub release workflow. CI covers formatting, Clippy, Rust and
+frontend checks/tests/builds, and platform compile checks; Windows CI also exercises the
+native PowerShell workflow.
 
-```text
-git tag -a v0.5.0 -m "Tauridium 0.5.0"
-git push origin v0.5.0
-```
-
-If no matching `CHANGELOG.md` section exists, the workflow falls back to generic
-notes (and logs a warning).
-
-Continuous integration (`cargo fmt -- --check` · Clippy · Rust tests · release build ·
-svelte-check · Vitest · frontend build) runs on every push and pull request. A dedicated Windows
-job executes the full local workflow under `pwsh`, including `just init-native`,
-`just check`, `just test`, `just build`, and `just package`.
-
-For a local validated release, run:
-
-```text
-just release
-```
-
-Runtime ZIPs are target-qualified using the binary's actual Rust compilation target, so artifacts from different native builds can coexist in the same `release/` directory. Common examples are `tauridium-0.5.0-run-win-x64.zip`, `tauridium-0.5.0-run-win-arm64.zip`, `tauridium-0.5.0-run-linux-x64.zip`, `tauridium-0.5.0-run-linux-arm64.zip`, and `tauridium-0.5.0-run-macos-arm64.zip`. Source and documentation ZIP names remain target-neutral.
-
-`tools/package_release.py --build-handoff` emits an explicit `run-build-handoff` ZIP when a native runtime cannot be proven in the current environment. It never labels that archive as a validated executable. `tools/package_release.py` also accepts repeated `--runtime` arguments and groups supplied binaries by their reported compilation target, emitting one run ZIP per target instead of overwriting a generic runtime archive.
-
-The release recipe is deliberately non-mutating: it requires a clean Git worktree before
-validation, checks Rust formatting without rewriting source files, runs Cargo gates with the
-existing lockfile, verifies the worktree is still clean after the build, then packages the
-release. Use `just fmt` separately when source formatting should actually be changed.
-
-Official source ZIPs include both the complete `.git` directory and
-`.tauridium-source-manifest.json`. Extracting a source ZIP therefore yields a normal Git
-checkout with the release commit/tag/history available to `git log`, while the manifest
-independently verifies every packaged tracked source file by SHA-256. Source packaging
-requires a real, clean Git checkout so release archives cannot silently omit history.
+Release packaging is deterministic. Source ZIPs contain the complete `.git` history plus
+a SHA-256 source manifest. Native runtime ZIPs are target-qualified. If a native runtime
+cannot be proven in the current environment, `just package-handoff` creates an explicit
+`run-build-handoff` ZIP instead of pretending a binary was built.
 
 ## Licence
 

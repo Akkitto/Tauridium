@@ -34,6 +34,7 @@ class PackageReleaseTests(unittest.TestCase):
     )
     (self.root / "README.md").write_text("README\n", encoding="utf-8")
     (self.root / "CHANGELOG.md").write_text("CHANGELOG\n", encoding="utf-8")
+    (self.root / "AGENTS.md").write_text("AGENTS\n", encoding="utf-8")
     (self.root / "LICENSE").write_text("LICENSE\n", encoding="utf-8")
     (self.root / "source.txt").write_text("source\n", encoding="utf-8")
 
@@ -44,6 +45,7 @@ class PackageReleaseTests(unittest.TestCase):
   def write_manifest(self) -> dict[str, object]:
     files = []
     for relative in (
+      "AGENTS.md",
       "CHANGELOG.md",
       "LICENSE",
       "README.md",
@@ -79,7 +81,7 @@ class PackageReleaseTests(unittest.TestCase):
     self.assertIsNone(PACKAGE.git_repository_root())
     context = PACKAGE.source_context("0.2.0")
 
-    self.assertEqual(len(context.entries), 5)
+    self.assertEqual(len(context.entries), 6)
     self.assertEqual(context.manifest["version"], "0.2.0")
 
   def test_extracted_source_rejects_modified_source(self) -> None:
