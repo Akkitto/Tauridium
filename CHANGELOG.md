@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.4.29] - 2026-08-21
+
+### Added
+
+- Added an **About** menu immediately after **Services** in the native application menu, with direct links to the project homepage, project source tree, and author homepage.
+- Added a **Create service** action directly to **Settings → Services → Configured services**, reusing Tauridium's existing service creation flow.
+
+### Fixed
+
+- Fixed **Open links externally** being ignored for ordinary `target="_blank"` / `window.open` links such as Daily.Dev stories. Disabled/default now navigates the current service webview; enabled opens HTTP(S) links in the operating system's default browser. Sized authentication popups remain in-app, and `mailto:` continues to use the external handler.
+- Replaced the Windows `cmd /C start` external-link launcher with direct `ShellExecuteW`, eliminating the transient command-prompt window when Tauridium intentionally opens an external link.
+- Standardized green **Saved** feedback for per-service controls that persist and apply immediately without the main **Save changes** action, including icon inversion, download overrides, shortcut priority, sandbox assignment, workspace membership, and enable/disable state.
+
+### Changed
+
+- Restored Tauridium's original styled per-service right-click menu as the default. **Advanced → Service context menu** can disable it and switch to the native system popup retained from 0.4.28, which reliably stays above embedded service webviews.
+
+### Release quality
+
+- Added focused 0.4.29 regression and release-invariant coverage for per-service external-link routing, Windows external launching without `cmd.exe`, immediate green Saved feedback, styled/native context-menu selection, native About quick links, and service creation from Settings.
+- Retained exact Rust 1.97.1 formatter cleanliness, locked dependency metadata, English-only validation, clean-tree verification, source-manifest verification, and deterministic three-archive packaging requirements.
+
 ## [0.4.28] - 2026-08-21
 
 ### Added

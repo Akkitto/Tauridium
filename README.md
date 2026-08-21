@@ -56,10 +56,12 @@ uses the Ferdium REST API; accountless mode keeps service/workspace state local.
 - Theme (system / dark / **Black OLED** / light) + preset or custom accent colors using a native color picker and HSL sliders
 - **Configurable keybindings** for navigation and application actions, including `Ctrl+D` workspace switching, `Ctrl+S` service search, `Ctrl+Shift+N` workspace creation, and optional two-stroke chords
 - **Shared sandboxes** that let compatible services deliberately share one persistent webview data store/login session while unassigned services remain isolated; assignments can be changed globally or directly from each service settings page without navigating away from Settings, and one or all sandboxes can be exported with their services and referenced custom recipes
-- Scalable Settings → Services management with search, workspace filtering, 100-row paging, and filtered reordering that preserves hidden global-order slots
+- Scalable Settings → Services management with direct **Create service**, search, workspace filtering, 100-row paging, and filtered reordering that preserves hidden global-order slots
 - Optional Advanced setting for direct sidebar service drag-and-drop ordering (enabled by default), using the same verified canonical service order and preserving hidden/filter-excluded slots; Shift+click selects a contiguous temporary drag group, and the empty sidebar area below the last service remains a drop-at-end target; the main shell disables Tauri native drag/drop interception so standard HTML5 dragging reaches the frontend reliably on Windows/WebView2
 - **Workspace icons** selectable from resolved service icons or fetched from an arbitrary HTTP(S) image/website URL; selected icons are stored self-contained and travel with backups and portable workspace/sandbox exports
 - **Browser-style download controls** with a configurable global download directory, optional Save prompt for every download, server-suggested filename/extension preservation, and per-service/per-workspace overrides with service → workspace → global precedence
+- Per-service **Open links externally** routing: disabled/default keeps ordinary new-window HTTP(S) links in that service webview, while enabled sends them directly to the operating system browser; Windows uses the shell API without a transient `cmd.exe` window
+- The original styled per-service right-click menu is the default; **Advanced → Service context menu** can switch to the native always-in-front fallback when webview layering matters more than appearance
 - **Portable workspace exports** for one or all workspaces, including referenced services, sandboxes, assignments, custom recipes, and self-contained workspace icons
 - **Hardened backups** with integrity-verified transactional restore, selectable automatic-backup directory, startup/daily/weekly/monthly scheduling, count/age/combined/tiered retention, and pre-restore recovery points
 - **Local structured audit log** for settings, backup/restore/retention/export operations, warnings, and failures, with secret-field redaction and bounded rotation
@@ -139,8 +141,10 @@ Ferdium login/session credentials, website cookies/storage, remote recipe caches
 
 **Settings → About** presents Tauridium's application identity, installed version, project
 summary, MIT license, maintainer and contributor credits, and the main open-source project
-destinations. Source, release, issue, license, contributor, Tauri, and Ferdium links open in
-the operating system's default browser rather than inside a service webview.
+destinations. The native **About** menu beside **Services** also provides quick links to the
+project homepage, source tree, and author homepage. Source, release, issue, license,
+contributor, Tauri, and Ferdium links open in the operating system's default browser rather
+than inside a service webview.
 
 ## Tech stack
 
@@ -272,8 +276,8 @@ before tagging:
 3. Tag and push:
 
 ```text
-git tag -a v0.4.28 -m "Tauridium 0.4.28"
-git push origin v0.4.28
+git tag -a v0.4.29 -m "Tauridium 0.4.29"
+git push origin v0.4.29
 ```
 
 If no matching `CHANGELOG.md` section exists, the workflow falls back to generic
@@ -290,7 +294,7 @@ For a local validated release, run:
 just release
 ```
 
-Runtime ZIPs are target-qualified using the binary's actual Rust compilation target, so artifacts from different native builds can coexist in the same `release/` directory. Common examples are `tauridium-0.4.28-run-win-x64.zip`, `tauridium-0.4.28-run-win-arm64.zip`, `tauridium-0.4.28-run-linux-x64.zip`, `tauridium-0.4.28-run-linux-arm64.zip`, and `tauridium-0.4.28-run-macos-arm64.zip`. Source and documentation ZIP names remain target-neutral.
+Runtime ZIPs are target-qualified using the binary's actual Rust compilation target, so artifacts from different native builds can coexist in the same `release/` directory. Common examples are `tauridium-0.4.29-run-win-x64.zip`, `tauridium-0.4.29-run-win-arm64.zip`, `tauridium-0.4.29-run-linux-x64.zip`, `tauridium-0.4.29-run-linux-arm64.zip`, and `tauridium-0.4.29-run-macos-arm64.zip`. Source and documentation ZIP names remain target-neutral.
 
 `tools/package_release.py --build-handoff` emits an explicit `run-build-handoff` ZIP when a native runtime cannot be proven in the current environment. It never labels that archive as a validated executable. `tools/package_release.py` also accepts repeated `--runtime` arguments and groups supplied binaries by their reported compilation target, emitting one run ZIP per target instead of overwriting a generic runtime archive.
 
