@@ -19,19 +19,20 @@ class Patch0409Tests(unittest.TestCase):
     cls.main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
     cls.capability = json.loads((ROOT / "src-tauri/capabilities/default.json").read_text(encoding="utf-8"))
 
-  def test_context_settings_captures_service_before_clearing_menu_state(self) -> None:
-    body = self.app.split("function openContextServiceSettings", 1)[1].split("function openServiceContextMenu", 1)[0]
-    self.assertLess(body.index("openServiceSettings(service);"), body.index("closeServiceContextMenu();"))
-    menu = self.app.split('class="service-context-menu"', 1)[1].split('{/if}', 1)[0]
-    self.assertIn("openContextServiceSettings(contextService)", menu)
-    self.assertNotIn("closeServiceContextMenu(); openServiceSettings(contextService)", menu)
+  def test_context_menu_uses_native_popup_above_service_webviews(self) -> None:
+    body = self.app.split("async function popupServiceContextMenu", 1)[1].split("function openServiceContextMenu(event", 1)[0]
+    self.assertIn('const menu = await Menu.new({', body)
+    self.assertIn('await menu.popup(new LogicalPosition(x, y));', body)
+    self.assertIn('await menu.close().catch(() => {});', body)
+    self.assertNotIn('service-context-backdrop', self.app)
+    self.assertNotIn('service-context-menu', self.app)
 
   def test_context_menu_has_requested_order_and_short_toggle_labels(self) -> None:
-    menu = self.app.split('class="service-context-menu"', 1)[1].split('{/if}', 1)[0]
-    settings = menu.index(">Settings</button>")
-    reload = menu.index(">Reload</button>")
-    duplicate = menu.index(">Duplicate</button>")
-    toggle = menu.index('? "Enable" : "Disable"')
+    menu = self.app.split('const menu = await Menu.new({', 1)[1].split('});', 1)[0]
+    settings = menu.index('text: "Settings"')
+    reload = menu.index('text: "Reload"')
+    duplicate = menu.index('text: "Duplicate"')
+    toggle = menu.index('text: service.isEnabled === false ? "Enable" : "Disable"')
     self.assertLess(settings, reload)
     self.assertLess(reload, duplicate)
     self.assertLess(duplicate, toggle)
@@ -60,11 +61,12 @@ class Patch0409Tests(unittest.TestCase):
     self.assertIn("export function duplicateServiceName", self.ui)
     self.assertIn('duplicateServiceName("Slack", ["Slack", "slack copy"])', self.ui_test)
 
-  def test_context_menu_geometry_accounts_for_four_actions(self) -> None:
+  def test_context_menu_uses_logical_pointer_and_keyboard_positions(self) -> None:
     mouse = self.app.split("function openServiceContextMenu(event", 1)[1].split("function openServiceContextMenuFromKeyboard", 1)[0]
-    keyboard = self.app.split("function openServiceContextMenuFromKeyboard", 1)[1].split("function handleServiceContextMenuKeydown", 1)[0]
-    self.assertIn("const height = 194;", mouse)
-    self.assertIn("window.innerHeight - 202", keyboard)
+    keyboard = self.app.split("function openServiceContextMenuFromKeyboard", 1)[1].split("function sameIds", 1)[0]
+    self.assertIn('popupServiceContextMenu(service, event.clientX, event.clientY)', mouse)
+    self.assertIn('rect ? rect.left + 28 : 12', keyboard)
+    self.assertIn('rect ? rect.bottom : 12', keyboard)
 
   def test_remote_tauri_devtools_compat_is_narrow_and_does_not_expand_acl(self) -> None:
     shim = self.main.split("const REMOTE_TAURI_COMPAT_JS", 1)[1].split("const IPC_SHIM_JS", 1)[0]

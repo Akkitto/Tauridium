@@ -29,11 +29,11 @@ class Patch0407Tests(unittest.TestCase):
     self.assertIn('class:disabled={s.isEnabled === false}', row)
     self.assertIn('.srow-wrap { display: flex; align-items: center; position: relative; width: 100%; }', self.app)
     self.assertIn('.srow { width: 100%;', self.app)
-    self.assertIn('>Settings</button>', self.app)
-    self.assertIn('>Reload</button>', self.app)
-    self.assertIn('onkeydown={handleServiceContextMenuKeydown}', self.app)
-    self.assertIn('event.key === \"ArrowDown\"', self.app)
-    self.assertIn('"Enable" : "Disable"', self.app)
+    self.assertIn('const menu = await Menu.new({', self.app)
+    self.assertIn('text: "Settings"', self.app)
+    self.assertIn('text: "Reload"', self.app)
+    self.assertIn('text: service.isEnabled === false ? "Enable" : "Disable"', self.app)
+    self.assertIn('await menu.popup(new LogicalPosition(x, y));', self.app)
 
   def test_disabled_services_are_closed_and_never_selected_or_preloaded(self) -> None:
     self.assertIn('if (s.isEnabled === false) return;', self.app)
@@ -110,14 +110,14 @@ class Patch0407Tests(unittest.TestCase):
     self.assertIn('Refetch website icons for ${preferred.length}', self.app)
 
   def test_broken_recipe_icon_uses_cached_fallback_without_forcing_network(self) -> None:
-    body = self.app.split('function markIconFailed', 1)[1].split('function closeServiceContextMenu', 1)[0]
+    body = self.app.split('function markIconFailed', 1)[1].split('function openContextServiceSettings', 1)[0]
     self.assertIn('loadServiceIcon(service, false, false, true)', body)
     self.assertIn('`${service.id}:${preferWebsiteIcon ? \"website\" : \"default\"}`', self.app)
     self.assertNotIn('loadServiceIcon(service, true', body)
 
   def test_reload_shortcut_and_context_menu_share_optional_toast_path(self) -> None:
     self.assertIn('case "reloadService": if (activeService) void reloadServiceFromUi(activeService); break;', self.app)
-    self.assertIn('onclick={() => reloadServiceFromUi(contextService)}', self.app)
+    self.assertIn('action: () => void reloadServiceFromUi(service)', self.app)
     body = self.app.split('async function reloadServiceFromUi', 1)[1].split('async function refetchAllServiceIcons', 1)[0]
     self.assertIn('if (appSettings.reloadToasts)', body)
     self.assertIn('reloaded.`', body)

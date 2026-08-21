@@ -18,7 +18,7 @@ class Patch0424Tests(unittest.TestCase):
     sandbox = APP.split('<div class="set-title">Sandbox</div>', 1)[1].split('<div class="set-title">Appearance</div>', 1)[0]
     self.assertIn('class="service-workspace-search service-sandbox-search"', sandbox)
     self.assertIn('placeholder="Search sandboxes…"', sandbox)
-    self.assertIn('.service-sandbox-search { width: min(100%, 420px); flex: 0 1 420px; }', APP)
+    self.assertIn('.service-workspace-search.service-sandbox-search { width: min(100%, 240px); max-width: 240px; min-height: 36px; flex: none; align-self: flex-start; margin: 0; }', APP)
 
   def test_sidebar_drop_region_is_accessibility_annotated(self) -> None:
     self.assertIn('class="svcarea" role="region" aria-label="Service list drop area"', APP)

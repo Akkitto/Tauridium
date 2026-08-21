@@ -2,6 +2,8 @@
   import { onDestroy, onMount } from "svelte";
   import tauridiumLogo from "./assets/tauridium.svg";
   import { listen } from "@tauri-apps/api/event";
+  import { LogicalPosition } from "@tauri-apps/api/dpi";
+  import { Menu } from "@tauri-apps/api/menu";
   import {
     accentFg,
     iconSrc,
@@ -30,6 +32,7 @@
     paged,
     duplicateServiceName,
     shortcutConflicts,
+    sameDownloadPreference,
     type KeybindingAction,
   } from "./lib/ui";
   import { appVersion, checkForUpdate, installUpdate, type Update } from "./lib/updater";
@@ -198,7 +201,6 @@
   let quickSwitcherQuery = $state("");
   let quickSwitcherIndex = $state(0);
 
-  let serviceContextMenu = $state<{ serviceId: string; x: number; y: number } | null>(null);
   let toastMessage = $state("");
   let toastTone = $state<"default" | "success">("default");
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -260,6 +262,7 @@
     serviceShortcutCaptureOverrides: {},
     customUrlTemplatesEnabled: false,
     serviceCustomUrlTemplates: {},
+    serviceIconInversions: {},
     serviceOrder: [],
     workspaceOrder: [],
     workspaceQuickSwitchOrder: "custom",
@@ -635,6 +638,30 @@
     return preferredWebsiteIcon(service) ?? iconSrc(service);
   }
 
+  function serviceIconInverted(serviceId: string): boolean {
+    return appSettings.serviceIconInversions?.[serviceId] === true;
+  }
+
+  async function saveServiceIconInversion(serviceId: string, inverted: boolean) {
+    const previous = { ...appSettings.serviceIconInversions };
+    const serviceIconInversions = { ...previous };
+    if (inverted) serviceIconInversions[serviceId] = true;
+    else delete serviceIconInversions[serviceId];
+    if ((previous[serviceId] === true) === inverted) return;
+
+    appSettings = { ...appSettings, serviceIconInversions };
+    try {
+      const persisted = await setAppSettings({ serviceIconInversions });
+      if ((persisted.serviceIconInversions[serviceId] === true) !== inverted) {
+        throw new Error("Tauridium could not verify the service icon inversion setting");
+      }
+      appSettings = persisted;
+    } catch (err) {
+      appSettings = { ...appSettings, serviceIconInversions: previous };
+      error = `Unable to save service icon inversion setting: ${err}`;
+    }
+  }
+
   function workspaceIcon(workspace: Workspace): string | null {
     return appSettings.workspaceIcons[workspace.id] ?? null;
   }
@@ -674,13 +701,13 @@
     const serviceDownloadSettings = { ...previous };
     if (preference) serviceDownloadSettings[serviceId] = preference;
     else delete serviceDownloadSettings[serviceId];
-    if (JSON.stringify(previous[serviceId] ?? null) === JSON.stringify(preference)) return;
+    if (sameDownloadPreference(previous[serviceId], preference)) return;
 
     downloadSettingsBusy = true;
     appSettings = { ...appSettings, serviceDownloadSettings };
     try {
       const persisted = await setAppSettings({ serviceDownloadSettings });
-      if (JSON.stringify(persisted.serviceDownloadSettings[serviceId] ?? null) !== JSON.stringify(preference)) {
+      if (!sameDownloadPreference(persisted.serviceDownloadSettings[serviceId], preference)) {
         throw new Error("Tauridium could not verify the service download settings");
       }
       appSettings = persisted;
@@ -698,13 +725,13 @@
     const workspaceDownloadSettings = { ...previous };
     if (preference) workspaceDownloadSettings[workspaceId] = preference;
     else delete workspaceDownloadSettings[workspaceId];
-    if (JSON.stringify(previous[workspaceId] ?? null) === JSON.stringify(preference)) return;
+    if (sameDownloadPreference(previous[workspaceId], preference)) return;
 
     downloadSettingsBusy = true;
     appSettings = { ...appSettings, workspaceDownloadSettings };
     try {
       const persisted = await setAppSettings({ workspaceDownloadSettings });
-      if (JSON.stringify(persisted.workspaceDownloadSettings[workspaceId] ?? null) !== JSON.stringify(preference)) {
+      if (!sameDownloadPreference(persisted.workspaceDownloadSettings[workspaceId], preference)) {
         throw new Error("Tauridium could not verify the workspace download settings");
       }
       appSettings = persisted;
@@ -793,55 +820,41 @@
     }
   }
 
-  function closeServiceContextMenu() {
-    serviceContextMenu = null;
+  function openContextServiceSettings(service: Service) {
+    openServiceSettings(service);
   }
 
-  function openContextServiceSettings(service: Service) {
-    // Capture the service object before clearing the reactive context-menu state.
-    // Clearing first can make the derived contextService become null synchronously.
-    openServiceSettings(service);
-    closeServiceContextMenu();
+  async function popupServiceContextMenu(service: Service, x: number, y: number) {
+    const menu = await Menu.new({
+      items: [
+        { id: `settings-${service.id}`, text: "Settings", action: () => openContextServiceSettings(service) },
+        { id: `reload-${service.id}`, text: "Reload", enabled: service.isEnabled !== false, action: () => void reloadServiceFromUi(service) },
+        { id: `duplicate-${service.id}`, text: "Duplicate", action: () => void duplicateServiceFromUi(service) },
+        { id: `toggle-${service.id}`, text: service.isEnabled === false ? "Enable" : "Disable", action: () => void toggleServiceEnabled(service) },
+      ],
+    });
+    try {
+      await menu.popup(new LogicalPosition(x, y));
+    } finally {
+      await menu.close().catch(() => {});
+    }
   }
 
   function openServiceContextMenu(event: MouseEvent, service: Service) {
     event.preventDefault();
     event.stopPropagation();
-    const width = 226;
-    const height = 194;
-    serviceContextMenu = {
-      serviceId: service.id,
-      x: Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)),
-      y: Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8)),
-    };
-    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".service-context-menu button:not(:disabled)")?.focus());
+    void popupServiceContextMenu(service, event.clientX, event.clientY).catch((err) => {
+      error = `Unable to open service menu: ${err}`;
+    });
   }
 
   function openServiceContextMenuFromKeyboard(event: KeyboardEvent, service: Service) {
     if (!(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
     event.preventDefault();
     const rect = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : null;
-    serviceContextMenu = {
-      serviceId: service.id,
-      x: rect ? Math.min(rect.left + 28, window.innerWidth - 234) : 12,
-      y: rect ? Math.min(rect.bottom, window.innerHeight - 202) : 12,
-    };
-    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".service-context-menu button:not(:disabled)")?.focus());
-  }
-
-  function handleServiceContextMenuKeydown(event: KeyboardEvent) {
-    const menu = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-    const items = menu ? [...menu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')] : [];
-    if (!items.length) return;
-    const current = items.indexOf(document.activeElement as HTMLButtonElement);
-    let next = current;
-    if (event.key === "ArrowDown") next = (current + 1 + items.length) % items.length;
-    else if (event.key === "ArrowUp") next = (current - 1 + items.length) % items.length;
-    else if (event.key === "Home") next = 0;
-    else if (event.key === "End") next = items.length - 1;
-    else return;
-    event.preventDefault();
-    items[next]?.focus();
+    void popupServiceContextMenu(service, rect ? rect.left + 28 : 12, rect ? rect.bottom : 12).catch((err) => {
+      error = `Unable to open service menu: ${err}`;
+    });
   }
 
   function sameIds(left: string[], right: string[]): boolean {
@@ -873,6 +886,9 @@
     const workspaceIcons = Object.fromEntries(
       Object.entries(appSettings.workspaceIcons).filter(([workspaceId]) => workspaceIds.has(workspaceId)),
     );
+    const serviceIconInversions = Object.fromEntries(
+      Object.entries(appSettings.serviceIconInversions).filter(([serviceId]) => serviceIds.has(serviceId)),
+    );
     const serviceDownloadSettings = Object.fromEntries(
       Object.entries(appSettings.serviceDownloadSettings).filter(([serviceId]) => serviceIds.has(serviceId)),
     );
@@ -881,6 +897,7 @@
     );
     const usageHistoryChanged = Object.keys(workspaceLastUsed).length !== Object.keys(appSettings.workspaceLastUsed).length;
     const workspaceIconsChanged = Object.keys(workspaceIcons).length !== Object.keys(appSettings.workspaceIcons).length;
+    const serviceIconInversionsChanged = Object.keys(serviceIconInversions).length !== Object.keys(appSettings.serviceIconInversions).length;
     const serviceDownloadSettingsChanged = Object.keys(serviceDownloadSettings).length !== Object.keys(appSettings.serviceDownloadSettings).length;
     const workspaceDownloadSettingsChanged = Object.keys(workspaceDownloadSettings).length !== Object.keys(appSettings.workspaceDownloadSettings).length;
     if (
@@ -888,6 +905,7 @@
       sameIds(workspaceOrder, appSettings.workspaceOrder) &&
       !usageHistoryChanged &&
       !workspaceIconsChanged &&
+      !serviceIconInversionsChanged &&
       !serviceDownloadSettingsChanged &&
       !workspaceDownloadSettingsChanged
     ) return;
@@ -897,6 +915,7 @@
         workspaceOrder,
         workspaceLastUsed,
         workspaceIcons,
+        serviceIconInversions,
         serviceDownloadSettings,
         workspaceDownloadSettings,
       });
@@ -1445,7 +1464,6 @@
   }
 
   async function setServiceEnabled(service: Service, enabled: boolean) {
-    closeServiceContextMenu();
     if ((service.isEnabled !== false) === enabled) return;
     try {
       await updateService(service.id, { isEnabled: enabled });
@@ -1529,7 +1547,6 @@
   }
 
   async function duplicateServiceFromUi(service: Service) {
-    closeServiceContextMenu();
     error = null;
     const name = duplicateServiceName(serviceLabel(service), services.map((candidate) => serviceLabel(candidate)));
     let newId: string | null = null;
@@ -1538,6 +1555,7 @@
     const previousSandboxes = { ...appSettings.serviceSandboxes };
     const previousShortcutOverrides = { ...appSettings.serviceShortcutCaptureOverrides };
     const previousDownloadSettings = { ...appSettings.serviceDownloadSettings };
+    const previousIconInversions = { ...appSettings.serviceIconInversions };
     let copiedAppSettings = false;
     try {
       const result = await createDuplicateService(service, name);
@@ -1566,16 +1584,19 @@
       const serviceSandboxes = { ...appSettings.serviceSandboxes };
       const serviceShortcutCaptureOverrides = { ...appSettings.serviceShortcutCaptureOverrides };
       const serviceDownloadSettings = { ...appSettings.serviceDownloadSettings };
+      const serviceIconInversions = { ...appSettings.serviceIconInversions };
       if (serviceCustomUrlTemplates[service.id]) serviceCustomUrlTemplates[newId] = { ...serviceCustomUrlTemplates[service.id] };
       if (serviceSandboxes[service.id]) serviceSandboxes[newId] = serviceSandboxes[service.id];
       if (service.id in serviceShortcutCaptureOverrides) serviceShortcutCaptureOverrides[newId] = serviceShortcutCaptureOverrides[service.id];
       if (serviceDownloadSettings[service.id]) serviceDownloadSettings[newId] = { ...serviceDownloadSettings[service.id] };
-      if (serviceCustomUrlTemplates[newId] || serviceSandboxes[newId] || newId in serviceShortcutCaptureOverrides || serviceDownloadSettings[newId]) {
+      if (serviceIconInversions[service.id] === true) serviceIconInversions[newId] = true;
+      if (serviceCustomUrlTemplates[newId] || serviceSandboxes[newId] || newId in serviceShortcutCaptureOverrides || serviceDownloadSettings[newId] || serviceIconInversions[newId] === true) {
         appSettings = await setAppSettings({
           serviceCustomUrlTemplates,
           serviceSandboxes,
           serviceShortcutCaptureOverrides,
           serviceDownloadSettings,
+          serviceIconInversions,
         });
         copiedAppSettings = true;
       }
@@ -1602,6 +1623,7 @@
           serviceSandboxes: previousSandboxes,
           serviceShortcutCaptureOverrides: previousShortcutOverrides,
           serviceDownloadSettings: previousDownloadSettings,
+          serviceIconInversions: previousIconInversions,
         }).catch(() => appSettings);
       }
       if (newId) await deleteService(newId).catch(() => {});
@@ -1617,7 +1639,6 @@
   }
 
   async function reloadServiceFromUi(service: Service) {
-    closeServiceContextMenu();
     if (service.isEnabled === false) return;
     if (appSettings.reloadToasts) pendingReloadToasts.set(service.id, `${serviceLabel(service)} reloaded.`);
     else pendingReloadToasts.delete(service.id);
@@ -1672,21 +1693,25 @@
         appSettings.serviceSandboxes[s.id] ||
         appSettings.serviceCustomUrlTemplates[s.id] ||
         s.id in appSettings.serviceShortcutCaptureOverrides ||
-        appSettings.serviceDownloadSettings[s.id]
+        appSettings.serviceDownloadSettings[s.id] ||
+        appSettings.serviceIconInversions[s.id] === true
       ) {
         const serviceSandboxes = { ...appSettings.serviceSandboxes };
         const serviceCustomUrlTemplates = { ...appSettings.serviceCustomUrlTemplates };
         const serviceShortcutCaptureOverrides = { ...appSettings.serviceShortcutCaptureOverrides };
         const serviceDownloadSettings = { ...appSettings.serviceDownloadSettings };
+        const serviceIconInversions = { ...appSettings.serviceIconInversions };
         delete serviceSandboxes[s.id];
         delete serviceCustomUrlTemplates[s.id];
         delete serviceShortcutCaptureOverrides[s.id];
         delete serviceDownloadSettings[s.id];
+        delete serviceIconInversions[s.id];
         appSettings = await setAppSettings({
           serviceSandboxes,
           serviceCustomUrlTemplates,
           serviceShortcutCaptureOverrides,
           serviceDownloadSettings,
+          serviceIconInversions,
         });
       }
       await reconcileSavedOrders();
@@ -2756,7 +2781,6 @@
   }
 
   function handleGlobalKeydown(event: KeyboardEvent) {
-    if (event.key === "Escape" && serviceContextMenu) { event.preventDefault(); closeServiceContextMenu(); return; }
     if (recordingAction) {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -3309,6 +3333,17 @@
           </div>
 
           <div class="set-title">Appearance</div>
+          <div class="setrow">
+            <label class="row-toggle">
+              <input
+                type="checkbox"
+                checked={serviceIconInverted(settingsServiceId)}
+                onchange={(event) => saveServiceIconInversion(settingsServiceId, event.currentTarget.checked)}
+              />
+              <span>Invert service icon colors</span>
+            </label>
+            <p class="desc">Invert this service icon in Tauridium's UI so black or very dark artwork stays visible on Black OLED backgrounds. This affects only the icon, not the website.</p>
+          </div>
           {@render toggle("Dark mode", "Force a dark theme on this service (via Dark Reader). Reloads the service when changed.", "isDarkModeEnabled", settingsSvc.isDarkModeEnabled === true)}
           {#if settingsSvc.isDarkModeEnabled}
             <div class="setrow">
@@ -3547,7 +3582,7 @@
                         {#if serviceIconFailed(service)}
                           <span class="managed-icon fallback">{serviceLabel(service).slice(0, 1).toUpperCase()}</span>
                         {:else}
-                          <img class="managed-icon" src={displayedServiceIcon(service)} alt="" onerror={() => markIconFailed(service)} />
+                          <img class="managed-icon" class:service-icon-inverted={serviceIconInverted(service.id)} src={displayedServiceIcon(service)} alt="" onerror={() => markIconFailed(service)} />
                         {/if}
                         <div class="managed-copy">
                           <strong>{serviceLabel(service)}</strong>
@@ -3673,7 +3708,7 @@
                             aria-label={`Use ${serviceLabel(service)} icon for ${selectedWorkspaceName}`}
                           >
                             {#if !serviceIconFailed(service)}
-                              <img src={candidateIcon} alt="" onerror={() => markIconFailed(service)} />
+                              <img class:service-icon-inverted={serviceIconInverted(service.id)} src={candidateIcon} alt="" onerror={() => markIconFailed(service)} />
                             {:else}
                               <span aria-hidden="true">{serviceLabel(service).slice(0, 1).toUpperCase()}</span>
                             {/if}
@@ -4264,21 +4299,6 @@
   </div>
 {/if}
 
-{#if serviceContextMenu}
-  {@const contextService = services.find((service) => service.id === serviceContextMenu?.serviceId) ?? null}
-  <div class="service-context-backdrop" role="presentation" onclick={(event) => event.currentTarget === event.target && closeServiceContextMenu()} oncontextmenu={(event) => { event.preventDefault(); if (event.currentTarget === event.target) closeServiceContextMenu(); }}>
-    {#if contextService}
-      <div class="service-context-menu" role="menu" tabindex="-1" aria-label={`${serviceLabel(contextService)} actions`} style={`left:${serviceContextMenu.x}px;top:${serviceContextMenu.y}px`} onkeydown={handleServiceContextMenuKeydown}>
-        <button role="menuitem" onclick={() => openContextServiceSettings(contextService)}>Settings</button>
-        <button role="menuitem" disabled={contextService.isEnabled === false} onclick={() => reloadServiceFromUi(contextService)}>Reload</button>
-        <button role="menuitem" onclick={() => duplicateServiceFromUi(contextService)}>Duplicate</button>
-        <div class="service-context-separator" aria-hidden="true"></div>
-        <button role="menuitem" class:context-danger={contextService.isEnabled !== false} onclick={() => toggleServiceEnabled(contextService)}>{contextService.isEnabled === false ? "Enable" : "Disable"}</button>
-      </div>
-    {/if}
-  </div>
-{/if}
-
 {#if toastMessage}
   <div class="toast" class:success={toastTone === "success"} role="status" aria-live="polite">{toastMessage}</div>
 {/if}
@@ -4346,7 +4366,7 @@
       {#if serviceIconFailed(s)}
         <span class="dot">{serviceLabel(s).slice(0, 1).toUpperCase()}</span>
       {:else}
-        <img class="svc-icon" src={displayedServiceIcon(s)} alt="" onerror={() => markIconFailed(s)} />
+        <img class="svc-icon" class:service-icon-inverted={serviceIconInverted(s.id)} src={displayedServiceIcon(s)} alt="" onerror={() => markIconFailed(s)} />
       {/if}
       {#if appSettings.showServiceName}
         <span class="srow-name">{serviceLabel(s)}</span>
@@ -4479,13 +4499,19 @@
   .srow:hover { background: var(--hover); }
   .srow.active { background: var(--accent); color: var(--accent-fg); }
   .srow.disabled { opacity: 0.45; }
-  .srow.asleep .svc-icon, .srow.asleep .dot { filter: grayscale(1); opacity: 0.5; }
+  .srow.asleep .svc-icon, .srow.asleep .dot { opacity: 0.5; }
   .zzz { margin-left: auto; font-size: 12px; opacity: 0.8; }
   .svc-icon, .srow .dot { width: var(--icon-size, 22px); height: var(--icon-size, 22px); border-radius: 5px; object-fit: cover; flex: none; }
+  .service-icon-inverted { filter: invert(1); }
+  .srow.asleep .svc-icon:not(.service-icon-inverted) { filter: grayscale(1); }
+  .srow.asleep .svc-icon.service-icon-inverted { filter: invert(1) grayscale(1); }
   .srow .dot { display: grid; place-items: center; background: var(--border2); font-size: 12px; font-weight: 700; }
   :global(body.grayscale) .svc-icon { filter: grayscale(1); opacity: var(--gray-op, 0.6); transition: filter 0.15s, opacity 0.15s; }
+  :global(body.grayscale) .svc-icon.service-icon-inverted { filter: invert(1) grayscale(1); }
   :global(body.grayscale) .srow:hover .svc-icon,
   :global(body.grayscale) .srow.active .svc-icon { filter: none; opacity: 1; }
+  :global(body.grayscale) .srow:hover .svc-icon.service-icon-inverted,
+  :global(body.grayscale) .srow.active .svc-icon.service-icon-inverted { filter: invert(1); }
   .srow-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ubadge {
     margin-left: auto; background: #e23b3b; color: #fff; font-size: 11px; font-weight: 700;
@@ -4777,8 +4803,8 @@
   .service-shortcut-policy .select { width: 100%; min-width: 0; max-width: none; margin-left: 0; }
   .service-shortcut-effective { grid-column: 1 / -1; margin-top: 0; }
   .service-workspace-manager { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--panel) 88%, var(--bg)); }
-  .service-sandbox-manager { gap: 10px; }
-  .service-sandbox-search { width: min(100%, 420px); flex: 0 1 420px; }
+  .service-sandbox-manager { gap: 8px; }
+  .service-sandbox-manager .service-workspace-overview { align-items: center; }
   .service-sandbox-help { margin: 0; }
   .service-download-manager { gap: 10px; }
   .download-override-toggle { width: fit-content; max-width: 100%; }
@@ -4791,6 +4817,7 @@
   .service-workspace-overview .setting-copy { min-width: 0; }
   .service-workspace-toolbar { display: flex; align-items: stretch; gap: 8px; }
   .service-workspace-search { min-width: 0; min-height: 40px; flex: 1 1 280px; box-sizing: border-box; }
+  .service-workspace-search.service-sandbox-search { width: min(100%, 240px); max-width: 240px; min-height: 36px; flex: none; align-self: flex-start; margin: 0; }
   .service-workspace-filters { display: inline-grid; grid-template-columns: repeat(3, auto); align-items: stretch; flex: none; padding: 3px; border: 1px solid var(--border); border-radius: 9px; background: var(--input); }
   .service-workspace-filters button { min-height: 32px; padding: 5px 10px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 12px; font-weight: 650; white-space: nowrap; }
   .service-workspace-filters button:hover { background: var(--hover); color: var(--text2); }
@@ -4816,13 +4843,6 @@
   .service-workspace-create-card .setting-copy { padding-top: 9px; }
   .service-workspace-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding-top: 9px; }
   .danger-link { color: #ff9b9b; }
-  .service-context-backdrop { position: fixed; inset: 0; z-index: 1200; }
-  .service-context-menu { position: fixed; width: 226px; padding: 5px; border: 1px solid var(--border2); border-radius: 9px; background: var(--panel); box-shadow: 0 14px 42px rgba(0, 0, 0, 0.45); }
-  .service-context-menu button { width: 100%; min-height: 34px; padding: 7px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--text2); text-align: left; cursor: pointer; font: inherit; }
-  .service-context-menu button:hover:not(:disabled), .service-context-menu button:focus-visible { background: var(--hover); }
-  .service-context-menu button:disabled { color: var(--muted2); cursor: default; }
-  .service-context-menu button.context-danger { color: #ff9b9b; }
-  .service-context-separator { height: 1px; margin: 4px 3px; background: var(--border); }
   .toast { position: fixed; z-index: 1400; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: min(520px, calc(100vw - 32px)); padding: 10px 14px; border: 1px solid var(--border2); border-radius: 9px; background: var(--panel); color: var(--text); box-shadow: 0 10px 34px rgba(0, 0, 0, 0.42); font-size: 13px; }
   .toast.success { background: #187a45; border-color: #2ca866; color: #fff; }
   .quick-switcher-backdrop { position: fixed; inset: 0; z-index: 1000; display: flex; justify-content: center; align-items: flex-start; padding-top: min(14vh, 120px); background: rgba(0, 0, 0, 0.46); }

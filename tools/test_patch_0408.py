@@ -32,11 +32,11 @@ class Patch0408Tests(unittest.TestCase):
     self.assertIn('onerror={() => markIconFailed(service)}', managed)
     self.assertNotIn('markIconFailed(service.id)', managed)
 
-  def test_context_menu_role_is_programmatically_focusable(self) -> None:
-    menu = self.app.split('class="service-context-menu"', 1)[1].split('</div>', 1)[0]
-    self.assertIn('role="menu"', menu)
-    self.assertIn('tabindex="-1"', menu)
-    self.assertIn('onkeydown={handleServiceContextMenuKeydown}', menu)
+  def test_context_menu_is_native_and_keyboard_accessible(self) -> None:
+    self.assertIn('import { Menu } from "@tauri-apps/api/menu";', self.app)
+    self.assertIn('import { LogicalPosition } from "@tauri-apps/api/dpi";', self.app)
+    self.assertIn('event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")', self.app)
+    self.assertIn('await menu.popup(new LogicalPosition(x, y));', self.app)
 
 
 if __name__ == "__main__":

@@ -12,9 +12,23 @@ import {
   orderWorkspacesForQuickSwitch,
   paged,
   recipeIcon,
+  sameDownloadPreference,
   shortcutConflicts,
   snapIconSize,
 } from "./ui";
+
+describe("sameDownloadPreference", () => {
+  it("compares values rather than object key insertion order", () => {
+    const frontend = { directory: "D:/Downloads", askEachDownload: true };
+    const backend = { askEachDownload: true, directory: "D:/Downloads" };
+    expect(sameDownloadPreference(frontend, backend)).toBe(true);
+  });
+
+  it("distinguishes changed fields and treats nullish inheritance equally", () => {
+    expect(sameDownloadPreference(null, undefined)).toBe(true);
+    expect(sameDownloadPreference({ directory: "", askEachDownload: false }, { directory: "", askEachDownload: true })).toBe(false);
+  });
+});
 
 describe("accentFg", () => {
   it("returns dark text on light accents (Tauri yellow)", () => {

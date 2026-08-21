@@ -15,7 +15,7 @@ class Patch0410Tests(unittest.TestCase):
 
   def test_automatic_and_bulk_icon_fetching_respect_service_preference(self) -> None:
     hydrate = self.app.split("function hydrateServiceIcons", 1)[1].split("function markIconFailed", 1)[0]
-    failed = self.app.split("function markIconFailed", 1)[1].split("function closeServiceContextMenu", 1)[0]
+    failed = self.app.split("function markIconFailed", 1)[1].split("function openContextServiceSettings", 1)[0]
     bulk = self.app.split("async function refetchAllServiceIcons", 1)[1].split("async function handleDelete", 1)[0]
     self.assertIn("if (!appSettings.fetchMissingServiceIcons) return;", hydrate)
     self.assertIn("service.useFavicon === true", hydrate)

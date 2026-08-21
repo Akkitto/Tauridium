@@ -326,6 +326,7 @@ export interface AppSettings {
   serviceShortcutCaptureOverrides: Record<string, boolean>;
   customUrlTemplatesEnabled: boolean;
   serviceCustomUrlTemplates: Record<string, ServiceCustomUrlTemplate>;
+  serviceIconInversions: Record<string, boolean>;
   serviceOrder: string[];
   workspaceOrder: string[];
   workspaceQuickSwitchOrder: "custom" | "customReverse" | "alphabetical" | "alphabeticalReverse" | "recent" | "recentReverse";

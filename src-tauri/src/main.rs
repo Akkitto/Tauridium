@@ -2892,6 +2892,10 @@ fn default_app_settings_value() -> Value {
         "serviceCustomUrlTemplates".into(),
         Value::Object(serde_json::Map::new()),
     );
+    settings.insert(
+        "serviceIconInversions".into(),
+        Value::Object(serde_json::Map::new()),
+    );
     settings.insert("serviceOrder".into(), Value::Array(Vec::new()));
     settings.insert("workspaceOrder".into(), Value::Array(Vec::new()));
     settings.insert("workspaceQuickSwitchOrder".into(), "custom".into());
@@ -3311,6 +3315,20 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
                 ));
             }
         }
+    }
+    let icon_inversions = object
+        .get("serviceIconInversions")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "App setting serviceIconInversions must be an object".to_string())?;
+    if icon_inversions.len() > 10_000
+        || icon_inversions.iter().any(|(service_id, inverted)| {
+            service_id.trim().is_empty()
+                || service_id.len() > 256
+                || service_id.chars().any(char::is_control)
+                || !inverted.is_boolean()
+        })
+    {
+        return Err("App setting serviceIconInversions is invalid".into());
     }
     validate_keybindings(object.get("keybindings"))?;
     validate_sandboxes(object.get("sandboxes"), object.get("serviceSandboxes"))?;
@@ -4616,6 +4634,21 @@ mod tests {
         settings["workspaceIcons"] = json!({ "workspace-a": "javascript:alert(1)" });
         assert!(validate_app_settings_value(&settings).is_err());
         settings["workspaceIcons"] = json!({ "": "https://example.com/icon.svg" });
+        assert!(validate_app_settings_value(&settings).is_err());
+    }
+
+    #[test]
+    fn feature_0428_settings_validate_service_icon_inversions() {
+        let mut settings = default_app_settings_value();
+        settings["serviceIconInversions"] = json!({
+            "service-a": true,
+            "service-b": false
+        });
+        assert!(validate_app_settings_value(&settings).is_ok());
+
+        settings["serviceIconInversions"] = json!({ "": true });
+        assert!(validate_app_settings_value(&settings).is_err());
+        settings["serviceIconInversions"] = json!({ "service-a": "yes" });
         assert!(validate_app_settings_value(&settings).is_err());
     }
 

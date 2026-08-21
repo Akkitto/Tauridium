@@ -370,6 +370,14 @@ export function serviceLabel(service: { name?: string | null; recipeId?: string 
   return recipeId || "Unnamed service";
 }
 
+export function sameDownloadPreference(
+  left: { directory: string; askEachDownload: boolean } | null | undefined,
+  right: { directory: string; askEachDownload: boolean } | null | undefined,
+): boolean {
+  if (!left || !right) return left == null && right == null;
+  return left.directory === right.directory && left.askEachDownload === right.askEachDownload;
+}
+
 
 export type AutomaticBackupSchedule = "off" | "startup" | "daily" | "weekly" | "monthly";
 

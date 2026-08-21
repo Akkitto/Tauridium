@@ -486,9 +486,10 @@ def main() -> int:
 
   for marker in (
     'oncontextmenu={(e) => openServiceContextMenu(e, s)}',
-    '>Settings</button>',
-    '>Reload</button>',
-    '"Enable" : "Disable"',
+    'const menu = await Menu.new({',
+    'text: "Settings"',
+    'text: "Reload"',
+    'text: service.isEnabled === false ? "Enable" : "Disable"',
     'Fetch preferred website icons automatically',
     'Enable custom URL placeholders for all services',
     'Show reload notifications',
@@ -510,7 +511,7 @@ def main() -> int:
     'if (service && service.isEnabled !== false) selectService(service);',
     '<K extends keyof ServiceCustomUrlTemplate>',
     'onerror={() => markIconFailed(service)}',
-    'role="menu" tabindex="-1"',
+    'await menu.popup(new LogicalPosition(x, y));',
   ):
     if marker not in app:
       fail(f"0.4.8 frontend quality invariant is missing: {marker}")
@@ -518,7 +519,7 @@ def main() -> int:
     'test_native_menu_selection_narrows_optional_service_before_use',
     'test_custom_url_template_setter_preserves_field_types_without_unsafe_record_cast',
     'test_managed_service_icon_failure_passes_service_not_service_id',
-    'test_context_menu_role_is_programmatically_focusable',
+    'test_context_menu_is_native_and_keyboard_accessible',
   ):
     if marker not in patch_0408_test:
       fail(f"0.4.8 regression coverage is missing: {marker}")
@@ -527,9 +528,9 @@ def main() -> int:
 
   patch_0409_test = read("tools/test_patch_0409.py")
   for marker in (
-    'openContextServiceSettings(contextService)',
-    '>Duplicate</button>',
-    '? "Enable" : "Disable"',
+    'action: () => openContextServiceSettings(service)',
+    'text: "Duplicate"',
+    'text: service.isEnabled === false ? "Enable" : "Disable"',
     'async function duplicateServiceFromUi(service: Service)',
     'service.isLocalRecipe === true && service.recipeId === "custom-website"',
     'return createCustomWebsiteService(name, url);',
@@ -544,15 +545,15 @@ def main() -> int:
     if marker not in main_rs:
       fail(f"0.4.9 remote-service compatibility invariant is missing: {marker}")
   for marker in (
-    'test_context_settings_captures_service_before_clearing_menu_state',
+    'test_context_menu_uses_native_popup_above_service_webviews',
     'test_context_menu_has_requested_order_and_short_toggle_labels',
     'test_duplicate_clones_service_workspace_and_tauridium_metadata_transactionally',
     'test_remote_tauri_devtools_compat_is_narrow_and_does_not_expand_acl',
   ):
     if marker not in patch_0409_test:
       fail(f"0.4.9 regression coverage is missing: {marker}")
-  if 'closeServiceContextMenu(); openServiceSettings(contextService)' in app:
-    fail("0.4.9 context Settings action can still invalidate contextService before use")
+  if 'service-context-backdrop' in app or 'service-context-menu' in app:
+    fail("service context menu regressed to a shell DOM overlay that can be covered by service webviews")
   if 'duplicate?.isEnabled !== false' in app:
     fail("0.4.9 duplicate selection still accepts a null service")
 
@@ -1523,6 +1524,32 @@ def main() -> int:
     fail("release version synchronization still forces Bash on Windows jobs")
   if 'node tools/sync_version.mjs "${{ github.ref_name }}"' not in sync_block:
     fail("release version synchronization is not cross-platform")
+
+  patch_0428 = read("tools/test_patch_0428.py")
+  for marker in (
+    'serviceIconInversions: Record<string, boolean>',
+    'Invert service icon colors',
+    'class:service-icon-inverted={serviceIconInverted(',
+    'const menu = await Menu.new({',
+    'await menu.popup(new LogicalPosition(x, y));',
+    '.service-workspace-search.service-sandbox-search { width: min(100%, 240px);',
+    'sameDownloadPreference(persisted.serviceDownloadSettings[serviceId], preference)',
+    'sameDownloadPreference(persisted.workspaceDownloadSettings[workspaceId], preference)',
+  ):
+    if marker not in app + api_ts + read("src/lib/ui.ts"):
+      fail(f"0.4.28 quality-of-life invariant is missing: {marker}")
+  for test_marker in (
+    "test_service_icon_inversion_is_persisted_and_applied_consistently",
+    "test_service_context_menu_is_native_so_child_webviews_cannot_cover_it",
+    "test_sandbox_search_has_compact_non_growing_layout",
+    "test_download_settings_verification_is_semantic_not_json_key_order_dependent",
+  ):
+    if test_marker not in patch_0428:
+      fail(f"0.4.28 regression coverage is missing: {test_marker}")
+  if "service-context-backdrop" in app or 'class="service-context-menu"' in app:
+    fail("service context menu regressed to a shell DOM overlay")
+  if "JSON.stringify(persisted.serviceDownloadSettings" in app:
+    fail("service download verification regressed to order-sensitive JSON serialization")
 
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],
