@@ -85,7 +85,7 @@ class Patch0425Tests(unittest.TestCase):
     self.assertIn('ask_download_destination', handler)
     self.assertIn('*destination = path', handler)
     self.assertNotIn('reqwest', handler)
-    self.assertIn('rfd = "0.16"', CARGO)
+    self.assertIn('rfd = { version = "0.16", default-features = false, features = ["common-controls-v6"] }', CARGO)
     self.assertIn('rfd::FileDialog::new()', MAIN)
     self.assertIn('.set_parent(parent)', MAIN)
     self.assertIn('.save_file()', MAIN)

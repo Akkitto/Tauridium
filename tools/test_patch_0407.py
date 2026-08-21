@@ -81,7 +81,7 @@ class Patch0407Tests(unittest.TestCase):
     self.assertIn('customUrlTemplatesEnabled: false', self.app)
     self.assertIn('serviceCustomUrlTemplates: {}', self.app)
     self.assertIn('Enable custom URL placeholders for all services', self.app)
-    self.assertIn('Enable for this service', self.app)
+    self.assertIn('Enable custom URL placeholders for this service', self.app)
     self.assertIn('serviceCustomUrlTemplates: {', self.app)
 
   def test_custom_url_template_values_are_removed_when_service_is_deleted(self) -> None:

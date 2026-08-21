@@ -1348,6 +1348,30 @@ def main() -> int:
     if test_marker not in patch_0425:
       fail(f"0.4.25 regression coverage is missing: {test_marker}")
 
+  patch_0426 = read("tools/test_patch_0426.py")
+  wry_webview2 = read("vendor/wry/src/webview2/mod.rs")
+  for marker in (
+    'options.set_enable_tracking_prevention(!is_remote_http);',
+    'else if cfg!(windows) {',
+    'if let Some(ua) = ua.as_deref()',
+    's.isBadgeEnabled !== false && (unreadMap[s.id] ?? 0) > 0',
+    'Enable custom URL placeholders for this service',
+    'showToast("Saved", "success")',
+    '.toast.success { background: #187a45;',
+    'rfd = { version = "0.16", default-features = false, features = ["common-controls-v6"] }',
+  ):
+    if marker not in app + main_rs + cargo + wry_webview2:
+      fail(f"0.4.26 service-compatibility/settings invariant is missing: {marker}")
+  for test_marker in (
+    "test_windows_remote_webviews_allow_turnstile_storage_and_use_native_user_agent",
+    "test_rfd_features_match_dialog_plugin_and_keep_windows_locked_resolution_stable",
+    "test_sidebar_unread_badge_respects_persisted_service_badge_preference",
+    "test_custom_url_placeholder_toggle_has_specific_customer_facing_label",
+    "test_per_service_workspace_and_sandbox_assignments_show_green_saved_toast",
+  ):
+    if test_marker not in patch_0426:
+      fail(f"0.4.26 regression coverage is missing: {test_marker}")
+
   for marker in (
     '["keybindings", "Keybinds"]',
     '["sandbox", "Sandbox"]',

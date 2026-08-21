@@ -200,6 +200,7 @@
 
   let serviceContextMenu = $state<{ serviceId: string; x: number; y: number } | null>(null);
   let toastMessage = $state("");
+  let toastTone = $state<"default" | "success">("default");
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
   const pendingReloadToasts = new Map<string, string>();
   let appMetadata = $state<AppMetadata | null>(null);
@@ -608,8 +609,9 @@
     return appSettings.serviceSandboxes?.[serviceId] || null;
   }
 
-  function showToast(message: string) {
+  function showToast(message: string, tone: "default" | "success" = "default") {
     toastMessage = message;
+    toastTone = tone;
     // Service webviews are native child webviews and render above the shell DOM. Mirror the
     // shell toast into Tauridium's isolated service overlay so notifications remain visible
     // without depending on the hosted website's layout or reload lifecycle.
@@ -619,6 +621,7 @@
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
       toastMessage = "";
+      toastTone = "default";
       toastTimer = null;
     }, 2600);
   }
@@ -1953,8 +1956,11 @@
     if (!settingsSvc || serviceWorkspaceBusy) return;
     serviceWorkspaceBusy = true;
     try {
-      await toggleServiceInWorkspace(workspace, settingsSvc.id, member);
-      serviceWorkspacePage = 0;
+      const saved = await toggleServiceInWorkspace(workspace, settingsSvc.id, member);
+      if (saved) {
+        serviceWorkspacePage = 0;
+        showToast("Saved", "success");
+      }
     } finally {
       serviceWorkspaceBusy = false;
     }
@@ -1974,6 +1980,7 @@
       serviceWorkspaceFilter = "joined";
       serviceWorkspacePage = 0;
       await reconcileSavedOrders();
+      showToast("Saved", "success");
     } catch (err) {
       if (created) await deleteWorkspace(created.id).catch(() => {});
       error = `Unable to create workspace and add ${serviceLabel(settingsSvc)}: ${err}`;
@@ -2870,6 +2877,7 @@
       const actual = persisted.serviceSandboxes[serviceId] ?? "";
       if (actual !== (sandboxId || "")) throw new Error("Tauridium could not verify the saved sandbox assignment");
       appSettings = persisted;
+      if (view === "svcSettings" && settingsSvc?.id === serviceId) showToast("Saved", "success");
     } catch (err) {
       appSettings = { ...appSettings, serviceSandboxes: previous };
       error = `Unable to assign sandbox: ${err}`;
@@ -3071,7 +3079,7 @@
           <div class="setrow">
             <label class="row-toggle">
               <input type="checkbox" checked={appSettings.customUrlTemplatesEnabled || serviceTemplateDraft.enabled} disabled={appSettings.customUrlTemplatesEnabled} onchange={(e) => saveServiceTemplateField("enabled", e.currentTarget.checked)} />
-              <span>{appSettings.customUrlTemplatesEnabled ? "Enabled globally" : "Enable for this service"}</span>
+              <span>{appSettings.customUrlTemplatesEnabled ? "Custom URL placeholders enabled globally" : "Enable custom URL placeholders for this service"}</span>
             </label>
             <p class="desc">Allow exact <code>{"{{custom_id_1}}"}</code> and <code>{"{{custom_id_2}}"}</code> tokens in this service's Custom URL. Global enablement is available in Advanced settings.</p>
           </div>
@@ -4272,7 +4280,7 @@
 {/if}
 
 {#if toastMessage}
-  <div class="toast" role="status" aria-live="polite">{toastMessage}</div>
+  <div class="toast" class:success={toastTone === "success"} role="status" aria-live="polite">{toastMessage}</div>
 {/if}
 
 {#if quickSwitcherMode}
@@ -4344,7 +4352,7 @@
         <span class="srow-name">{serviceLabel(s)}</span>
       {/if}
       {#if hibernated.has(s.id)}<span class="zzz" title="Hibernated">💤</span>{/if}
-      {#if (unreadMap[s.id] ?? 0) > 0 && (s.isMuted !== true || appSettings.showMessageBadgeWhenMuted)}
+      {#if s.isBadgeEnabled !== false && (unreadMap[s.id] ?? 0) > 0 && (s.isMuted !== true || appSettings.showMessageBadgeWhenMuted)}
         <span class="ubadge" class:muted={s.isMuted === true}>
           {unreadMap[s.id] > 99 ? "99+" : unreadMap[s.id]}
         </span>
@@ -4816,6 +4824,7 @@
   .service-context-menu button.context-danger { color: #ff9b9b; }
   .service-context-separator { height: 1px; margin: 4px 3px; background: var(--border); }
   .toast { position: fixed; z-index: 1400; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: min(520px, calc(100vw - 32px)); padding: 10px 14px; border: 1px solid var(--border2); border-radius: 9px; background: var(--panel); color: var(--text); box-shadow: 0 10px 34px rgba(0, 0, 0, 0.42); font-size: 13px; }
+  .toast.success { background: #187a45; border-color: #2ca866; color: #fff; }
   .quick-switcher-backdrop { position: fixed; inset: 0; z-index: 1000; display: flex; justify-content: center; align-items: flex-start; padding-top: min(14vh, 120px); background: rgba(0, 0, 0, 0.46); }
   .quick-switcher { width: min(620px, calc(100vw - 32px)); max-height: min(68vh, 680px); overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--border2); border-radius: 12px; background: var(--panel); box-shadow: 0 18px 60px rgba(0, 0, 0, 0.48); }
   .quick-switcher-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 10px; border-bottom: 1px solid var(--border); }

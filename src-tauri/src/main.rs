@@ -1682,11 +1682,15 @@ async fn create_service_webview(
         .map(|js| format!("{RECIPE_PREAMBLE}{js}{RECIPE_SUFFIX}"));
     let label = format!("svc-{service_id}");
 
-    // User agent precedence: per-service override, global setting, Google compatibility UA, then SERVICE_UA.
+    // User agent precedence: per-service override, global setting, Google compatibility UA,
+    // then the platform default. On Windows, leave the UA unset so WebView2 reports its native
+    // browser identity. Anti-bot systems such as Cloudflare Turnstile can reject a Chromium
+    // WebView2 engine that falsely identifies as Safari. Other platforms retain Tauridium's
+    // established compatibility UA unless explicitly overridden.
     let ua = {
         let per_service = user_agent_pref.map(str::trim).filter(|s| !s.is_empty());
         if let Some(p) = per_service {
-            p.to_string()
+            Some(p.to_string())
         } else {
             let global = state
                 .settings
@@ -1698,11 +1702,13 @@ async fn create_service_webview(
                 .trim()
                 .to_string();
             if !global.is_empty() {
-                global
+                Some(global)
             } else if is_google_auth_host(&host) {
-                GOOGLE_CHROMELESS_UA.to_string()
+                Some(GOOGLE_CHROMELESS_UA.to_string())
+            } else if cfg!(windows) {
+                None
             } else {
-                SERVICE_UA.to_string()
+                Some(SERVICE_UA.to_string())
             }
         }
     };
@@ -1734,7 +1740,6 @@ async fn create_service_webview(
             }
             false
         })
-        .user_agent(&ua)
         .initialization_script(IPC_SHIM_JS)
         .initialization_script(REMOTE_TAURI_COMPAT_JS)
         // Prevent duplicated keystrokes caused by duplicate native WKWebView `textInput` events (see Discord search).
@@ -1755,6 +1760,9 @@ async fn create_service_webview(
                 NewWindowResponse::Deny
             },
         );
+    if let Some(ua) = ua.as_deref() {
+        builder = builder.user_agent(ua);
+    }
     if let Some(script) = service_shortcut_bridge {
         builder = builder.initialization_script(script);
     }

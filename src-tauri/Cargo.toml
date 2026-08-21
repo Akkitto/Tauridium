@@ -30,7 +30,7 @@ tauri-plugin-dialog = "2"
 # Direct synchronous save dialogs for WebView download callbacks. This is the same
 # backend used by tauri-plugin-dialog, but its blocking wrapper cannot run inside the
 # synchronous main-thread download-start callback without deadlocking.
-rfd = "0.16"
+rfd = { version = "0.16", default-features = false, features = ["common-controls-v6"] }
 tauri-plugin-window-state = "=2.4.1"
 
 [[bin]]

@@ -327,6 +327,17 @@ impl InnerWebView {
       options.set_additional_browser_arguments(additional_browser_args);
       options.set_are_browser_extensions_enabled(pl_attrs.browser_extensions_enabled);
 
+      // Tauridium hosts third-party web applications in remote service webviews. WebView2
+      // tracking prevention is enabled by default and can block the cross-site storage/network
+      // access required by embedded authentication challenges such as Cloudflare Turnstile.
+      // Keep tracking prevention enabled for local application content, but disable it for
+      // remote HTTP(S) webviews so the embedded site receives normal browser-compatible
+      // cookie/storage semantics. Popups reuse their opener environment and inherit this setting.
+      let is_remote_http = attributes.url.as_deref().is_some_and(|url| {
+        url.starts_with("https://") || url.starts_with("http://")
+      });
+      options.set_enable_tracking_prevention(!is_remote_http);
+
       // Get user's system language
       let lcid = GetUserDefaultUILanguage();
       let mut lang = [0; MAX_LOCALE_NAME as usize];
