@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.4.23] - 2026-08-21
+
+### Added
+
+- Added Explorer-style **Shift+click service range selection** in the sidebar for drag-and-drop only. The active service does not change when creating the temporary drag group; a normal click clears the group and resumes ordinary service switching.
+- Added a per-service **Sandbox assignment** manager to Service settings, using immediate radio-row selection with search, pagination, current-assignment status, and an explicit Isolated option.
+
+### Improved
+
+- The unused sidebar area below the last service is now a persistent **drop at end** target. Dragging below the current last row keeps the insertion indicator attached below that row instead of cancelling the drop.
+- Multi-service drag-and-drop moves the selected range as one stable block while preserving relative service order and all hidden/workspace-filtered canonical slots. Drag-over remains purely local; only the completed drop performs the verified order persistence write.
+- Assigning an active service to a sandbox from **Settings → Sandbox** no longer navigates away from Settings or opens the service webview. The changed webview is closed and recreated only when the user actually returns to that service.
+- Sandbox assignment writes are verified before the service webview is closed, with UI rollback on persistence failure and a distinct error if the saved assignment succeeds but the old webview cannot be closed.
+
+### Release quality
+
+- Added focused 0.4.23 regression and release-invariant coverage for trailing drop-at-end behavior, Shift-range selection, grouped canonical reordering, selected-row drag semantics, per-service sandbox assignment, and Settings navigation preservation.
+- Retained the established exact Rust 1.97.1 formatter cleanliness, frontend/Rust checks and tests when dependencies are available, clean-tree validation, source-manifest verification, and deterministic three-archive packaging requirements.
+
 ## [0.4.22] - 2026-08-21
 
 ### Fixed
