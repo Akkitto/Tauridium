@@ -1210,7 +1210,7 @@ def main() -> int:
     'sidebarServiceDragReorder: true,',
     'settings.insert("sidebarServiceDragReorder".into(), true.into());',
     'draggable={appSettings.sidebarServiceDragReorder && !serviceOrderBusy}',
-    'reorderVisibleSubsetAt(previousIds, visibleIds, from, target.id, placement)',
+    'reorderVisibleSubsetAt(previousIds, visibleIds, movingIds[0], target.id, placement)',
     'settings_write: Mutex<()>',
   ):
     if marker not in api_ts + app + main_rs:
@@ -1265,6 +1265,34 @@ def main() -> int:
     if test_marker not in patch_0422:
       fail(f"0.4.22 regression coverage is missing: {test_marker}")
 
+  patch_0423 = read("tools/test_patch_0423.py")
+  for marker in (
+    "function setTrailingDropTarget",
+    "contiguousIdRange(visibleIds, anchorId, service.id)",
+    "reorderVisibleGroupAt(previousIds, visibleIds, movingIds, target.id, placement)",
+    '<div class="set-title">Sandbox</div>',
+    'if (view === "service" && activeId === serviceId)',
+    "Tauridium could not verify the saved sandbox assignment",
+  ):
+    if marker not in app:
+      fail(f"0.4.23 sidebar QoL/sandbox invariant is missing: {marker}")
+  for marker in (
+    "export function contiguousIdRange",
+    "export function reorderVisibleGroupAt",
+  ):
+    if marker not in read("src/lib/ui.ts"):
+      fail(f"0.4.23 ordering helper invariant is missing: {marker}")
+  for test_marker in (
+    "test_trailing_sidebar_space_is_a_real_drop_at_end_target",
+    "test_shift_click_selects_range_for_drag_without_switching_active_service",
+    "test_group_drag_preserves_order_and_filtered_slots",
+    "test_dragging_selected_rows_keeps_move_cursor_and_persists_once",
+    "test_service_settings_has_immediate_sandbox_assignment_list",
+    "test_global_sandbox_assignment_does_not_navigate_out_of_settings",
+  ):
+    if test_marker not in patch_0423:
+      fail(f"0.4.23 regression coverage is missing: {test_marker}")
+
   for marker in (
     '["keybindings", "Keybinds"]',
     '["sandbox", "Sandbox"]',
@@ -1318,7 +1346,7 @@ def main() -> int:
     'setAppSettings({ serviceOrder, workspaceOrder, workspaceLastUsed })',
     'setServiceOrder(nextIds)',
     'setWorkspaceOrder(nextIds)',
-    'reorderVisibleSubsetAt(previousIds, visibleIds, from, target.id, placement)',
+    'reorderVisibleSubsetAt(previousIds, visibleIds, movingIds[0], target.id, placement)',
     'No services configured',
   ):
     if marker not in app:

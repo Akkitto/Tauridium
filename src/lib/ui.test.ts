@@ -220,6 +220,45 @@ describe("persisted ordering helpers", () => {
     expect(reorderVisibleSubsetAt(["a", "b", "b"], ["a", "b"], "a", "b", "after")).toEqual(["a", "b", "b"]);
   });
 
+  it("selects contiguous sidebar ranges without changing their canonical order", async () => {
+    const { contiguousIdRange } = await import("./ui");
+    expect(contiguousIdRange(["a", "b", "c", "d"], "c", "a")).toEqual(["a", "b", "c"]);
+    expect(contiguousIdRange(["a", "b", "c", "d"], "b", "d")).toEqual(["b", "c", "d"]);
+    expect(contiguousIdRange(["a", "b", "c"], "missing", "c")).toEqual([]);
+    expect(contiguousIdRange(["a", "b", "b"], "a", "b")).toEqual([]);
+  });
+
+  it("moves a selected service group as one stable block while preserving hidden slots", async () => {
+    const { reorderVisibleGroupAt } = await import("./ui");
+    const full = ["a", "hidden-1", "b", "c", "hidden-2", "d", "e"];
+    const visible = ["a", "b", "c", "d", "e"];
+    expect(reorderVisibleGroupAt(full, visible, ["b", "c"], "e", "after")).toEqual([
+      "a",
+      "hidden-1",
+      "d",
+      "e",
+      "hidden-2",
+      "b",
+      "c",
+    ]);
+    expect(reorderVisibleGroupAt(full, visible, ["d", "e"], "a", "before")).toEqual([
+      "d",
+      "hidden-1",
+      "e",
+      "a",
+      "hidden-2",
+      "b",
+      "c",
+    ]);
+  });
+
+  it("treats drops onto the selected drag group as safe no-ops", async () => {
+    const { reorderVisibleGroupAt } = await import("./ui");
+    const ids = ["a", "b", "c", "d"];
+    expect(reorderVisibleGroupAt(ids, ids, ["b", "c"], "c", "after")).toEqual(ids);
+    expect(reorderVisibleGroupAt(ids, ids, ["missing"], "d", "after")).toEqual(ids);
+  });
+
   it("returns stable service labels when names are missing", async () => {
     const { serviceLabel } = await import("./ui");
     expect(serviceLabel({ name: " Mail ", recipeId: "gmail" })).toBe("Mail");

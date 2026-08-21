@@ -59,8 +59,9 @@ class OrderingAndSidebarTests(unittest.TestCase):
     self.assertIn("setServiceOrder(nextIds)", block)
     self.assertIn("Tauridium could not verify the saved service order", block)
     self.assertNotIn("updateService(", block)
-    drop = self.app.split("async function onDrop", 1)[1].split("function row", 1)[0]
+    drop = self.app.split("async function persistServiceDrop", 1)[1].split("async function onServiceAreaDrop", 1)[0]
     self.assertIn("reorderVisibleSubsetAt", drop)
+    self.assertIn("reorderVisibleGroupAt", drop)
     self.assertIn("await persistServiceIds(nextIds, previousIds)", drop)
 
   def test_workspace_reorder_uses_same_verified_atomic_order_store(self) -> None:

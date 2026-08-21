@@ -37,7 +37,7 @@ class Patch0420Tests(unittest.TestCase):
     persist = APP.split("async function persistServiceIds", 1)[1].split("async function moveService", 1)[0]
     start = APP.split("function onDragStart", 1)[1].split("function onDragOver", 1)[0]
     over = APP.split("function onDragOver", 1)[1].split("function onDragLeave", 1)[0]
-    drop = APP.split("async function onDrop", 1)[1].split("function openServiceSettings", 1)[0]
+    drop = APP.split("async function persistServiceDrop", 1)[1].split("async function onServiceAreaDrop", 1)[0]
     self.assertIn("if (serviceOrderBusy) return;", persist)
     self.assertIn("serviceOrderBusy = true;", persist)
     self.assertIn("serviceOrderBusy = false;", persist)
@@ -48,8 +48,10 @@ class Patch0420Tests(unittest.TestCase):
     self.assertIn('e.dataTransfer.dropEffect = "move"', over)
     self.assertIn('e.clientY < rect.top + rect.height / 2 ? "before" : "after"', over)
     self.assertNotIn("setServiceOrder", start + over)
-    self.assertIn("if (!appSettings.sidebarServiceDragReorder || serviceOrderBusy)", drop)
-    self.assertIn("reorderVisibleSubsetAt(previousIds, visibleIds, from, target.id, placement)", drop)
+    final_drop = APP.split("async function onDrop", 1)[1].split("function openServiceSettings", 1)[0]
+    self.assertIn("if (!appSettings.sidebarServiceDragReorder || serviceOrderBusy)", final_drop)
+    self.assertIn("reorderVisibleSubsetAt(previousIds, visibleIds, movingIds[0], target.id, placement)", drop)
+    self.assertIn("reorderVisibleGroupAt(previousIds, visibleIds, movingIds, target.id, placement)", drop)
     self.assertIn("await persistServiceIds(nextIds, previousIds)", drop)
 
   def test_reorder_helper_is_stale_safe_and_preserves_filtered_slots(self) -> None:

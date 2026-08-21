@@ -256,6 +256,53 @@ export function reorderVisibleSubsetAt(
   return fullIds.map((id) => (visibleSet.has(id) ? subset[nextVisible++] : id));
 }
 
+export function contiguousIdRange(ids: string[], anchorId: string, targetId: string): string[] {
+  const unique = new Set(ids);
+  if (unique.size !== ids.length) return [];
+  const anchorIndex = ids.indexOf(anchorId);
+  const targetIndex = ids.indexOf(targetId);
+  if (anchorIndex < 0 || targetIndex < 0) return [];
+  const start = Math.min(anchorIndex, targetIndex);
+  const end = Math.max(anchorIndex, targetIndex);
+  return ids.slice(start, end + 1);
+}
+
+// Move a selected visible block as one unit while leaving filtered/hidden canonical slots stable.
+// Selection order always follows the visible canonical order, never click order.
+export function reorderVisibleGroupAt(
+  fullIds: string[],
+  visibleIds: string[],
+  movedIds: string[],
+  toId: string,
+  placement: ReorderPlacement,
+): string[] {
+  const fullSet = new Set(fullIds);
+  if (fullSet.size !== fullIds.length) return [...fullIds];
+
+  const seenVisible = new Set<string>();
+  const subset = visibleIds.filter((id) => {
+    if (!fullSet.has(id) || seenVisible.has(id)) return false;
+    seenVisible.add(id);
+    return true;
+  });
+  if (!subset.includes(toId)) return [...fullIds];
+
+  const requested = new Set(movedIds);
+  const selected = subset.filter((id) => requested.has(id));
+  if (!selected.length || selected.includes(toId)) return [...fullIds];
+
+  const selectedSet = new Set(selected);
+  const remaining = subset.filter((id) => !selectedSet.has(id));
+  const targetIndex = remaining.indexOf(toId);
+  if (targetIndex < 0) return [...fullIds];
+  const insertIndex = placement === "after" ? targetIndex + 1 : targetIndex;
+  remaining.splice(insertIndex, 0, ...selected);
+
+  const visibleSet = new Set(subset);
+  let nextVisible = 0;
+  return fullIds.map((id) => (visibleSet.has(id) ? remaining[nextVisible++] : id));
+}
+
 export function reorderVisibleSubset(
   fullIds: string[],
   visibleIds: string[],

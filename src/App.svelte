@@ -15,6 +15,8 @@
     orderWorkspacesForQuickSwitch,
     reorderVisibleSubset,
     reorderVisibleSubsetAt,
+    reorderVisibleGroupAt,
+    contiguousIdRange,
     type ReorderPlacement,
     serviceLabel,
     backupTimestamp,
@@ -133,8 +135,10 @@
   let serviceLoadError = $state<string | null>(null);
   // Reorder services with drag and drop.
   let dragId = $state<string | null>(null);
+  let dragIds = $state<string[]>([]);
   let dragOverId = $state<string | null>(null);
   let dragPlacement = $state<ReorderPlacement | null>(null);
+  let serviceDragSelection = $state<string[]>([]);
   let serviceOrderBusy = $state(false);
   let activeWorkspace = $state<string | null>(null);
 
@@ -151,6 +155,9 @@
   let serviceWorkspaceBusy = $state(false);
   let serviceWorkspaceFilter = $state<"all" | "joined" | "available">("all");
   let serviceWorkspacePage = $state(0);
+  let serviceSandboxQuery = $state("");
+  let serviceSandboxPage = $state(0);
+  let sandboxAssignmentBusy = $state(false);
   let newWorkspaceName = $state("");
 
   type Tab = "general" | "services" | "workspaces" | "appearance" | "keybindings" | "sandbox" | "privacy" | "backup" | "audit" | "advanced" | "updates" | "about";
@@ -353,6 +360,26 @@
   const serviceWorkspaceRows = $derived(
     paged(serviceWorkspaceCandidates, serviceWorkspacePage, MANAGED_SERVICE_PAGE_SIZE),
   );
+  const serviceSandboxCandidates = $derived.by(() => {
+    if (!settingsSvc) return [];
+    const query = serviceSandboxQuery.trim().toLowerCase();
+    return [
+      { id: "", name: "Isolated" },
+      ...appSettings.sandboxes.map((sandbox) => ({ id: sandbox.id, name: sandbox.name })),
+    ].filter((sandbox) => !query || sandbox.name.toLowerCase().includes(query));
+  });
+  const serviceSandboxPageCount = $derived(
+    Math.max(1, Math.ceil(serviceSandboxCandidates.length / MANAGED_SERVICE_PAGE_SIZE)),
+  );
+  const serviceSandboxRows = $derived(
+    paged(serviceSandboxCandidates, serviceSandboxPage, MANAGED_SERVICE_PAGE_SIZE),
+  );
+  const currentServiceSandboxName = $derived.by(() => {
+    const serviceId = settingsSvc?.id;
+    if (!serviceId) return "Isolated";
+    const sandboxId = serviceSandboxId(serviceId);
+    return appSettings.sandboxes.find((sandbox) => sandbox.id === sandboxId)?.name ?? "Isolated";
+  });
   const visibleServices = $derived.by(() => {
     let list = sorted;
     if (activeWorkspace) {
@@ -898,6 +925,7 @@
 
   function selectService(s: Service) {
     if (s.isEnabled === false) return;
+    clearServiceDragSelection();
     const prev = activeId;
     error = null;
     serviceLoadError = null;
@@ -914,6 +942,32 @@
       // Display the error only if this service is still on screen.
       if (activeId === s.id) serviceLoadError = `${err}`;
     });
+  }
+
+  function clearServiceDragSelection() {
+    serviceDragSelection = [];
+  }
+
+  function onServiceRowClick(event: MouseEvent, service: Service) {
+    if (event.shiftKey && appSettings.sidebarServiceDragReorder && !serviceOrderBusy) {
+      const anchorId = activeId;
+      const visibleIds = visibleServices.map((candidate) => candidate.id);
+      if (anchorId && anchorId !== service.id) {
+        const range = contiguousIdRange(visibleIds, anchorId, service.id);
+        if (range.length > 1) {
+          serviceDragSelection = range;
+          return;
+        }
+      }
+      clearServiceDragSelection();
+      return;
+    }
+
+    if (serviceDragSelection.length) {
+      clearServiceDragSelection();
+      if (service.id === activeId) return;
+    }
+    selectService(service);
   }
 
   function retryActiveService() {
@@ -946,7 +1000,6 @@
     }
   }
 
-
   async function moveService(serviceId: string, delta: number) {
     if (serviceOrderBusy) return;
     const previousIds = sorted.map((service) => service.id);
@@ -960,8 +1013,16 @@
 
   function clearServiceDragState() {
     dragId = null;
+    dragIds = [];
     dragOverId = null;
     dragPlacement = null;
+  }
+
+  function dragSelectionFor(serviceId: string): string[] {
+    const visibleIds = visibleServices.map((service) => service.id);
+    const selected = serviceDragSelection.includes(serviceId) ? serviceDragSelection : [serviceId];
+    const selectedSet = new Set(selected);
+    return visibleIds.filter((id) => selectedSet.has(id));
   }
 
   function onDragStart(e: DragEvent, s: Service) {
@@ -970,7 +1031,10 @@
       clearServiceDragState();
       return;
     }
+    const movingIds = dragSelectionFor(s.id);
+    if (!serviceDragSelection.includes(s.id)) clearServiceDragSelection();
     dragId = s.id;
+    dragIds = movingIds;
     dragOverId = null;
     dragPlacement = null;
     if (e.dataTransfer) {
@@ -980,7 +1044,12 @@
   }
 
   function onDragOver(e: DragEvent, s: Service) {
-    if (!appSettings.sidebarServiceDragReorder || serviceOrderBusy || !dragId || dragId === s.id) return;
+    if (!appSettings.sidebarServiceDragReorder || serviceOrderBusy || !dragId) return;
+    if (dragIds.includes(s.id)) {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+      return;
+    }
     const target = e.currentTarget instanceof HTMLElement ? e.currentTarget : null;
     if (!target) return;
     e.preventDefault();
@@ -995,11 +1064,57 @@
     if (dragOverId !== s.id) return;
     const next = e.relatedTarget;
     if (next instanceof Node && e.currentTarget instanceof Node && e.currentTarget.contains(next)) return;
+    const area = e.currentTarget instanceof HTMLElement ? e.currentTarget.closest(".svcarea") : null;
+    if (next instanceof Node && area instanceof Node && area.contains(next)) return;
     dragOverId = null;
     dragPlacement = null;
   }
 
   function onDragEnd() {
+    clearServiceDragState();
+  }
+
+  function setTrailingDropTarget(e: DragEvent): Service | null {
+    if (!appSettings.sidebarServiceDragReorder || serviceOrderBusy || !dragId || !visibleServices.length) return null;
+    const list = e.currentTarget instanceof HTMLElement ? e.currentTarget.querySelector<HTMLElement>(".svclist") : null;
+    if (!list) return null;
+    const rect = list.getBoundingClientRect();
+    if (e.clientY < rect.bottom) return null;
+    const last = visibleServices.at(-1) ?? null;
+    if (!last) return null;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    dragOverId = last.id;
+    dragPlacement = "after";
+    return last;
+  }
+
+  function onServiceAreaDragOver(e: DragEvent) {
+    setTrailingDropTarget(e);
+  }
+
+  async function persistServiceDrop(target: Service, placement: ReorderPlacement) {
+    const previousIds = sorted.map((service) => service.id);
+    const visibleIds = visibleServices.map((service) => service.id);
+    const movingIds = dragIds.length ? dragIds : (dragId ? [dragId] : []);
+    if (!movingIds.length) return;
+    const nextIds = movingIds.length === 1
+      ? reorderVisibleSubsetAt(previousIds, visibleIds, movingIds[0], target.id, placement)
+      : reorderVisibleGroupAt(previousIds, visibleIds, movingIds, target.id, placement);
+    if (nextIds.every((id, index) => id === previousIds[index])) return;
+    await persistServiceIds(nextIds, previousIds).catch(() => {});
+  }
+
+  async function onServiceAreaDrop(e: DragEvent) {
+    const target = setTrailingDropTarget(e);
+    if (!target) return;
+    const placement = dragPlacement;
+    e.preventDefault();
+    if (!placement) {
+      clearServiceDragState();
+      return;
+    }
+    await persistServiceDrop(target, placement);
     clearServiceDragState();
   }
 
@@ -1011,13 +1126,12 @@
     }
     const from = dragId ?? e.dataTransfer?.getData("text/plain") ?? null;
     const placement = dragOverId === target.id ? dragPlacement : null;
+    if (!from || !placement || dragIds.includes(target.id)) {
+      clearServiceDragState();
+      return;
+    }
+    await persistServiceDrop(target, placement);
     clearServiceDragState();
-    if (!from || !placement || from === target.id) return;
-    const previousIds = sorted.map((service) => service.id);
-    const visibleIds = visibleServices.map((service) => service.id);
-    const nextIds = reorderVisibleSubsetAt(previousIds, visibleIds, from, target.id, placement);
-    if (nextIds.every((id, index) => id === previousIds[index])) return;
-    await persistServiceIds(nextIds, previousIds).catch(() => {});
   }
 
   function openServiceSettings(s: Service, returnToSettings = false) {
@@ -1031,6 +1145,8 @@
     serviceWorkspaceFilter = "all";
     serviceWorkspacePage = 0;
     serviceWorkspaceBusy = false;
+    serviceSandboxQuery = "";
+    serviceSandboxPage = 0;
     svcDirty = false;
     svcReload = false;
     view = "svcSettings";
@@ -2158,7 +2274,10 @@
 
   async function saveAppSetting(key: keyof AppSettings, value: unknown) {
     (appSettings as Record<string, unknown>)[key] = value;
-    if (key === "sidebarServiceDragReorder" && value === false) clearServiceDragState();
+    if (key === "sidebarServiceDragReorder" && value === false) {
+      clearServiceDragState();
+      clearServiceDragSelection();
+    }
     if (key === "theme" || key === "accentColor") applyTheme();
     applyLayout();
     if (key === "sidebarWidth" || key === "sidebarWidthMode" || key === "sidebarWidthPercent") {
@@ -2315,6 +2434,8 @@
   }
 
   function chooseWorkspace(workspaceId: string | null) {
+    clearServiceDragSelection();
+    clearServiceDragState();
     activeWorkspace = workspaceId;
     if (workspaceId) {
       const previousWorkspaceLastUsed = appSettings.workspaceLastUsed;
@@ -2500,14 +2621,39 @@
   }
 
   async function assignServiceSandbox(serviceId: string, sandboxId: string) {
-    const serviceSandboxes = { ...appSettings.serviceSandboxes };
+    if (sandboxAssignmentBusy) return;
+    const previous = { ...appSettings.serviceSandboxes };
+    const serviceSandboxes = { ...previous };
     if (sandboxId) serviceSandboxes[serviceId] = sandboxId;
     else delete serviceSandboxes[serviceId];
-    await saveAppSetting("serviceSandboxes", serviceSandboxes);
-    await closeService(serviceId).catch(() => {});
-    if (activeId === serviceId) {
-      const service = services.find((candidate) => candidate.id === serviceId);
-      if (service) selectService(service);
+    if ((previous[serviceId] ?? "") === (serviceSandboxes[serviceId] ?? "")) return;
+
+    sandboxAssignmentBusy = true;
+    appSettings = { ...appSettings, serviceSandboxes };
+    try {
+      const persisted = await setAppSettings({ serviceSandboxes });
+      const actual = persisted.serviceSandboxes[serviceId] ?? "";
+      if (actual !== (sandboxId || "")) throw new Error("Tauridium could not verify the saved sandbox assignment");
+      appSettings = persisted;
+    } catch (err) {
+      appSettings = { ...appSettings, serviceSandboxes: previous };
+      error = `Unable to assign sandbox: ${err}`;
+      sandboxAssignmentBusy = false;
+      return;
+    }
+
+    try {
+      await closeService(serviceId);
+      const { [serviceId]: _, ...rest } = statusMap;
+      statusMap = rest;
+      if (view === "service" && activeId === serviceId) {
+        const service = services.find((candidate) => candidate.id === serviceId);
+        if (service) selectService(service);
+      }
+    } catch (err) {
+      error = `Sandbox assignment was saved, but the existing service webview could not be closed: ${err}`;
+    } finally {
+      sandboxAssignmentBusy = false;
     }
   }
 
@@ -2620,7 +2766,7 @@
         <button class="link" onclick={handleLogout}>sign out</button>
       </div>
 
-      <div class="svcarea">
+      <div class="svcarea" ondragover={onServiceAreaDragOver} ondrop={onServiceAreaDrop}>
         <div class="svclist">
           {#each visibleServices as s (s.id)}{@render row(s)}{/each}
         </div>
@@ -2814,6 +2960,60 @@
                 <button class="secondary sm" disabled={serviceWorkspaceBusy || !serviceWorkspaceNewName.trim()} onclick={createWorkspaceForCurrentService}>Create and include</button>
               </div>
             </div>
+          </div>
+
+          <div class="set-title">Sandbox</div>
+          <div class="service-workspace-manager service-sandbox-manager">
+            <div class="service-workspace-overview">
+              <div class="setting-copy">
+                <strong>Sandbox assignment</strong>
+                <p class="desc">Choose the persistent webview data store for this service. Services in the same shared sandbox can share compatible login sessions and caches. Changes are saved immediately.</p>
+              </div>
+              <span class="status-badge">{currentServiceSandboxName}</span>
+            </div>
+            <input
+              class="service-workspace-search"
+              type="search"
+              bind:value={serviceSandboxQuery}
+              oninput={() => (serviceSandboxPage = 0)}
+              placeholder="Search sandboxes…"
+              aria-label={`Search sandboxes for ${serviceLabel(settingsSvc)}`}
+            />
+            <ul class="service-workspace-list service-sandbox-list" aria-label={`Sandbox assignment for ${serviceLabel(settingsSvc)}`}>
+              {#each serviceSandboxRows as sandbox (sandbox.id)}
+                {@const assigned = (serviceSandboxId(settingsServiceId) ?? "") === sandbox.id}
+                <li class="service-workspace-item">
+                  <label class="service-workspace-option service-sandbox-option" class:joined={assigned} class:busy={sandboxAssignmentBusy}>
+                    <input
+                      class="service-workspace-checkbox"
+                      type="radio"
+                      name={`service-sandbox-${settingsServiceId}`}
+                      value={sandbox.id}
+                      checked={assigned}
+                      disabled={sandboxAssignmentBusy}
+                      onchange={() => assignServiceSandbox(settingsServiceId, sandbox.id)}
+                      aria-label={`Use ${sandbox.name} for ${serviceLabel(settingsSvc)}`}
+                    />
+                    <span class="workspace-avatar service-workspace-avatar" aria-hidden="true">{sandbox.id ? sandbox.name.slice(0, 1).toUpperCase() : "I"}</span>
+                    <span class="service-workspace-copy">
+                      <strong>{sandbox.name}</strong>
+                      <small>{sandbox.id ? `${Object.values(appSettings.serviceSandboxes).filter((value) => value === sandbox.id).length} assigned service(s)` : "Private storage for this service"}</small>
+                    </span>
+                    <span class="service-workspace-state" aria-hidden="true">{assigned ? "Selected" : "Available"}</span>
+                  </label>
+                </li>
+              {:else}
+                <li class="managed-empty"><strong>No sandboxes match</strong><span>Change the search text, or create a shared sandbox in Settings → Sandbox.</span></li>
+              {/each}
+            </ul>
+            {#if serviceSandboxCandidates.length > MANAGED_SERVICE_PAGE_SIZE}
+              <div class="pagination" aria-label="Service sandbox pages">
+                <button class="secondary sm" disabled={serviceSandboxPage === 0} onclick={() => (serviceSandboxPage = Math.max(0, serviceSandboxPage - 1))}>Previous</button>
+                <span>Page {serviceSandboxPage + 1} of {serviceSandboxPageCount} · {serviceSandboxCandidates.length} options</span>
+                <button class="secondary sm" disabled={serviceSandboxPage >= serviceSandboxPageCount - 1} onclick={() => (serviceSandboxPage = Math.min(serviceSandboxPageCount - 1, serviceSandboxPage + 1))}>Next</button>
+              </div>
+            {/if}
+            <p class="desc service-sandbox-help">Shared sandboxes are created and managed globally in Settings → Sandbox.</p>
           </div>
 
           <div class="set-title">Appearance</div>
@@ -3448,7 +3648,7 @@
                   {#each sandboxServiceRows as service (service.id)}
                     <div class="managed-row" role="listitem">
                       <div class="managed-copy"><strong>{serviceLabel(service)}</strong><span>{service.recipeId}</span></div>
-                      <select class="select sandbox-select" value={serviceSandboxId(service.id) ?? ""} aria-label={`Sandbox for ${serviceLabel(service)}`} onchange={(event) => assignServiceSandbox(service.id, event.currentTarget.value)}>
+                      <select class="select sandbox-select" value={serviceSandboxId(service.id) ?? ""} disabled={sandboxAssignmentBusy} aria-label={`Sandbox for ${serviceLabel(service)}`} onchange={(event) => assignServiceSandbox(service.id, event.currentTarget.value)}>
                         <option value="">Isolated</option>
                         {#each appSettings.sandboxes as sandbox (sandbox.id)}<option value={sandbox.id}>{sandbox.name}</option>{/each}
                       </select>
@@ -3717,7 +3917,8 @@
     class="srow-wrap"
     class:drag-before={appSettings.sidebarServiceDragReorder && !serviceOrderBusy && dragOverId === s.id && dragPlacement === "before"}
     class:drag-after={appSettings.sidebarServiceDragReorder && !serviceOrderBusy && dragOverId === s.id && dragPlacement === "after"}
-    class:dragging={appSettings.sidebarServiceDragReorder && !serviceOrderBusy && dragId === s.id}
+    class:dragging={appSettings.sidebarServiceDragReorder && !serviceOrderBusy && dragIds.includes(s.id)}
+    class:drag-selected={appSettings.sidebarServiceDragReorder && serviceDragSelection.includes(s.id)}
     class:draggable={appSettings.sidebarServiceDragReorder && !serviceOrderBusy}
     draggable={appSettings.sidebarServiceDragReorder && !serviceOrderBusy}
     role="listitem"
@@ -3734,7 +3935,7 @@
       class:asleep={hibernated.has(s.id)}
       aria-disabled={s.isEnabled === false}
       oncontextmenu={(e) => openServiceContextMenu(e, s)}
-      onclick={() => selectService(s)}
+      onclick={(e) => onServiceRowClick(e, s)}
       onkeydown={(e) => openServiceContextMenuFromKeyboard(e, s)}
     >
       {#if serviceIconFailed(s)}
@@ -3858,6 +4059,7 @@
   .srow-wrap.draggable .srow { cursor: grab; }
   .srow-wrap.draggable:active .srow { cursor: grabbing; }
   .srow-wrap.dragging { opacity: 0.42; }
+  .srow-wrap.drag-selected .srow:not(.active) { background: color-mix(in srgb, var(--accent) 18%, var(--hover)); outline: 1px solid color-mix(in srgb, var(--accent) 58%, var(--border2)); outline-offset: -1px; }
   .srow-wrap.drag-before::before, .srow-wrap.drag-after::after {
     content: ""; position: absolute; z-index: 2; left: 6px; right: 6px;
     height: 2px; background: var(--accent); border-radius: 2px; pointer-events: none;
@@ -3867,7 +4069,7 @@
   .srow { width: 100%;
     display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0;
     padding: 7px 8px; border: none; border-radius: 8px; background: none;
-    color: var(--text2); cursor: pointer; text-align: left; font-size: 14px;
+    color: var(--text2); cursor: pointer; text-align: left; font-size: 14px; user-select: none;
   }
   .srow:hover { background: var(--hover); }
   .srow.active { background: var(--accent); color: var(--accent-fg); }
@@ -4157,6 +4359,8 @@
   .service-shortcut-policy .select { width: 100%; min-width: 0; max-width: none; margin-left: 0; }
   .service-shortcut-effective { grid-column: 1 / -1; margin-top: 0; }
   .service-workspace-manager { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--panel) 88%, var(--bg)); }
+  .service-sandbox-manager { gap: 10px; }
+  .service-sandbox-help { margin: 0; }
   .service-workspace-overview { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
   .service-workspace-overview .setting-copy { min-width: 0; }
   .service-workspace-toolbar { display: flex; align-items: stretch; gap: 8px; }
