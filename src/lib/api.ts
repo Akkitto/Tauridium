@@ -125,24 +125,25 @@ function darkArg(s: Service) {
     : null;
 }
 
-function serviceViewRequest(s: Service) {
+function serviceViewRequest(s: Service, workspaceId: string | null = null) {
   return {
     serviceId: s.id,
     recipeId: s.recipeId,
     customUrl: (s.customUrl as string | undefined) ?? null,
     team: (s.team as string | undefined) ?? null,
     userAgentPref: (s.userAgentPref as string | undefined) ?? null,
+    workspaceId,
     dark: darkArg(s),
   };
 }
 
-export function showService(s: Service): Promise<void> {
-  return invoke("show_service", { request: serviceViewRequest(s) });
+export function showService(s: Service, workspaceId: string | null = null): Promise<void> {
+  return invoke("show_service", { request: serviceViewRequest(s, workspaceId) });
 }
 
 // Preload a service off-screen for near-instant switching.
 export function preloadService(s: Service): Promise<void> {
-  return invoke("preload_service", { request: serviceViewRequest(s) });
+  return invoke("preload_service", { request: serviceViewRequest(s, null) });
 }
 
 export function closeService(serviceId: string): Promise<void> {
@@ -245,6 +246,10 @@ export function copyServiceIconCache(sourceServiceId: string, targetServiceId: s
   return invoke("copy_service_icon_cache", { sourceServiceId, targetServiceId });
 }
 
+export function fetchWorkspaceIconUrl(url: string): Promise<string> {
+  return invoke("fetch_workspace_icon_url", { url });
+}
+
 export function clearSandbox(sandboxId: string): Promise<void> {
   return invoke("clear_sandbox", { sandboxId });
 }
@@ -287,6 +292,11 @@ export interface ServiceCustomUrlTemplate {
   customId2: string;
 }
 
+export interface DownloadPreferenceOverride {
+  directory: string;
+  askEachDownload: boolean;
+}
+
 export interface AppSettings {
   autostart: boolean;
   startMinimized: boolean;
@@ -321,6 +331,10 @@ export interface AppSettings {
   workspaceQuickSwitchOrder: "custom" | "customReverse" | "alphabetical" | "alphabeticalReverse" | "recent" | "recentReverse";
   workspaceLastUsed: Record<string, number>;
   workspaceIcons: Record<string, string>;
+  downloadDirectory: string;
+  askEachDownload: boolean;
+  serviceDownloadSettings: Record<string, DownloadPreferenceOverride>;
+  workspaceDownloadSettings: Record<string, DownloadPreferenceOverride>;
   keybindings: Record<string, string>;
   sandboxes: SandboxDefinition[];
   serviceSandboxes: Record<string, string>;

@@ -1319,6 +1319,35 @@ def main() -> int:
     if test_marker not in patch_0424:
       fail(f"0.4.24 regression coverage is missing: {test_marker}")
 
+  patch_0425 = read("tools/test_patch_0425.py")
+  for marker in (
+    'fetchWorkspaceIconUrl',
+    'settings-advanced-downloads',
+    'serviceDownloadSettings',
+    'workspaceDownloadSettings',
+    'fn effective_download_preferences',
+    'suggested_download_filename(destination, &url)',
+    'rfd::FileDialog::new()',
+    'fn feature_0425_download_settings_validate_and_resolve_precedence()',
+    'fn feature_0425_download_uses_server_suggested_filename_and_sanitizes_safely()',
+  ):
+    if marker not in app + api_ts + main_rs:
+      fail(f"0.4.25 download/workspace-icon invariant is missing: {marker}")
+  if "blocking_save_file()" in main_rs or "tauridium-download-dialog" in main_rs:
+    fail("0.4.25 download chooser must not use the tauri-plugin-dialog blocking wrapper from the synchronous WebView download callback")
+
+  for test_marker in (
+    "test_workspace_icon_can_be_fetched_from_arbitrary_http_url_and_stored_locally",
+    "test_download_defaults_are_migrated_validated_and_exposed_in_advanced_settings",
+    "test_server_suggested_filename_wins_over_opaque_download_url",
+    "test_download_preferences_have_service_workspace_global_precedence",
+    "test_per_service_and_workspace_download_overrides_are_immediate_and_verified",
+    "test_ask_each_download_keeps_original_authenticated_webview_download",
+    "test_full_backups_preserve_download_preferences_without_changing_portable_paths",
+  ):
+    if test_marker not in patch_0425:
+      fail(f"0.4.25 regression coverage is missing: {test_marker}")
+
   for marker in (
     '["keybindings", "Keybinds"]',
     '["sandbox", "Sandbox"]',
@@ -1369,7 +1398,8 @@ def main() -> int:
       fail(f"canonical frontend ordering API is missing: {marker}")
   for marker in (
     'async function reconcileSavedOrders()',
-    'setAppSettings({ serviceOrder, workspaceOrder, workspaceLastUsed, workspaceIcons })',
+    'serviceDownloadSettings,',
+    'workspaceDownloadSettings,',
     'setServiceOrder(nextIds)',
     'setWorkspaceOrder(nextIds)',
     'reorderVisibleSubsetAt(previousIds, visibleIds, movingIds[0], target.id, placement)',

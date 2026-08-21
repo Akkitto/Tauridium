@@ -130,6 +130,7 @@ struct AppState {
     sidebar_w: Mutex<f64>,           // sidebar width (initialized during setup, default 240)
     desired_active: Mutex<Option<String>>, // last requested service (prevents focus stealing during switches)
     inflight: Mutex<HashSet<String>>,      // webviews being created (prevents duplicate add_child)
+    download_workspaces: Mutex<HashMap<String, Option<String>>>, // active workspace context per service download
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1427,6 +1428,180 @@ fn unique_download_path(dir: &Path, name: &str) -> PathBuf {
     dir.join(name)
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct EffectiveDownloadPreferences {
+    directory: String,
+    ask_each_download: bool,
+}
+
+fn download_preferences_from_map(
+    settings: &Value,
+    key: &str,
+    id: Option<&str>,
+) -> Option<EffectiveDownloadPreferences> {
+    let id = id?.trim();
+    if id.is_empty() {
+        return None;
+    }
+    let value = settings.get(key)?.as_object()?.get(id)?.as_object()?;
+    Some(EffectiveDownloadPreferences {
+        directory: value.get("directory")?.as_str()?.to_string(),
+        ask_each_download: value.get("askEachDownload")?.as_bool()?,
+    })
+}
+
+fn effective_download_preferences(
+    settings: &Value,
+    service_id: &str,
+    workspace_id: Option<&str>,
+) -> EffectiveDownloadPreferences {
+    if let Some(preferences) =
+        download_preferences_from_map(settings, "serviceDownloadSettings", Some(service_id))
+    {
+        return preferences;
+    }
+    if let Some(preferences) =
+        download_preferences_from_map(settings, "workspaceDownloadSettings", workspace_id)
+    {
+        return preferences;
+    }
+    EffectiveDownloadPreferences {
+        directory: settings
+            .get("downloadDirectory")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        ask_each_download: settings
+            .get("askEachDownload")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+    }
+}
+
+fn sanitize_download_filename(value: &str) -> String {
+    let mut clean: String = value
+        .trim()
+        .chars()
+        .map(|character| {
+            if character.is_control()
+                || matches!(
+                    character,
+                    '/' | '\\' | '<' | '>' | ':' | '"' | '|' | '?' | '*'
+                )
+            {
+                '_'
+            } else {
+                character
+            }
+        })
+        .collect();
+    while clean.ends_with(' ') || clean.ends_with('.') {
+        clean.pop();
+    }
+    if clean.is_empty() || clean == "." || clean == ".." {
+        return "download".into();
+    }
+    let reserved_stem = Path::new(&clean)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_uppercase();
+    if matches!(
+        reserved_stem.as_str(),
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    ) {
+        clean.insert(0, '_');
+    }
+    if clean.chars().count() > 240 {
+        let path = Path::new(&clean);
+        let extension = path
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("");
+        let extension_len = if extension.is_empty() {
+            0
+        } else {
+            extension.chars().count() + 1
+        };
+        let stem_limit = 240usize.saturating_sub(extension_len);
+        let stem: String = path
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("download")
+            .chars()
+            .take(stem_limit.max(1))
+            .collect();
+        clean = if extension.is_empty() {
+            stem
+        } else {
+            format!("{stem}.{extension}")
+        };
+    }
+    clean
+}
+
+fn suggested_download_filename(destination: &Path, url: &Url) -> String {
+    destination
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(sanitize_download_filename)
+        .unwrap_or_else(|| sanitize_download_filename(&download_filename(url)))
+}
+
+fn effective_download_directory(app: &AppHandle, configured: &str) -> PathBuf {
+    let configured = configured.trim();
+    if !configured.is_empty() {
+        let path = PathBuf::from(configured);
+        if path.is_absolute() && std::fs::create_dir_all(&path).is_ok() {
+            return path;
+        }
+    }
+    app.path()
+        .download_dir()
+        .or_else(|_| app.path().home_dir())
+        .unwrap_or_else(|_| PathBuf::from("."))
+}
+
+fn ask_download_destination(
+    parent: &tauri::Window<Wry>,
+    directory: &Path,
+    suggested_name: &str,
+) -> Option<PathBuf> {
+    // Wry requires the final absolute destination synchronously from its download-started
+    // callback. Use rfd's synchronous native dialog directly on that callback thread. The
+    // tauri-plugin-dialog blocking wrapper cannot be used here: it dispatches back to the main
+    // thread and would deadlock while the synchronous download callback is waiting. rfd is
+    // already Tauridium's native dialog backend through tauri-plugin-dialog; declaring it
+    // directly lets us use the correct synchronous API without changing dialog technology.
+    rfd::FileDialog::new()
+        .set_parent(parent)
+        .set_title("Save download")
+        .set_directory(directory)
+        .set_file_name(suggested_name)
+        .save_file()
+}
+
 // Duplicate-keystroke fix (macOS/WKWebView child webviews): WebKit dispatches legacy
 // `textInput` events REDUNDANT with the real insertion. Two cases were observed in
 // Discord :
@@ -1595,34 +1770,63 @@ async fn create_service_webview(
             serde_json::json!({ "id": sid_evt, "status": status }),
         );
     });
-    // Downloads (Download context action, `download` links, etc.): WKWebView has no
-    // default handler, so otherwise nothing happens. Save into the Downloads directory
-    // and notify when complete (on macOS the API does not expose the final path).
-    builder = builder.on_download(|webview, event| {
-        match event {
-            DownloadEvent::Requested { url, destination } => {
-                let dir = webview
-                    .app_handle()
-                    .path()
-                    .download_dir()
-                    .or_else(|_| webview.app_handle().path().home_dir())
-                    .unwrap_or_else(|_| PathBuf::from("."));
-                *destination = unique_download_path(&dir, &download_filename(&url));
+    // Preserve the filename suggested by the webview engine/server (for example an HTTP
+    // Content-Disposition filename) instead of rebuilding it from an opaque attachment URL.
+    // Destination preferences are resolved at download time, so global/workspace/service
+    // changes apply immediately without recreating this webview.
+    let download_service_id = service_id.to_string();
+    builder = builder.on_download(move |webview, event| match event {
+        DownloadEvent::Requested { url, destination } => {
+            let app = webview.app_handle().clone();
+            let state = app.state::<AppState>();
+            let workspace_id = state
+                .download_workspaces
+                .lock()
+                .unwrap()
+                .get(&download_service_id)
+                .cloned()
+                .flatten();
+            let preferences = effective_download_preferences(
+                &state.settings.lock().unwrap(),
+                &download_service_id,
+                workspace_id.as_deref(),
+            );
+            let suggested_name = suggested_download_filename(destination, &url);
+            let directory = effective_download_directory(&app, &preferences.directory);
+
+            if preferences.ask_each_download {
+                let parent = webview.window();
+                let Some(path) = ask_download_destination(&parent, &directory, &suggested_name)
+                else {
+                    return false;
+                };
+                *destination = path;
+            } else {
+                *destination = unique_download_path(&directory, &suggested_name);
             }
-            DownloadEvent::Finished {
-                url, success: true, ..
-            } => {
-                let _ = webview
-                    .app_handle()
-                    .notification()
-                    .builder()
-                    .title("Tauridium")
-                    .body(format!("Downloaded \"{}\"", download_filename(&url)))
-                    .show();
-            }
-            _ => {}
+            true
         }
-        true // Allow the download.
+        DownloadEvent::Finished {
+            url,
+            path,
+            success: true,
+        } => {
+            let filename = path
+                .as_deref()
+                .and_then(Path::file_name)
+                .and_then(|value| value.to_str())
+                .map(sanitize_download_filename)
+                .unwrap_or_else(|| sanitize_download_filename(&download_filename(&url)));
+            let _ = webview
+                .app_handle()
+                .notification()
+                .builder()
+                .title("Tauridium")
+                .body(format!("Downloaded \"{filename}\""))
+                .show();
+            true
+        }
+        _ => true,
     });
     // Per-service storage isolation: macOS -> data_store_identifier (data_directory
     // ignored); Windows/Linux use a dedicated data_directory to avoid shared sessions.
@@ -1663,6 +1867,7 @@ struct ServiceViewRequest {
     custom_url: Option<String>,
     team: Option<String>,
     user_agent_pref: Option<String>,
+    workspace_id: Option<String>,
     dark: Option<DarkSettings>,
 }
 
@@ -1678,10 +1883,15 @@ async fn show_service(
         custom_url,
         team,
         user_agent_pref,
+        workspace_id,
         dark,
     } = request;
     let dark = dark.and_then(DarkSettings::into_opts);
     let sandbox_id = sandbox_for_service(&state.settings.lock().unwrap(), &service_id);
+    state.download_workspaces.lock().unwrap().insert(
+        service_id.clone(),
+        workspace_id.filter(|id| !id.trim().is_empty()),
+    );
     let win = app.get_window("main").ok_or("Main window not found")?;
     let label = format!("svc-{service_id}");
     let sw = *state.sidebar_w.lock().unwrap();
@@ -1767,6 +1977,7 @@ async fn preload_service(
         custom_url,
         team,
         user_agent_pref,
+        workspace_id: _,
         dark,
     } = request;
     let dark = dark.and_then(DarkSettings::into_opts);
@@ -1908,6 +2119,11 @@ fn copy_service_icon_cache(
     icons::copy_cached(&app, &source_service_id, &target_service_id)
 }
 
+#[tauri::command]
+async fn fetch_workspace_icon_url(url: String) -> Result<String, String> {
+    icons::fetch_workspace_icon_url(&HTTP, &url).await
+}
+
 fn hide_service_webviews(app: &AppHandle, state: &AppState) {
     let created: Vec<String> = state.created.lock().unwrap().iter().cloned().collect();
     for sid in created {
@@ -1931,6 +2147,11 @@ fn close_service(app: AppHandle, state: State<'_, AppState>, service_id: String)
         let _ = wv.close();
     }
     state.created.lock().unwrap().remove(&service_id);
+    state
+        .download_workspaces
+        .lock()
+        .unwrap()
+        .remove(&service_id);
     state.unread.lock().unwrap().remove(&service_id);
     if state.active.lock().unwrap().as_deref() == Some(service_id.as_str()) {
         *state.active.lock().unwrap() = None;
@@ -1953,6 +2174,7 @@ fn close_services(app: AppHandle, state: State<'_, AppState>) {
         }
     }
     *state.active.lock().unwrap() = None;
+    state.download_workspaces.lock().unwrap().clear();
     state.unread.lock().unwrap().clear();
     if let Some(win) = app.get_window("main") {
         let _ = win.set_badge_count(None);
@@ -2673,6 +2895,16 @@ fn default_app_settings_value() -> Value {
         "workspaceIcons".into(),
         Value::Object(serde_json::Map::new()),
     );
+    settings.insert("downloadDirectory".into(), "".into());
+    settings.insert("askEachDownload".into(), false.into());
+    settings.insert(
+        "serviceDownloadSettings".into(),
+        Value::Object(serde_json::Map::new()),
+    );
+    settings.insert(
+        "workspaceDownloadSettings".into(),
+        Value::Object(serde_json::Map::new()),
+    );
     let mut keybindings = serde_json::Map::<String, Value>::new();
     keybindings.insert("quickWorkspaceSwitch".into(), "Ctrl+D".into());
     keybindings.insert("quickServiceSwitch".into(), "Ctrl+S".into());
@@ -2792,6 +3024,39 @@ fn validate_sandboxes(
     Ok(())
 }
 
+fn validate_download_settings_map(value: Option<&Value>, label: &str) -> Result<(), String> {
+    let map = value
+        .and_then(Value::as_object)
+        .ok_or_else(|| format!("App setting {label} must be an object"))?;
+    if map.len() > 10_000 {
+        return Err(format!("App setting {label} contains too many entries"));
+    }
+    for (id, preferences) in map {
+        if id.trim().is_empty() || id.len() > 256 {
+            return Err(format!("App setting {label} contains an invalid id"));
+        }
+        let preferences = preferences
+            .as_object()
+            .ok_or_else(|| format!("App setting {label} values must be objects"))?;
+        let directory = preferences
+            .get("directory")
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("App setting {label} directory must be a string"))?;
+        if directory.len() > 4096 || directory.chars().any(char::is_control) {
+            return Err(format!("App setting {label} directory is invalid"));
+        }
+        if !preferences
+            .get("askEachDownload")
+            .is_some_and(Value::is_boolean)
+        {
+            return Err(format!(
+                "App setting {label} askEachDownload must be boolean"
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
     let object = settings
         .as_object()
@@ -2808,6 +3073,7 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         "preloadServices",
         "fetchMissingServiceIcons",
         "reloadToasts",
+        "askEachDownload",
         "sidebarServiceDragReorder",
         "captureServiceShortcuts",
         "customUrlTemplatesEnabled",
@@ -2896,6 +3162,21 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
     if workspace_icon_bytes > 16 * 1024 * 1024 {
         return Err("App setting workspaceIcons exceeds the supported total size".into());
     }
+    let download_directory = object
+        .get("downloadDirectory")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "App setting downloadDirectory must be a string".to_string())?;
+    if download_directory.len() > 4096 || download_directory.chars().any(char::is_control) {
+        return Err("App setting downloadDirectory is invalid".into());
+    }
+    validate_download_settings_map(
+        object.get("serviceDownloadSettings"),
+        "serviceDownloadSettings",
+    )?;
+    validate_download_settings_map(
+        object.get("workspaceDownloadSettings"),
+        "workspaceDownloadSettings",
+    )?;
     let backup_schedule = object
         .get("automaticBackupSchedule")
         .and_then(Value::as_str)
@@ -4169,6 +4450,7 @@ fn main() {
             preload_service,
             get_service_icon,
             copy_service_icon_cache,
+            fetch_workspace_icon_url,
             hide_all_services,
             close_service,
             set_sidebar_width,
@@ -4327,6 +4609,69 @@ mod tests {
         assert!(validate_app_settings_value(&settings).is_err());
         settings["workspaceIcons"] = json!({ "": "https://example.com/icon.svg" });
         assert!(validate_app_settings_value(&settings).is_err());
+    }
+
+    #[test]
+    fn feature_0425_download_settings_validate_and_resolve_precedence() {
+        let mut settings = default_app_settings_value();
+        settings["downloadDirectory"] = json!(r"C:\Users\Akito\Downloads");
+        settings["askEachDownload"] = json!(false);
+        settings["workspaceDownloadSettings"] = json!({
+            "workspace-a": { "directory": r"D:\Workspace", "askEachDownload": true }
+        });
+        settings["serviceDownloadSettings"] = json!({
+            "service-a": { "directory": r"E:\Service", "askEachDownload": false }
+        });
+        assert!(validate_app_settings_value(&settings).is_ok());
+
+        assert_eq!(
+            effective_download_preferences(&settings, "service-a", Some("workspace-a")),
+            EffectiveDownloadPreferences {
+                directory: r"E:\Service".into(),
+                ask_each_download: false
+            },
+        );
+        assert_eq!(
+            effective_download_preferences(&settings, "service-b", Some("workspace-a")),
+            EffectiveDownloadPreferences {
+                directory: r"D:\Workspace".into(),
+                ask_each_download: true
+            },
+        );
+        assert_eq!(
+            effective_download_preferences(&settings, "service-b", None),
+            EffectiveDownloadPreferences {
+                directory: r"C:\Users\Akito\Downloads".into(),
+                ask_each_download: false
+            },
+        );
+
+        settings["serviceDownloadSettings"] =
+            json!({ "service-a": { "directory": 3, "askEachDownload": false } });
+        assert!(validate_app_settings_value(&settings).is_err());
+        settings["serviceDownloadSettings"] =
+            json!({ "service-a": { "directory": "", "askEachDownload": "yes" } });
+        assert!(validate_app_settings_value(&settings).is_err());
+    }
+
+    #[test]
+    fn feature_0425_download_uses_server_suggested_filename_and_sanitizes_safely() {
+        let opaque =
+            Url::parse("https://mail.example.test/api/attachments/download?id=123").unwrap();
+        assert_eq!(
+            suggested_download_filename(Path::new("/tmp/quarterly-report.zip"), &opaque),
+            "quarterly-report.zip",
+        );
+        assert_eq!(
+            sanitize_download_filename("../bad:name?.zip"),
+            ".._bad_name_.zip"
+        );
+        assert_eq!(sanitize_download_filename("NUL.txt"), "_NUL.txt");
+        assert_eq!(sanitize_download_filename("report.zip. "), "report.zip");
+        assert_eq!(
+            suggested_download_filename(Path::new(""), &opaque),
+            "download"
+        );
     }
 
     #[test]

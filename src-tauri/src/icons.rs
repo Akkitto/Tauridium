@@ -163,6 +163,26 @@ fn icon_href_from_html(html: &str) -> Option<String> {
     None
 }
 
+pub(crate) async fn fetch_workspace_icon_url(
+    client: &reqwest::Client,
+    raw_url: &str,
+) -> Result<String, String> {
+    let parsed = Url::parse(raw_url.trim())
+        .map_err(|error| format!("Invalid workspace icon URL: {error}"))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("Workspace icon URLs must use HTTP or HTTPS".into());
+    }
+
+    // Accept either a direct image URL or an ordinary website URL. Direct image URLs are
+    // preferred; when the response is HTML (or otherwise not an image), fall back to the
+    // same favicon discovery path used by service icons. The result is always a self-contained
+    // data URL so backups and portable exports never depend on this remote URL later.
+    match fetch_image(client, &parsed).await {
+        Ok(icon) => Ok(icon),
+        Err(_) => discover_icon(client, &parsed).await,
+    }
+}
+
 async fn discover_icon(client: &reqwest::Client, page_url: &Url) -> Result<String, String> {
     let response = client
         .get(page_url.clone())

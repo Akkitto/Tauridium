@@ -46,7 +46,8 @@ class Patch0424Tests(unittest.TestCase):
   def test_workspace_icons_are_cleaned_up_with_deleted_or_stale_workspaces(self) -> None:
     self.assertIn('Object.entries(appSettings.workspaceIcons).filter(([workspaceId]) => workspaceIds.has(workspaceId))', APP)
     self.assertIn('delete workspaceIcons[ws.id];', APP)
-    self.assertIn('setAppSettings({ workspaceLastUsed, workspaceIcons })', APP)
+    self.assertIn('delete workspaceDownloadSettings[ws.id];', APP)
+    self.assertIn('setAppSettings({ workspaceLastUsed, workspaceIcons, workspaceDownloadSettings })', APP)
 
   def test_portable_workspace_exports_embed_the_selected_icon(self) -> None:
     self.assertIn('function portableWorkspace(workspace: Workspace): Workspace', APP)

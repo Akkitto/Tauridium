@@ -60,6 +60,7 @@
     clearServiceCache,
     getServiceIcon,
     copyServiceIconCache,
+    fetchWorkspaceIconUrl,
     clearSandbox,
     listRecipes,
     getRecipeStorageInfo,
@@ -100,6 +101,7 @@
     type AuditEntry,
     type AppMetadata,
     type ServiceCustomUrlTemplate,
+    type DownloadPreferenceOverride,
   } from "./lib/api";
 
   let server = $state(DEFAULT_SERVER);
@@ -174,6 +176,8 @@
   let managedWorkspaceServicePage = $state(0);
   let managedWorkspaceBusy = $state(false);
   let managedWorkspaceNameDraft = $state("");
+  let managedWorkspaceIconUrlDraft = $state("");
+  let downloadSettingsBusy = $state(false);
   let workspaceUsagePersist: Promise<void> = Promise.resolve();
   const MANAGED_SERVICE_PAGE_SIZE = 100;
   const MAX_SIDEBAR_WIDTH_PX = 1200;
@@ -260,6 +264,10 @@
     workspaceQuickSwitchOrder: "custom",
     workspaceLastUsed: {},
     workspaceIcons: {},
+    downloadDirectory: "",
+    askEachDownload: false,
+    serviceDownloadSettings: {},
+    workspaceDownloadSettings: {},
     keybindings: { ...DEFAULT_KEYBINDINGS },
     sandboxes: [],
     serviceSandboxes: {},
@@ -628,6 +636,113 @@
     return appSettings.workspaceIcons[workspace.id] ?? null;
   }
 
+  function serviceDownloadOverride(serviceId: string): DownloadPreferenceOverride | null {
+    return appSettings.serviceDownloadSettings?.[serviceId] ?? null;
+  }
+
+  function workspaceDownloadOverride(workspaceId: string): DownloadPreferenceOverride | null {
+    return appSettings.workspaceDownloadSettings?.[workspaceId] ?? null;
+  }
+
+  function downloadDirectoryLabel(directory: string): string {
+    return directory.trim() || "System Downloads folder";
+  }
+
+  function inheritedDownloadPreference(): DownloadPreferenceOverride {
+    return {
+      directory: appSettings.downloadDirectory,
+      askEachDownload: appSettings.askEachDownload,
+    };
+  }
+
+  async function chooseDownloadDirectory(current: string, title: string): Promise<string | null> {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title,
+      defaultPath: current.trim() || appSettings.downloadDirectory.trim() || undefined,
+    });
+    return Array.isArray(selected) ? (selected[0] ?? null) : selected;
+  }
+
+  async function saveServiceDownloadOverride(serviceId: string, preference: DownloadPreferenceOverride | null) {
+    if (downloadSettingsBusy) return;
+    const previous = { ...appSettings.serviceDownloadSettings };
+    const serviceDownloadSettings = { ...previous };
+    if (preference) serviceDownloadSettings[serviceId] = preference;
+    else delete serviceDownloadSettings[serviceId];
+    if (JSON.stringify(previous[serviceId] ?? null) === JSON.stringify(preference)) return;
+
+    downloadSettingsBusy = true;
+    appSettings = { ...appSettings, serviceDownloadSettings };
+    try {
+      const persisted = await setAppSettings({ serviceDownloadSettings });
+      if (JSON.stringify(persisted.serviceDownloadSettings[serviceId] ?? null) !== JSON.stringify(preference)) {
+        throw new Error("Tauridium could not verify the service download settings");
+      }
+      appSettings = persisted;
+    } catch (err) {
+      appSettings = { ...appSettings, serviceDownloadSettings: previous };
+      error = `Unable to save service download settings: ${err}`;
+    } finally {
+      downloadSettingsBusy = false;
+    }
+  }
+
+  async function saveWorkspaceDownloadOverride(workspaceId: string, preference: DownloadPreferenceOverride | null) {
+    if (downloadSettingsBusy) return;
+    const previous = { ...appSettings.workspaceDownloadSettings };
+    const workspaceDownloadSettings = { ...previous };
+    if (preference) workspaceDownloadSettings[workspaceId] = preference;
+    else delete workspaceDownloadSettings[workspaceId];
+    if (JSON.stringify(previous[workspaceId] ?? null) === JSON.stringify(preference)) return;
+
+    downloadSettingsBusy = true;
+    appSettings = { ...appSettings, workspaceDownloadSettings };
+    try {
+      const persisted = await setAppSettings({ workspaceDownloadSettings });
+      if (JSON.stringify(persisted.workspaceDownloadSettings[workspaceId] ?? null) !== JSON.stringify(preference)) {
+        throw new Error("Tauridium could not verify the workspace download settings");
+      }
+      appSettings = persisted;
+    } catch (err) {
+      appSettings = { ...appSettings, workspaceDownloadSettings: previous };
+      error = `Unable to save workspace download settings: ${err}`;
+    } finally {
+      downloadSettingsBusy = false;
+    }
+  }
+
+  async function chooseGlobalDownloadDirectory() {
+    if (downloadSettingsBusy) return;
+    try {
+      const selected = await chooseDownloadDirectory(appSettings.downloadDirectory, "Choose default download folder");
+      if (selected) await saveAppSetting("downloadDirectory", selected);
+    } catch (err) {
+      error = `Unable to choose download folder: ${err}`;
+    }
+  }
+
+  async function chooseServiceDownloadDirectory(serviceId: string) {
+    const current = serviceDownloadOverride(serviceId) ?? inheritedDownloadPreference();
+    try {
+      const selected = await chooseDownloadDirectory(current.directory, "Choose download folder for this service");
+      if (selected) await saveServiceDownloadOverride(serviceId, { ...current, directory: selected });
+    } catch (err) {
+      error = `Unable to choose service download folder: ${err}`;
+    }
+  }
+
+  async function chooseWorkspaceDownloadDirectory(workspaceId: string) {
+    const current = workspaceDownloadOverride(workspaceId) ?? inheritedDownloadPreference();
+    try {
+      const selected = await chooseDownloadDirectory(current.directory, "Choose download folder for this workspace");
+      if (selected) await saveWorkspaceDownloadOverride(workspaceId, { ...current, directory: selected });
+    } catch (err) {
+      error = `Unable to choose workspace download folder: ${err}`;
+    }
+  }
+
   function markWorkspaceIconFailed(workspaceId: string) {
     failedWorkspaceIcons = new Set(failedWorkspaceIcons).add(workspaceId);
   }
@@ -747,6 +862,7 @@
   async function reconcileSavedOrders() {
     const serviceOrder = orderedBySavedIds(services, appSettings.serviceOrder).map((service) => service.id);
     const workspaceOrder = orderedBySavedIds(workspaces, appSettings.workspaceOrder).map((workspace) => workspace.id);
+    const serviceIds = new Set(services.map((service) => service.id));
     const workspaceIds = new Set(workspaces.map((workspace) => workspace.id));
     const workspaceLastUsed = Object.fromEntries(
       Object.entries(appSettings.workspaceLastUsed).filter(([workspaceId]) => workspaceIds.has(workspaceId)),
@@ -754,16 +870,33 @@
     const workspaceIcons = Object.fromEntries(
       Object.entries(appSettings.workspaceIcons).filter(([workspaceId]) => workspaceIds.has(workspaceId)),
     );
+    const serviceDownloadSettings = Object.fromEntries(
+      Object.entries(appSettings.serviceDownloadSettings).filter(([serviceId]) => serviceIds.has(serviceId)),
+    );
+    const workspaceDownloadSettings = Object.fromEntries(
+      Object.entries(appSettings.workspaceDownloadSettings).filter(([workspaceId]) => workspaceIds.has(workspaceId)),
+    );
     const usageHistoryChanged = Object.keys(workspaceLastUsed).length !== Object.keys(appSettings.workspaceLastUsed).length;
     const workspaceIconsChanged = Object.keys(workspaceIcons).length !== Object.keys(appSettings.workspaceIcons).length;
+    const serviceDownloadSettingsChanged = Object.keys(serviceDownloadSettings).length !== Object.keys(appSettings.serviceDownloadSettings).length;
+    const workspaceDownloadSettingsChanged = Object.keys(workspaceDownloadSettings).length !== Object.keys(appSettings.workspaceDownloadSettings).length;
     if (
       sameIds(serviceOrder, appSettings.serviceOrder) &&
       sameIds(workspaceOrder, appSettings.workspaceOrder) &&
       !usageHistoryChanged &&
-      !workspaceIconsChanged
+      !workspaceIconsChanged &&
+      !serviceDownloadSettingsChanged &&
+      !workspaceDownloadSettingsChanged
     ) return;
     try {
-      const persisted = await setAppSettings({ serviceOrder, workspaceOrder, workspaceLastUsed, workspaceIcons });
+      const persisted = await setAppSettings({
+        serviceOrder,
+        workspaceOrder,
+        workspaceLastUsed,
+        workspaceIcons,
+        serviceDownloadSettings,
+        workspaceDownloadSettings,
+      });
       if (!sameIds(persisted.serviceOrder, serviceOrder) || !sameIds(persisted.workspaceOrder, workspaceOrder)) {
         throw new Error("Tauridium could not verify the reconciled service/workspace order");
       }
@@ -953,7 +1086,7 @@
       hibernated = next;
     }
     if (prev && prev !== s.id) scheduleHibernation(prev);
-    showService(s).catch((err) => {
+    showService(s, activeWorkspace).catch((err) => {
       // Display the error only if this service is still on screen.
       if (activeId === s.id) serviceLoadError = `${err}`;
     });
@@ -1401,6 +1534,7 @@
     const previousTemplates = { ...appSettings.serviceCustomUrlTemplates };
     const previousSandboxes = { ...appSettings.serviceSandboxes };
     const previousShortcutOverrides = { ...appSettings.serviceShortcutCaptureOverrides };
+    const previousDownloadSettings = { ...appSettings.serviceDownloadSettings };
     let copiedAppSettings = false;
     try {
       const result = await createDuplicateService(service, name);
@@ -1428,11 +1562,18 @@
       const serviceCustomUrlTemplates = { ...appSettings.serviceCustomUrlTemplates };
       const serviceSandboxes = { ...appSettings.serviceSandboxes };
       const serviceShortcutCaptureOverrides = { ...appSettings.serviceShortcutCaptureOverrides };
+      const serviceDownloadSettings = { ...appSettings.serviceDownloadSettings };
       if (serviceCustomUrlTemplates[service.id]) serviceCustomUrlTemplates[newId] = { ...serviceCustomUrlTemplates[service.id] };
       if (serviceSandboxes[service.id]) serviceSandboxes[newId] = serviceSandboxes[service.id];
       if (service.id in serviceShortcutCaptureOverrides) serviceShortcutCaptureOverrides[newId] = serviceShortcutCaptureOverrides[service.id];
-      if (serviceCustomUrlTemplates[newId] || serviceSandboxes[newId] || newId in serviceShortcutCaptureOverrides) {
-        appSettings = await setAppSettings({ serviceCustomUrlTemplates, serviceSandboxes, serviceShortcutCaptureOverrides });
+      if (serviceDownloadSettings[service.id]) serviceDownloadSettings[newId] = { ...serviceDownloadSettings[service.id] };
+      if (serviceCustomUrlTemplates[newId] || serviceSandboxes[newId] || newId in serviceShortcutCaptureOverrides || serviceDownloadSettings[newId]) {
+        appSettings = await setAppSettings({
+          serviceCustomUrlTemplates,
+          serviceSandboxes,
+          serviceShortcutCaptureOverrides,
+          serviceDownloadSettings,
+        });
         copiedAppSettings = true;
       }
 
@@ -1457,6 +1598,7 @@
           serviceCustomUrlTemplates: previousTemplates,
           serviceSandboxes: previousSandboxes,
           serviceShortcutCaptureOverrides: previousShortcutOverrides,
+          serviceDownloadSettings: previousDownloadSettings,
         }).catch(() => appSettings);
       }
       if (newId) await deleteService(newId).catch(() => {});
@@ -1523,14 +1665,26 @@
       const { [s.id]: _, ...rest } = statusMap;
       statusMap = rest;
       services = services.filter((x) => x.id !== s.id);
-      if (appSettings.serviceSandboxes[s.id] || appSettings.serviceCustomUrlTemplates[s.id] || s.id in appSettings.serviceShortcutCaptureOverrides) {
+      if (
+        appSettings.serviceSandboxes[s.id] ||
+        appSettings.serviceCustomUrlTemplates[s.id] ||
+        s.id in appSettings.serviceShortcutCaptureOverrides ||
+        appSettings.serviceDownloadSettings[s.id]
+      ) {
         const serviceSandboxes = { ...appSettings.serviceSandboxes };
         const serviceCustomUrlTemplates = { ...appSettings.serviceCustomUrlTemplates };
         const serviceShortcutCaptureOverrides = { ...appSettings.serviceShortcutCaptureOverrides };
+        const serviceDownloadSettings = { ...appSettings.serviceDownloadSettings };
         delete serviceSandboxes[s.id];
         delete serviceCustomUrlTemplates[s.id];
         delete serviceShortcutCaptureOverrides[s.id];
-        appSettings = await setAppSettings({ serviceSandboxes, serviceCustomUrlTemplates, serviceShortcutCaptureOverrides });
+        delete serviceDownloadSettings[s.id];
+        appSettings = await setAppSettings({
+          serviceSandboxes,
+          serviceCustomUrlTemplates,
+          serviceShortcutCaptureOverrides,
+          serviceDownloadSettings,
+        });
       }
       await reconcileSavedOrders();
       await refreshNativeServicesMenu();
@@ -1617,6 +1771,7 @@
   function manageWorkspace(workspace: Workspace) {
     managedWorkspaceId = workspace.id;
     managedWorkspaceNameDraft = workspace.name;
+    managedWorkspaceIconUrlDraft = "";
     managedWorkspaceServiceQuery = "";
     managedWorkspaceServicePage = 0;
   }
@@ -1629,6 +1784,7 @@
     ) return;
     managedWorkspaceId = null;
     managedWorkspaceNameDraft = "";
+    managedWorkspaceIconUrlDraft = "";
     managedWorkspaceServiceQuery = "";
     managedWorkspaceServicePage = 0;
   }
@@ -1660,15 +1816,15 @@
     }
   }
 
-  async function saveManagedWorkspaceIcon(iconUrl: string | null) {
-    if (!managedWorkspace || managedWorkspaceBusy) return;
+  async function persistManagedWorkspaceIcon(iconUrl: string | null, busyAlready = false) {
+    if (!managedWorkspace || (!busyAlready && managedWorkspaceBusy)) return;
     const previous = { ...appSettings.workspaceIcons };
     const workspaceIcons = { ...previous };
     if (iconUrl) workspaceIcons[managedWorkspace.id] = iconUrl;
     else delete workspaceIcons[managedWorkspace.id];
     if ((previous[managedWorkspace.id] ?? null) === (workspaceIcons[managedWorkspace.id] ?? null)) return;
 
-    managedWorkspaceBusy = true;
+    if (!busyAlready) managedWorkspaceBusy = true;
     appSettings = { ...appSettings, workspaceIcons };
     try {
       const persisted = await setAppSettings({ workspaceIcons });
@@ -1683,8 +1839,12 @@
       appSettings = { ...appSettings, workspaceIcons: previous };
       error = `Unable to save workspace icon: ${err}`;
     } finally {
-      managedWorkspaceBusy = false;
+      if (!busyAlready) managedWorkspaceBusy = false;
     }
+  }
+
+  async function saveManagedWorkspaceIcon(iconUrl: string | null) {
+    await persistManagedWorkspaceIcon(iconUrl);
   }
 
   async function assignManagedWorkspaceIconFromService(service: Service) {
@@ -1693,6 +1853,22 @@
       await loadServiceIcon(service, false, false, true);
     }
     await saveManagedWorkspaceIcon(displayedServiceIcon(service));
+  }
+
+  async function assignManagedWorkspaceIconFromUrl() {
+    if (!managedWorkspace || managedWorkspaceBusy) return;
+    const url = managedWorkspaceIconUrlDraft.trim();
+    if (!url) return;
+    managedWorkspaceBusy = true;
+    try {
+      const icon = await fetchWorkspaceIconUrl(url);
+      await persistManagedWorkspaceIcon(icon, true);
+      managedWorkspaceIconUrlDraft = "";
+    } catch (err) {
+      error = `Unable to fetch workspace icon: ${err}`;
+    } finally {
+      managedWorkspaceBusy = false;
+    }
   }
 
   async function resetWorkspaceUsageHistory() {
@@ -1828,9 +2004,11 @@
       }
       const workspaceLastUsed = { ...appSettings.workspaceLastUsed };
       const workspaceIcons = { ...appSettings.workspaceIcons };
+      const workspaceDownloadSettings = { ...appSettings.workspaceDownloadSettings };
       delete workspaceLastUsed[ws.id];
       delete workspaceIcons[ws.id];
-      appSettings = await setAppSettings({ workspaceLastUsed, workspaceIcons });
+      delete workspaceDownloadSettings[ws.id];
+      appSettings = await setAppSettings({ workspaceLastUsed, workspaceIcons, workspaceDownloadSettings });
       await reloadWorkspaces();
     } catch (err) {
       error = String(err);
@@ -2857,6 +3035,7 @@
         {/if}
       {:else if view === "svcSettings" && settingsSvc}
         {@const settingsServiceId = settingsSvc.id}
+        {@const settingsServiceDownload = serviceDownloadOverride(settingsServiceId)}
         <div class="panel">
           <div class="panel-head">
             <h2>Settings — {serviceLabel(settingsSvc)}</h2>
@@ -3075,6 +3254,50 @@
               </div>
             {/if}
             <p class="desc service-sandbox-help">Shared sandboxes are created and managed globally in Settings → Sandbox.</p>
+          </div>
+
+          <div class="set-title">Downloads</div>
+          <div class="service-workspace-manager service-download-manager">
+            <div class="service-workspace-overview">
+              <div class="setting-copy">
+                <strong>Service download settings</strong>
+                <p class="desc">Optionally override download behavior for this service. A service override has highest priority. Without one, an active workspace override is used when present, then the global Advanced defaults.</p>
+              </div>
+              <span class="status-badge">{settingsServiceDownload ? "Override" : "Inherited"}</span>
+            </div>
+            <label class="row-toggle download-override-toggle">
+              <input
+                type="checkbox"
+                checked={settingsServiceDownload !== null}
+                disabled={downloadSettingsBusy}
+                onchange={(event) => saveServiceDownloadOverride(
+                  settingsServiceId,
+                  event.currentTarget.checked ? inheritedDownloadPreference() : null,
+                )}
+              />
+              <span>Override download settings for this service</span>
+            </label>
+            {#if settingsServiceDownload}
+              <div class="download-setting-row">
+                <div class="setting-copy">
+                  <strong>Download directory</strong>
+                  <p class="desc" title={downloadDirectoryLabel(settingsServiceDownload.directory)}>{downloadDirectoryLabel(settingsServiceDownload.directory)}</p>
+                </div>
+                <div class="setting-actions">
+                  <button class="secondary sm" disabled={downloadSettingsBusy} onclick={() => chooseServiceDownloadDirectory(settingsServiceId)}>Choose folder…</button>
+                  <button class="secondary sm" disabled={downloadSettingsBusy || !settingsServiceDownload.directory} onclick={() => saveServiceDownloadOverride(settingsServiceId, { ...settingsServiceDownload, directory: "" })}>Use system Downloads</button>
+                </div>
+              </div>
+              <label class="download-setting-row setting-card-toggle">
+                <span class="setting-copy"><strong>Ask where to save each download</strong><span class="desc">Show a native Save dialog for every download, initialized with the website's suggested filename and this directory.</span></span>
+                <span class="switch-control">
+                  <input class="switch-input" type="checkbox" checked={settingsServiceDownload.askEachDownload} disabled={downloadSettingsBusy} aria-label={`Ask where to save downloads for ${serviceLabel(settingsSvc)}`} onchange={(event) => saveServiceDownloadOverride(settingsServiceId, { ...settingsServiceDownload, askEachDownload: event.currentTarget.checked })} />
+                  <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+                </span>
+              </label>
+            {:else}
+              <p class="desc download-inherited-copy">Inherited global directory: <strong>{downloadDirectoryLabel(appSettings.downloadDirectory)}</strong> · Ask each time: <strong>{appSettings.askEachDownload ? "On" : "Off"}</strong>. Workspace settings can override these values when this service is opened through that workspace.</p>
+            {/if}
           </div>
 
           <div class="set-title">Appearance</div>
@@ -3381,6 +3604,7 @@
                 {@const selectedWorkspaceId = managedWorkspace.id}
                 {@const selectedWorkspaceName = managedWorkspace.name}
                 {@const selectedWorkspaceServices = managedWorkspace.services}
+                {@const selectedWorkspaceDownload = workspaceDownloadOverride(selectedWorkspaceId)}
                 <section class="settings-section workspace-detail-section" aria-labelledby="settings-workspace-detail">
                   <div class="section-heading workspace-detail-heading">
                     <div>
@@ -3417,6 +3641,18 @@
                         </div>
                         <button class="secondary sm" disabled={managedWorkspaceBusy || !workspaceIcon(managedWorkspace)} onclick={() => saveManagedWorkspaceIcon(null)}>Use initial</button>
                       </div>
+                      <div class="workspace-icon-url-row">
+                        <input
+                          class="setting-text-input"
+                          type="url"
+                          bind:value={managedWorkspaceIconUrlDraft}
+                          placeholder="https://example.com/icon.png or https://example.com/"
+                          aria-label={`Icon URL for ${selectedWorkspaceName}`}
+                          onkeydown={(event) => { if (event.key === "Enter") { event.preventDefault(); void assignManagedWorkspaceIconFromUrl(); } }}
+                        />
+                        <button class="secondary sm" disabled={managedWorkspaceBusy || !managedWorkspaceIconUrlDraft.trim()} onclick={assignManagedWorkspaceIconFromUrl}>Fetch and use</button>
+                      </div>
+                      <p class="settings-note">Enter a direct image URL or a website URL. Tauridium downloads the icon once, validates its size/type, and stores it with the workspace so later backups and portable workspace exports do not depend on the remote site.</p>
                       <div class="workspace-icon-choices">
                         {#each sorted as service (service.id)}
                           {@const candidateIcon = displayedServiceIcon(service)}
@@ -3439,6 +3675,45 @@
                           <div class="managed-empty"><strong>No service icons available</strong><span>Add a service before assigning a workspace icon.</span></div>
                         {/each}
                       </div>
+                    </div>
+                    <div class="setting-card setting-card-stack workspace-download-card">
+                      <div class="setting-copy">
+                        <span class="setting-label">Downloads</span>
+                        <span class="setting-description">Optionally override the global Advanced download defaults whenever a service is opened in this workspace. A per-service override still takes priority.</span>
+                      </div>
+                      <label class="row-toggle download-override-toggle">
+                        <input
+                          type="checkbox"
+                          checked={selectedWorkspaceDownload !== null}
+                          disabled={downloadSettingsBusy}
+                          onchange={(event) => saveWorkspaceDownloadOverride(
+                            selectedWorkspaceId,
+                            event.currentTarget.checked ? inheritedDownloadPreference() : null,
+                          )}
+                        />
+                        <span>Override download settings for this workspace</span>
+                      </label>
+                      {#if selectedWorkspaceDownload}
+                        <div class="download-setting-row">
+                          <div class="setting-copy">
+                            <strong>Download directory</strong>
+                            <span class="setting-description" title={downloadDirectoryLabel(selectedWorkspaceDownload.directory)}>{downloadDirectoryLabel(selectedWorkspaceDownload.directory)}</span>
+                          </div>
+                          <div class="setting-actions">
+                            <button class="secondary sm" disabled={downloadSettingsBusy} onclick={() => chooseWorkspaceDownloadDirectory(selectedWorkspaceId)}>Choose folder…</button>
+                            <button class="secondary sm" disabled={downloadSettingsBusy || !selectedWorkspaceDownload.directory} onclick={() => saveWorkspaceDownloadOverride(selectedWorkspaceId, { ...selectedWorkspaceDownload, directory: "" })}>Use system Downloads</button>
+                          </div>
+                        </div>
+                        <label class="download-setting-row setting-card-toggle">
+                          <span class="setting-copy"><strong>Ask where to save each download</strong><span class="setting-description">Show a native Save dialog for each download while this workspace is active.</span></span>
+                          <span class="switch-control">
+                            <input class="switch-input" type="checkbox" checked={selectedWorkspaceDownload.askEachDownload} disabled={downloadSettingsBusy} aria-label={`Ask where to save downloads in ${selectedWorkspaceName}`} onchange={(event) => saveWorkspaceDownloadOverride(selectedWorkspaceId, { ...selectedWorkspaceDownload, askEachDownload: event.currentTarget.checked })} />
+                            <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+                          </span>
+                        </label>
+                      {:else}
+                        <p class="settings-note">Inherited global directory: <strong>{downloadDirectoryLabel(appSettings.downloadDirectory)}</strong> · Ask each time: <strong>{appSettings.askEachDownload ? "On" : "Off"}</strong>.</p>
+                      {/if}
                     </div>
                     <div class="setting-card setting-card-stack workspace-membership-card">
                       <div class="setting-copy">
@@ -3863,6 +4138,23 @@
                 <div class="settings-list">
                   {@render appToggle("Capture Tauridium shortcuts inside services", "Enabled by default. Matching configured Tauridium shortcuts are intercepted before the focused website. Normal typing remains untouched unless explicitly assigned as a Tauridium shortcut. Disable this if websites should receive matching shortcuts by default. Individual services can override this in Service Settings.", "captureServiceShortcuts", appSettings.captureServiceShortcuts)}
                   <p class="settings-note">Changing this setting recreates open service webviews so the keyboard policy applies immediately while preserving their persistent sessions.</p>
+                </div>
+              </section>
+              <section class="settings-section" aria-labelledby="settings-advanced-downloads">
+                <div class="section-heading"><h3 id="settings-advanced-downloads">Downloads</h3><p>Choose where websites save downloads. Tauridium preserves the filename suggested by the website or server, including attachment names and extensions.</p></div>
+                <div class="settings-list">
+                  <div class="setting-card">
+                    <div class="setting-copy">
+                      <span class="setting-label">Default download directory</span>
+                      <span class="setting-description" title={downloadDirectoryLabel(appSettings.downloadDirectory)}>{downloadDirectoryLabel(appSettings.downloadDirectory)}</span>
+                    </div>
+                    <div class="setting-actions">
+                      <button class="secondary sm" onclick={chooseGlobalDownloadDirectory}>Choose folder…</button>
+                      <button class="secondary sm" disabled={!appSettings.downloadDirectory} onclick={() => saveAppSetting("downloadDirectory", "")}>Use system Downloads</button>
+                    </div>
+                  </div>
+                  {@render appToggle("Ask where to save each download", "Show a native Save dialog for every download. The dialog starts with the website/server-suggested filename and the effective download directory.", "askEachDownload", appSettings.askEachDownload)}
+                  <p class="settings-note">Priority: service override → active workspace override → these global defaults. Directory overrides are device-specific settings and full backups preserve them; portable workspace exports intentionally omit filesystem paths.</p>
                 </div>
               </section>
               <section class="settings-section" aria-labelledby="settings-advanced-browser">
@@ -4403,6 +4695,7 @@
   .workspace-avatar-image { object-fit: contain; padding: 3px; box-sizing: border-box; }
   .workspace-icon-card { gap: 10px; }
   .workspace-icon-current { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; }
+  .workspace-icon-url-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; }
   .workspace-icon-preview { width: 44px; height: 44px; border-radius: 10px; object-fit: contain; padding: 5px; box-sizing: border-box; }
   .workspace-icon-choices { width: 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 7px; max-height: 250px; overflow-y: auto; overscroll-behavior: contain; padding: 3px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg); }
   .workspace-icon-choice { min-width: 0; min-height: 72px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 8px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text2); cursor: pointer; font: inherit; }
@@ -4479,6 +4772,13 @@
   .service-sandbox-manager { gap: 10px; }
   .service-sandbox-search { width: min(100%, 420px); flex: 0 1 420px; }
   .service-sandbox-help { margin: 0; }
+  .service-download-manager { gap: 10px; }
+  .download-override-toggle { width: fit-content; max-width: 100%; }
+  .download-setting-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; box-sizing: border-box; padding: 10px 0 0; border-top: 1px solid var(--border); }
+  label.download-setting-row { cursor: pointer; }
+  .download-setting-row .desc { margin-left: 0; }
+  .download-inherited-copy { margin: 0; padding-top: 4px; }
+  .workspace-download-card .download-setting-row { padding: 10px 0 0; }
   .service-workspace-overview { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
   .service-workspace-overview .setting-copy { min-width: 0; }
   .service-workspace-toolbar { display: flex; align-items: stretch; gap: 8px; }
@@ -4560,7 +4860,7 @@
     .settings-panel .swatches { justify-content: flex-start; max-width: none; }
     .range-control { min-width: 0; }
     .settings-panel .range { flex: 1; width: auto; }
-    .managed-toolbar, .workspace-create-row, .workspace-name-control, .sandbox-create-row, .backup-location-row, .audit-toolbar, .service-workspace-create, .service-workspace-create-card, .workspace-icon-current { grid-template-columns: 1fr; }
+    .managed-toolbar, .workspace-create-row, .workspace-name-control, .sandbox-create-row, .backup-location-row, .audit-toolbar, .service-workspace-create, .service-workspace-create-card, .workspace-icon-current, .workspace-icon-url-row, .download-setting-row { grid-template-columns: 1fr; }
     .service-workspace-overview { flex-direction: column; }
     .service-workspace-toolbar { flex-direction: column; }
     .service-workspace-filters { width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); }

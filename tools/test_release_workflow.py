@@ -202,10 +202,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
 
   def test_download_notification_uses_valid_quoted_format_string(self) -> None:
     main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
-    self.assertIn(
-      '.body(format!("Downloaded \\"{}\\"", download_filename(&url)))',
-      main,
-    )
+    self.assertIn(r'.body(format!("Downloaded \"{filename}\""))', main)
+    self.assertIn('.and_then(Path::file_name)', main)
     self.assertNotIn('format!("Downloaded "{}""', main)
 
   def test_tauridium_menu_opens_settings_and_about_remains_in_settings(self) -> None:
