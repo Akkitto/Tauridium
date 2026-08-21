@@ -1372,6 +1372,23 @@ def main() -> int:
     if test_marker not in patch_0426:
       fail(f"0.4.26 regression coverage is missing: {test_marker}")
 
+  patch_0427 = read("tools/test_patch_0427.py")
+  api_test = read("src/lib/api.test.ts")
+  for marker in (
+    "workspaceId: null,",
+    'await showService(service, "workspace-123");',
+    'workspaceId: "workspace-123",',
+  ):
+    if marker not in api_test:
+      fail(f"0.4.27 service-view workspace API test invariant is missing: {marker}")
+  for test_marker in (
+    "test_service_view_request_keeps_workspace_context_in_typed_payload",
+    "test_default_service_view_expectations_include_null_workspace_context",
+    "test_show_service_test_covers_explicit_workspace_context",
+  ):
+    if test_marker not in patch_0427:
+      fail(f"0.4.27 regression coverage is missing: {test_marker}")
+
   for marker in (
     '["keybindings", "Keybinds"]',
     '["sandbox", "Sandbox"]',

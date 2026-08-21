@@ -68,6 +68,7 @@ describe("service view commands", () => {
         customUrl: service.customUrl,
         team: service.team,
         userAgentPref: service.userAgentPref,
+        workspaceId: null,
         dark: {
           enabled: true,
           brightness: 95,
@@ -75,6 +76,18 @@ describe("service view commands", () => {
           sepia: 5,
         },
       },
+    });
+  });
+
+  it("passes an explicit workspace context to show_service", async () => {
+    await showService(service, "workspace-123");
+
+    expect(mocks.invoke).toHaveBeenCalledOnce();
+    expect(mocks.invoke).toHaveBeenCalledWith("show_service", {
+      request: expect.objectContaining({
+        serviceId: service.id,
+        workspaceId: "workspace-123",
+      }),
     });
   });
 });
