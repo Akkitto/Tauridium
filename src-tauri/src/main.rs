@@ -55,9 +55,146 @@ static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
 
 // User agent for Ferdium server API calls and recipe retrieval.
 const API_UA: &str = concat!("Tauridium/", env!("CARGO_PKG_VERSION"));
-const PROJECT_HOMEPAGE: &str = "https://github.com/Gizmo091/Tauridium";
-const PROJECT_SOURCE_CODE: &str = "https://github.com/Gizmo091/Tauridium/tree/master";
-const AUTHOR_HOMEPAGE: &str = "https://github.com/Gizmo091";
+const PROJECT_HOMEPAGE: &str = "https://github.com/Akkitto/Tauridium";
+const PROJECT_SOURCE_CODE: &str = "https://github.com/Akkitto/Tauridium/tree/master";
+const AUTHOR_HOMEPAGE: &str = "https://brani.dev";
+const IDENTITY_MIGRATION_MARKER: &str = ".tauridium-identity-v1";
+const IDENTITY_DIRECTORY_MARKERS: [&str; 8] = [
+    "app_settings.json",
+    "local_profile.json",
+    "session.json",
+    "sessions",
+    "service-icons",
+    "recipes",
+    "audit",
+    "backups",
+];
+
+fn identity_directory_suffix(current: &Path) -> &'static str {
+    if current
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(".dev"))
+    {
+        ".tauridium.dev"
+    } else {
+        ".tauridium"
+    }
+}
+
+fn identity_directory_has_project_data(path: &Path) -> bool {
+    IDENTITY_DIRECTORY_MARKERS
+        .iter()
+        .any(|marker| path.join(marker).exists())
+}
+
+fn legacy_identity_candidate(current: &Path) -> Result<Option<PathBuf>, String> {
+    let Some(parent) = current.parent() else {
+        return Ok(None);
+    };
+    let suffix = identity_directory_suffix(current);
+    let mut candidates = Vec::<(usize, PathBuf)>::new();
+    let entries = match std::fs::read_dir(parent) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "Unable to inspect the application data parent directory: {error}"
+            ))
+        }
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path == current || !entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !name.ends_with(suffix) {
+            continue;
+        }
+        let score = IDENTITY_DIRECTORY_MARKERS
+            .iter()
+            .filter(|marker| path.join(marker).exists())
+            .count();
+        if score > 0 {
+            candidates.push((score, path));
+        }
+    }
+    candidates.sort_by(|left, right| {
+        right
+            .0
+            .cmp(&left.0)
+            .then_with(|| left.1.as_os_str().cmp(right.1.as_os_str()))
+    });
+    let Some((score, candidate)) = candidates.first() else {
+        return Ok(None);
+    };
+    if candidates.get(1).is_some_and(|other| other.0 == *score) {
+        return Ok(None);
+    }
+    Ok(Some(candidate.clone()))
+}
+
+fn copy_identity_directory_contents(source: &Path, target: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(target).map_err(|error| {
+        format!("Unable to create the current Tauridium application data directory: {error}")
+    })?;
+    let entries = std::fs::read_dir(source)
+        .map_err(|error| format!("Unable to read legacy Tauridium application data: {error}"))?;
+    for entry in entries {
+        let entry = entry
+            .map_err(|error| format!("Unable to read legacy Tauridium data entry: {error}"))?;
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("Unable to inspect legacy Tauridium data entry: {error}"))?;
+        let destination = target.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_identity_directory_contents(&entry.path(), &destination)?;
+        } else if file_type.is_file() && !destination.exists() {
+            std::fs::copy(entry.path(), &destination).map_err(|error| {
+                format!("Unable to migrate Tauridium application data file: {error}")
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn migrate_identity_directory(current: &Path) -> Result<bool, String> {
+    if current.join(IDENTITY_MIGRATION_MARKER).exists() {
+        return Ok(false);
+    }
+    if identity_directory_has_project_data(current) {
+        return Ok(false);
+    }
+    let Some(source) = legacy_identity_candidate(current)? else {
+        return Ok(false);
+    };
+    copy_identity_directory_contents(&source, current)?;
+    std::fs::write(current.join(IDENTITY_MIGRATION_MARKER), b"1\n")
+        .map_err(|error| format!("Unable to finalize Tauridium identity migration: {error}"))?;
+    Ok(true)
+}
+
+fn migrate_legacy_application_identity(app: &AppHandle) -> Result<bool, String> {
+    let mut roots = Vec::new();
+    if let Ok(path) = app.path().app_data_dir() {
+        roots.push(path);
+    }
+    if let Ok(path) = app.path().app_config_dir() {
+        roots.push(path);
+    }
+    roots.sort();
+    roots.dedup();
+
+    let mut migrated = false;
+    for root in roots {
+        migrated |= migrate_identity_directory(&root)?;
+    }
+    Ok(migrated)
+}
+
 // Logical sidebar width; must match the shell CSS.
 const SIDEBAR_W: f64 = 240.0;
 const MAX_SIDEBAR_W: f64 = 1200.0;
@@ -4315,7 +4452,7 @@ struct AppMetadata {
     description: &'static str,
     repository: &'static str,
     license: &'static str,
-    maintainer: &'static str,
+    author: &'static str,
 }
 
 #[tauri::command]
@@ -4326,7 +4463,7 @@ fn get_app_metadata() -> AppMetadata {
         description: env!("CARGO_PKG_DESCRIPTION"),
         repository: env!("CARGO_PKG_REPOSITORY"),
         license: env!("CARGO_PKG_LICENSE"),
-        maintainer: env!("TAURIDIUM_MAINTAINER"),
+        author: env!("CARGO_PKG_AUTHORS"),
     }
 }
 
@@ -4421,6 +4558,10 @@ fn main() {
         )
         .manage(AppState::default())
         .setup(|app| {
+            if let Err(error) = migrate_legacy_application_identity(app.handle()) {
+                eprintln!("Unable to migrate Tauridium application data to the current application identity: {error}");
+            }
+
             // Cache app settings in memory for the poller, shutdown handling, and related logic.
             *app.state::<AppState>().settings.lock().unwrap() =
                 read_app_settings_value(app.handle());
@@ -4632,6 +4773,49 @@ fn main() {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn identity_migration_test_root() -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("test clock must be after the Unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "tauridium-identity-migration-{}-{unique}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn feature_0500_identity_migration_preserves_existing_profile_data() {
+        let root = identity_migration_test_root();
+        let legacy = root.join("legacy.tauridium");
+        let current = root.join("dev.brani.tauridium");
+        let nested = legacy.join("recipes").join("custom");
+
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(legacy.join("app_settings.json"), b"{\"theme\":\"dark\"}\n").unwrap();
+        std::fs::write(nested.join("recipe.json"), b"{}\n").unwrap();
+
+        assert_eq!(identity_directory_suffix(&current), ".tauridium");
+        assert_eq!(
+            identity_directory_suffix(Path::new("dev.brani.tauridium.dev")),
+            ".tauridium.dev"
+        );
+        assert_eq!(legacy_identity_candidate(&current).unwrap(), Some(legacy));
+        assert!(migrate_identity_directory(&current).unwrap());
+        assert_eq!(
+            std::fs::read_to_string(current.join("app_settings.json")).unwrap(),
+            "{\"theme\":\"dark\"}\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(current.join("recipes/custom/recipe.json")).unwrap(),
+            "{}\n"
+        );
+        assert!(current.join(IDENTITY_MIGRATION_MARKER).exists());
+        assert!(!migrate_identity_directory(&current).unwrap());
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn service_toast_overlay_script_encodes_untrusted_text_without_page_global() {

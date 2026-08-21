@@ -207,7 +207,7 @@
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
   const pendingReloadToasts = new Map<string, string>();
   let appMetadata = $state<AppMetadata | null>(null);
-  const projectRepository = $derived((appMetadata?.repository || "https://github.com/Gizmo091/Tauridium").replace(/\/$/, ""));
+  const projectRepository = $derived((appMetadata?.repository || "https://github.com/Akkitto/Tauridium").replace(/\/$/, ""));
 
   let newSandboxName = $state("");
   let sandboxServiceQuery = $state("");
@@ -4341,11 +4341,11 @@
                 </section>
                 <section class="settings-section" aria-labelledby="about-legal-heading">
                   <div class="section-heading"><h3 id="about-legal-heading">Legal</h3></div>
-                  <div class="settings-list"><button class="setting-card about-link-card" onclick={() => openProjectLink(`${projectRepository}/blob/master/LICENSE`)}><span class="setting-copy"><span class="setting-label">{appMetadata?.license ?? "License"}</span><span class="setting-description">Copyright © 2026 {appMetadata?.maintainer ?? "Tauridium contributors"}. View the complete license text.</span></span><span class="external-indicator" aria-hidden="true">View ↗</span></button></div>
+                  <div class="settings-list"><button class="setting-card about-link-card" onclick={() => openProjectLink(`${projectRepository}/blob/master/LICENSE`)}><span class="setting-copy"><span class="setting-label">{appMetadata?.license ?? "License"}</span><span class="setting-description">Copyright © 2026 {appMetadata?.author ?? "Daniel Braniewski"}. View the complete license text.</span></span><span class="external-indicator" aria-hidden="true">View ↗</span></button></div>
                 </section>
-                <section class="settings-section" aria-labelledby="about-credits-heading">
-                  <div class="section-heading"><h3 id="about-credits-heading">Credits</h3></div>
-                  <div class="settings-list"><div class="setting-card info-card"><span class="setting-copy"><span class="setting-label">Maintainer</span><span class="setting-description">{appMetadata?.maintainer ?? "Tauridium contributors"}</span></span><button class="secondary sm" onclick={() => openProjectLink(`${projectRepository}/graphs/contributors`)}>Contributors ↗</button></div></div>
+                <section class="settings-section" aria-labelledby="about-author-heading">
+                  <div class="section-heading"><h3 id="about-author-heading">Author</h3></div>
+                  <div class="settings-list"><button class="setting-card about-link-card" onclick={() => openProjectLink("https://brani.dev")}><span class="setting-copy"><span class="setting-label">{appMetadata?.author ?? "Daniel Braniewski"}</span><span class="setting-description">brani.dev</span></span><span class="external-indicator" aria-hidden="true">Homepage ↗</span></button></div>
                 </section>
                 <section class="settings-section" aria-labelledby="about-technology-heading">
                   <div class="section-heading"><h3 id="about-technology-heading">Technology</h3><p>Key projects Tauridium builds on or interoperates with.</p></div>

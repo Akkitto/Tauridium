@@ -73,9 +73,9 @@ class SettingsUiReleaseTests(unittest.TestCase):
       "Repository",
       "Issues and feature requests",
       "appMetadata?.license",
-      "appMetadata?.maintainer",
-      "Maintainer",
-      "Contributors ↗",
+      "appMetadata?.author",
+      "Author",
+      "Homepage ↗",
       "Tauri v2",
       "Ferdium",
     ):

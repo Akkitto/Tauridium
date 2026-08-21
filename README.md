@@ -5,28 +5,20 @@
 <h1 align="center">Tauridium</h1>
 
 <p align="center">
-  <a href="https://github.com/Gizmo091/Tauridium/releases/latest"><img src="https://img.shields.io/github/v/release/Gizmo091/Tauridium?sort=semver" alt="Latest release" /></a>
-  <a href="https://github.com/Gizmo091/Tauridium/releases"><img src="https://img.shields.io/github/downloads/Gizmo091/Tauridium/total?label=downloads%20total" alt="Total downloads (all releases)" /></a>
-  <a href="https://github.com/Gizmo091/Tauridium/releases/latest"><img src="https://img.shields.io/github/downloads/Gizmo091/Tauridium/latest/total?label=downloads%20latest" alt="Downloads (latest release)" /></a>
+  <a href="https://github.com/Akkitto/Tauridium/releases/latest"><img src="https://img.shields.io/github/v/release/Akkitto/Tauridium?sort=semver" alt="Latest release" /></a>
+  <a href="https://github.com/Akkitto/Tauridium/releases"><img src="https://img.shields.io/github/downloads/Akkitto/Tauridium/total?label=downloads%20total" alt="Total downloads (all releases)" /></a>
+  <a href="https://github.com/Akkitto/Tauridium/releases/latest"><img src="https://img.shields.io/github/downloads/Akkitto/Tauridium/latest/total?label=downloads%20latest" alt="Downloads (latest release)" /></a>
   <img src="https://img.shields.io/badge/Maintained%3F-yes-green.svg" alt="Maintained: yes" />
-  <img src="https://img.shields.io/badge/maintainer-Mathieu%20Vedie-blue" alt="Maintainer: Mathieu Vedie" />
+  <a href="https://brani.dev"><img src="https://img.shields.io/badge/author-Daniel%20Braniewski-blue" alt="Author: Daniel Braniewski" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
   <img src="https://img.shields.io/badge/contributions-welcome-brightgreen.svg" alt="Contributions welcome" />
-  <a href="https://github.com/Gizmo091/Tauridium/commits"><img src="https://badgen.net/github/last-commit/Gizmo091/Tauridium" alt="Latest commit" /></a>
+  <a href="https://github.com/Akkitto/Tauridium/commits"><img src="https://badgen.net/github/last-commit/Akkitto/Tauridium" alt="Latest commit" /></a>
 </p>
 
-<p align="center">
-  <a href="https://www.buymeacoffee.com/mathieuvedie"><img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" height="32" /></a>
-</p>
 
 A lightweight desktop client for [Ferdium](https://ferdium.org), built with
 **Tauri v2** (Rust + native WebView) instead of Electron. Use a Ferdium server
 for synchronized data, or run accountless with services and workspaces stored locally.
-
-> ⚡️ **This project is vibe-coded.** It was built end-to-end in a
-> pair-programming session with an AI assistant (Claude / Claude Code). The
-> architecture, code, icon and CI/CD were shaped conversationally rather than
-> from a formal spec — treat it accordingly. 🤖
 
 The name is a nod to the lineage **Franz → Ferdi → Ferdium**, with the `-ium`
 suffix kept and **Tauri** baked in.
@@ -140,10 +132,10 @@ Ferdium login/session credentials, website cookies/storage, remote recipe caches
 ## About and project links
 
 **Settings → About** presents Tauridium's application identity, installed version, project
-summary, MIT license, maintainer and contributor credits, and the main open-source project
+summary, MIT licence, author information, and the main open-source project
 destinations. The native **About** menu beside **Services** also provides quick links to the
-project homepage, source tree, and author homepage. Source, release, issue, license,
-contributor, Tauri, and Ferdium links open in the operating system's default browser rather
+project homepage, source tree, and author homepage. Source, release, issue, licence,
+author, Tauri, and Ferdium links open in the operating system's default browser rather
 than inside a service webview.
 
 ## Tech stack
@@ -276,8 +268,8 @@ before tagging:
 3. Tag and push:
 
 ```text
-git tag -a v0.4.29 -m "Tauridium 0.4.29"
-git push origin v0.4.29
+git tag -a v0.5.0 -m "Tauridium 0.5.0"
+git push origin v0.5.0
 ```
 
 If no matching `CHANGELOG.md` section exists, the workflow falls back to generic
@@ -294,7 +286,7 @@ For a local validated release, run:
 just release
 ```
 
-Runtime ZIPs are target-qualified using the binary's actual Rust compilation target, so artifacts from different native builds can coexist in the same `release/` directory. Common examples are `tauridium-0.4.29-run-win-x64.zip`, `tauridium-0.4.29-run-win-arm64.zip`, `tauridium-0.4.29-run-linux-x64.zip`, `tauridium-0.4.29-run-linux-arm64.zip`, and `tauridium-0.4.29-run-macos-arm64.zip`. Source and documentation ZIP names remain target-neutral.
+Runtime ZIPs are target-qualified using the binary's actual Rust compilation target, so artifacts from different native builds can coexist in the same `release/` directory. Common examples are `tauridium-0.5.0-run-win-x64.zip`, `tauridium-0.5.0-run-win-arm64.zip`, `tauridium-0.5.0-run-linux-x64.zip`, `tauridium-0.5.0-run-linux-arm64.zip`, and `tauridium-0.5.0-run-macos-arm64.zip`. Source and documentation ZIP names remain target-neutral.
 
 `tools/package_release.py --build-handoff` emits an explicit `run-build-handoff` ZIP when a native runtime cannot be proven in the current environment. It never labels that archive as a validated executable. `tools/package_release.py` also accepts repeated `--runtime` arguments and groups supplied binaries by their reported compilation target, emitting one run ZIP per target instead of overwriting a generic runtime archive.
 
@@ -342,9 +334,16 @@ drag Tauridium to Applications, then either:
   suggested filename and extension. **Workaround for the context-menu item:** use
   the service's own download button instead.
 
+## Licence
+
+Copyright © 2026 [Daniel Braniewski](https://brani.dev)
+
+Tauridium is free software released under the [MIT License](LICENSE). You may use, copy,
+modify, merge, publish, distribute, sublicense, and/or sell copies subject to the complete
+license terms. The software is provided **AS IS**, without warranty of any kind.
+
 ## Status & caveats
 
-- Vibe-coded personal project — expect rough edges.
 - **Windows 11, Linux, and macOS are first-class development/build targets.**
   Platform-specific packaging and signing constraints still apply.
 - macOS builds are **unsigned** (see [Install](#install)) — proper Developer ID

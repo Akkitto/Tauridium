@@ -128,14 +128,13 @@ class Patch0407Tests(unittest.TestCase):
     self.assertIn('env!("CARGO_PKG_DESCRIPTION")', self.main)
     self.assertIn('env!("CARGO_PKG_REPOSITORY")', self.main)
     self.assertIn('env!("CARGO_PKG_LICENSE")', self.main)
-    self.assertIn('env!("TAURIDIUM_MAINTAINER")', self.main)
-    self.assertIn('cargo:rerun-if-env-changed=TAURIDIUM_MAINTAINER', self.build)
-    self.assertIn('repository = "https://github.com/Gizmo091/Tauridium"', self.cargo)
+    self.assertIn('env!("CARGO_PKG_AUTHORS")', self.main)
+    self.assertIn('authors = ["Daniel Braniewski"]', self.cargo)
+    self.assertIn('repository = "https://github.com/Akkitto/Tauridium"', self.cargo)
     about = self.app.split('{:else if settingsTab === "about"}', 1)[1].split('{/if}', 1)[0]
-    self.assertIn('appMetadata?.maintainer', about)
+    self.assertIn('appMetadata?.author', about)
     self.assertIn('appMetadata?.license', about)
     self.assertIn('projectRepository', about)
-    self.assertNotIn('Mathieu Vedie', about)
 
   def test_backend_has_unit_coverage_for_opencode_and_custom_templates(self) -> None:
     self.assertIn('fn resolve_url_uses_recipe_team_url_and_custom_placeholders()', self.main)

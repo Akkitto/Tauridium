@@ -666,8 +666,8 @@ def main() -> int:
     'Report an issue ↗',
     '>Repository</span>',
     'appMetadata?.license',
-    'appMetadata?.maintainer',
-    'Contributors ↗',
+    'appMetadata?.author',
+    'Homepage ↗',
     'Tauri v2',
     'Ferdium',
   ):

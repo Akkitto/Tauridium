@@ -238,9 +238,9 @@ class ReleaseWorkflowTests(unittest.TestCase):
     self.assertIn('["about", "About"]', app)
     self.assertIn('{:else if settingsTab === "about"}', app)
     self.assertIn('>Repository</span>', app)
-    self.assertIn('github.com/Gizmo091/Tauridium', app)
+    self.assertIn('github.com/Akkitto/Tauridium', app)
     self.assertIn('appMetadata?.license', app)
-    self.assertIn('appMetadata?.maintainer', app)
+    self.assertIn('appMetadata?.author', app)
 
   def test_unix_initializer_bootstraps_tauri_cli_for_release_builds(self) -> None:
     init_py = (ROOT / "tools/init.py").read_text(encoding="utf-8")

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.0] - 2026-08-21
+
+### Changed
+
+- Aligned Tauridium's current project authorship, repository/homepage metadata, badges, About links, application identity, and MIT licence presentation with the maintained fork.
+
 ## [0.4.29] - 2026-08-21
 
 ### Added

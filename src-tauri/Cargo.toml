@@ -1,10 +1,12 @@
 [package]
 name = "tauridium"
-version = "0.4.29"
+version = "0.5.0"
 edition = "2021"
 rust-version = "1.97.1"
 description = "Tauridium — lightweight Tauri client for Ferdium"
-repository = "https://github.com/Gizmo091/Tauridium"
+authors = ["Daniel Braniewski"]
+homepage = "https://github.com/Akkitto/Tauridium"
+repository = "https://github.com/Akkitto/Tauridium"
 license = "MIT"
 
 [build-dependencies]

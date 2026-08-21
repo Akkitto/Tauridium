@@ -188,9 +188,9 @@ describe("external links", () => {
 
   it("opens project links through the native default-browser command", async () => {
     const { openExternalUrl } = await import("./api");
-    await openExternalUrl("https://github.com/Gizmo091/Tauridium");
+    await openExternalUrl("https://github.com/Akkitto/Tauridium");
     expect(mocks.invoke).toHaveBeenCalledWith("open_external_url", {
-      url: "https://github.com/Gizmo091/Tauridium",
+      url: "https://github.com/Akkitto/Tauridium",
     });
   });
 });

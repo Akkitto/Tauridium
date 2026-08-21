@@ -165,7 +165,7 @@ export interface AppMetadata {
   description: string;
   repository: string;
   license: string;
-  maintainer: string;
+  author: string;
 }
 
 export function getAppMetadata(): Promise<AppMetadata> {
