@@ -30,8 +30,7 @@ class Patch0428Tests(unittest.TestCase):
     self.assertIn("const menu = await Menu.new({", APP)
     self.assertIn("await menu.popup(new LogicalPosition(x, y));", APP)
     self.assertIn("await menu.close().catch(() => {});", APP)
-    self.assertNotIn("service-context-backdrop", APP)
-    self.assertNotIn('class="service-context-menu"', APP)
+    self.assertIn("if (!appSettings.prettyServiceContextMenu)", APP)
 
   def test_sandbox_search_has_compact_non_growing_layout(self) -> None:
     self.assertIn(

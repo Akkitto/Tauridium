@@ -52,8 +52,10 @@ class Patch0426Tests(unittest.TestCase):
     workspace_create = APP.split("async function createWorkspaceForCurrentService", 1)[1].split("function filteredServiceSandboxes", 1)[0]
     self.assertIn('showToast("Saved", "success")', workspace_create)
     sandbox = APP.split("async function assignServiceSandbox", 1)[1].split("async function", 1)[0]
-    self.assertIn('view === "svcSettings"', sandbox)
-    self.assertIn('showToast("Saved", "success")', sandbox)
+    self.assertIn("showServiceSettingsSaved(serviceId)", sandbox)
+    helper = APP.split("function showServiceSettingsSaved", 1)[1].split("function preferredWebsiteIcon", 1)[0]
+    self.assertIn('view === "svcSettings"', helper)
+    self.assertIn('showToast("Saved", "success")', helper)
     self.assertIn('class:success={toastTone === "success"}', APP)
     self.assertIn('.toast.success { background: #187a45;', APP)
 

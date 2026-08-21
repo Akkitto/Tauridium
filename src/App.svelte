@@ -201,6 +201,7 @@
   let quickSwitcherQuery = $state("");
   let quickSwitcherIndex = $state(0);
 
+  let serviceContextMenu = $state<{ serviceId: string; x: number; y: number } | null>(null);
   let toastMessage = $state("");
   let toastTone = $state<"default" | "success">("default");
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -257,6 +258,7 @@
     preloadServices: true,
     fetchMissingServiceIcons: true,
     reloadToasts: true,
+    prettyServiceContextMenu: true,
     sidebarServiceDragReorder: true,
     captureServiceShortcuts: true,
     serviceShortcutCaptureOverrides: {},
@@ -629,6 +631,12 @@
     }, 2600);
   }
 
+  function showServiceSettingsSaved(serviceId: string) {
+    if (view === "svcSettings" && settingsSvc?.id === serviceId) {
+      showToast("Saved", "success");
+    }
+  }
+
   function preferredWebsiteIcon(service: Service): string | null {
     if (service.useFavicon !== true) return null;
     return serviceIcons[service.id] ?? null;
@@ -656,6 +664,7 @@
         throw new Error("Tauridium could not verify the service icon inversion setting");
       }
       appSettings = persisted;
+      showServiceSettingsSaved(serviceId);
     } catch (err) {
       appSettings = { ...appSettings, serviceIconInversions: previous };
       error = `Unable to save service icon inversion setting: ${err}`;
@@ -711,6 +720,7 @@
         throw new Error("Tauridium could not verify the service download settings");
       }
       appSettings = persisted;
+      showServiceSettingsSaved(serviceId);
     } catch (err) {
       appSettings = { ...appSettings, serviceDownloadSettings: previous };
       error = `Unable to save service download settings: ${err}`;
@@ -820,11 +830,16 @@
     }
   }
 
-  function openContextServiceSettings(service: Service) {
-    openServiceSettings(service);
+  function closeServiceContextMenu() {
+    serviceContextMenu = null;
   }
 
-  async function popupServiceContextMenu(service: Service, x: number, y: number) {
+  function openContextServiceSettings(service: Service) {
+    openServiceSettings(service);
+    closeServiceContextMenu();
+  }
+
+  async function popupNativeServiceContextMenu(service: Service, x: number, y: number) {
     const menu = await Menu.new({
       items: [
         { id: `settings-${service.id}`, text: "Settings", action: () => openContextServiceSettings(service) },
@@ -843,18 +858,53 @@
   function openServiceContextMenu(event: MouseEvent, service: Service) {
     event.preventDefault();
     event.stopPropagation();
-    void popupServiceContextMenu(service, event.clientX, event.clientY).catch((err) => {
-      error = `Unable to open service menu: ${err}`;
-    });
+    if (!appSettings.prettyServiceContextMenu) {
+      void popupNativeServiceContextMenu(service, event.clientX, event.clientY).catch((err) => {
+        error = `Unable to open service menu: ${err}`;
+      });
+      return;
+    }
+    const width = 226;
+    const height = 194;
+    serviceContextMenu = {
+      serviceId: service.id,
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8)),
+    };
+    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".service-context-menu button:not(:disabled)")?.focus());
   }
 
   function openServiceContextMenuFromKeyboard(event: KeyboardEvent, service: Service) {
     if (!(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
     event.preventDefault();
     const rect = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : null;
-    void popupServiceContextMenu(service, rect ? rect.left + 28 : 12, rect ? rect.bottom : 12).catch((err) => {
-      error = `Unable to open service menu: ${err}`;
-    });
+    if (!appSettings.prettyServiceContextMenu) {
+      void popupNativeServiceContextMenu(service, rect ? rect.left + 28 : 12, rect ? rect.bottom : 12).catch((err) => {
+        error = `Unable to open service menu: ${err}`;
+      });
+      return;
+    }
+    serviceContextMenu = {
+      serviceId: service.id,
+      x: rect ? Math.min(rect.left + 28, window.innerWidth - 234) : 12,
+      y: rect ? Math.min(rect.bottom, window.innerHeight - 202) : 12,
+    };
+    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".service-context-menu button:not(:disabled)")?.focus());
+  }
+
+  function handleServiceContextMenuKeydown(event: KeyboardEvent) {
+    const menu = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    const items = menu ? [...menu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')] : [];
+    if (!items.length) return;
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    let next = current;
+    if (event.key === "ArrowDown") next = (current + 1 + items.length) % items.length;
+    else if (event.key === "ArrowUp") next = (current - 1 + items.length) % items.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = items.length - 1;
+    else return;
+    event.preventDefault();
+    items[next]?.focus();
   }
 
   function sameIds(left: string[], right: string[]): boolean {
@@ -1401,6 +1451,7 @@
   // Handlers modify ONLY local state; Save persists everything at once.
   // Fields whose changes require recreating the webview (script injected at creation).
   const RELOAD_FIELDS = new Set<keyof Service>([
+    "trapLinkClicks",
     "isDarkModeEnabled",
     "darkReaderBrightness",
     "darkReaderContrast",
@@ -1491,7 +1542,8 @@
           }
         }
       }
-      showToast(`${serviceLabel(service)} ${enabled ? "enabled" : "disabled"}.`);
+      if (view === "svcSettings" && settingsSvc?.id === service.id) showServiceSettingsSaved(service.id);
+      else showToast(`${serviceLabel(service)} ${enabled ? "enabled" : "disabled"}.`);
     } catch (err) {
       error = `Unable to ${enabled ? "enable" : "disable"} ${serviceLabel(service)}: ${err}`;
     }
@@ -1966,6 +2018,7 @@
       await closeService(serviceId).catch(() => {});
       const { [serviceId]: _, ...rest } = statusMap;
       statusMap = rest;
+      showServiceSettingsSaved(serviceId);
     } catch (err) {
       appSettings = { ...appSettings, serviceShortcutCaptureOverrides: previous };
       error = `Unable to save shortcut handling: ${err}`;
@@ -2781,6 +2834,11 @@
   }
 
   function handleGlobalKeydown(event: KeyboardEvent) {
+    if (event.key === "Escape" && serviceContextMenu) {
+      event.preventDefault();
+      closeServiceContextMenu();
+      return;
+    }
     if (recordingAction) {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -2901,7 +2959,7 @@
       const actual = persisted.serviceSandboxes[serviceId] ?? "";
       if (actual !== (sandboxId || "")) throw new Error("Tauridium could not verify the saved sandbox assignment");
       appSettings = persisted;
-      if (view === "svcSettings" && settingsSvc?.id === serviceId) showToast("Saved", "success");
+      showServiceSettingsSaved(serviceId);
     } catch (err) {
       appSettings = { ...appSettings, serviceSandboxes: previous };
       error = `Unable to assign sandbox: ${err}`;
@@ -3554,7 +3612,7 @@
                   <h3 id="settings-services-configured">Configured services <span class="section-count">{services.length}</span></h3>
                   <p>Search or separate the list by workspace. Reordering a filtered workspace changes only those visible service slots while preserving the canonical global order.</p>
                 </div>
-                <div class="managed-toolbar">
+                <div class="managed-toolbar service-managed-toolbar">
                   <input
                     class="setting-text-input"
                     type="search"
@@ -3574,6 +3632,7 @@
                       <option value={workspace.id}>{workspace.name}</option>
                     {/each}
                   </select>
+                  <button class="primary" onclick={openAdd}>Create service</button>
                 </div>
                 <div class="managed-list" role="list" aria-label="Configured services">
                   {#each managedServiceRows as service, index (service.id)}
@@ -3598,7 +3657,7 @@
                   {:else}
                     <div class="managed-empty">
                       <strong>{services.length ? "No services match this view" : "No services configured"}</strong>
-                      <span>{services.length ? "Change the search or workspace filter." : "Add a service from the Tauridium application menu."}</span>
+                      <span>{services.length ? "Change the search or workspace filter." : "Create a service above or use the Tauridium application menu."}</span>
                     </div>
                   {/each}
                 </div>
@@ -4170,6 +4229,12 @@
               </section>
 
             {:else if settingsTab === "advanced"}
+              <section class="settings-section" aria-labelledby="settings-advanced-context-menu">
+                <div class="section-heading"><h3 id="settings-advanced-context-menu">Service context menu</h3><p>Choose between Tauridium's original styled menu and the native fallback that always stays above service webviews.</p></div>
+                <div class="settings-list">
+                  {@render appToggle("Use original service context menu", "Enabled by default. Uses Tauridium's original styled right-click menu. Embedded service webviews can cover the part of this shell menu that extends over them. Disable this to use the native system menu, which always stays in front.", "prettyServiceContextMenu", appSettings.prettyServiceContextMenu)}
+                </div>
+              </section>
               <section class="settings-section" aria-labelledby="settings-advanced-sidebar-order">
                 <div class="section-heading"><h3 id="settings-advanced-sidebar-order">Sidebar service ordering</h3><p>Control whether services can be rearranged directly from the sidebar.</p></div>
                 <div class="settings-list">
@@ -4296,6 +4361,21 @@
         </div>
       {/if}
     </section>
+  </div>
+{/if}
+
+{#if serviceContextMenu}
+  {@const contextService = services.find((service) => service.id === serviceContextMenu?.serviceId) ?? null}
+  <div class="service-context-backdrop" role="presentation" onclick={(event) => event.currentTarget === event.target && closeServiceContextMenu()} oncontextmenu={(event) => { event.preventDefault(); if (event.currentTarget === event.target) closeServiceContextMenu(); }}>
+    {#if contextService}
+      <div class="service-context-menu" role="menu" tabindex="-1" aria-label={`${serviceLabel(contextService)} actions`} style={`left:${serviceContextMenu.x}px;top:${serviceContextMenu.y}px`} onkeydown={handleServiceContextMenuKeydown}>
+        <button role="menuitem" onclick={() => openContextServiceSettings(contextService)}>Settings</button>
+        <button role="menuitem" disabled={contextService.isEnabled === false} onclick={() => { closeServiceContextMenu(); void reloadServiceFromUi(contextService); }}>Reload</button>
+        <button role="menuitem" onclick={() => { closeServiceContextMenu(); void duplicateServiceFromUi(contextService); }}>Duplicate</button>
+        <div class="service-context-separator" aria-hidden="true"></div>
+        <button role="menuitem" class:context-danger={contextService.isEnabled !== false} onclick={() => { closeServiceContextMenu(); void toggleServiceEnabled(contextService); }}>{contextService.isEnabled === false ? "Enable" : "Disable"}</button>
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -4721,6 +4801,7 @@
   .range-control { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; min-width: 180px; }
   .settings-panel .range { width: 140px; margin-left: 0; }
   .managed-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, 220px); gap: 8px; }
+  .service-managed-toolbar { grid-template-columns: minmax(0, 1fr) minmax(160px, 220px) auto; }
   .workspace-managed-toolbar { grid-template-columns: minmax(0, 1fr) auto; }
   .workspace-create-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
   .workspace-order-select { min-width: 210px; max-width: 280px; }
@@ -4843,6 +4924,13 @@
   .service-workspace-create-card .setting-copy { padding-top: 9px; }
   .service-workspace-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding-top: 9px; }
   .danger-link { color: #ff9b9b; }
+  .service-context-backdrop { position: fixed; inset: 0; z-index: 1200; }
+  .service-context-menu { position: fixed; width: 226px; padding: 5px; border: 1px solid var(--border2); border-radius: 9px; background: var(--panel); box-shadow: 0 14px 42px rgba(0, 0, 0, 0.45); }
+  .service-context-menu button { width: 100%; min-height: 34px; padding: 7px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--text2); text-align: left; cursor: pointer; font: inherit; }
+  .service-context-menu button:hover:not(:disabled), .service-context-menu button:focus-visible { background: var(--hover); }
+  .service-context-menu button:disabled { color: var(--muted2); cursor: default; }
+  .service-context-menu button.context-danger { color: #ff9b9b; }
+  .service-context-separator { height: 1px; margin: 4px 3px; background: var(--border); }
   .toast { position: fixed; z-index: 1400; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: min(520px, calc(100vw - 32px)); padding: 10px 14px; border: 1px solid var(--border2); border-radius: 9px; background: var(--panel); color: var(--text); box-shadow: 0 10px 34px rgba(0, 0, 0, 0.42); font-size: 13px; }
   .toast.success { background: #187a45; border-color: #2ca866; color: #fff; }
   .quick-switcher-backdrop { position: fixed; inset: 0; z-index: 1000; display: flex; justify-content: center; align-items: flex-start; padding-top: min(14vh, 120px); background: rgba(0, 0, 0, 0.46); }

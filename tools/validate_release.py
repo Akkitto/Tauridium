@@ -421,8 +421,19 @@ def main() -> int:
   ):
     if marker not in native_menu:
       fail(f"native Tauridium menu action is incomplete: {marker}")
-  if '"About Tauridium"' in menu_builder + native_menu or "PredefinedMenuItem::about" in menu_builder + native_menu:
-    fail("native Tauridium menu still exposes the obsolete About action")
+  for marker in (
+    '"About"',
+    '"Project Homepage"',
+    '"Project Source Code"',
+    '"Author Homepage"',
+    'open_external(PROJECT_HOMEPAGE)',
+    'open_external(PROJECT_SOURCE_CODE)',
+    'open_external(AUTHOR_HOMEPAGE)',
+  ):
+    if marker not in menu_builder + native_menu:
+      fail(f"native About quick-link invariant is missing: {marker}")
+  if "PredefinedMenuItem::about" in menu_builder + native_menu:
+    fail("native Tauridium menu must use the explicit About quick-link submenu")
   for marker in (
     "struct NativeServiceMenuEntry",
     "fn native_service_menu_label",
@@ -552,8 +563,8 @@ def main() -> int:
   ):
     if marker not in patch_0409_test:
       fail(f"0.4.9 regression coverage is missing: {marker}")
-  if 'service-context-backdrop' in app or 'service-context-menu' in app:
-    fail("service context menu regressed to a shell DOM overlay that can be covered by service webviews")
+  if 'popupNativeServiceContextMenu' not in app or 'if (!appSettings.prettyServiceContextMenu)' not in app:
+    fail("native service context-menu fallback is unavailable")
   if 'duplicate?.isEnabled !== false' in app:
     fail("0.4.9 duplicate selection still accepts a null service")
 
@@ -1546,10 +1557,37 @@ def main() -> int:
   ):
     if test_marker not in patch_0428:
       fail(f"0.4.28 regression coverage is missing: {test_marker}")
-  if "service-context-backdrop" in app or 'class="service-context-menu"' in app:
-    fail("service context menu regressed to a shell DOM overlay")
+  if 'popupNativeServiceContextMenu' not in app or 'await menu.popup(new LogicalPosition(x, y));' not in app:
+    fail("0.4.28 native service context-menu fallback regressed")
   if "JSON.stringify(persisted.serviceDownloadSettings" in app:
     fail("service download verification regressed to order-sensitive JSON serialization")
+
+  patch_0429 = read("tools/test_patch_0429.py")
+  for marker in (
+    "openLinksExternally: s.trapLinkClicks === true",
+    "webview.navigate(url)",
+    "ShellExecuteW",
+    "showServiceSettingsSaved(serviceId: string)",
+    "prettyServiceContextMenu: true",
+    'class="service-context-menu"',
+    '"Project Homepage"',
+    '"Project Source Code"',
+    '"Author Homepage"',
+    'onclick={openAdd}>Create service</button>',
+  ):
+    if marker not in app + api_ts + main_rs:
+      fail(f"0.4.29 service UX invariant is missing: {marker}")
+  if '.args(["/C", "start", "", url])' in main_rs:
+    fail("0.4.29 Windows external-link handling regressed to cmd.exe")
+  for test_marker in (
+    "test_external_link_preference_reaches_new_window_handler_and_windows_has_no_cmd_flash",
+    "test_immediate_service_settings_share_green_saved_feedback",
+    "test_original_service_context_menu_is_default_with_native_fallback",
+    "test_native_about_menu_has_project_source_and_author_quick_links",
+    "test_services_settings_page_exposes_create_service_action",
+  ):
+    if test_marker not in patch_0429:
+      fail(f"0.4.29 regression coverage is missing: {test_marker}")
 
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],

@@ -55,6 +55,9 @@ static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
 
 // User agent for Ferdium server API calls and recipe retrieval.
 const API_UA: &str = concat!("Tauridium/", env!("CARGO_PKG_VERSION"));
+const PROJECT_HOMEPAGE: &str = "https://github.com/Gizmo091/Tauridium";
+const PROJECT_SOURCE_CODE: &str = "https://github.com/Gizmo091/Tauridium/tree/master";
+const AUTHOR_HOMEPAGE: &str = "https://github.com/Gizmo091";
 // Logical sidebar width; must match the shell CSS.
 const SIDEBAR_W: f64 = 240.0;
 const MAX_SIDEBAR_W: f64 = 1200.0;
@@ -339,7 +342,46 @@ fn build_native_application_menu(
         .map(|item| item as &dyn IsMenuItem<Wry>)
         .collect();
     let services_menu = Submenu::with_items(app, "Services", true, &service_refs)?;
-    Menu::with_items(app, &[&app_sub, &edit, &view, &navigate, &services_menu])
+
+    let project_homepage = MenuItem::with_id(
+        app,
+        "open-project-homepage",
+        "Project Homepage",
+        true,
+        None::<&str>,
+    )?;
+    let project_source = MenuItem::with_id(
+        app,
+        "open-project-source",
+        "Project Source Code",
+        true,
+        None::<&str>,
+    )?;
+    let author_homepage = MenuItem::with_id(
+        app,
+        "open-author-homepage",
+        "Author Homepage",
+        true,
+        None::<&str>,
+    )?;
+    let about_menu = Submenu::with_items(
+        app,
+        "About",
+        true,
+        &[&project_homepage, &project_source, &author_homepage],
+    )?;
+
+    Menu::with_items(
+        app,
+        &[
+            &app_sub,
+            &edit,
+            &view,
+            &navigate,
+            &services_menu,
+            &about_menu,
+        ],
+    )
 }
 
 #[derive(Clone, Copy)]
@@ -1365,15 +1407,50 @@ const IPC_SHIM_JS: &str = r#"(function(){
   }
 })();"#;
 
-// Open a URL in the system's default browser outside the app. Best effort:
-// ignore failure (no browser, spawn denied, etc.). The caller already filters the scheme.
+// Open a URL in the system's default browser outside the app. The caller filters the scheme.
+// Windows uses ShellExecuteW directly so opening a link never flashes a cmd.exe console window.
+#[cfg(target_os = "windows")]
+#[link(name = "shell32")]
+unsafe extern "system" {
+    fn ShellExecuteW(
+        hwnd: *mut std::ffi::c_void,
+        operation: *const u16,
+        file: *const u16,
+        parameters: *const u16,
+        directory: *const u16,
+        show_command: i32,
+    ) -> isize;
+}
+
 fn open_external(url: &str) {
     #[cfg(target_os = "macos")]
     let _ = std::process::Command::new("open").arg(url).spawn();
     #[cfg(target_os = "windows")]
-    let _ = std::process::Command::new("cmd")
-        .args(["/C", "start", "", url])
-        .spawn();
+    {
+        use std::os::windows::ffi::OsStrExt;
+
+        let operation: Vec<u16> = std::ffi::OsStr::new("open")
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let file: Vec<u16> = std::ffi::OsStr::new(url)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let result = unsafe {
+            ShellExecuteW(
+                std::ptr::null_mut(),
+                operation.as_ptr(),
+                file.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                1,
+            )
+        };
+        if result <= 32 {
+            eprintln!("Unable to open external URL through the Windows shell (code {result})");
+        }
+    }
     #[cfg(all(unix, not(target_os = "macos")))]
     let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }
@@ -1665,6 +1742,7 @@ async fn create_service_webview(
     custom_url: Option<&str>,
     team: Option<&str>,
     user_agent_pref: Option<&str>,
+    open_links_externally: bool,
     sandbox_id: Option<&str>,
     dark: Option<DarkOpts>,
     pos: LogicalPosition<f64>,
@@ -1728,6 +1806,8 @@ async fn create_service_webview(
     // IPC shim injected into ALL services (Synology Chat and others depend on it).
     let shortcut_app = win.app_handle().clone();
     let shortcut_nonce_for_navigation = service_shortcut_nonce.clone();
+    let new_window_app = win.app_handle().clone();
+    let new_window_label = label.clone();
     let mut builder = WebviewBuilder::new(label, WebviewUrl::External(url))
         .on_navigation(move |url| {
             if url.scheme() != "tauridium-shortcut" {
@@ -1744,18 +1824,28 @@ async fn create_service_webview(
         .initialization_script(REMOTE_TAURI_COMPAT_JS)
         // Prevent duplicated keystrokes caused by duplicate native WKWebView `textInput` events (see Discord search).
         .initialization_script(KEY_DEDUP_JS)
-        // `target="_blank"` links / `window.open`: without a handler WKWebView ignores them
-        // silently (the click appears to do nothing). Reproduce Ferdium behavior:
-        //  - sized popup (window.open with width/height, typically an OAuth login)
-        //    -> real in-app window with shared session/cookies so the flow is not broken;
-        //  - content link (without dimensions) -> system browser, webview unchanged.
+        // `target="_blank"` links / `window.open`: sized popups are typically authentication
+        // flows and retain the platform's in-app popup behavior. Ordinary HTTP(S) content links
+        // follow the per-service preference: navigate this service webview by default, or open
+        // through the OS browser when "Open links externally" is enabled. mailto remains an
+        // external protocol because an embedded service webview cannot handle it usefully.
         .on_new_window(
-            |url: Url, features: NewWindowFeatures| -> NewWindowResponse<Wry> {
+            move |url: Url, features: NewWindowFeatures| -> NewWindowResponse<Wry> {
                 if features.size().is_some() {
                     return NewWindowResponse::Allow;
                 }
-                if matches!(url.scheme(), "http" | "https" | "mailto") {
+                if url.scheme() == "mailto"
+                    || (open_links_externally && matches!(url.scheme(), "http" | "https"))
+                {
                     open_external(url.as_str());
+                    return NewWindowResponse::Deny;
+                }
+                if matches!(url.scheme(), "http" | "https") {
+                    if let Some(webview) = new_window_app.get_webview(&new_window_label) {
+                        if let Err(error) = webview.navigate(url) {
+                            eprintln!("Unable to navigate service link in place: {error}");
+                        }
+                    }
                 }
                 NewWindowResponse::Deny
             },
@@ -1875,6 +1965,8 @@ struct ServiceViewRequest {
     custom_url: Option<String>,
     team: Option<String>,
     user_agent_pref: Option<String>,
+    #[serde(default)]
+    open_links_externally: bool,
     workspace_id: Option<String>,
     dark: Option<DarkSettings>,
 }
@@ -1891,6 +1983,7 @@ async fn show_service(
         custom_url,
         team,
         user_agent_pref,
+        open_links_externally,
         workspace_id,
         dark,
     } = request;
@@ -1939,6 +2032,7 @@ async fn show_service(
                 custom_url.as_deref(),
                 team.as_deref(),
                 user_agent_pref.as_deref(),
+                open_links_externally,
                 sandbox_id.as_deref(),
                 dark,
                 pos,
@@ -1985,6 +2079,7 @@ async fn preload_service(
         custom_url,
         team,
         user_agent_pref,
+        open_links_externally,
         workspace_id: _,
         dark,
     } = request;
@@ -2035,6 +2130,7 @@ async fn preload_service(
         custom_url.as_deref(),
         team.as_deref(),
         user_agent_pref.as_deref(),
+        open_links_externally,
         sandbox_id.as_deref(),
         dark,
         offscreen,
@@ -2881,6 +2977,7 @@ fn default_app_settings_value() -> Value {
     settings.insert("preloadServices".into(), true.into());
     settings.insert("fetchMissingServiceIcons".into(), true.into());
     settings.insert("reloadToasts".into(), true.into());
+    settings.insert("prettyServiceContextMenu".into(), true.into());
     settings.insert("sidebarServiceDragReorder".into(), true.into());
     settings.insert("captureServiceShortcuts".into(), true.into());
     settings.insert(
@@ -3085,6 +3182,7 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         "preloadServices",
         "fetchMissingServiceIcons",
         "reloadToasts",
+        "prettyServiceContextMenu",
         "askEachDownload",
         "sidebarServiceDragReorder",
         "captureServiceShortcuts",
@@ -4401,7 +4499,7 @@ fn main() {
             }
             tray.build(app)?;
 
-            // Native application menu: App / Edit / View / Services. The Services submenu
+            // Native application menu: App / Edit / View / Navigate / Services / About. The Services submenu
             // starts empty and is rebuilt from the canonical ordered service list after auth.
             {
                 app.set_menu(build_native_application_menu(app.handle(), &[])?)?;
@@ -4426,6 +4524,9 @@ fn main() {
                             show_main(app);
                             let _ = app.emit("open-add-workspace", ());
                         }
+                        "open-project-homepage" => open_external(PROJECT_HOMEPAGE),
+                        "open-project-source" => open_external(PROJECT_SOURCE_CODE),
+                        "open-author-homepage" => open_external(AUTHOR_HOMEPAGE),
                         "toggle-devtools" => toggle_devtools(app),
                         "reload-service" => {
                             let _ = app.emit("shortcut-action", "reloadService".to_string());

@@ -20,12 +20,11 @@ class Patch0409Tests(unittest.TestCase):
     cls.capability = json.loads((ROOT / "src-tauri/capabilities/default.json").read_text(encoding="utf-8"))
 
   def test_context_menu_uses_native_popup_above_service_webviews(self) -> None:
-    body = self.app.split("async function popupServiceContextMenu", 1)[1].split("function openServiceContextMenu(event", 1)[0]
+    body = self.app.split("async function popupNativeServiceContextMenu", 1)[1].split("function openServiceContextMenu(event", 1)[0]
     self.assertIn('const menu = await Menu.new({', body)
     self.assertIn('await menu.popup(new LogicalPosition(x, y));', body)
     self.assertIn('await menu.close().catch(() => {});', body)
-    self.assertNotIn('service-context-backdrop', self.app)
-    self.assertNotIn('service-context-menu', self.app)
+    self.assertIn('if (!appSettings.prettyServiceContextMenu)', self.app)
 
   def test_context_menu_has_requested_order_and_short_toggle_labels(self) -> None:
     menu = self.app.split('const menu = await Menu.new({', 1)[1].split('});', 1)[0]
@@ -64,7 +63,7 @@ class Patch0409Tests(unittest.TestCase):
   def test_context_menu_uses_logical_pointer_and_keyboard_positions(self) -> None:
     mouse = self.app.split("function openServiceContextMenu(event", 1)[1].split("function openServiceContextMenuFromKeyboard", 1)[0]
     keyboard = self.app.split("function openServiceContextMenuFromKeyboard", 1)[1].split("function sameIds", 1)[0]
-    self.assertIn('popupServiceContextMenu(service, event.clientX, event.clientY)', mouse)
+    self.assertIn('popupNativeServiceContextMenu(service, event.clientX, event.clientY)', mouse)
     self.assertIn('rect ? rect.left + 28 : 12', keyboard)
     self.assertIn('rect ? rect.bottom : 12', keyboard)
 

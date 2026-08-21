@@ -132,6 +132,7 @@ function serviceViewRequest(s: Service, workspaceId: string | null = null) {
     customUrl: (s.customUrl as string | undefined) ?? null,
     team: (s.team as string | undefined) ?? null,
     userAgentPref: (s.userAgentPref as string | undefined) ?? null,
+    openLinksExternally: s.trapLinkClicks === true,
     workspaceId,
     dark: darkArg(s),
   };
@@ -321,6 +322,7 @@ export interface AppSettings {
   preloadServices: boolean;
   fetchMissingServiceIcons: boolean;
   reloadToasts: boolean;
+  prettyServiceContextMenu: boolean;
   sidebarServiceDragReorder: boolean;
   captureServiceShortcuts: boolean;
   serviceShortcutCaptureOverrides: Record<string, boolean>;

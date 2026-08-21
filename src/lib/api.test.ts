@@ -68,6 +68,7 @@ describe("service view commands", () => {
         customUrl: service.customUrl,
         team: service.team,
         userAgentPref: service.userAgentPref,
+        openLinksExternally: false,
         workspaceId: null,
         dark: {
           enabled: true,
@@ -76,6 +77,19 @@ describe("service view commands", () => {
           sepia: 5,
         },
       },
+    });
+  });
+
+
+  it("forwards the per-service external-link preference", async () => {
+    await showService({ ...service, trapLinkClicks: true });
+
+    expect(mocks.invoke).toHaveBeenCalledOnce();
+    expect(mocks.invoke).toHaveBeenCalledWith("show_service", {
+      request: expect.objectContaining({
+        serviceId: service.id,
+        openLinksExternally: true,
+      }),
     });
   });
 

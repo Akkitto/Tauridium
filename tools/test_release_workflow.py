@@ -206,7 +206,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
     self.assertIn('.and_then(Path::file_name)', main)
     self.assertNotIn('format!("Downloaded "{}""', main)
 
-  def test_tauridium_menu_opens_settings_and_about_remains_in_settings(self) -> None:
+  def test_tauridium_menu_opens_settings_and_exposes_about_quick_links(self) -> None:
     main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
     app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
     menu_builder = main.split("fn build_native_application_menu", 1)[1].split("#[derive(Clone, Copy)]", 1)[0]
@@ -220,7 +220,14 @@ class ReleaseWorkflowTests(unittest.TestCase):
     self.assertIn('"Add Workspace"', menu_builder)
     self.assertIn('app.emit("open-add-workspace", ())', native_menu)
     self.assertIn("hide_service_webviews(app, &state);", native_menu)
-    self.assertNotIn('"About Tauridium"', menu_builder + native_menu)
+    self.assertIn('Submenu::with_items(', menu_builder)
+    self.assertIn('"About"', menu_builder)
+    self.assertIn('"Project Homepage"', menu_builder)
+    self.assertIn('"Project Source Code"', menu_builder)
+    self.assertIn('"Author Homepage"', menu_builder)
+    self.assertIn('open_external(PROJECT_HOMEPAGE)', native_menu)
+    self.assertIn('open_external(PROJECT_SOURCE_CODE)', native_menu)
+    self.assertIn('open_external(AUTHOR_HOMEPAGE)', native_menu)
     self.assertNotIn("PredefinedMenuItem::about", menu_builder + native_menu)
     self.assertIn('listen("open-settings", openAppSettings)', app)
     self.assertIn('listen("open-about", openAbout)', app)
