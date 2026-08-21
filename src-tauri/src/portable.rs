@@ -385,6 +385,18 @@ mod tests {
     }
 
     #[test]
+    fn portable_workspace_icon_round_trips_with_integrity() {
+        let mut value = payload();
+        value.workspaces[0]["iconUrl"] = Value::String("data:image/svg+xml;base64,PHN2Zy8+".into());
+        let document = PortableDocument::new("9.9.9", "workspace", value, recipes()).unwrap();
+        document.validate().unwrap();
+        assert_eq!(
+            document.payload.workspaces[0]["iconUrl"],
+            Value::String("data:image/svg+xml;base64,PHN2Zy8+".into())
+        );
+    }
+
+    #[test]
     fn portable_export_rejects_dangling_workspace_service_references() {
         let mut value = payload();
         value.workspaces[0]["services"] = json!(["svc", "missing"]);

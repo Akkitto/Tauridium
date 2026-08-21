@@ -2669,6 +2669,10 @@ fn default_app_settings_value() -> Value {
         "workspaceLastUsed".into(),
         Value::Object(serde_json::Map::new()),
     );
+    settings.insert(
+        "workspaceIcons".into(),
+        Value::Object(serde_json::Map::new()),
+    );
     let mut keybindings = serde_json::Map::<String, Value>::new();
     keybindings.insert("quickWorkspaceSwitch".into(), "Ctrl+D".into());
     keybindings.insert("quickServiceSwitch".into(), "Ctrl+S".into());
@@ -2863,6 +2867,34 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         {
             return Err("App setting workspaceLastUsed is invalid".into());
         }
+    }
+    let workspace_icons = object
+        .get("workspaceIcons")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "App setting workspaceIcons must be an object".to_string())?;
+    if workspace_icons.len() > 10_000 {
+        return Err("App setting workspaceIcons contains too many entries".into());
+    }
+    let mut workspace_icon_bytes = 0usize;
+    for (workspace_id, icon) in workspace_icons {
+        let icon = icon
+            .as_str()
+            .ok_or_else(|| "App setting workspaceIcons values must be strings".to_string())?;
+        workspace_icon_bytes = workspace_icon_bytes.saturating_add(icon.len());
+        let supported = icon.starts_with("https://")
+            || icon.starts_with("http://")
+            || icon.starts_with("data:image/");
+        if workspace_id.trim().is_empty()
+            || workspace_id.len() > 256
+            || icon.is_empty()
+            || icon.len() > 768 * 1024
+            || !supported
+        {
+            return Err("App setting workspaceIcons is invalid".into());
+        }
+    }
+    if workspace_icon_bytes > 16 * 1024 * 1024 {
+        return Err("App setting workspaceIcons exceeds the supported total size".into());
     }
     let backup_schedule = object
         .get("automaticBackupSchedule")
@@ -4279,6 +4311,21 @@ mod tests {
         settings["workspaceLastUsed"] = json!({"": 1});
         assert!(validate_app_settings_value(&settings).is_err());
         settings["workspaceLastUsed"] = json!({"workspace-a": -1});
+        assert!(validate_app_settings_value(&settings).is_err());
+    }
+
+    #[test]
+    fn feature_0424_settings_validate_workspace_icons() {
+        let mut settings = default_app_settings_value();
+        settings["workspaceIcons"] = json!({
+            "workspace-a": "https://example.com/icon.svg",
+            "workspace-b": "data:image/svg+xml;base64,PHN2Zy8+"
+        });
+        assert!(validate_app_settings_value(&settings).is_ok());
+
+        settings["workspaceIcons"] = json!({ "workspace-a": "javascript:alert(1)" });
+        assert!(validate_app_settings_value(&settings).is_err());
+        settings["workspaceIcons"] = json!({ "": "https://example.com/icon.svg" });
         assert!(validate_app_settings_value(&settings).is_err());
     }
 

@@ -50,7 +50,7 @@ class OrderingAndSidebarTests(unittest.TestCase):
     self.assertIn("async function reconcileSavedOrders()", self.app)
     self.assertIn("orderedBySavedIds(services, appSettings.serviceOrder)", self.app)
     self.assertIn("orderedBySavedIds(workspaces, appSettings.workspaceOrder)", self.app)
-    self.assertIn("setAppSettings({ serviceOrder, workspaceOrder, workspaceLastUsed })", self.app)
+    self.assertIn("setAppSettings({ serviceOrder, workspaceOrder, workspaceLastUsed, workspaceIcons })", self.app)
     self.assertIn("workspaceIds.has(workspaceId)", self.app)
     self.assertGreaterEqual(self.app.count("await reconcileSavedOrders();"), 4)
 

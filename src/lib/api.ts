@@ -77,6 +77,7 @@ export interface Workspace {
   order: number;
   services: string[];
   userId: number | string;
+  iconUrl?: string | null;
 }
 
 export const DEFAULT_SERVER = "https://api.ferdium.org";
@@ -319,6 +320,7 @@ export interface AppSettings {
   workspaceOrder: string[];
   workspaceQuickSwitchOrder: "custom" | "customReverse" | "alphabetical" | "alphabeticalReverse" | "recent" | "recentReverse";
   workspaceLastUsed: Record<string, number>;
+  workspaceIcons: Record<string, string>;
   keybindings: Record<string, string>;
   sandboxes: SandboxDefinition[];
   serviceSandboxes: Record<string, string>;

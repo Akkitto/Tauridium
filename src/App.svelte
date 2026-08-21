@@ -127,6 +127,7 @@
   let activeId = $state<string | null>(null);
   let unreadMap = $state<Record<string, number>>({});
   let failedIcons = $state<Set<string>>(new Set());
+  let failedWorkspaceIcons = $state<Set<string>>(new Set());
   let serviceIcons = $state<Record<string, string>>({});
   let iconFetchAttempted = new Set<string>();
   // Per-service loading state emitted by the backend through on_page_load.
@@ -258,6 +259,7 @@
     workspaceOrder: [],
     workspaceQuickSwitchOrder: "custom",
     workspaceLastUsed: {},
+    workspaceIcons: {},
     keybindings: { ...DEFAULT_KEYBINDINGS },
     sandboxes: [],
     serviceSandboxes: {},
@@ -622,6 +624,14 @@
     return preferredWebsiteIcon(service) ?? iconSrc(service);
   }
 
+  function workspaceIcon(workspace: Workspace): string | null {
+    return appSettings.workspaceIcons[workspace.id] ?? null;
+  }
+
+  function markWorkspaceIconFailed(workspaceId: string) {
+    failedWorkspaceIcons = new Set(failedWorkspaceIcons).add(workspaceId);
+  }
+
   function serviceIconFailed(service: Service): boolean {
     return failedIcons.has(service.id) && preferredWebsiteIcon(service) === null;
   }
@@ -741,14 +751,19 @@
     const workspaceLastUsed = Object.fromEntries(
       Object.entries(appSettings.workspaceLastUsed).filter(([workspaceId]) => workspaceIds.has(workspaceId)),
     );
+    const workspaceIcons = Object.fromEntries(
+      Object.entries(appSettings.workspaceIcons).filter(([workspaceId]) => workspaceIds.has(workspaceId)),
+    );
     const usageHistoryChanged = Object.keys(workspaceLastUsed).length !== Object.keys(appSettings.workspaceLastUsed).length;
+    const workspaceIconsChanged = Object.keys(workspaceIcons).length !== Object.keys(appSettings.workspaceIcons).length;
     if (
       sameIds(serviceOrder, appSettings.serviceOrder) &&
       sameIds(workspaceOrder, appSettings.workspaceOrder) &&
-      !usageHistoryChanged
+      !usageHistoryChanged &&
+      !workspaceIconsChanged
     ) return;
     try {
-      const persisted = await setAppSettings({ serviceOrder, workspaceOrder, workspaceLastUsed });
+      const persisted = await setAppSettings({ serviceOrder, workspaceOrder, workspaceLastUsed, workspaceIcons });
       if (!sameIds(persisted.serviceOrder, serviceOrder) || !sameIds(persisted.workspaceOrder, workspaceOrder)) {
         throw new Error("Tauridium could not verify the reconciled service/workspace order");
       }
@@ -1645,6 +1660,41 @@
     }
   }
 
+  async function saveManagedWorkspaceIcon(iconUrl: string | null) {
+    if (!managedWorkspace || managedWorkspaceBusy) return;
+    const previous = { ...appSettings.workspaceIcons };
+    const workspaceIcons = { ...previous };
+    if (iconUrl) workspaceIcons[managedWorkspace.id] = iconUrl;
+    else delete workspaceIcons[managedWorkspace.id];
+    if ((previous[managedWorkspace.id] ?? null) === (workspaceIcons[managedWorkspace.id] ?? null)) return;
+
+    managedWorkspaceBusy = true;
+    appSettings = { ...appSettings, workspaceIcons };
+    try {
+      const persisted = await setAppSettings({ workspaceIcons });
+      if ((persisted.workspaceIcons[managedWorkspace.id] ?? null) !== (iconUrl ?? null)) {
+        throw new Error("Tauridium could not verify the saved workspace icon");
+      }
+      appSettings = persisted;
+      const nextFailed = new Set(failedWorkspaceIcons);
+      nextFailed.delete(managedWorkspace.id);
+      failedWorkspaceIcons = nextFailed;
+    } catch (err) {
+      appSettings = { ...appSettings, workspaceIcons: previous };
+      error = `Unable to save workspace icon: ${err}`;
+    } finally {
+      managedWorkspaceBusy = false;
+    }
+  }
+
+  async function assignManagedWorkspaceIconFromService(service: Service) {
+    if (!managedWorkspace || managedWorkspaceBusy) return;
+    if (service.useFavicon === true && !preferredWebsiteIcon(service)) {
+      await loadServiceIcon(service, false, false, true);
+    }
+    await saveManagedWorkspaceIcon(displayedServiceIcon(service));
+  }
+
   async function resetWorkspaceUsageHistory() {
     await saveAppSetting("workspaceLastUsed", {});
   }
@@ -1777,8 +1827,10 @@
         managedWorkspaceNameDraft = "";
       }
       const workspaceLastUsed = { ...appSettings.workspaceLastUsed };
+      const workspaceIcons = { ...appSettings.workspaceIcons };
       delete workspaceLastUsed[ws.id];
-      appSettings = await setAppSettings({ workspaceLastUsed });
+      delete workspaceIcons[ws.id];
+      appSettings = await setAppSettings({ workspaceLastUsed, workspaceIcons });
       await reloadWorkspaces();
     } catch (err) {
       error = String(err);
@@ -2093,17 +2145,22 @@
     const serviceIds = new Set(selectedServices.map((service) => service.id));
     const selectedWorkspaces = sortedWorkspaces
       .filter((workspace) => workspace.services.some((serviceId) => serviceIds.has(serviceId)))
-      .map((workspace) => ({
+      .map((workspace) => portableWorkspace({
         ...workspace,
         services: workspace.services.filter((serviceId) => serviceIds.has(serviceId)),
       }));
     return portablePayloadForServices(selectedServices, selectedWorkspaces, sandboxes);
   }
 
+  function portableWorkspace(workspace: Workspace): Workspace {
+    const iconUrl = workspaceIcon(workspace);
+    return iconUrl ? { ...workspace, iconUrl } : { ...workspace, iconUrl: null };
+  }
+
   function workspacePortablePayload(workspaceId?: string): PortablePayload {
-    const selectedWorkspaces = workspaceId
+    const selectedWorkspaces = (workspaceId
       ? sortedWorkspaces.filter((workspace) => workspace.id === workspaceId)
-      : [...sortedWorkspaces];
+      : [...sortedWorkspaces]).map(portableWorkspace);
     const serviceIds = new Set(selectedWorkspaces.flatMap((workspace) => workspace.services));
     const selectedServices = sorted.filter((service) => serviceIds.has(service.id));
     return portablePayloadForServices(selectedServices, selectedWorkspaces);
@@ -2766,7 +2823,7 @@
         <button class="link" onclick={handleLogout}>sign out</button>
       </div>
 
-      <div class="svcarea" ondragover={onServiceAreaDragOver} ondrop={onServiceAreaDrop}>
+      <div class="svcarea" role="region" aria-label="Service list drop area" ondragover={onServiceAreaDragOver} ondrop={onServiceAreaDrop}>
         <div class="svclist">
           {#each visibleServices as s (s.id)}{@render row(s)}{/each}
         </div>
@@ -2928,7 +2985,11 @@
                       onchange={(event) => toggleCurrentServiceWorkspace(workspace, event.currentTarget.checked)}
                       aria-label={`Include ${serviceLabel(settingsSvc)} in ${workspace.name}`}
                     />
-                    <span class="workspace-avatar service-workspace-avatar" aria-hidden="true">{workspace.name.slice(0, 1).toUpperCase()}</span>
+                    {#if workspaceIcon(workspace) && !failedWorkspaceIcons.has(workspace.id)}
+                      <img class="workspace-avatar service-workspace-avatar workspace-avatar-image" src={workspaceIcon(workspace) ?? ""} alt="" onerror={() => markWorkspaceIconFailed(workspace.id)} />
+                    {:else}
+                      <span class="workspace-avatar service-workspace-avatar" aria-hidden="true">{workspace.name.slice(0, 1).toUpperCase()}</span>
+                    {/if}
                     <span class="service-workspace-copy">
                       <strong>{workspace.name}</strong>
                       <small>{workspace.services.length} service{workspace.services.length === 1 ? "" : "s"}</small>
@@ -2972,7 +3033,7 @@
               <span class="status-badge">{currentServiceSandboxName}</span>
             </div>
             <input
-              class="service-workspace-search"
+              class="service-workspace-search service-sandbox-search"
               type="search"
               bind:value={serviceSandboxQuery}
               oninput={() => (serviceSandboxPage = 0)}
@@ -3324,7 +3385,7 @@
                   <div class="section-heading workspace-detail-heading">
                     <div>
                       <h3 id="settings-workspace-detail">Workspace settings · {selectedWorkspaceName}</h3>
-                      <p>Rename this workspace and manage exactly which services belong to it.</p>
+                      <p>Rename this workspace, assign its icon, and manage exactly which services belong to it.</p>
                     </div>
                     <button class="secondary sm" onclick={closeManagedWorkspace}>← Workspaces</button>
                   </div>
@@ -3337,6 +3398,46 @@
                       <div class="workspace-name-control">
                         <input class="setting-text-input" bind:value={managedWorkspaceNameDraft} maxlength="80" aria-label="Workspace name" />
                         <button class="primary" disabled={managedWorkspaceBusy || !managedWorkspaceNameDraft.trim() || managedWorkspaceNameDraft.trim() === selectedWorkspaceName} onclick={saveManagedWorkspaceName}>Save</button>
+                      </div>
+                    </div>
+                    <div class="setting-card setting-card-stack workspace-icon-card">
+                      <div class="setting-copy">
+                        <span class="setting-label">Icon</span>
+                        <span class="setting-description">Choose from the same resolved service icons Tauridium already uses. The selected icon is stored with application settings and embedded in workspace exports and backups.</span>
+                      </div>
+                      <div class="workspace-icon-current">
+                        {#if workspaceIcon(managedWorkspace) && !failedWorkspaceIcons.has(selectedWorkspaceId)}
+                          <img class="workspace-avatar workspace-icon-preview" src={workspaceIcon(managedWorkspace) ?? ""} alt="" onerror={() => markWorkspaceIconFailed(selectedWorkspaceId)} />
+                        {:else}
+                          <span class="workspace-avatar workspace-icon-preview" aria-hidden="true">{selectedWorkspaceName.slice(0, 1).toUpperCase()}</span>
+                        {/if}
+                        <div class="setting-copy">
+                          <strong>{workspaceIcon(managedWorkspace) ? "Custom workspace icon" : "Automatic initial"}</strong>
+                          <span class="setting-description">Select a configured service below to copy its currently resolved icon into this workspace.</span>
+                        </div>
+                        <button class="secondary sm" disabled={managedWorkspaceBusy || !workspaceIcon(managedWorkspace)} onclick={() => saveManagedWorkspaceIcon(null)}>Use initial</button>
+                      </div>
+                      <div class="workspace-icon-choices">
+                        {#each sorted as service (service.id)}
+                          {@const candidateIcon = displayedServiceIcon(service)}
+                          <button
+                            type="button"
+                            class="workspace-icon-choice"
+                            class:selected={workspaceIcon(managedWorkspace) === candidateIcon}
+                            disabled={managedWorkspaceBusy}
+                            onclick={() => assignManagedWorkspaceIconFromService(service)}
+                            aria-label={`Use ${serviceLabel(service)} icon for ${selectedWorkspaceName}`}
+                          >
+                            {#if !serviceIconFailed(service)}
+                              <img src={candidateIcon} alt="" onerror={() => markIconFailed(service)} />
+                            {:else}
+                              <span aria-hidden="true">{serviceLabel(service).slice(0, 1).toUpperCase()}</span>
+                            {/if}
+                            <small>{serviceLabel(service)}</small>
+                          </button>
+                        {:else}
+                          <div class="managed-empty"><strong>No service icons available</strong><span>Add a service before assigning a workspace icon.</span></div>
+                        {/each}
                       </div>
                     </div>
                     <div class="setting-card setting-card-stack workspace-membership-card">
@@ -3446,7 +3547,11 @@
                     {#each managedWorkspaceRows as workspace, index (workspace.id)}
                       <div class="managed-row" class:selected={managedWorkspaceId === workspace.id} role="listitem">
                         <div class="managed-identity workspace-managed-identity">
-                          <span class="workspace-avatar" aria-hidden="true">{workspace.name.slice(0, 1).toUpperCase()}</span>
+                          {#if workspaceIcon(workspace) && !failedWorkspaceIcons.has(workspace.id)}
+                            <img class="workspace-avatar workspace-avatar-image" src={workspaceIcon(workspace) ?? ""} alt="" onerror={() => markWorkspaceIconFailed(workspace.id)} />
+                          {:else}
+                            <span class="workspace-avatar" aria-hidden="true">{workspace.name.slice(0, 1).toUpperCase()}</span>
+                          {/if}
                           <div class="managed-copy">
                             <strong>{workspace.name}</strong>
                             <span>{workspace.services.length} service{workspace.services.length === 1 ? "" : "s"}</span>
@@ -4295,6 +4400,18 @@
   .workspace-order-select { min-width: 210px; max-width: 280px; }
   .workspace-managed-identity { min-width: 0; flex: 1 1 auto; }
   .workspace-avatar { width: 34px; height: 34px; display: grid; place-items: center; flex: none; border-radius: 8px; background: var(--hover); color: var(--text2); font-size: 13px; font-weight: 750; }
+  .workspace-avatar-image { object-fit: contain; padding: 3px; box-sizing: border-box; }
+  .workspace-icon-card { gap: 10px; }
+  .workspace-icon-current { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; }
+  .workspace-icon-preview { width: 44px; height: 44px; border-radius: 10px; object-fit: contain; padding: 5px; box-sizing: border-box; }
+  .workspace-icon-choices { width: 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 7px; max-height: 250px; overflow-y: auto; overscroll-behavior: contain; padding: 3px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg); }
+  .workspace-icon-choice { min-width: 0; min-height: 72px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 8px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text2); cursor: pointer; font: inherit; }
+  .workspace-icon-choice:hover:not(:disabled) { background: var(--hover); border-color: var(--border); }
+  .workspace-icon-choice.selected { border-color: color-mix(in srgb, var(--accent) 58%, var(--border)); background: color-mix(in srgb, var(--accent) 8%, var(--input)); }
+  .workspace-icon-choice:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .workspace-icon-choice:disabled { cursor: wait; opacity: 0.68; }
+  .workspace-icon-choice img, .workspace-icon-choice > span { width: 32px; height: 32px; display: grid; place-items: center; object-fit: contain; padding: 3px; box-sizing: border-box; border-radius: 7px; background: var(--hover); font-size: 12px; font-weight: 750; }
+  .workspace-icon-choice small { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); text-align: center; }
   .managed-row.selected { border-color: color-mix(in srgb, var(--accent) 62%, var(--border)); background: color-mix(in srgb, var(--accent) 8%, var(--input)); }
   .workspace-detail-section { padding-top: 4px; border-top: 1px solid var(--border); }
   .workspace-detail-heading { flex-direction: row; align-items: flex-start; justify-content: space-between; gap: 12px; }
@@ -4360,6 +4477,7 @@
   .service-shortcut-effective { grid-column: 1 / -1; margin-top: 0; }
   .service-workspace-manager { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--panel) 88%, var(--bg)); }
   .service-sandbox-manager { gap: 10px; }
+  .service-sandbox-search { width: min(100%, 420px); flex: 0 1 420px; }
   .service-sandbox-help { margin: 0; }
   .service-workspace-overview { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
   .service-workspace-overview .setting-copy { min-width: 0; }
@@ -4442,7 +4560,7 @@
     .settings-panel .swatches { justify-content: flex-start; max-width: none; }
     .range-control { min-width: 0; }
     .settings-panel .range { flex: 1; width: auto; }
-    .managed-toolbar, .workspace-create-row, .workspace-name-control, .sandbox-create-row, .backup-location-row, .audit-toolbar, .service-workspace-create, .service-workspace-create-card { grid-template-columns: 1fr; }
+    .managed-toolbar, .workspace-create-row, .workspace-name-control, .sandbox-create-row, .backup-location-row, .audit-toolbar, .service-workspace-create, .service-workspace-create-card, .workspace-icon-current { grid-template-columns: 1fr; }
     .service-workspace-overview { flex-direction: column; }
     .service-workspace-toolbar { flex-direction: column; }
     .service-workspace-filters { width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); }

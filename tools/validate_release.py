@@ -1293,6 +1293,32 @@ def main() -> int:
     if test_marker not in patch_0423:
       fail(f"0.4.23 regression coverage is missing: {test_marker}")
 
+  patch_0424 = read("tools/test_patch_0424.py")
+  for marker in (
+    'class="service-workspace-search service-sandbox-search"',
+    'class="svcarea" role="region" aria-label="Service list drop area"',
+    'workspaceIcons: Record<string, string>',
+    'function saveManagedWorkspaceIcon(iconUrl: string | null)',
+    'assignManagedWorkspaceIconFromService(service)',
+    'function portableWorkspace(workspace: Workspace): Workspace',
+    'settings.insert(\n        "workspaceIcons".into()',
+    'fn feature_0424_settings_validate_workspace_icons()',
+  ):
+    if marker not in app + api_ts + main_rs:
+      fail(f"0.4.24 workspace-icon/settings invariant is missing: {marker}")
+  for test_marker in (
+    "test_service_sandbox_search_matches_compact_workspace_search_scale",
+    "test_sidebar_drop_region_is_accessibility_annotated",
+    "test_workspace_icons_are_backend_validated_and_migrate_with_defaults",
+    "test_workspace_settings_can_assign_existing_resolved_service_icons",
+    "test_workspace_icons_are_visible_in_workspace_surfaces_with_fallback",
+    "test_workspace_icons_are_cleaned_up_with_deleted_or_stale_workspaces",
+    "test_portable_workspace_exports_embed_the_selected_icon",
+    "test_full_backups_already_include_app_settings",
+  ):
+    if test_marker not in patch_0424:
+      fail(f"0.4.24 regression coverage is missing: {test_marker}")
+
   for marker in (
     '["keybindings", "Keybinds"]',
     '["sandbox", "Sandbox"]',
@@ -1343,7 +1369,7 @@ def main() -> int:
       fail(f"canonical frontend ordering API is missing: {marker}")
   for marker in (
     'async function reconcileSavedOrders()',
-    'setAppSettings({ serviceOrder, workspaceOrder, workspaceLastUsed })',
+    'setAppSettings({ serviceOrder, workspaceOrder, workspaceLastUsed, workspaceIcons })',
     'setServiceOrder(nextIds)',
     'setWorkspaceOrder(nextIds)',
     'reorderVisibleSubsetAt(previousIds, visibleIds, movingIds[0], target.id, placement)',
