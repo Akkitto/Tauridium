@@ -1204,6 +1204,29 @@ def main() -> int:
     if test_marker not in patch_0419:
       fail(f"0.4.19 regression coverage is missing: {test_marker}")
 
+  patch_0420 = read("tools/test_patch_0420.py")
+  for marker in (
+    'sidebarServiceDragReorder: boolean;',
+    'sidebarServiceDragReorder: true,',
+    'settings.insert("sidebarServiceDragReorder".into(), true.into());',
+    'draggable={appSettings.sidebarServiceDragReorder && !serviceOrderBusy}',
+    'reorderVisibleSubsetAt(previousIds, visibleIds, from, target.id, placement)',
+    'settings_write: Mutex<()>',
+  ):
+    if marker not in api_ts + app + main_rs:
+      fail(f"0.4.20 sidebar drag-order invariant is missing: {marker}")
+  for test_marker in (
+    "test_drag_reordering_setting_is_default_on_typed_and_validated",
+    "test_advanced_toggle_controls_only_sidebar_dragging",
+    "test_drag_handlers_are_gated_and_persist_only_on_drop",
+    "test_reorder_helper_is_stale_safe_and_preserves_filtered_slots",
+    "test_drop_indicator_matches_before_after_placement",
+    "test_backend_serializes_settings_transactions_with_order_writes",
+    "test_disabling_drag_reorder_clears_in_progress_drag_state",
+  ):
+    if test_marker not in patch_0420:
+      fail(f"0.4.20 regression coverage is missing: {test_marker}")
+
   for marker in (
     '["keybindings", "Keybinds"]',
     '["sandbox", "Sandbox"]',
@@ -1257,7 +1280,7 @@ def main() -> int:
     'setAppSettings({ serviceOrder, workspaceOrder, workspaceLastUsed })',
     'setServiceOrder(nextIds)',
     'setWorkspaceOrder(nextIds)',
-    'reorderVisibleSubset(previousIds, visibleIds, from, target.id)',
+    'reorderVisibleSubsetAt(previousIds, visibleIds, from, target.id, placement)',
     'No services configured',
   ):
     if marker not in app:

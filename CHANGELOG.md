@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.20] - 2026-08-21
+
+### Added
+
+- Added **Advanced → Sidebar service ordering → Drag to reorder services**, enabled by default. Disabling it makes sidebar service rows non-draggable without changing the persisted canonical service order or the Settings → Services ordering controls.
+
+### Improved
+
+- Hardened sidebar drag-and-drop with explicit before/after placement based on pointer position, matching drop indicators, native drag payloads, and safe cancellation when dragging is disabled or an order write is already in progress.
+- Filtered workspace views and hidden disabled services retain their canonical global slots while visible services are reordered. Stale drag ids, duplicate order state, and invalid drop targets are safe no-ops.
+- Service-order persistence is optimistic but single-flight, verified after the atomic backend write, rolled back on failure, and synchronized with the native Services menu without replacing unrelated in-memory settings.
+- Serialized backend app-settings read/modify/write transactions across ordinary setting changes, service/workspace order persistence, and backup restore to prevent concurrent writes from losing ordering or unrelated settings.
+
+### Release quality
+
+- Added focused frontend helper, Rust settings-migration, and static integration regressions covering default-on migration, saved opt-out preservation, filtered-slot stability, stale/duplicate input safety, single-write persistence, backend serialization, and toggle gating.
+- Retained exact Rust 1.97.1 formatter cleanliness, release invariants, clean-tree validation, source-manifest verification, and deterministic three-archive packaging requirements.
+
 ## [0.4.19] - 2026-08-21
 
 ### Fixed
