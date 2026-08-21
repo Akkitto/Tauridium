@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.2] - 2026-08-21
+
+### Changed
+
+- Moved session sign-out from the sidebar account row into the native **Tauridium** application menu between **Show All** and **Exit**, with dedicated separators and session-aware enablement.
+- Reused the reclaimed sidebar account-row space to display the active workspace name, using **All services** for the unfiltered scope and safe truncation for narrow sidebars.
+
+### Release quality
+
+- Added focused 0.5.2 regression coverage for native-menu ordering and sign-out routing, session-aware availability, sidebar removal, and active-workspace scope rendering.
+
 ## [0.5.1] - 2026-08-21
 
 ### Changed
