@@ -57,7 +57,7 @@ uses the Ferdium REST API; accountless mode keeps service/workspace state local.
 - **Configurable keybindings** for navigation and application actions, including `Ctrl+D` workspace switching, `Ctrl+S` service search, `Ctrl+Shift+N` workspace creation, and optional two-stroke chords
 - **Shared sandboxes** that let compatible services deliberately share one persistent webview data store/login session while unassigned services remain isolated; one or all sandboxes can be exported with their services and referenced custom recipes
 - Scalable Settings → Services management with search, workspace filtering, 100-row paging, and filtered reordering that preserves hidden global-order slots
-- Optional Advanced setting for direct sidebar service drag-and-drop ordering (enabled by default), using the same verified canonical service order and preserving hidden/filter-excluded slots
+- Optional Advanced setting for direct sidebar service drag-and-drop ordering (enabled by default), using the same verified canonical service order and preserving hidden/filter-excluded slots; the main shell disables Tauri native drag/drop interception so standard HTML5 dragging reaches the frontend reliably on Windows/WebView2
 - **Portable workspace exports** for one or all workspaces, including referenced services, sandboxes, assignments, and custom recipes
 - **Hardened backups** with integrity-verified transactional restore, selectable automatic-backup directory, startup/daily/weekly/monthly scheduling, count/age/combined/tiered retention, and pre-restore recovery points
 - **Local structured audit log** for settings, backup/restore/retention/export operations, warnings, and failures, with secret-field redaction and bounded rotation

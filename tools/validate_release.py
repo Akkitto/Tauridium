@@ -1227,6 +1227,22 @@ def main() -> int:
     if test_marker not in patch_0420:
       fail(f"0.4.20 regression coverage is missing: {test_marker}")
 
+  patch_0421 = read("tools/test_patch_0421.py")
+  tauri_config = json.loads(read("src-tauri/tauri.conf.json"))
+  main_window = next(
+    (window for window in tauri_config.get("app", {}).get("windows", []) if window.get("label") == "main"),
+    None,
+  )
+  if main_window is None or main_window.get("dragDropEnabled") is not False:
+    fail("0.4.21 main shell must disable Tauri native drag/drop interception for HTML5 sidebar dragging")
+  for test_marker in (
+    "test_main_shell_disables_tauri_native_drag_drop_interception",
+    "test_sidebar_reorder_remains_html5_drag_drop_with_move_semantics",
+    "test_sidebar_ordering_does_not_depend_on_tauri_native_file_drop_events",
+  ):
+    if test_marker not in patch_0421:
+      fail(f"0.4.21 regression coverage is missing: {test_marker}")
+
   for marker in (
     '["keybindings", "Keybinds"]',
     '["sandbox", "Sandbox"]',
