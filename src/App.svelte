@@ -586,8 +586,17 @@
     }, 2600);
   }
 
+  function preferredWebsiteIcon(service: Service): string | null {
+    if (service.useFavicon !== true) return null;
+    return serviceIcons[service.id] ?? null;
+  }
+
   function displayedServiceIcon(service: Service): string {
-    return serviceIcons[service.id] || iconSrc(service);
+    return preferredWebsiteIcon(service) ?? iconSrc(service);
+  }
+
+  function serviceIconFailed(service: Service): boolean {
+    return failedIcons.has(service.id) && preferredWebsiteIcon(service) === null;
   }
 
   async function loadServiceIcon(
@@ -1080,7 +1089,15 @@
         userAgentPref: s.userAgentPref ?? "",
       });
       const idx = services.findIndex((candidate) => candidate.id === s.id);
+      const previous = idx >= 0 ? services[idx] : null;
       if (idx >= 0) services = services.map((candidate, index) => index === idx ? { ...s } : candidate);
+      if (
+        s.useFavicon === true &&
+        appSettings.fetchMissingServiceIcons &&
+        (previous?.useFavicon !== true || !preferredWebsiteIcon(s))
+      ) {
+        void loadServiceIcon(s);
+      }
       await setServiceFlags(s);
       await refreshNativeServicesMenu();
       if (reload) {
@@ -3035,10 +3052,10 @@
                   {#each managedServiceRows as service, index (service.id)}
                     <div class="managed-row" role="listitem">
                       <div class="managed-identity">
-                        {#if failedIcons.has(service.id)}
+                        {#if serviceIconFailed(service)}
                           <span class="managed-icon fallback">{serviceLabel(service).slice(0, 1).toUpperCase()}</span>
                         {:else}
-                          <img class="managed-icon" src={iconSrc(service)} alt="" onerror={() => markIconFailed(service)} />
+                          <img class="managed-icon" src={displayedServiceIcon(service)} alt="" onerror={() => markIconFailed(service)} />
                         {/if}
                         <div class="managed-copy">
                           <strong>{serviceLabel(service)}</strong>
@@ -3720,7 +3737,7 @@
       onclick={() => selectService(s)}
       onkeydown={(e) => openServiceContextMenuFromKeyboard(e, s)}
     >
-      {#if failedIcons.has(s.id) && !serviceIcons[s.id]}
+      {#if serviceIconFailed(s)}
         <span class="dot">{serviceLabel(s).slice(0, 1).toUpperCase()}</span>
       {:else}
         <img class="svc-icon" src={displayedServiceIcon(s)} alt="" onerror={() => markIconFailed(s)} />

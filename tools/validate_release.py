@@ -1243,6 +1243,28 @@ def main() -> int:
     if test_marker not in patch_0421:
       fail(f"0.4.21 regression coverage is missing: {test_marker}")
 
+  patch_0422 = read("tools/test_patch_0422.py")
+  for marker in (
+    "if (service.useFavicon !== true) return null;",
+    "return preferredWebsiteIcon(service) ?? iconSrc(service);",
+    "src={displayedServiceIcon(service)}",
+    "serviceIconFailed(service)",
+    "previous?.useFavicon !== true || !preferredWebsiteIcon(s)",
+  ):
+    if marker not in app:
+      fail(f"0.4.22 configured-service icon invariant is missing: {marker}")
+  managed_services = app.split('aria-label="Configured services"', 1)[-1].split("managed-empty", 1)[0]
+  if "src={iconSrc(service)}" in managed_services:
+    fail("Configured services regressed to bypassing per-service icon preference resolution")
+  for test_marker in (
+    "test_resolved_service_icon_honours_per_service_website_icon_preference",
+    "test_configured_services_use_same_resolved_icon_path_as_sidebar",
+    "test_enabling_website_icon_preference_hydrates_icon_without_restart",
+    "test_stale_cached_website_icon_is_ignored_when_preference_is_disabled",
+  ):
+    if test_marker not in patch_0422:
+      fail(f"0.4.22 regression coverage is missing: {test_marker}")
+
   for marker in (
     '["keybindings", "Keybinds"]',
     '["sandbox", "Sandbox"]',
