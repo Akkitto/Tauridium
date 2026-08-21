@@ -191,6 +191,35 @@ describe("persisted ordering helpers", () => {
     ]);
   });
 
+  it("supports explicit before/after sidebar drop placement without disturbing hidden slots", async () => {
+    const { reorderVisibleSubsetAt } = await import("./ui");
+    const full = ["a", "hidden-1", "b", "c", "hidden-2", "d"];
+    const visible = ["a", "b", "c", "d"];
+    expect(reorderVisibleSubsetAt(full, visible, "a", "c", "before")).toEqual([
+      "b",
+      "hidden-1",
+      "a",
+      "c",
+      "hidden-2",
+      "d",
+    ]);
+    expect(reorderVisibleSubsetAt(full, visible, "a", "c", "after")).toEqual([
+      "b",
+      "hidden-1",
+      "c",
+      "a",
+      "hidden-2",
+      "d",
+    ]);
+  });
+
+  it("treats stale or duplicate drag-order input as a safe no-op", async () => {
+    const { reorderVisibleSubsetAt } = await import("./ui");
+    expect(reorderVisibleSubsetAt(["a", "b", "c"], ["a", "b", "c"], "missing", "b", "before")).toEqual(["a", "b", "c"]);
+    expect(reorderVisibleSubsetAt(["a", "b", "c"], ["a", "b", "c"], "a", "missing", "after")).toEqual(["a", "b", "c"]);
+    expect(reorderVisibleSubsetAt(["a", "b", "b"], ["a", "b"], "a", "b", "after")).toEqual(["a", "b", "b"]);
+  });
+
   it("returns stable service labels when names are missing", async () => {
     const { serviceLabel } = await import("./ui");
     expect(serviceLabel({ name: " Mail ", recipeId: "gmail" })).toBe("Mail");

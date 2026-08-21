@@ -60,7 +60,7 @@ class OrderingAndSidebarTests(unittest.TestCase):
     self.assertIn("Tauridium could not verify the saved service order", block)
     self.assertNotIn("updateService(", block)
     drop = self.app.split("async function onDrop", 1)[1].split("function row", 1)[0]
-    self.assertIn("reorderVisibleSubset", drop)
+    self.assertIn("reorderVisibleSubsetAt", drop)
     self.assertIn("await persistServiceIds(nextIds, previousIds)", drop)
 
   def test_workspace_reorder_uses_same_verified_atomic_order_store(self) -> None:
@@ -73,6 +73,8 @@ class OrderingAndSidebarTests(unittest.TestCase):
     self.assertIn("export function reorderVisibleSubset", self.ui)
     self.assertIn("visibleSet", self.ui)
     self.assertIn("reorders a filtered workspace subset without moving hidden service slots", self.ui_test)
+    self.assertIn("supports explicit before/after sidebar drop placement without disturbing hidden slots", self.ui_test)
+    self.assertIn("treats stale or duplicate drag-order input as a safe no-op", self.ui_test)
 
   def test_services_settings_is_dynamic_named_and_empty_safe(self) -> None:
     settings = self.app.split('{:else if settingsTab === "services"}', 1)[1].split('{:else if settingsTab === "appearance"}', 1)[0]

@@ -310,6 +310,7 @@ export interface AppSettings {
   preloadServices: boolean;
   fetchMissingServiceIcons: boolean;
   reloadToasts: boolean;
+  sidebarServiceDragReorder: boolean;
   captureServiceShortcuts: boolean;
   serviceShortcutCaptureOverrides: Record<string, boolean>;
   customUrlTemplatesEnabled: boolean;

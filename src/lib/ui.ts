@@ -221,7 +221,41 @@ export function orderedBySavedIds<T extends { id: string; order?: number }>(
   });
 }
 
+export type ReorderPlacement = "before" | "after";
+
 // Reorder only the currently visible subset while leaving hidden/filter-excluded slots stable.
+// Invalid/duplicate input is treated as a no-op so a stale drag event can never corrupt canonical order.
+export function reorderVisibleSubsetAt(
+  fullIds: string[],
+  visibleIds: string[],
+  fromId: string,
+  toId: string,
+  placement: ReorderPlacement,
+): string[] {
+  const fullSet = new Set(fullIds);
+  if (fullSet.size !== fullIds.length) return [...fullIds];
+
+  const seenVisible = new Set<string>();
+  const subset = visibleIds.filter((id) => {
+    if (!fullSet.has(id) || seenVisible.has(id)) return false;
+    seenVisible.add(id);
+    return true;
+  });
+  if (subset.length < 2 || fromId === toId) return [...fullIds];
+  const fromIndex = subset.indexOf(fromId);
+  if (fromIndex < 0 || !subset.includes(toId)) return [...fullIds];
+
+  const [moved] = subset.splice(fromIndex, 1);
+  const targetIndex = subset.indexOf(toId);
+  if (targetIndex < 0) return [...fullIds];
+  const insertIndex = placement === "after" ? targetIndex + 1 : targetIndex;
+  subset.splice(insertIndex, 0, moved);
+
+  const visibleSet = new Set(subset);
+  let nextVisible = 0;
+  return fullIds.map((id) => (visibleSet.has(id) ? subset[nextVisible++] : id));
+}
+
 export function reorderVisibleSubset(
   fullIds: string[],
   visibleIds: string[],
@@ -232,11 +266,13 @@ export function reorderVisibleSubset(
   const fromIndex = subset.indexOf(fromId);
   const toIndex = subset.indexOf(toId);
   if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return [...fullIds];
-  const [moved] = subset.splice(fromIndex, 1);
-  subset.splice(toIndex, 0, moved);
-  const visibleSet = new Set(subset);
-  let nextVisible = 0;
-  return fullIds.map((id) => (visibleSet.has(id) ? subset[nextVisible++] : id));
+  return reorderVisibleSubsetAt(
+    fullIds,
+    visibleIds,
+    fromId,
+    toId,
+    fromIndex < toIndex ? "after" : "before",
+  );
 }
 
 

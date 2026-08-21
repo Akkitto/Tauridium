@@ -126,6 +126,7 @@ struct AppState {
     unread: Mutex<HashMap<String, i64>>, // unread count per service (for the dock badge)
     flags: Mutex<HashMap<String, ServiceFlags>>, // per-service settings (notification/mute/badge)
     settings: Mutex<Value>,          // app settings cache (read by the poller, etc.)
+    settings_write: Mutex<()>,       // serializes app-settings read/modify/write transactions
     sidebar_w: Mutex<f64>,           // sidebar width (initialized during setup, default 240)
     desired_active: Mutex<Option<String>>, // last requested service (prevents focus stealing during switches)
     inflight: Mutex<HashSet<String>>,      // webviews being created (prevents duplicate add_child)
@@ -2650,6 +2651,7 @@ fn default_app_settings_value() -> Value {
     settings.insert("preloadServices".into(), true.into());
     settings.insert("fetchMissingServiceIcons".into(), true.into());
     settings.insert("reloadToasts".into(), true.into());
+    settings.insert("sidebarServiceDragReorder".into(), true.into());
     settings.insert("captureServiceShortcuts".into(), true.into());
     settings.insert(
         "serviceShortcutCaptureOverrides".into(),
@@ -2802,6 +2804,7 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         "preloadServices",
         "fetchMissingServiceIcons",
         "reloadToasts",
+        "sidebarServiceDragReorder",
         "captureServiceShortcuts",
         "customUrlTemplatesEnabled",
     ] {
@@ -3145,6 +3148,7 @@ fn persist_order_setting(
     ids: Vec<String>,
 ) -> Result<Value, String> {
     validate_order_ids(&ids, label)?;
+    let _settings_write = state.settings_write.lock().unwrap();
     let count = ids.len();
     let mut settings = read_app_settings_value(app);
     let object = settings
@@ -3203,6 +3207,7 @@ fn set_app_settings(
         .as_object()
         .ok_or_else(|| "App settings patch must be a JSON object".to_string())?
         .clone();
+    let _settings_write = state.settings_write.lock().unwrap();
     let previous = read_app_settings_value(&app);
     let autostart_changed = patch.contains_key("autostart");
     let operation = (|| -> Result<Value, String> {
@@ -3568,6 +3573,7 @@ fn perform_restore_backup(
     path: &Path,
 ) -> Result<backup::BackupSummary, String> {
     let document = backup::load(path)?;
+    let _settings_write = state.settings_write.lock().unwrap();
 
     // Phase 1: validate and prepare every owned component before the first mutation.
     let app_settings = merge_app_settings_value(&document.app_settings())?;
@@ -4321,6 +4327,23 @@ mod tests {
         );
         assert_eq!(merged["keybindings"]["addWorkspace"], json!("Ctrl+Shift+N"));
         assert!(validate_app_settings_value(&merged).is_ok());
+    }
+
+    #[test]
+    fn sidebar_service_drag_reorder_defaults_on_and_preserves_saved_opt_out() {
+        let defaults = merge_app_settings_value(&json!({})).unwrap();
+        assert_eq!(defaults["sidebarServiceDragReorder"], json!(true));
+
+        let opted_out = merge_app_settings_value(&json!({
+            "sidebarServiceDragReorder": false
+        }))
+        .unwrap();
+        assert_eq!(opted_out["sidebarServiceDragReorder"], json!(false));
+        assert!(validate_app_settings_value(&opted_out).is_ok());
+
+        let mut invalid = default_app_settings_value();
+        invalid["sidebarServiceDragReorder"] = json!("yes");
+        assert!(validate_app_settings_value(&invalid).is_err());
     }
 
     #[test]

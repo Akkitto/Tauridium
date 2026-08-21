@@ -36,7 +36,7 @@ class Feature0400Tests(unittest.TestCase):
       'managedWorkspaceFilter',
       'managedServiceQuery',
       'paged(managedServices, managedServicePage, MANAGED_SERVICE_PAGE_SIZE)',
-      'reorderVisibleSubset(previousIds, visibleIds',
+      'reorderVisibleSubsetAt(previousIds, visibleIds',
     ):
       self.assertIn(marker, self.app)
 

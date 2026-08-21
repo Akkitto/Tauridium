@@ -14,6 +14,8 @@
     orderedBySavedIds,
     orderWorkspacesForQuickSwitch,
     reorderVisibleSubset,
+    reorderVisibleSubsetAt,
+    type ReorderPlacement,
     serviceLabel,
     backupTimestamp,
     automaticBackupDue,
@@ -132,6 +134,8 @@
   // Reorder services with drag and drop.
   let dragId = $state<string | null>(null);
   let dragOverId = $state<string | null>(null);
+  let dragPlacement = $state<ReorderPlacement | null>(null);
+  let serviceOrderBusy = $state(false);
   let activeWorkspace = $state<string | null>(null);
 
   type View = "service" | "svcSettings" | "add" | "appSettings";
@@ -238,6 +242,7 @@
     preloadServices: true,
     fetchMissingServiceIcons: true,
     reloadToasts: true,
+    sidebarServiceDragReorder: true,
     captureServiceShortcuts: true,
     serviceShortcutCaptureOverrides: {},
     customUrlTemplatesEnabled: false,
@@ -912,23 +917,29 @@
 
   // --- Service reordering ------------------------------------------------------
   async function persistServiceIds(nextIds: string[], previousIds: string[]) {
+    if (serviceOrderBusy) return;
+    serviceOrderBusy = true;
     appSettings = { ...appSettings, serviceOrder: nextIds };
     try {
-      appSettings = await setServiceOrder(nextIds);
-      const persisted = appSettings.serviceOrder ?? [];
+      const persistedSettings = await setServiceOrder(nextIds);
+      const persisted = persistedSettings.serviceOrder ?? [];
       if (persisted.length !== nextIds.length || persisted.some((id, i) => id !== nextIds[i])) {
         throw new Error("Tauridium could not verify the saved service order");
       }
+      appSettings = { ...appSettings, serviceOrder: persisted };
       await refreshNativeServicesMenu();
     } catch (err) {
       appSettings = { ...appSettings, serviceOrder: previousIds };
       error = `Unable to save service order: ${err}`;
       throw err;
+    } finally {
+      serviceOrderBusy = false;
     }
   }
 
 
   async function moveService(serviceId: string, delta: number) {
+    if (serviceOrderBusy) return;
     const previousIds = sorted.map((service) => service.id);
     const index = previousIds.indexOf(serviceId);
     const target = index + delta;
@@ -938,31 +949,64 @@
     await persistServiceIds(nextIds, previousIds).catch(() => {});
   }
 
-  function onDragStart(e: DragEvent, s: Service) {
-    dragId = s.id;
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
-  }
-  function onDragOver(e: DragEvent, s: Service) {
-    if (!dragId || dragId === s.id) return;
-    e.preventDefault();
-    dragOverId = s.id;
-  }
-  function onDragLeave(s: Service) {
-    if (dragOverId === s.id) dragOverId = null;
-  }
-  function onDragEnd() {
+  function clearServiceDragState() {
     dragId = null;
     dragOverId = null;
+    dragPlacement = null;
   }
+
+  function onDragStart(e: DragEvent, s: Service) {
+    if (!appSettings.sidebarServiceDragReorder || serviceOrderBusy) {
+      e.preventDefault();
+      clearServiceDragState();
+      return;
+    }
+    dragId = s.id;
+    dragOverId = null;
+    dragPlacement = null;
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", s.id);
+    }
+  }
+
+  function onDragOver(e: DragEvent, s: Service) {
+    if (!appSettings.sidebarServiceDragReorder || serviceOrderBusy || !dragId || dragId === s.id) return;
+    const target = e.currentTarget instanceof HTMLElement ? e.currentTarget : null;
+    if (!target) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    const rect = target.getBoundingClientRect();
+    const placement: ReorderPlacement = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+    if (dragOverId !== s.id) dragOverId = s.id;
+    if (dragPlacement !== placement) dragPlacement = placement;
+  }
+
+  function onDragLeave(e: DragEvent, s: Service) {
+    if (dragOverId !== s.id) return;
+    const next = e.relatedTarget;
+    if (next instanceof Node && e.currentTarget instanceof Node && e.currentTarget.contains(next)) return;
+    dragOverId = null;
+    dragPlacement = null;
+  }
+
+  function onDragEnd() {
+    clearServiceDragState();
+  }
+
   async function onDrop(e: DragEvent, target: Service) {
     e.preventDefault();
-    const from = dragId;
-    dragId = null;
-    dragOverId = null;
-    if (!from || from === target.id) return;
+    if (!appSettings.sidebarServiceDragReorder || serviceOrderBusy) {
+      clearServiceDragState();
+      return;
+    }
+    const from = dragId ?? e.dataTransfer?.getData("text/plain") ?? null;
+    const placement = dragOverId === target.id ? dragPlacement : null;
+    clearServiceDragState();
+    if (!from || !placement || from === target.id) return;
     const previousIds = sorted.map((service) => service.id);
     const visibleIds = visibleServices.map((service) => service.id);
-    const nextIds = reorderVisibleSubset(previousIds, visibleIds, from, target.id);
+    const nextIds = reorderVisibleSubsetAt(previousIds, visibleIds, from, target.id, placement);
     if (nextIds.every((id, index) => id === previousIds[index])) return;
     await persistServiceIds(nextIds, previousIds).catch(() => {});
   }
@@ -2097,6 +2141,7 @@
 
   async function saveAppSetting(key: keyof AppSettings, value: unknown) {
     (appSettings as Record<string, unknown>)[key] = value;
+    if (key === "sidebarServiceDragReorder" && value === false) clearServiceDragState();
     if (key === "theme" || key === "accentColor") applyTheme();
     applyLayout();
     if (key === "sidebarWidth" || key === "sidebarWidthMode" || key === "sidebarWidthPercent") {
@@ -2124,6 +2169,7 @@
   }
 
   async function moveManagedService(serviceId: string, delta: number) {
+    if (serviceOrderBusy) return;
     const visibleIds = managedServices.map((service) => service.id);
     const index = visibleIds.indexOf(serviceId);
     const target = index + delta;
@@ -3000,8 +3046,8 @@
                         </div>
                       </div>
                       <div class="managed-actions">
-                        <button class="icon-button compact" disabled={managedServicePage * MANAGED_SERVICE_PAGE_SIZE + index === 0} aria-label={`Move ${serviceLabel(service)} up`} title="Move up" onclick={() => moveManagedService(service.id, -1)}>↑</button>
-                        <button class="icon-button compact" disabled={managedServicePage * MANAGED_SERVICE_PAGE_SIZE + index === managedServices.length - 1} aria-label={`Move ${serviceLabel(service)} down`} title="Move down" onclick={() => moveManagedService(service.id, 1)}>↓</button>
+                        <button class="icon-button compact" disabled={serviceOrderBusy || managedServicePage * MANAGED_SERVICE_PAGE_SIZE + index === 0} aria-label={`Move ${serviceLabel(service)} up`} title="Move up" onclick={() => moveManagedService(service.id, -1)}>↑</button>
+                        <button class="icon-button compact" disabled={serviceOrderBusy || managedServicePage * MANAGED_SERVICE_PAGE_SIZE + index === managedServices.length - 1} aria-label={`Move ${serviceLabel(service)} down`} title="Move down" onclick={() => moveManagedService(service.id, 1)}>↓</button>
                         <button class="secondary sm" onclick={() => openServiceSettings(service, true)}>Service settings</button>
                       </div>
                     </div>
@@ -3484,6 +3530,12 @@
               </section>
 
             {:else if settingsTab === "advanced"}
+              <section class="settings-section" aria-labelledby="settings-advanced-sidebar-order">
+                <div class="section-heading"><h3 id="settings-advanced-sidebar-order">Sidebar service ordering</h3><p>Control whether services can be rearranged directly from the sidebar.</p></div>
+                <div class="settings-list">
+                  {@render appToggle("Drag to reorder services", "Enabled by default. Drag a service to another position in the sidebar to update Tauridium's canonical service order. Workspace filtering and hidden disabled services keep their underlying slots stable. Disable this to make sidebar service rows non-draggable; the accessible move controls in Settings → Services remain available.", "sidebarServiceDragReorder", appSettings.sidebarServiceDragReorder)}
+                </div>
+              </section>
               <section class="settings-section" aria-labelledby="settings-advanced-shortcuts">
                 <div class="section-heading"><h3 id="settings-advanced-shortcuts">Keyboard shortcut priority</h3><p>Control whether Tauridium shortcuts continue to work while a service website has keyboard focus.</p></div>
                 <div class="settings-list">
@@ -3646,13 +3698,15 @@
 {#snippet row(s: Service)}
   <div
     class="srow-wrap"
-    class:drag-over={dragOverId === s.id}
-    class:dragging={dragId === s.id}
-    draggable="true"
+    class:drag-before={appSettings.sidebarServiceDragReorder && !serviceOrderBusy && dragOverId === s.id && dragPlacement === "before"}
+    class:drag-after={appSettings.sidebarServiceDragReorder && !serviceOrderBusy && dragOverId === s.id && dragPlacement === "after"}
+    class:dragging={appSettings.sidebarServiceDragReorder && !serviceOrderBusy && dragId === s.id}
+    class:draggable={appSettings.sidebarServiceDragReorder && !serviceOrderBusy}
+    draggable={appSettings.sidebarServiceDragReorder && !serviceOrderBusy}
     role="listitem"
     ondragstart={(e) => onDragStart(e, s)}
     ondragover={(e) => onDragOver(e, s)}
-    ondragleave={() => onDragLeave(s)}
+    ondragleave={(e) => onDragLeave(e, s)}
     ondrop={(e) => onDrop(e, s)}
     ondragend={onDragEnd}
   >
@@ -3784,11 +3838,15 @@
   .svclist { display: flex; flex: none; flex-direction: column; gap: 2px; padding-right: 0; }
 
   .srow-wrap { display: flex; align-items: center; position: relative; width: 100%; }
-  .srow-wrap.dragging { opacity: 0.4; }
-  .srow-wrap.drag-over::before {
-    content: ""; position: absolute; left: 6px; right: 6px; top: -1px;
-    height: 2px; background: var(--accent); border-radius: 2px;
+  .srow-wrap.draggable .srow { cursor: grab; }
+  .srow-wrap.draggable:active .srow { cursor: grabbing; }
+  .srow-wrap.dragging { opacity: 0.42; }
+  .srow-wrap.drag-before::before, .srow-wrap.drag-after::after {
+    content: ""; position: absolute; z-index: 2; left: 6px; right: 6px;
+    height: 2px; background: var(--accent); border-radius: 2px; pointer-events: none;
   }
+  .srow-wrap.drag-before::before { top: -1px; }
+  .srow-wrap.drag-after::after { bottom: -1px; }
   .srow { width: 100%;
     display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0;
     padding: 7px 8px; border: none; border-radius: 8px; background: none;
