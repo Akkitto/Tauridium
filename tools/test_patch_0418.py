@@ -71,12 +71,15 @@ class Patch0418Tests(unittest.TestCase):
     self.assertIn('"sourcehut" => Some("https://sr.ht/~{teamId}/")', RECIPES)
     self.assertIn('"hasTeamId": team_url.is_some()', RECIPES)
 
-  def test_main_window_starts_hidden_until_restored_state_is_applied(self) -> None:
+  def test_main_window_starts_hidden_until_plugin_restored_state_is_revealed(self) -> None:
     main_window = TAURI["app"]["windows"][0]
     self.assertIs(main_window["visible"], False)
     reveal = MAIN.split('fn reveal_main_window_after_startup_restore', 1)[1].split('fn show_main', 1)[0]
-    self.assertLess(reveal.index('restore_main_window_state(&window);'), reveal.index('window.show();'))
+    self.assertNotIn('restore_state(', reveal)
+    self.assertIn('window.show();', reveal)
     self.assertIn('if !start_minimized', reveal)
+    plugin = MAIN.split('tauri_plugin_window_state::Builder::new()', 1)[1].split('.build(),', 1)[0]
+    self.assertNotIn('skip_initial_state("main")', plugin)
     setup = MAIN.split('.setup(|app|', 1)[1].split('start_badge_poller', 1)[0]
     self.assertIn('reveal_main_window_after_startup_restore(app.handle(), start_minimized);', setup)
 

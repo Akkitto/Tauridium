@@ -2769,6 +2769,34 @@
     void saveAppSetting("sidebarCollapsed", !appSettings.sidebarCollapsed);
   }
 
+  function previewServiceSpacing(key: "collapsedServiceSpacing" | "expandedServiceSpacing", value: number, collapsed: boolean) {
+    appSettings.sidebarCollapsed = collapsed;
+    appSettings[key] = value;
+    syncSidebarWidth();
+  }
+
+  async function saveServiceSpacing(key: "collapsedServiceSpacing" | "expandedServiceSpacing", collapsed: boolean) {
+    const value = appSettings[key];
+    try {
+      appSettings = await setAppSettings({
+        [key]: value,
+        sidebarCollapsed: collapsed,
+      } as Partial<AppSettings>);
+      applyLayout();
+      syncSidebarWidth();
+      showToast("Saved", "success");
+    } catch (err) {
+      try {
+        appSettings = await getAppSettings();
+        applyLayout();
+        syncSidebarWidth();
+      } catch {
+        // Keep the current preview if persisted settings cannot be reloaded either.
+      }
+      error = String(err);
+    }
+  }
+
   async function moveManagedService(serviceId: string, delta: number) {
     if (serviceOrderBusy) return;
     const visibleIds = managedServices.map((service) => service.id);
@@ -4299,14 +4327,14 @@
                   <div class="setting-card setting-card-stack">
                     <div class="setting-copy"><span class="setting-label">Collapsed icon spacing</span><span class="setting-description">Increase the vertical space between icon-only service targets. The current compact 2 px spacing is the minimum.</span></div>
                     <div class="sidebar-width-control">
-                      <input class="range" type="range" min="2" max="24" step="1" value={appSettings.collapsedServiceSpacing} aria-label="Collapsed service icon spacing" oninput={(event) => { appSettings.collapsedServiceSpacing = Number(event.currentTarget.value); applyLayout(); }} onchange={() => saveAppSetting("collapsedServiceSpacing", appSettings.collapsedServiceSpacing)} />
+                      <input class="range" type="range" min="2" max="24" step="1" value={appSettings.collapsedServiceSpacing} aria-label="Collapsed service icon spacing" oninput={(event) => previewServiceSpacing("collapsedServiceSpacing", Number(event.currentTarget.value), true)} onchange={() => saveServiceSpacing("collapsedServiceSpacing", true)} />
                       <output>{Math.round(appSettings.collapsedServiceSpacing)} px</output>
                     </div>
                   </div>
                   <div class="setting-card setting-card-stack">
                     <div class="setting-copy"><span class="setting-label">Expanded service spacing</span><span class="setting-description">Increase the vertical space between service rows in the expanded sidebar. The current compact 2 px spacing is the minimum.</span></div>
                     <div class="sidebar-width-control">
-                      <input class="range" type="range" min="2" max="24" step="1" value={appSettings.expandedServiceSpacing} aria-label="Expanded service item spacing" oninput={(event) => { appSettings.expandedServiceSpacing = Number(event.currentTarget.value); applyLayout(); }} onchange={() => saveAppSetting("expandedServiceSpacing", appSettings.expandedServiceSpacing)} />
+                      <input class="range" type="range" min="2" max="24" step="1" value={appSettings.expandedServiceSpacing} aria-label="Expanded service item spacing" oninput={(event) => previewServiceSpacing("expandedServiceSpacing", Number(event.currentTarget.value), false)} onchange={() => saveServiceSpacing("expandedServiceSpacing", false)} />
                       <output>{Math.round(appSettings.expandedServiceSpacing)} px</output>
                     </div>
                   </div>

@@ -33,8 +33,8 @@ class Patch0602Tests(unittest.TestCase):
     self.assertIn('aria-label="Collapsed service icon spacing"', appearance)
     self.assertIn('aria-label="Expanded service item spacing"', appearance)
     self.assertGreaterEqual(appearance.count('type="range" min="2" max="24" step="1"'), 2)
-    self.assertIn('saveAppSetting("collapsedServiceSpacing", appSettings.collapsedServiceSpacing)', appearance)
-    self.assertIn('saveAppSetting("expandedServiceSpacing", appSettings.expandedServiceSpacing)', appearance)
+    self.assertIn('saveServiceSpacing("collapsedServiceSpacing", true)', appearance)
+    self.assertIn('saveServiceSpacing("expandedServiceSpacing", false)', appearance)
 
   def test_spacing_is_live_previewed_without_changing_minimum_geometry(self) -> None:
     self.assertIn('b.style.setProperty("--collapsed-service-gap", `${appSettings.collapsedServiceSpacing}px`);', APP)

@@ -382,7 +382,7 @@ def main() -> int:
     '.with_filter(|label| label == "main")',
     '.with_filename("window-state.json")',
     "save_main_window_state(&handle);",
-    "restore_main_window_state(&w);",
+    "reveal_main_window_after_startup_restore(app.handle(), start_minimized);",
     "persisted_window_state_tracks_geometry_without_visibility",
   ):
     if marker not in main_rs:
@@ -390,13 +390,18 @@ def main() -> int:
   flags_body = main_rs.split("fn persisted_window_state_flags()", 1)[1].split("\n}", 1)[0]
   if "StateFlags::VISIBLE" in flags_body:
     fail("window-state persistence must not store visibility; startup visibility has separate settings")
+  if "fn restore_main_window_state" in main_rs:
+    fail("main-window restoration must not be replayed manually on top of the window-state plugin")
+  plugin_builder = main_rs.split("tauri_plugin_window_state::Builder::new()", 1)[1].split(".build(),", 1)[0]
+  if 'skip_initial_state("main")' in plugin_builder:
+    fail("main-window startup restore must remain owned by the window-state plugin")
   for test_marker in (
     "test_official_window_state_plugin_is_pinned_and_locked",
     "test_window_state_lockfile_preserves_valid_errno_resolution",
     "test_persistence_tracks_geometry_and_window_mode_but_not_visibility",
     "test_close_to_tray_saves_before_hiding",
-    "test_tray_toggle_saves_before_hide_and_restores_before_show",
-    "test_show_and_tray_quit_preserve_state",
+    "test_tray_toggle_saves_before_hide_and_reveals_without_replaying_restore",
+    "test_show_and_tray_quit_preserve_state_without_duplicate_restore",
   ):
     if test_marker not in window_state_test:
       fail(f"persistent window-state regression coverage is missing: {test_marker}")
@@ -1178,8 +1183,10 @@ def main() -> int:
   reveal_window = main_rs.split("fn reveal_main_window_after_startup_restore", 1)[1].split(
     "fn show_main", 1
   )[0]
-  if reveal_window.index("restore_main_window_state(&window);") > reveal_window.index("window.show();"):
-    fail("0.4.18 main window must restore state before first show")
+  if "restore_state(" in reveal_window or "restore_main_window_state" in reveal_window:
+    fail("0.4.18 main window reveal must not replay the window-state plugin restore")
+  if "window.show();" not in reveal_window:
+    fail("0.4.18 main window must reveal the plugin-restored hidden window")
   for marker in (
     'reveal_main_window_after_startup_restore(app.handle(), start_minimized);',
     'StateFlags::FULLSCREEN',
@@ -1193,7 +1200,7 @@ def main() -> int:
     "test_reload_toast_waits_for_replacement_webview_ready_and_uses_overlay",
     "test_requested_bundled_recipes_have_expected_service_urls",
     "test_codeberg_and_sourcehut_support_workspace_namespace_routes",
-    "test_main_window_starts_hidden_until_restored_state_is_applied",
+    "test_main_window_starts_hidden_until_plugin_restored_state_is_revealed",
   ):
     if test_marker not in patch_0418:
       fail(f"0.4.18 regression coverage is missing: {test_marker}")
@@ -1670,6 +1677,24 @@ def main() -> int:
   ):
     if test_marker not in patch_0602:
       fail(f"0.6.2 regression coverage is missing: {test_marker}")
+
+  patch_0603 = read("tools/test_patch_0603.py")
+  for marker in (
+    "window-state plugin restores the hidden main window exactly once",
+    'previewServiceSpacing("collapsedServiceSpacing", Number(event.currentTarget.value), true)',
+    'previewServiceSpacing("expandedServiceSpacing", Number(event.currentTarget.value), false)',
+    "sidebarCollapsed: collapsed,",
+  ):
+    if marker not in app + main_rs:
+      fail(f"0.6.3 window restore/sidebar preview invariant is missing: {marker}")
+  for test_marker in (
+    "test_startup_relies_on_single_window_state_plugin_restore",
+    "test_hidden_window_reveal_does_not_replay_maximized_or_fullscreen_state",
+    "test_spacing_preview_switches_sidebar_to_the_mode_being_tuned",
+    "test_spacing_commit_persists_spacing_and_matching_sidebar_state_together",
+  ):
+    if test_marker not in patch_0603:
+      fail(f"0.6.3 regression coverage is missing: {test_marker}")
 
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],

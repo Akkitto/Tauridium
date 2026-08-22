@@ -79,21 +79,23 @@ class WindowStateTests(unittest.TestCase):
       event_body.index("let _ = w.hide();"),
     )
 
-  def test_tray_toggle_saves_before_hide_and_restores_before_show(self) -> None:
+  def test_tray_toggle_saves_before_hide_and_reveals_without_replaying_restore(self) -> None:
     body = self.main.split("fn toggle_main(app: &AppHandle)", 1)[1].split("\n}\n\n//", 1)[0]
     self.assertIn("save_main_window_state(app);", body)
-    self.assertIn("restore_main_window_state(&w);", body)
     self.assertLess(body.index("save_main_window_state(app);"), body.index("let _ = w.hide();"))
-    restore = body.index("restore_main_window_state(&w);")
-    show = body.index("let _ = w.show();", restore)
-    self.assertLess(restore, show)
+    self.assertIn("let _ = w.show();", body)
+    self.assertNotIn("restore_main_window_state", body)
+    self.assertNotIn("restore_state(", body)
 
-  def test_show_and_tray_quit_preserve_state(self) -> None:
+  def test_show_and_tray_quit_preserve_state_without_duplicate_restore(self) -> None:
     show_body = self.main.split("fn show_main(app: &AppHandle)", 1)[1].split(
       "\n}\n\nfn toggle_main", 1
     )[0]
-    self.assertIn("if !w.is_visible().unwrap_or(false)", show_body)
-    self.assertIn("restore_main_window_state(&w);", show_body)
+    self.assertIn("let _ = w.show();", show_body)
+    self.assertIn("let _ = w.set_focus();", show_body)
+    self.assertNotIn("restore_main_window_state", show_body)
+    self.assertNotIn("restore_state(", show_body)
+    self.assertNotIn("fn restore_main_window_state", self.main)
 
     quit_body = self.main.split('"quit" => {', 1)[1].split("}", 1)[0]
     self.assertIn("save_main_window_state(app);", quit_body)

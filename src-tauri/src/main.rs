@@ -41,7 +41,7 @@ use tauri::{
 };
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_notification::{NotificationExt, PermissionState};
-use tauri_plugin_window_state::{AppHandleExt as _, StateFlags, WindowExt as _};
+use tauri_plugin_window_state::{AppHandleExt as _, StateFlags};
 
 // Shared HTTP client with connection pooling AND timeouts: without a timeout, a server
 // that accepts a connection but never responds can hang login/show_service indefinitely.
@@ -4508,17 +4508,11 @@ fn save_main_window_state(app: &AppHandle) {
     }
 }
 
-fn restore_main_window_state(window: &tauri::Window<Wry>) {
-    if let Err(error) = window.restore_state(persisted_window_state_flags()) {
-        eprintln!("Unable to restore Tauridium window state: {error}");
-    }
-}
-
 fn reveal_main_window_after_startup_restore(app: &AppHandle, start_minimized: bool) {
     if let Some(window) = app.get_window("main") {
-        // The configured main window starts hidden. Restore geometry and mode while it cannot
-        // flash on screen, then reveal the already-restored window in its final state.
-        restore_main_window_state(&window);
+        // The window-state plugin restores the hidden main window exactly once from its
+        // on_window_ready hook. Replaying restore_state here causes a second maximized/fullscreen
+        // transition on Windows 11; only reveal the already-restored window.
         if !start_minimized {
             let _ = window.show();
             let _ = window.set_focus();
@@ -4528,9 +4522,8 @@ fn reveal_main_window_after_startup_restore(app: &AppHandle, start_minimized: bo
 
 fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_window("main") {
-        if !w.is_visible().unwrap_or(false) {
-            restore_main_window_state(&w);
-        }
+        // Hiding a live window does not discard its geometry/window mode. Restoring again before
+        // every tray/menu reveal can replay maximized/fullscreen transitions on Windows.
         let _ = w.show();
         let _ = w.set_focus();
     }
@@ -4542,7 +4535,6 @@ fn toggle_main(app: &AppHandle) {
             save_main_window_state(app);
             let _ = w.hide();
         } else {
-            restore_main_window_state(&w);
             let _ = w.show();
             let _ = w.set_focus();
         }
