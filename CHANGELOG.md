@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.5] - 2026-08-22
+
+### Changed
+
+- Replaced the project README with the maintained concise project presentation and installation/development guidance.
+- Reworked CI and tagged releases around canonical `just` recipes, with signed Windows x64/ARM64 MSI and NSIS installers, Linux x64/ARM64 AppImage/DEB/RPM packages, portable runtime ZIPs, deterministic source/documentation/build handoff archives, updater metadata, release notes, and SHA-256 checksums.
+
+### Release quality
+
+- Added release-asset validation, fail-closed updater signing, draft-first publishing, current pinned GitHub Actions, weekly GitHub Actions dependency updates, and focused 0.5.5 regression coverage for the release pipeline.
+
 ## [0.5.4] - 2026-08-22
 
 ### Fixed
