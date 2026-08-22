@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.7] - 2026-08-23
+
+### Added
+
+- Added a default-on **Settings -> Advanced -> Application instances** option that reuses an existing Windows Tauridium session when `Tauridium.exe` is launched again, showing/unminimizing/focusing the existing session without creating another tray icon. Disable it to retain intentional multi-instance launches.
+
+### Fixed
+
+- Fixed quick service/workspace switcher Escape and same-shortcut closing when the switcher was opened from a focused service webview by explicitly returning native keyboard focus to Tauridium's shell after hiding the service webview.
+
+### Release quality
+
+- Added focused 0.6.7 regression coverage for service-to-shell focus handoff, quick-switcher close paths, safe default instance reuse, Windows named-instance activation, and explicit multi-instance opt-out behavior.
+
 ## [0.6.6] - 2026-08-23
 
 ### Fixed
