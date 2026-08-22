@@ -4695,8 +4695,10 @@
           <button
             class="quick-switcher-item"
             class:active={index === quickSwitcherIndex}
+            class:current={quickSwitcherMode === "workspace" && item.id === (activeWorkspace ?? "__all__")}
             role="option"
             aria-selected={index === quickSwitcherIndex}
+            aria-current={quickSwitcherMode === "workspace" && item.id === (activeWorkspace ?? "__all__") ? "true" : undefined}
             onmouseenter={() => (quickSwitcherIndex = index)}
             onclick={() => chooseQuickSwitcherItem(item)}
           >
@@ -5261,6 +5263,8 @@
   .quick-switcher-item { width: 100%; min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text2); cursor: pointer; text-align: left; font: inherit; }
   .quick-switcher-item:hover, .quick-switcher-item.active { background: var(--hover); border-color: var(--border); }
   .quick-switcher-item small { color: var(--muted); font-size: 11px; }
+  .quick-switcher-item.current { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  .quick-switcher-item.current small { color: var(--accent-fg); opacity: 0.78; }
   .quick-switcher-empty, .quick-switcher-hint { padding: 16px; color: var(--muted); font-size: 12px; text-align: center; }
   .quick-switcher-hint { margin: 0; padding: 8px 12px; border-top: 1px solid var(--border); }
 

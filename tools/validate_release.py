@@ -1696,6 +1696,22 @@ def main() -> int:
     if test_marker not in patch_0603:
       fail(f"0.6.3 regression coverage is missing: {test_marker}")
 
+  patch_0604 = read("tools/test_patch_0604.py")
+  for marker in (
+    'class:current={quickSwitcherMode === "workspace" && item.id === (activeWorkspace ?? "__all__")}',
+    'aria-current={quickSwitcherMode === "workspace" && item.id === (activeWorkspace ?? "__all__") ? "true" : undefined}',
+    '.quick-switcher-item.current { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }',
+  ):
+    if marker not in app:
+      fail(f"0.6.4 quick-workspace highlight invariant is missing: {marker}")
+  for test_marker in (
+    "test_current_workspace_is_marked_independently_from_keyboard_cursor",
+    "test_all_services_is_highlighted_when_no_workspace_is_active",
+    "test_current_workspace_reuses_selected_service_accent_language",
+  ):
+    if test_marker not in patch_0604:
+      fail(f"0.6.4 regression coverage is missing: {test_marker}")
+
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],
     cwd=ROOT,
