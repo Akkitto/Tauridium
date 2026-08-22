@@ -4633,10 +4633,10 @@ fn set_presentation_titles(
         .set_title(&window_title)
         .map_err(|error| format!("Unable to update Tauridium window title: {error}"))?;
 
-    // Windows and most Linux desktops derive taskbar button text from the native window title,
-    // so they cannot expose an independent per-window taskbar string while retaining the OS
-    // title bar. Keep the separately requested taskbar/app-icon label on the independently
-    // addressable tray surface; platforms that mirror the window title still behave natively.
+    // Windows taskbar buttons use the native window title, so Windows cannot expose an
+    // independent taskbar-button string while retaining the native title bar. Keep the
+    // separately requested taskbar/app-icon label on the independently addressable tray
+    // surface; platforms that expose a separate label can still use it.
     if let Some(tray) = app.tray_by_id("main-tray") {
         #[cfg(target_os = "linux")]
         tray.set_title(Some(&taskbar_title))

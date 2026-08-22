@@ -15,13 +15,11 @@ class Patch0604Tests(unittest.TestCase):
     switcher = APP.split('{#if quickSwitcherMode}', 1)[1].split('{#snippet row', 1)[0]
     self.assertIn('class:active={index === quickSwitcherIndex}', switcher)
     self.assertIn(
-      'class:current={quickSwitcherMode === "workspace" && item.id === (activeWorkspace ?? "__all__")}',
+      'quickSwitcherMode === "workspace" && item.id === (activeWorkspace ?? "__all__")',
       switcher,
     )
-    self.assertIn(
-      'aria-current={quickSwitcherMode === "workspace" && item.id === (activeWorkspace ?? "__all__") ? "true" : undefined}',
-      switcher,
-    )
+    self.assertIn('class:current=', switcher)
+    self.assertIn('aria-current=', switcher)
 
   def test_all_services_is_highlighted_when_no_workspace_is_active(self) -> None:
     self.assertIn(

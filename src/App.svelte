@@ -209,6 +209,7 @@
   let quickSwitcherMode = $state<QuickSwitcherMode | null>(null);
   let quickSwitcherQuery = $state("");
   let quickSwitcherIndex = $state(0);
+  let lastQuickSwitcherShortcutToggle: { mode: QuickSwitcherMode | null; at: number } = { mode: null, at: 0 };
 
   let serviceContextMenu = $state<{ serviceId: string; x: number; y: number } | null>(null);
   let toastMessage = $state("");
@@ -2964,9 +2965,17 @@
   }
 
   function openQuickSwitcher(mode: QuickSwitcherMode) {
+    const now = Date.now();
+    if (lastQuickSwitcherShortcutToggle.mode === mode && now - lastQuickSwitcherShortcutToggle.at < 120) return;
+    lastQuickSwitcherShortcutToggle = { mode, at: now };
+    if (quickSwitcherMode === mode) {
+      closeQuickSwitcher();
+      return;
+    }
     quickSwitcherMode = mode;
     quickSwitcherQuery = "";
     quickSwitcherIndex = 0;
+    shortcutPending = null;
     void hideServices();
     setTimeout(() => document.querySelector<HTMLInputElement>(".quick-switcher input")?.focus(), 0);
   }
@@ -3051,6 +3060,51 @@
     chooseWorkspace(sortedWorkspaces[index].id);
   }
 
+  function handleQuickSwitcherToggleShortcut(event: KeyboardEvent): boolean {
+    if (!quickSwitcherMode) return false;
+    const mode = quickSwitcherMode;
+    const action: KeybindingAction = mode === "workspace"
+      ? "quickWorkspaceSwitch"
+      : "quickServiceSwitch";
+    const strokes = bindingStrokes(appSettings.keybindings[action] ?? "");
+    const stroke = keyStrokeFromEvent(event);
+    if (!stroke || strokes.length === 0) return false;
+
+    if (shortcutPending && Date.now() - shortcutPending.at < 1800) {
+      const matchesChord = strokes.length === 2
+        && strokes[0] === shortcutPending.stroke
+        && strokes[1] === stroke;
+      shortcutPending = null;
+      if (matchesChord) {
+        event.preventDefault();
+        event.stopPropagation();
+        openQuickSwitcher(mode);
+        return true;
+      }
+    }
+
+    if (strokes.length === 2 && strokes[0] === stroke) {
+      event.preventDefault();
+      event.stopPropagation();
+      shortcutPending = { stroke, at: Date.now() };
+      setTimeout(() => {
+        if (shortcutPending?.stroke === stroke && Date.now() - shortcutPending.at >= 1700) {
+          shortcutPending = null;
+        }
+      }, 1800);
+      return true;
+    }
+
+    if (strokes.length === 1 && strokes[0] === stroke) {
+      event.preventDefault();
+      event.stopPropagation();
+      openQuickSwitcher(mode);
+      return true;
+    }
+
+    return false;
+  }
+
   function executeShortcutAction(action: KeybindingAction) {
     switch (action) {
       case "quickWorkspaceSwitch": openQuickSwitcher("workspace"); break;
@@ -3107,7 +3161,10 @@
     if (quickSwitcherMode) {
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         closeQuickSwitcher();
+      } else if (handleQuickSwitcherToggleShortcut(event)) {
+        return;
       } else if (event.key === "ArrowDown") {
         event.preventDefault();
         const lastVisible = Math.max(0, Math.min(quickSwitcherItems.length, 100) - 1);
@@ -4317,7 +4374,7 @@
                 </div>
                 <div class="settings-list">
                   {@render appToggle("Workspace in window title", "Show the selected workspace in the native title bar, for example Tauridium ~ Engineering.", "showWorkspaceInWindowTitle", appSettings.showWorkspaceInWindowTitle)}
-                  {@render appToggle("Workspace in taskbar title", `Use workspace context for a separately addressable ${dockWord} or app-icon label when the operating system exposes one. Windows taskbar buttons mirror the native window title, so Windows cannot display a different taskbar label without replacing the native title bar.`, "showWorkspaceInTaskbarTitle", appSettings.showWorkspaceInTaskbarTitle)}
+                  {@render appToggle("Workspace in taskbar title", `Use workspace context for a separately addressable ${dockWord} or app-icon label when the operating system exposes one. Windows taskbar buttons always mirror the native window title; independent taskbar titles are unsupported on Windows.`, "showWorkspaceInTaskbarTitle", appSettings.showWorkspaceInTaskbarTitle)}
                   {@render appToggle("Custom title templates", "Enable variable-based title formats for the window title and taskbar/app-icon title. The two workspace-title toggles still decide which destinations use the custom format.", "customTitleTemplatesEnabled", appSettings.customTitleTemplatesEnabled)}
                   {#if appSettings.customTitleTemplatesEnabled}
                     <div class="setting-card setting-card-stack">
@@ -4337,7 +4394,7 @@
                     <div class="setting-card setting-card-stack">
                       <div class="setting-copy">
                         <span class="setting-label">Taskbar title template</span>
-                        <span class="setting-description">Used where the OS exposes a separate taskbar/app-icon label. Windows 11 derives the taskbar button title from the native window title.</span>
+                        <span class="setting-description">Used where the OS exposes a separate taskbar/app-icon label. Windows taskbar buttons always mirror the native window title.</span>
                       </div>
                       <input
                         class="input setting-text-input"
@@ -4789,10 +4846,10 @@
           <button
             class="quick-switcher-item"
             class:active={index === quickSwitcherIndex}
-            class:current={quickSwitcherMode === "workspace" && item.id === (activeWorkspace ?? "__all__")}
+            class:current={(quickSwitcherMode === "workspace" && item.id === (activeWorkspace ?? "__all__")) || (quickSwitcherMode === "service" && item.id === activeId)}
             role="option"
             aria-selected={index === quickSwitcherIndex}
-            aria-current={quickSwitcherMode === "workspace" && item.id === (activeWorkspace ?? "__all__") ? "true" : undefined}
+            aria-current={(quickSwitcherMode === "workspace" && item.id === (activeWorkspace ?? "__all__")) || (quickSwitcherMode === "service" && item.id === activeId) ? "true" : undefined}
             onmouseenter={() => (quickSwitcherIndex = index)}
             onclick={() => chooseQuickSwitcherItem(item)}
           >

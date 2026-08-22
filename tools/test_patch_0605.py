@@ -64,11 +64,11 @@ class Patch0605Tests(unittest.TestCase):
       self.assertIn(label, section)
     for variable in ('{"{app}"}', '{"{workspace}"}', '{"{service}"}'):
       self.assertIn(variable, section)
-    self.assertIn("Windows taskbar buttons mirror the native window title", section)
+    self.assertIn("Windows taskbar buttons always mirror the native window title", section)
 
   def test_backend_validates_title_lengths_and_documents_native_taskbar_constraint(self) -> None:
     self.assertIn('if value.chars().count() > 240 || value.chars().any(char::is_control)', MAIN)
-    self.assertIn("Windows and most Linux desktops derive taskbar button text from the native window title", MAIN)
+    self.assertIn("Windows taskbar buttons use the native window title", MAIN)
     self.assertIn('tray.set_tooltip(Some(&taskbar_title))', MAIN)
     self.assertIn('tray.set_title(Some(&taskbar_title))', MAIN)
 

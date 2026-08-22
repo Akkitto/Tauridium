@@ -1698,8 +1698,9 @@ def main() -> int:
 
   patch_0604 = read("tools/test_patch_0604.py")
   for marker in (
-    'class:current={quickSwitcherMode === "workspace" && item.id === (activeWorkspace ?? "__all__")}',
-    'aria-current={quickSwitcherMode === "workspace" && item.id === (activeWorkspace ?? "__all__") ? "true" : undefined}',
+    'quickSwitcherMode === "workspace" && item.id === (activeWorkspace ?? "__all__")',
+    'class:current=',
+    'aria-current=',
     '.quick-switcher-item.current { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }',
   ):
     if marker not in app:
@@ -1738,6 +1739,26 @@ def main() -> int:
   ):
     if test_marker not in patch_0605:
       fail(f"0.6.5 regression coverage is missing: {test_marker}")
+
+  patch_0606 = read("tools/test_patch_0606.py")
+  for marker in (
+    '(quickSwitcherMode === "service" && item.id === activeId)',
+    'if (quickSwitcherMode === mode)',
+    'handleQuickSwitcherToggleShortcut(event)',
+    'bindingStrokes(appSettings.keybindings[action] ?? "")',
+    'Windows taskbar buttons always mirror the native window title; independent taskbar titles are unsupported on Windows.',
+    'Windows taskbar buttons use the native window title',
+  ):
+    if marker not in app + main_rs:
+      fail(f"0.6.6 quick-switcher/title invariant is missing: {marker}")
+  for test_marker in (
+    "test_current_service_reuses_workspace_accent_highlight",
+    "test_reopening_same_quick_switcher_toggles_it_closed",
+    "test_escape_and_configured_shortcut_close_modal_from_search_input",
+    "test_windows_taskbar_limit_is_documented_without_risky_workaround",
+  ):
+    if test_marker not in patch_0606:
+      fail(f"0.6.6 regression coverage is missing: {test_marker}")
 
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],
