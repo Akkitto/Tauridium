@@ -48,6 +48,8 @@ LINUX_REQUIRED_TOOLS = (
   "curl",
   "file",
   "make",
+  "patchelf",
+  "rpmbuild",
   "wget",
 )
 APT_NETWORK_OPTIONS = (
@@ -72,6 +74,8 @@ APT_PACKAGES = (
   "libssl-dev",
   "libayatana-appindicator3-dev",
   "librsvg2-dev",
+  "patchelf",
+  "rpm",
 )
 DNF_PACKAGES = (
   "pkgconf-pkg-config",
@@ -83,6 +87,8 @@ DNF_PACKAGES = (
   "libappindicator-gtk3-devel",
   "librsvg2-devel",
   "libxdo-devel",
+  "patchelf",
+  "rpm-build",
 )
 PACMAN_PACKAGES = (
   "pkgconf",
@@ -96,6 +102,8 @@ PACMAN_PACKAGES = (
   "libappindicator-gtk3",
   "librsvg",
   "xdotool",
+  "patchelf",
+  "rpm-tools",
 )
 APK_PACKAGES = (
   "pkgconf",
@@ -107,6 +115,8 @@ APK_PACKAGES = (
   "openssl",
   "libayatana-appindicator-dev",
   "librsvg",
+  "patchelf",
+  "rpm",
 )
 ZYPPER_PACKAGES = (
   "pkg-config",
@@ -117,6 +127,8 @@ ZYPPER_PACKAGES = (
   "file",
   "libappindicator3-1",
   "librsvg-devel",
+  "patchelf",
+  "rpm-build",
 )
 
 

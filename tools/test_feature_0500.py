@@ -35,8 +35,8 @@ class Feature0500Tests(unittest.TestCase):
   def test_readme_uses_current_project_identity_and_putnam_style_licence_section(self) -> None:
     self.assertIn("https://github.com/Akkitto/Tauridium/releases/latest", self.readme)
     self.assertIn("github/v/release/Akkitto/Tauridium", self.readme)
-    self.assertIn("github/downloads/Akkitto/Tauridium", self.readme)
-    self.assertIn("author-Daniel%20Braniewski", self.readme)
+    self.assertIn("https://github.com/Akkitto/Tauridium", self.readme)
+    self.assertIn("https://github.com/Akkitto/Tauridium/commits/master", self.readme)
     self.assertIn("https://brani.dev", self.readme)
     self.assertIn("## Licence\n\nCopyright © 2026 [Daniel Braniewski](https://brani.dev)", self.readme)
     self.assertIn("[MIT License](LICENSE)", self.readme)

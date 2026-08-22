@@ -129,16 +129,16 @@ class WindowsCiTests(unittest.TestCase):
     ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     self.assertIn("windows-native:", ci)
     self.assertIn("shell: pwsh", ci)
-    for command in ("just init-self-test", "just init-native", "just check", "just test", "just build", "just package"):
+    for command in ("just init-self-test", "just init", "just ci"):
       self.assertIn(command, ci)
 
-  def test_release_windows_build_no_longer_forces_bash_for_version_sync(self) -> None:
+  def test_release_windows_build_uses_native_just_path_without_bash(self) -> None:
     release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-    block = release.split("- name: Sync app version to the tag", 1)[1].split(
-      "- name: Install Linux WebView deps", 1
-    )[0]
-    self.assertIn('node tools/sync_version.mjs "${{ github.ref_name }}"', block)
-    self.assertNotIn("shell: bash", block)
+    windows_upload = release.split("- name: Upload native assets (Windows)", 1)[1].split("publish:", 1)[0]
+    self.assertIn("shell: pwsh", windows_upload)
+    self.assertIn("just bundle-target ${{ matrix.target }}", release)
+    self.assertIn("just package-native-signed ${{ matrix.target }}", release)
+    self.assertNotIn("Sync app version to the tag", release)
 
 
 if __name__ == "__main__":

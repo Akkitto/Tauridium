@@ -90,6 +90,8 @@ A complete release normally delivers three artifacts in the same handoff:
   otherwise use the explicit `run-build-handoff` archive.
 - `tauridium-X.Y.Z-doc.zip`: release documentation, checksums, manifest, and evidence.
 
-Packaging must be deterministic and ZIP-integrity-checked. Never fabricate a runtime,
-ship a dirty tree, release with formatter drift, or stop after only part of the expected
-artifact set when the full release is feasible.
+Packaging must be deterministic and ZIP-integrity-checked. Native release packaging and
+updater metadata must stay callable through `just`; GitHub Actions should orchestrate the
+same recipes rather than duplicate build logic. Never fabricate a runtime, ship a dirty
+tree, release with formatter drift, or stop after only part of the expected artifact set
+when the full release is feasible.

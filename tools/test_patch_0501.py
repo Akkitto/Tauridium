@@ -13,16 +13,20 @@ class Patch0501Tests(unittest.TestCase):
   def test_readme_platform_and_release_policy_is_concise_and_current(self) -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    self.assertIn("Windows 11 is the primary and most-tested platform", readme)
-    self.assertIn("native release binary is considered stable", readme)
-    self.assertIn("Linux is the second-most-tested platform", readme)
-    self.assertIn("macOS is not a project focus and is not tested", readme)
+    self.assertIn("### Windows", readme)
+    self.assertIn("scoop install tauridium", readme)
+    self.assertIn("### Linux", readme)
+    self.assertIn("DEB for Debian-based distributions", readme)
+    self.assertIn("RPM for RPM-based distributions", readme)
+    self.assertIn("AppImage for portable installation", readme)
+    self.assertIn("macOS is currently not maintained.", readme)
     self.assertNotIn("## Build", readme)
     self.assertNotIn("APPLE_SIGNING_IDENTITY", readme)
     self.assertNotIn("Keychain", readme)
     self.assertIn("just init-self-test", readme)
-    self.assertIn("just package-handoff", readme)
-    self.assertNotRegex(readme, r"git tag -a v\d+\.\d+\.\d+")
+    self.assertIn("just fmt-check", readme)
+    self.assertIn("Version tags trigger the release workflow", readme)
+
 
   def test_agents_document_captures_non_negotiable_project_rules(self) -> None:
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
@@ -43,9 +47,9 @@ class Patch0501Tests(unittest.TestCase):
     ):
       self.assertIn(marker, agents)
 
-  def test_release_validator_accepts_generic_readme_examples(self) -> None:
+  def test_release_validator_accepts_terse_readme_release_guidance(self) -> None:
     validator = (ROOT / "tools/validate_release.py").read_text(encoding="utf-8")
-    self.assertIn("node tools/sync_version.mjs X.Y.Z", validator)
+    self.assertIn("Version tags trigger the release workflow after the repository quality gates pass.", validator)
     self.assertNotIn("README release example differs from release version", validator)
 
   def test_docs_archive_includes_agent_guidance(self) -> None:

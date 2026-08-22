@@ -34,10 +34,9 @@ class ReleaseWorkflowTests(unittest.TestCase):
 
   def test_release_uses_non_mutating_format_check_and_clean_gates(self) -> None:
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")
-    self.assertIn(
-      "release: release-clean fmt-check lint check test build release-clean package",
-      justfile,
-    )
+    self.assertIn("quality: fmt-check lint check test", justfile)
+    self.assertIn("ci: quality build", justfile)
+    self.assertIn("release: release-clean ci release-clean package", justfile)
     self.assertIn(
       "fmt-check:\n  cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
       justfile,
@@ -58,20 +57,20 @@ class ReleaseWorkflowTests(unittest.TestCase):
   def test_ci_and_tagged_release_enforce_locked_full_quality_gates(self) -> None:
     ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    justfile = (ROOT / "justfile").read_text(encoding="utf-8")
     for marker in (
       "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings",
       "cargo test --manifest-path src-tauri/Cargo.toml --all-features --locked",
       "cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked",
-    ):
-      self.assertIn(marker, ci)
-      self.assertIn(marker, release)
-    for marker in (
+      "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
       "python3 -m unittest discover -s tools -p 'test_*.py'",
       "npm run check",
       "npm test",
-      "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
     ):
-      self.assertIn(marker, release)
+      self.assertIn(marker, justfile)
+    self.assertIn("run: just ci", ci)
+    self.assertIn("run: just ci", release)
+    self.assertNotIn("cargo clippy --manifest-path", release)
 
   def test_production_runtime_uses_tauri_cli_and_raw_release_is_guarded(self) -> None:
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")

@@ -1,240 +1,232 @@
 name: Release
 
-# Triggered by a version tag (for example v1.2.0). Pipeline:
-#   1) tests  2) draft release creation  3) multi-platform build
-#   4) release publication.
 on:
   push:
     tags:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
 
-# Silence Node deprecation warnings (punycode / url.parse) emitted by third-party actions
-# such as rust-cache/setup-node on Node 24; they are outside this project.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   NODE_OPTIONS: --no-deprecation
 
 jobs:
-  # 1) Gate: tests must pass before anything is compiled.
-  test:
-    name: Tests
+  gate:
+    name: Release gates
     runs-on: ubuntu-22.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: 22
           cache: npm
-      - name: Validate release source and tag
-        shell: bash
-        run: |
-          python3 tools/validate_release.py
-          VERSION="${GITHUB_REF_NAME#v}"
-          export VERSION
-          node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json','utf8'));if(c.version!==process.env.VERSION)process.exit(1);"
-          git fetch origin master:refs/remotes/origin/master
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/master
-      - name: Offline regression tests
-        run: python3 -m unittest discover -s tools -p 'test_*.py'
-      - run: npm ci
-      - name: Frontend typecheck
-        run: npm run check
-      - name: Frontend unit tests
-        run: npm test
-      - name: Install Linux WebView deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
-            librsvg2-dev libxdo-dev libssl-dev
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.13'
       - uses: dtolnay/rust-toolchain@1.97.1
         with:
           components: rustfmt, clippy
-      - name: Format check
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-      - name: Cargo check
-        run: cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked
-      - name: Clippy
-        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings
-      - name: Rust unit tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --all-features --locked
+      - uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: src-tauri
+      - name: Install just
+        run: cargo install just --locked --version 1.56.0
+      - name: Initialize build environment
+        run: just init
+      - name: Verify tag and master ancestry
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          test "$GITHUB_REF_NAME" = "v$VERSION"
+          git fetch origin master:refs/remotes/origin/master
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/master
+      - name: Run canonical release gates
+        run: just ci
 
-  # 2) Create the draft release exactly once so every matrix job does not create
-  #    a duplicate release or scatter assets across releases.
-  create-release:
-    name: Create draft release
-    needs: test
+  draft:
+    name: Prepare draft release
+    needs: gate
     runs-on: ubuntu-22.04
-    outputs:
-      release_id: ${{ steps.create.outputs.result }}
+    timeout-minutes: 20
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7.0.1
-      - name: Create the draft release
-        id: create
-        uses: actions/github-script@v9.0.0
         with:
-          script: |
-            const fs = require('fs');
-            const tag = process.env.GITHUB_REF_NAME;      // e.g. v0.1.9
-            const version = tag.replace(/^v/, '');
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          components: rustfmt
+      - name: Install just
+        run: cargo install just --locked --version 1.56.0
+      - name: Build deterministic source/documentation handoff
+        run: |
+          just package-handoff
+          just release-notes
+      - name: Create or refresh draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            test "$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)" = "true"
+            gh release edit "$GITHUB_REF_NAME" \
+              --title "Tauridium ${GITHUB_REF_NAME#v}" \
+              --notes-file release/release-notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --verify-tag \
+              --draft \
+              --title "Tauridium ${GITHUB_REF_NAME#v}" \
+              --notes-file release/release-notes.md
+          fi
+          gh release upload "$GITHUB_REF_NAME" \
+            release/tauridium-*-src.zip \
+            release/tauridium-*-doc.zip \
+            release/tauridium-*-run-build-handoff.zip \
+            --clobber
 
-            // Evergreen macOS note shared by every release, outside the changelog.
-            const macos = [
-              `> ⚠️ **macOS**: builds are **unsigned** (no paid Apple Developer account),`,
-              `> so Gatekeeper blocks them on first launch. To open Tauridium:`,
-              `> - **macOS ≤ 14**: right-click the app → **Open** → confirm, or`,
-              `> - **macOS 15+**: try to open it, then System Settings → Privacy &`,
-              `>   Security → **Open Anyway**, or`,
-              `> - run in Terminal: \`xattr -cr /Applications/Tauridium.app\``,
-            ].join('\n');
-
-            // Extract the "## [version] ..." section from CHANGELOG (up to the next
-            // Heading begins with "## ". Line-based parsing avoids fragile regex escaping.
-            let section = '';
-            try {
-              const lines = fs.readFileSync('CHANGELOG.md', 'utf8').split(/\r?\n/);
-              const start = lines.findIndex((l) => l.startsWith(`## [${version}]`));
-              if (start !== -1) {
-                let end = lines.length;
-                for (let i = start + 1; i < lines.length; i++) {
-                  if (lines[i].startsWith('## ')) { end = i; break; }
-                }
-                section = lines.slice(start + 1, end).join('\n').trim();
-              }
-            } catch (e) {
-              core.warning(`Unable to read CHANGELOG.md: ${e.message}`);
-            }
-
-            if (!section) {
-              core.warning(`No CHANGELOG section found for ${version}; using generic notes.`);
-            }
-
-            const body = (section
-              ? [section, ``, `---`, ``, macos]
-              : [`Automated build of Tauridium ${tag}.`, ``, macos]
-            ).concat([``, `Download the asset matching your platform below.`]).join('\n');
-
-            const { data } = await github.rest.repos.createRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag_name: tag,
-              name: `Tauridium ${tag}`,
-              body,
-              draft: true,
-              prerelease: false,
-            });
-            return data.id;
-
-  # 3) Native build for each platform/architecture -> upload to the release.
   build:
-    name: Build ${{ matrix.platform }}
-    needs: create-release
+    name: Build ${{ matrix.label }}
+    needs: draft
+    timeout-minutes: 90
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
-      # Serialize builds to avoid concurrent writes to shared artifacts.
-      # release artifacts (for example updater latest.json). Tradeoff: release is about 5x slower.
-      max-parallel: 1
       matrix:
         include:
-          # Universal macOS (Intel + Apple Silicon in one bundle).
-          - platform: macos-latest
-            args: '--target universal-apple-darwin'
-            targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
-          # Linux x86_64 (Intel/AMD).
-          - platform: ubuntu-22.04
-            args: ''
-            targets: ''
-          # Linux ARM64 (GitHub-hosted ARM runner).
-          - platform: ubuntu-24.04-arm
-            args: ''
-            targets: ''
-          # Windows x86_64 (Intel/AMD).
-          - platform: windows-latest
-            args: ''
-            targets: ''
-          # Windows ARM64 (GitHub-hosted ARM runner).
-          - platform: windows-11-arm
-            args: ''
-            targets: ''
-    runs-on: ${{ matrix.platform }}
+          - label: Windows x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - label: Windows ARM64
+            os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+          - label: Linux x64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - label: Linux ARM64
+            os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: 22
           cache: npm
-      # Bundle names come from the app version (tauri.conf.json / Cargo.toml).
-      # Align the version with the tag so generated artifacts use the correct names.
-      - name: Sync app version to the tag
-        run: node tools/sync_version.mjs "${{ github.ref_name }}"
-      - name: Install Linux WebView deps
-        if: startsWith(matrix.platform, 'ubuntu')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
-            librsvg2-dev libxdo-dev libssl-dev patchelf
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.13'
       - uses: dtolnay/rust-toolchain@1.97.1
         with:
-          targets: ${{ matrix.targets }}
+          targets: ${{ matrix.target }}
+          components: rustfmt
       - uses: Swatinem/rust-cache@v2.9.2
         with:
           workspaces: src-tauri
-      - run: npm ci
-      # Enable macOS signing and notarization only when the required secret exists.
-      # Otherwise produce an unsigned/ad-hoc build. Export the variables through
-      # $GITHUB_ENV for the next step; passing empty APPLE_* values directly would
-      # make tauri-action fail while importing an empty certificate.
-      - name: Configure macOS code signing (only when secrets exist)
-        if: matrix.platform == 'macos-latest'
+          key: ${{ matrix.target }}
+      - name: Install just (Linux)
+        if: runner.os == 'Linux'
+        run: cargo install just --locked --version 1.56.0
+      - name: Install just (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cargo install just --locked --version 1.56.0
+      - name: Verify Windows-native bootstrap
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: just init-self-test
+      - name: Initialize build environment
+        run: just init
+      - name: Require updater signing key (Linux)
+        if: runner.os == 'Linux'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         shell: bash
+        run: test -n "$TAURI_SIGNING_PRIVATE_KEY"
+      - name: Require updater signing key (Windows)
+        if: runner.os == 'Windows'
         env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        shell: pwsh
         run: |
-          if [ -n "$APPLE_CERTIFICATE" ]; then
-            echo "Signing secrets found -> macOS build will be signed & notarized."
-            {
-              echo "APPLE_CERTIFICATE<<__EOF__"
-              echo "$APPLE_CERTIFICATE"
-              echo "__EOF__"
-              echo "APPLE_CERTIFICATE_PASSWORD=$APPLE_CERTIFICATE_PASSWORD"
-              echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY"
-              echo "APPLE_ID=$APPLE_ID"
-              echo "APPLE_PASSWORD=$APPLE_PASSWORD"
-              echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
-            } >> "$GITHUB_ENV"
-          else
-            echo "No signing secrets -> macOS build will be unsigned (ad-hoc)."
-          fi
-      - name: Build the app & upload bundles to the release
-        uses: tauri-apps/tauri-action@v1
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
+            throw 'TAURI_SIGNING_PRIVATE_KEY is required for release updater artifacts.'
+          }
+      - name: Build native bundles
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Sign updater artifacts with minisign and generate latest.json.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          releaseId: ${{ needs.create-release.outputs.release_id }}
-          releaseDraft: true
-          args: ${{ matrix.args }}
+        run: just bundle-target ${{ matrix.target }}
+      - name: Collect and validate native assets
+        run: just package-native-signed ${{ matrix.target }}
+      - name: Upload native assets (Linux)
+        if: runner.os == 'Linux'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh release upload "$GITHUB_REF_NAME" release/native/* --clobber
+      - name: Upload native assets (Windows)
+        if: runner.os == 'Windows'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -LiteralPath release/native -File | ForEach-Object { $_.FullName }
+          if ($files.Count -eq 0) { throw 'No native release assets were collected.' }
+          gh release upload $env:GITHUB_REF_NAME @files --clobber
 
-  # 4) All builds succeeded -> publish the release (draft -> published).
   publish:
-    name: Publish release
+    name: Finalize release
     needs: build
     runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7.0.1
-      - name: Flip the draft release to published
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@1.97.1
+      - name: Install just
+        run: cargo install just --locked --version 1.56.0
+      - name: Download staged release assets
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "${{ github.ref_name }}" --draft=false --latest
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p release/published-assets
+          gh release download "$GITHUB_REF_NAME" --dir release/published-assets
+      - name: Generate updater metadata and checksums
+        run: |
+          just updater-manifest release/published-assets
+          just release-checksums release/published-assets
+      - name: Upload metadata and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" \
+            release/published-assets/latest.json \
+            release/published-assets/SHA256SUMS \
+            --clobber
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest

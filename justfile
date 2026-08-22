@@ -66,7 +66,10 @@ build:
   cargo tauri build --no-bundle --ci
 
 bundle:
-  cargo tauri build
+  cargo tauri build --ci
+
+bundle-target target:
+  cargo tauri build --ci --target {{target}}
 
 run:
   cargo tauri dev
@@ -102,7 +105,51 @@ package:
 package-handoff:
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/package_release.py --build-handoff
 
-release: release-clean fmt-check lint check test build release-clean package
+quality: fmt-check lint check test
+
+ci: quality build
+
+release: release-clean ci release-clean package
+
+[unix]
+package-native target:
+  python3 tools/release_assets.py collect-native --target {{target}} --output-dir release/native
+
+[windows]
+package-native target:
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/release_assets.py collect-native --target {{target}} --output-dir release/native
+
+[unix]
+package-native-signed target:
+  python3 tools/release_assets.py collect-native --target {{target}} --output-dir release/native --require-signatures
+
+[windows]
+package-native-signed target:
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/release_assets.py collect-native --target {{target}} --output-dir release/native --require-signatures
+
+[unix]
+release-notes output="release/release-notes.md":
+  python3 tools/release_assets.py release-notes --output {{output}}
+
+[windows]
+release-notes output="release/release-notes.md":
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/release_assets.py release-notes --output {{output}}
+
+[unix]
+updater-manifest assets_dir="release/published-assets":
+  python3 tools/release_assets.py updater-manifest --assets-dir {{assets_dir}} --require-all
+
+[windows]
+updater-manifest assets_dir="release/published-assets":
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/release_assets.py updater-manifest --assets-dir {{assets_dir}} --require-all
+
+[unix]
+release-checksums assets_dir="release/published-assets":
+  python3 tools/release_assets.py checksums --assets-dir {{assets_dir}}
+
+[windows]
+release-checksums assets_dir="release/published-assets":
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/release_assets.py checksums --assets-dir {{assets_dir}}
 
 [unix]
 clean:

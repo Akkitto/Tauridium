@@ -161,7 +161,7 @@ def main() -> int:
 
   for marker in (
     "fmt-check:\n  cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
-    "release: release-clean fmt-check lint check test build release-clean package",
+    "release: release-clean ci release-clean package",
     "tools/python.ps1 tools/check_clean.py",
     "--all-targets --all-features --locked -- -D warnings",
     "--all-targets --all-features --locked",
@@ -1490,51 +1490,61 @@ def main() -> int:
 
   ci = read(".github/workflows/ci.yml")
   release_workflow = read(".github/workflows/release.yml")
+  justfile = read("justfile")
   if "branches: [main]" in ci or "branches: [master]" not in ci:
     fail("CI does not target master")
-  if "-D warnings" not in ci or "--all-features" not in ci:
-    fail("CI Rust gates are weaker than release policy")
   for marker in (
     "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings",
     "cargo test --manifest-path src-tauri/Cargo.toml --all-features --locked",
     "cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked",
-  ):
-    if marker not in ci:
-      fail(f"CI Cargo gate can ignore Cargo.lock: {marker}")
-  if "dtolnay/rust-toolchain@stable" in ci + release_workflow:
-    fail("CI/release workflows must not float Rust stable; use pinned Rust 1.97.1")
-  if ci.count("dtolnay/rust-toolchain@1.97.1") < 3:
-    fail("CI does not pin every Rust job to Rust 1.97.1")
-  if release_workflow.count("dtolnay/rust-toolchain@1.97.1") < 2:
-    fail("tagged release workflow does not pin Rust 1.97.1 in test/build jobs")
-  release_test_block = release_workflow.split("test:\n", 1)[-1].split("create-release:", 1)[0]
-  for marker in (
+    "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
     "python3 -m unittest discover -s tools -p 'test_*.py'",
     "npm run check",
     "npm test",
-    "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
-    "cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked",
-    "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings",
-    "cargo test --manifest-path src-tauri/Cargo.toml --all-features --locked",
+    "cargo tauri build --no-bundle --ci",
   ):
-    if marker not in release_test_block:
-      fail(f"tagged release can be created without required gate: {marker}")
-  if "cargo tauri build --no-bundle --ci" not in ci:
-    fail("CI does not exercise a production Tauri runtime build")
-  if "cargo build --manifest-path src-tauri/Cargo.toml --release --all-features" in ci:
-    fail("CI still creates a raw Cargo release binary instead of a Tauri production runtime")
+    if marker not in justfile:
+      fail(f"canonical just quality gate is missing: {marker}")
+  if "dtolnay/rust-toolchain@stable" in ci + release_workflow:
+    fail("CI/release workflows must not float Rust stable; use pinned Rust 1.97.1")
+  if ci.count("dtolnay/rust-toolchain@1.97.1") < 2:
+    fail("CI does not pin every Rust job to Rust 1.97.1")
+  if release_workflow.count("dtolnay/rust-toolchain@1.97.1") < 4:
+    fail("tagged release workflow does not pin Rust 1.97.1 in all Rust jobs")
+  if "run: just ci" not in ci or "run: just ci" not in release_workflow:
+    fail("CI and release workflow must execute the canonical just ci gate")
   if "windows-native:" not in ci or "shell: pwsh" not in ci:
     fail("CI does not exercise the native Windows PowerShell workflow")
-  for command in ("just init-native", "just check", "just test", "just build", "just package"):
+  for command in ("just init-self-test", "just init", "just ci"):
     if command not in ci:
       fail(f"Windows CI is missing native workflow gate: {command}")
-  sync_block = release_workflow.split("- name: Sync app version to the tag", 1)[-1].split(
-    "- name: Install Linux WebView deps", 1
-  )[0]
-  if "shell: bash" in sync_block:
-    fail("release version synchronization still forces Bash on Windows jobs")
-  if 'node tools/sync_version.mjs "${{ github.ref_name }}"' not in sync_block:
-    fail("release version synchronization is not cross-platform")
+  for marker in (
+    "actions/checkout@v7.0.1",
+    "actions/setup-node@v7.0.0",
+    "actions/setup-python@v7.0.0",
+    "Swatinem/rust-cache@v2.9.2",
+    "just package-handoff",
+    "just bundle-target ${{ matrix.target }}",
+    "just package-native-signed ${{ matrix.target }}",
+    "just updater-manifest release/published-assets",
+    "just release-checksums release/published-assets",
+    'gh release edit "$GITHUB_REF_NAME" --draft=false --latest',
+    "windows-11-arm",
+    "ubuntu-22.04-arm",
+  ):
+    if marker not in release_workflow:
+      fail(f"tagged release workflow is missing required release behavior: {marker}")
+  if "macos-latest" in release_workflow:
+    fail("tagged release workflow must not publish unsupported macOS builds")
+  if "tauri-apps/tauri-action" in release_workflow:
+    fail("release packaging must stay behind canonical just recipes, not tauri-action")
+  if "permissions:\n  contents: read" not in release_workflow:
+    fail("release workflow does not default to least-privilege read permissions")
+  if "TAURI_SIGNING_PRIVATE_KEY is required" not in release_workflow:
+    fail("release workflow does not fail closed when updater signing is unavailable")
+  dependabot = read(".github/dependabot.yml")
+  if "package-ecosystem: github-actions" not in dependabot or "interval: weekly" not in dependabot:
+    fail("GitHub Actions dependencies are not covered by Dependabot")
 
   patch_0428 = read("tools/test_patch_0428.py")
   for marker in (
@@ -1627,13 +1637,14 @@ def main() -> int:
 
   readme = read("README.md")
   for marker in (
-    "node tools/sync_version.mjs X.Y.Z",
-    "Create the annotated `vX.Y.Z` tag",
-    "`just release`",
-    "`just package-handoff`",
+    "scoop install tauridium",
+    "just init-self-test",
+    "just fmt-check",
+    "Version tags trigger the release workflow after the repository quality gates pass.",
+    "macOS is currently not maintained.",
   ):
     if marker not in readme:
-      fail(f"README release workflow is missing required guidance: {marker}")
+      fail(f"README project guidance is missing required content: {marker}")
 
   changelog = read("CHANGELOG.md")
   if f"## [{version}]" not in changelog:
