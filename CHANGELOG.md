@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.5] - 2026-08-22
+
+### Added
+
+- Added optional workspace-aware native title presentation in **Settings -> Appearance -> Native titles**. Window-title workspace context is enabled by default; the separate taskbar/app-icon presentation is disabled by default.
+- Added advanced title templates with `{app}`, `{workspace}`, and `{service}` variables for independently formatting enabled title destinations.
+
+### Release quality
+
+- Added focused 0.6.5 regression coverage for safe defaults, template rendering, reactive native-title updates, platform-safe taskbar/app-icon handling, validation, and Appearance integration.
+
 ## [0.6.4] - 2026-08-22
 
 ### Fixed
