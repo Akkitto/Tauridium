@@ -38,6 +38,11 @@
     sameDownloadPreference,
     type KeybindingAction,
   } from "./lib/ui";
+  import {
+    DEFAULT_TASKBAR_TITLE_TEMPLATE,
+    DEFAULT_WINDOW_TITLE_TEMPLATE,
+    renderTitleTemplate,
+  } from "./lib/title-template";
   import { appVersion, checkForUpdate, installUpdate, type Update } from "./lib/updater";
   import { ask, open, save as saveDialog } from "@tauri-apps/plugin-dialog";
 
@@ -81,6 +86,7 @@
     setWorkspaceOrder,
     syncServicesMenu,
     setSidebarWidth,
+    setPresentationTitles,
     exportBackup,
     restoreBackup,
     createAutomaticBackup,
@@ -248,6 +254,11 @@
     showDisabledServices: true,
     showServiceName: true,
     showMessageBadgeWhenMuted: true,
+    showWorkspaceInWindowTitle: true,
+    showWorkspaceInTaskbarTitle: false,
+    customTitleTemplatesEnabled: false,
+    windowTitleTemplate: DEFAULT_WINDOW_TITLE_TEMPLATE,
+    taskbarTitleTemplate: DEFAULT_TASKBAR_TITLE_TEMPLATE,
     userAgentPref: "",
     sidebarWidth: 240,
     sidebarWidthMode: "pixels",
@@ -412,6 +423,47 @@
       ? workspaces.find((workspace) => workspace.id === activeWorkspace)?.name ?? "All services"
       : "All services",
   );
+
+  let lastAppliedWindowTitle = "";
+  let lastAppliedTaskbarTitle = "";
+
+  function desiredPresentationTitles(): { windowTitle: string; taskbarTitle: string } {
+    const context = {
+      app: "Tauridium",
+      workspace: activeWorkspaceName,
+      service: activeService ? serviceLabel(activeService) : "No service",
+    };
+    const custom = appSettings.customTitleTemplatesEnabled;
+    const windowTitle = appSettings.showWorkspaceInWindowTitle
+      ? renderTitleTemplate(
+          custom ? appSettings.windowTitleTemplate : DEFAULT_WINDOW_TITLE_TEMPLATE,
+          context,
+        )
+      : context.app;
+    const taskbarTitle = appSettings.showWorkspaceInTaskbarTitle
+      ? renderTitleTemplate(
+          custom ? appSettings.taskbarTitleTemplate : DEFAULT_TASKBAR_TITLE_TEMPLATE,
+          context,
+        )
+      : context.app;
+    return { windowTitle, taskbarTitle };
+  }
+
+  function syncPresentationTitles() {
+    const { windowTitle, taskbarTitle } = desiredPresentationTitles();
+    if (windowTitle === lastAppliedWindowTitle && taskbarTitle === lastAppliedTaskbarTitle) return;
+    lastAppliedWindowTitle = windowTitle;
+    lastAppliedTaskbarTitle = taskbarTitle;
+    setPresentationTitles(windowTitle, taskbarTitle).catch((err) => {
+      lastAppliedWindowTitle = "";
+      lastAppliedTaskbarTitle = "";
+      console.warn("Unable to update native Tauridium titles", err);
+    });
+  }
+
+  $effect(() => {
+    syncPresentationTitles();
+  });
   const visibleServices = $derived.by(() => {
     let list = sorted;
     if (activeWorkspace) {
@@ -4255,6 +4307,48 @@
                       <label class="slider-field"><span>Lightness <strong>{Math.round(colorLightness)}%</strong></span><input type="range" min="10" max="90" value={colorLightness} oninput={(event) => { colorLightness = Number(event.currentTarget.value); previewCustomColor(); }} /></label>
                       <div class="setting-actions"><button class="secondary sm" onclick={cancelCustomColorPicker}>Cancel</button><button class="secondary sm" onclick={() => applyCustomColor(false)}>Use color</button><button class="primary sm" onclick={() => applyCustomColor(true)}>Use & save preset</button></div>
                     </div>
+                  {/if}
+                </div>
+              </section>
+              <section class="settings-section" aria-labelledby="settings-appearance-titles">
+                <div class="section-heading">
+                  <h3 id="settings-appearance-titles">Native titles</h3>
+                  <p>Show workspace context in operating-system window and app-icon labels.</p>
+                </div>
+                <div class="settings-list">
+                  {@render appToggle("Workspace in window title", "Show the selected workspace in the native title bar, for example Tauridium ~ Engineering.", "showWorkspaceInWindowTitle", appSettings.showWorkspaceInWindowTitle)}
+                  {@render appToggle("Workspace in taskbar title", `Use workspace context for a separately addressable ${dockWord} or app-icon label when the operating system exposes one. Windows taskbar buttons mirror the native window title, so Windows cannot display a different taskbar label without replacing the native title bar.`, "showWorkspaceInTaskbarTitle", appSettings.showWorkspaceInTaskbarTitle)}
+                  {@render appToggle("Custom title templates", "Enable variable-based title formats for the window title and taskbar/app-icon title. The two workspace-title toggles still decide which destinations use the custom format.", "customTitleTemplatesEnabled", appSettings.customTitleTemplatesEnabled)}
+                  {#if appSettings.customTitleTemplatesEnabled}
+                    <div class="setting-card setting-card-stack">
+                      <div class="setting-copy">
+                        <span class="setting-label">Window title template</span>
+                        <span class="setting-description">Available variables: {"{app}"}, {"{workspace}"}, {"{service}"}. Unknown text is preserved literally.</span>
+                      </div>
+                      <input
+                        class="input setting-text-input"
+                        aria-label="Window title template"
+                        maxlength="240"
+                        bind:value={appSettings.windowTitleTemplate}
+                        onchange={() => saveAppSetting("windowTitleTemplate", appSettings.windowTitleTemplate)}
+                      />
+                      <span class="settings-note">Preview: {renderTitleTemplate(appSettings.windowTitleTemplate, { app: "Tauridium", workspace: activeWorkspaceName, service: activeService ? serviceLabel(activeService) : "No service" })}</span>
+                    </div>
+                    <div class="setting-card setting-card-stack">
+                      <div class="setting-copy">
+                        <span class="setting-label">Taskbar title template</span>
+                        <span class="setting-description">Used where the OS exposes a separate taskbar/app-icon label. Windows 11 derives the taskbar button title from the native window title.</span>
+                      </div>
+                      <input
+                        class="input setting-text-input"
+                        aria-label="Taskbar title template"
+                        maxlength="240"
+                        bind:value={appSettings.taskbarTitleTemplate}
+                        onchange={() => saveAppSetting("taskbarTitleTemplate", appSettings.taskbarTitleTemplate)}
+                      />
+                      <span class="settings-note">Preview: {renderTitleTemplate(appSettings.taskbarTitleTemplate, { app: "Tauridium", workspace: activeWorkspaceName, service: activeService ? serviceLabel(activeService) : "No service" })}</span>
+                    </div>
+                    <p class="settings-note">Variables: <code>{"{app}"}</code> application name, <code>{"{workspace}"}</code> selected workspace (or All services), <code>{"{service}"}</code> active service (or No service).</p>
                   {/if}
                 </div>
               </section>

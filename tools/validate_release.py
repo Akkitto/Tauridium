@@ -1712,6 +1712,33 @@ def main() -> int:
     if test_marker not in patch_0604:
       fail(f"0.6.4 regression coverage is missing: {test_marker}")
 
+  patch_0605 = read("tools/test_patch_0605.py")
+  title_template = read("src/lib/title-template.ts")
+  for marker in (
+    "showWorkspaceInWindowTitle: boolean;",
+    "showWorkspaceInTaskbarTitle: boolean;",
+    "customTitleTemplatesEnabled: boolean;",
+    'DEFAULT_WINDOW_TITLE_TEMPLATE = "{app} ~ {workspace}"',
+    'DEFAULT_TASKBAR_TITLE_TEMPLATE = "{app} ~ {workspace}"',
+    "setPresentationTitles(windowTitle, taskbarTitle)",
+    "fn set_presentation_titles(",
+    'TrayIconBuilder::with_id("main-tray")',
+    "Workspace in window title",
+    "Workspace in taskbar title",
+    "Custom title templates",
+  ):
+    if marker not in app + api_ts + main_rs + title_template:
+      fail(f"0.6.5 native title invariant is missing: {marker}")
+  for test_marker in (
+    "test_title_settings_have_requested_safe_defaults",
+    "test_title_templates_support_app_workspace_and_service_variables",
+    "test_native_titles_update_reactively_and_use_backend_boundary",
+    "test_appearance_exposes_three_title_toggles_and_advanced_templates",
+    "test_backend_validates_title_lengths_and_documents_native_taskbar_constraint",
+  ):
+    if test_marker not in patch_0605:
+      fail(f"0.6.5 regression coverage is missing: {test_marker}")
+
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],
     cwd=ROOT,

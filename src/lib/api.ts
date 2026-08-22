@@ -309,6 +309,11 @@ export interface AppSettings {
   showDisabledServices: boolean;
   showServiceName: boolean;
   showMessageBadgeWhenMuted: boolean;
+  showWorkspaceInWindowTitle: boolean;
+  showWorkspaceInTaskbarTitle: boolean;
+  customTitleTemplatesEnabled: boolean;
+  windowTitleTemplate: string;
+  taskbarTitleTemplate: string;
   userAgentPref: string;
   sidebarWidth: number;
   sidebarWidthMode: "pixels" | "percent";
@@ -365,6 +370,13 @@ export interface SandboxDefinition {
 
 export function setSidebarWidth(width: number): Promise<void> {
   return invoke("set_sidebar_width", { width });
+}
+
+export function setPresentationTitles(
+  windowTitle: string,
+  taskbarTitle: string,
+): Promise<void> {
+  return invoke("set_presentation_titles", { windowTitle, taskbarTitle });
 }
 
 export function getAppSettings(): Promise<AppSettings> {

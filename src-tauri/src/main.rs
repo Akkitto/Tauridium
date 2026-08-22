@@ -3209,6 +3209,11 @@ fn default_app_settings_value() -> Value {
     settings.insert("showDisabledServices".into(), true.into());
     settings.insert("showServiceName".into(), true.into());
     settings.insert("showMessageBadgeWhenMuted".into(), true.into());
+    settings.insert("showWorkspaceInWindowTitle".into(), true.into());
+    settings.insert("showWorkspaceInTaskbarTitle".into(), false.into());
+    settings.insert("customTitleTemplatesEnabled".into(), false.into());
+    settings.insert("windowTitleTemplate".into(), "{app} ~ {workspace}".into());
+    settings.insert("taskbarTitleTemplate".into(), "{app} ~ {workspace}".into());
     settings.insert("userAgentPref".into(), "".into());
     settings.insert("sidebarWidth".into(), 240.into());
     settings.insert("sidebarWidthMode".into(), "pixels".into());
@@ -3432,6 +3437,9 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         "showDisabledServices",
         "showServiceName",
         "showMessageBadgeWhenMuted",
+        "showWorkspaceInWindowTitle",
+        "showWorkspaceInTaskbarTitle",
+        "customTitleTemplatesEnabled",
         "grayscaleServices",
         "preloadServices",
         "fetchMissingServiceIcons",
@@ -3448,6 +3456,15 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
     ] {
         if !object.get(key).is_some_and(Value::is_boolean) {
             return Err(format!("App setting {key} must be boolean"));
+        }
+    }
+    for key in ["windowTitleTemplate", "taskbarTitleTemplate"] {
+        let template = object
+            .get(key)
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("App setting {key} must be a string"))?;
+        if template.chars().count() > 240 || template.chars().any(char::is_control) {
+            return Err(format!("App setting {key} is invalid"));
         }
     }
     let theme = object
@@ -4591,6 +4608,46 @@ fn reload_app(app: &AppHandle) {
     }
 }
 
+fn validate_native_title(value: &str, label: &str) -> Result<(), String> {
+    if value.trim().is_empty() {
+        return Err(format!("{label} must not be empty"));
+    }
+    if value.chars().count() > 240 || value.chars().any(char::is_control) {
+        return Err(format!("{label} is invalid"));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn set_presentation_titles(
+    app: AppHandle,
+    window_title: String,
+    taskbar_title: String,
+) -> Result<(), String> {
+    validate_native_title(&window_title, "Window title")?;
+    validate_native_title(&taskbar_title, "Taskbar title")?;
+    let window = app
+        .get_window("main")
+        .ok_or_else(|| "Main Tauridium window is unavailable".to_string())?;
+    window
+        .set_title(&window_title)
+        .map_err(|error| format!("Unable to update Tauridium window title: {error}"))?;
+
+    // Windows and most Linux desktops derive taskbar button text from the native window title,
+    // so they cannot expose an independent per-window taskbar string while retaining the OS
+    // title bar. Keep the separately requested taskbar/app-icon label on the independently
+    // addressable tray surface; platforms that mirror the window title still behave natively.
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        #[cfg(target_os = "linux")]
+        tray.set_title(Some(&taskbar_title))
+            .map_err(|error| format!("Unable to update Tauridium app-icon title: {error}"))?;
+        #[cfg(not(target_os = "linux"))]
+        tray.set_tooltip(Some(&taskbar_title))
+            .map_err(|error| format!("Unable to update Tauridium app-icon title: {error}"))?;
+    }
+    Ok(())
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AppMetadata {
@@ -4763,7 +4820,7 @@ fn main() {
             let show = MenuItem::with_id(app, "show", "Show Tauridium", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
-            let mut tray = TrayIconBuilder::new()
+            let mut tray = TrayIconBuilder::with_id("main-tray")
                 .tooltip("Tauridium")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
@@ -4881,6 +4938,7 @@ fn main() {
             hide_all_services,
             close_service,
             set_sidebar_width,
+            set_presentation_titles,
             close_services,
             logout,
             set_service_flags,
@@ -5248,6 +5306,32 @@ mod tests {
         );
         assert_eq!(merged["sidebarCollapsed"], json!(false));
         assert!(validate_app_settings_value(&merged).is_ok());
+    }
+
+    #[test]
+    fn patch_0605_title_settings_default_and_validate_safely() {
+        let defaults = merge_app_settings_value(&json!({})).unwrap();
+        assert_eq!(defaults["showWorkspaceInWindowTitle"], json!(true));
+        assert_eq!(defaults["showWorkspaceInTaskbarTitle"], json!(false));
+        assert_eq!(defaults["customTitleTemplatesEnabled"], json!(false));
+        assert_eq!(
+            defaults["windowTitleTemplate"],
+            json!("{app} ~ {workspace}")
+        );
+        assert_eq!(
+            defaults["taskbarTitleTemplate"],
+            json!("{app} ~ {workspace}")
+        );
+        assert!(validate_app_settings_value(&defaults).is_ok());
+        assert!(validate_native_title("Tauridium ~ Engineering", "Window title").is_ok());
+        assert!(validate_native_title("", "Window title").is_err());
+
+        let mut invalid = defaults.clone();
+        invalid["windowTitleTemplate"] = json!("x".repeat(241));
+        assert!(validate_app_settings_value(&invalid).is_err());
+        invalid = defaults;
+        invalid["taskbarTitleTemplate"] = json!("bad\nvalue");
+        assert!(validate_app_settings_value(&invalid).is_err());
     }
 
     #[test]
