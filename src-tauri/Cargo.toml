@@ -1,6 +1,6 @@
 [package]
 name = "tauridium"
-version = "0.5.3"
+version = "0.5.4"
 edition = "2021"
 rust-version = "1.97.1"
 description = "Tauridium — lightweight Tauri client for Ferdium"

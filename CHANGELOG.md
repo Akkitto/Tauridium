@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.4] - 2026-08-22
+
+### Fixed
+
+- Fixed built-in default keybindings so they work immediately without requiring users to re-record the same shortcut, including reliable native handling of **Ctrl+,** for Settings and consistent matching across the shell and service webviews.
+- Fixed service preloading so preloaded services remain live off-screen and switch in without a first-use reload; rapid switches during an in-flight preload now hand off the existing webview instead of racing creation.
+- Fixed service hibernation lifecycle so inactive services are only destroyed by the explicit hibernation timer when both global hibernation and the per-service opt-in are enabled. With the default timer set to **Off**, inactive/preloaded services stay alive.
+
+### Release quality
+
+- Added focused 0.5.4 regression coverage for all default shortcuts, preload activation and cancellation, hidden-panel behavior, preload/switch races, and hibernation defaults/timer reconciliation.
+
 ## [0.5.3] - 2026-08-22
 
 ### Added
