@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.3] - 2026-08-22
+
+### Added
+
+- Added **Settings → Workspaces → Startup workspace** controls for choosing a default startup workspace and optionally restoring the workspace that was active most recently.
+
+### Changed
+
+- Startup workspace selection now uses deterministic precedence: remembered workspace when enabled, configured default as fallback, then **All services**. Stale/deleted workspace references are cleaned safely, and selecting **All services** is remembered explicitly.
+
+### Release quality
+
+- Added focused 0.5.3 regression coverage for settings persistence and validation, startup precedence, stale-workspace fallback, deletion cleanup, and startup UI controls.
+
 ## [0.5.2] - 2026-08-21
 
 ### Changed
