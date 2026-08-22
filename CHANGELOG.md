@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.3] - 2026-08-22
+
+### Fixed
+
+- Fixed Windows 11 maximized/fullscreen startup restoration replaying the persisted window state more than once. The window-state plugin now owns the single startup restore, while tray/menu reveals simply show the already-live window without retriggering geometry or window-mode transitions.
+- Made the **Collapsed icon spacing** slider automatically switch to collapsed sidebar mode while it is adjusted, and the **Expanded service spacing** slider automatically switch to expanded mode. The selected spacing and resulting sidebar state are persisted together.
+
+### Release quality
+
+- Added focused 0.6.3 regression coverage for single-pass window restoration, tray/menu reveal behavior, automatic sidebar-mode previews, and atomic spacing/sidebar-state persistence.
+
 ## [0.6.2] - 2026-08-22
 
 ### Added
