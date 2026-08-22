@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.1] - 2026-08-22
+
+### Added
+
+- Added **Settings -> Appearance -> Sidebar** startup controls for choosing the default expanded/collapsed state and optionally restoring the most recently used sidebar state. Restore-last takes precedence, matching the existing startup-workspace preference model.
+
+### Fixed
+
+- Made collapsed service selection targets exact 42 x 42 px squares, always larger than every supported service icon size.
+- Rebalanced the collapsed icon rail to 52 px with symmetric 5 px outer margins while preserving the existing icon center position, and removed visible scrollbar gutter width so service icons, the collapse control, and selection backgrounds stay precisely aligned.
+
+### Release quality
+
+- Added focused 0.6.1 regression coverage for startup-state precedence, settings persistence/validation, collapsed selection geometry, icon-size clearance, and centered rail layout.
+
 ## [0.6.0] - 2026-08-22
 
 ### Added
