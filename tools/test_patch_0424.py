@@ -47,7 +47,10 @@ class Patch0424Tests(unittest.TestCase):
     self.assertIn('Object.entries(appSettings.workspaceIcons).filter(([workspaceId]) => workspaceIds.has(workspaceId))', APP)
     self.assertIn('delete workspaceIcons[ws.id];', APP)
     self.assertIn('delete workspaceDownloadSettings[ws.id];', APP)
-    self.assertIn('setAppSettings({ workspaceLastUsed, workspaceIcons, workspaceDownloadSettings })', APP)
+    delete_body = APP.split('async function handleDeleteWorkspace', 1)[1].split('async function refreshRecipes', 1)[0]
+    self.assertIn('workspaceLastUsed,', delete_body)
+    self.assertIn('workspaceIcons,', delete_body)
+    self.assertIn('workspaceDownloadSettings,', delete_body)
 
   def test_portable_workspace_exports_embed_the_selected_icon(self) -> None:
     self.assertIn('function portableWorkspace(workspace: Workspace): Workspace', APP)

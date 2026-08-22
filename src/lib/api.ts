@@ -332,6 +332,9 @@ export interface AppSettings {
   serviceOrder: string[];
   workspaceOrder: string[];
   workspaceQuickSwitchOrder: "custom" | "customReverse" | "alphabetical" | "alphabeticalReverse" | "recent" | "recentReverse";
+  defaultWorkspaceId: string;
+  restoreLastWorkspaceOnStartup: boolean;
+  lastWorkspaceId: string;
   workspaceLastUsed: Record<string, number>;
   workspaceIcons: Record<string, string>;
   downloadDirectory: string;

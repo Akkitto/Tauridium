@@ -10,6 +10,7 @@ import {
   iconSrc,
   normalizeHexColor,
   orderWorkspacesForQuickSwitch,
+  resolveStartupWorkspaceId,
   paged,
   recipeIcon,
   sameDownloadPreference,
@@ -69,6 +70,25 @@ describe("0.4.0 appearance and navigation helpers", () => {
     const values = Array.from({ length: 250 }, (_, index) => index);
     expect(paged(values, 1, 100)).toEqual(values.slice(100, 200));
     expect(values).toHaveLength(250);
+  });
+});
+
+describe("0.5.3 workspace startup selection", () => {
+  const workspaceIds = ["work", "personal"];
+
+  it("uses the configured default when last-workspace restore is disabled", () => {
+    expect(resolveStartupWorkspaceId(workspaceIds, "work", false, "personal")).toBe("work");
+    expect(resolveStartupWorkspaceId(workspaceIds, "", false, "personal")).toBeNull();
+  });
+
+  it("gives the remembered workspace precedence when restore is enabled", () => {
+    expect(resolveStartupWorkspaceId(workspaceIds, "work", true, "personal")).toBe("personal");
+    expect(resolveStartupWorkspaceId(workspaceIds, "work", true, "")).toBeNull();
+  });
+
+  it("falls back safely when a persisted workspace no longer exists", () => {
+    expect(resolveStartupWorkspaceId(workspaceIds, "work", true, "deleted")).toBe("work");
+    expect(resolveStartupWorkspaceId(workspaceIds, "deleted", true, "missing")).toBeNull();
   });
 });
 

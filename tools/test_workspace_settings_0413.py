@@ -37,7 +37,7 @@ class WorkspaceSettings0413Tests(unittest.TestCase):
     self.assertIn('workspaceLastUsed: Record<string, number>', API)
     self.assertIn('export function orderWorkspacesForQuickSwitch', UI)
     self.assertIn('...quickSwitcherWorkspaces', APP)
-    self.assertIn('workspaceLastUsed = { ...previousWorkspaceLastUsed, [workspaceId]: Date.now() }', APP)
+    self.assertIn('? { ...previousWorkspaceLastUsed, [workspaceId]: Date.now() }', APP)
     self.assertIn('workspaceUsagePersist = workspaceUsagePersist.then(async () => {', APP)
     self.assertIn('settings.insert("workspaceQuickSwitchOrder".into(), "custom".into());', RUST)
     self.assertIn('"workspaceLastUsed".into(),', RUST)
@@ -58,7 +58,7 @@ class WorkspaceSettings0413Tests(unittest.TestCase):
     self.assertIn('workspaceIds.has(workspaceId)', APP)
     self.assertIn('workspaceUsagePersist: Promise<void> = Promise.resolve()', APP)
     self.assertIn('workspaceUsagePersist = workspaceUsagePersist.then(async () => {', APP)
-    self.assertIn('Unable to save workspace usage history', APP)
+    self.assertIn('Unable to save workspace startup state', APP)
 
   def test_all_services_remains_pinned_first(self):
     self.assertIn('[{ id: "__all__", name: "All services" }, ...quickSwitcherWorkspaces]', APP)

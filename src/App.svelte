@@ -15,6 +15,7 @@
     looksLikeWebsite,
     orderedBySavedIds,
     orderWorkspacesForQuickSwitch,
+    resolveStartupWorkspaceId,
     reorderVisibleSubset,
     reorderVisibleSubsetAt,
     reorderVisibleGroupAt,
@@ -268,6 +269,9 @@
     serviceOrder: [],
     workspaceOrder: [],
     workspaceQuickSwitchOrder: "custom",
+    defaultWorkspaceId: "",
+    restoreLastWorkspaceOnStartup: false,
+    lastWorkspaceId: "",
     workspaceLastUsed: {},
     workspaceIcons: {},
     downloadDirectory: "",
@@ -936,6 +940,12 @@
     const workspaceOrder = orderedBySavedIds(workspaces, appSettings.workspaceOrder).map((workspace) => workspace.id);
     const serviceIds = new Set(services.map((service) => service.id));
     const workspaceIds = new Set(workspaces.map((workspace) => workspace.id));
+    const defaultWorkspaceId = !appSettings.defaultWorkspaceId || workspaceIds.has(appSettings.defaultWorkspaceId)
+      ? appSettings.defaultWorkspaceId
+      : "";
+    const lastWorkspaceId = !appSettings.lastWorkspaceId || workspaceIds.has(appSettings.lastWorkspaceId)
+      ? appSettings.lastWorkspaceId
+      : defaultWorkspaceId;
     const workspaceLastUsed = Object.fromEntries(
       Object.entries(appSettings.workspaceLastUsed).filter(([workspaceId]) => workspaceIds.has(workspaceId)),
     );
@@ -951,6 +961,7 @@
     const workspaceDownloadSettings = Object.fromEntries(
       Object.entries(appSettings.workspaceDownloadSettings).filter(([workspaceId]) => workspaceIds.has(workspaceId)),
     );
+    const startupWorkspaceChanged = defaultWorkspaceId !== appSettings.defaultWorkspaceId || lastWorkspaceId !== appSettings.lastWorkspaceId;
     const usageHistoryChanged = Object.keys(workspaceLastUsed).length !== Object.keys(appSettings.workspaceLastUsed).length;
     const workspaceIconsChanged = Object.keys(workspaceIcons).length !== Object.keys(appSettings.workspaceIcons).length;
     const serviceIconInversionsChanged = Object.keys(serviceIconInversions).length !== Object.keys(appSettings.serviceIconInversions).length;
@@ -959,6 +970,7 @@
     if (
       sameIds(serviceOrder, appSettings.serviceOrder) &&
       sameIds(workspaceOrder, appSettings.workspaceOrder) &&
+      !startupWorkspaceChanged &&
       !usageHistoryChanged &&
       !workspaceIconsChanged &&
       !serviceIconInversionsChanged &&
@@ -969,6 +981,8 @@
       const persisted = await setAppSettings({
         serviceOrder,
         workspaceOrder,
+        defaultWorkspaceId,
+        lastWorkspaceId,
         workspaceLastUsed,
         workspaceIcons,
         serviceIconInversions,
@@ -989,12 +1003,13 @@
     await reconcileSavedOrders();
     await refreshNativeServicesMenu();
     await Promise.all(services.map((s) => setServiceFlags(s).catch(() => {})));
-    const first = sorted.find((s) => s.isEnabled !== false) ?? null;
-    if (first) selectService(first);
-    else {
-      activeId = null;
-      await hideServices();
-    }
+    const startupWorkspace = resolveStartupWorkspaceId(
+      workspaces.map((workspace) => workspace.id),
+      appSettings.defaultWorkspaceId,
+      appSettings.restoreLastWorkspaceOnStartup,
+      appSettings.lastWorkspaceId,
+    );
+    const first = selectWorkspace(startupWorkspace, false);
     preloadRest(first?.id);
     hydrateServiceIcons();
   }
@@ -2096,10 +2111,18 @@
       const workspaceLastUsed = { ...appSettings.workspaceLastUsed };
       const workspaceIcons = { ...appSettings.workspaceIcons };
       const workspaceDownloadSettings = { ...appSettings.workspaceDownloadSettings };
+      const defaultWorkspaceId = appSettings.defaultWorkspaceId === ws.id ? "" : appSettings.defaultWorkspaceId;
+      const lastWorkspaceId = appSettings.lastWorkspaceId === ws.id ? "" : appSettings.lastWorkspaceId;
       delete workspaceLastUsed[ws.id];
       delete workspaceIcons[ws.id];
       delete workspaceDownloadSettings[ws.id];
-      appSettings = await setAppSettings({ workspaceLastUsed, workspaceIcons, workspaceDownloadSettings });
+      appSettings = await setAppSettings({
+        defaultWorkspaceId,
+        lastWorkspaceId,
+        workspaceLastUsed,
+        workspaceIcons,
+        workspaceDownloadSettings,
+      });
       await reloadWorkspaces();
     } catch (err) {
       error = String(err);
@@ -2598,6 +2621,22 @@
     }
   }
 
+  async function saveRestoreLastWorkspaceOnStartup(enabled: boolean) {
+    const previous = {
+      restoreLastWorkspaceOnStartup: appSettings.restoreLastWorkspaceOnStartup,
+      lastWorkspaceId: appSettings.lastWorkspaceId,
+    };
+    const lastWorkspaceId = enabled ? (activeWorkspace ?? "") : appSettings.lastWorkspaceId;
+    appSettings = { ...appSettings, restoreLastWorkspaceOnStartup: enabled, lastWorkspaceId };
+    try {
+      appSettings = await setAppSettings({ restoreLastWorkspaceOnStartup: enabled, lastWorkspaceId });
+      showToast("Saved", "success");
+    } catch (err) {
+      appSettings = { ...appSettings, ...previous };
+      error = String(err);
+    }
+  }
+
   async function saveAppSetting(key: keyof AppSettings, value: unknown) {
     (appSettings as Record<string, unknown>)[key] = value;
     if (key === "sidebarServiceDragReorder" && value === false) {
@@ -2759,22 +2798,26 @@
     if (restore && view === "service" && activeService) selectService(activeService);
   }
 
-  function chooseWorkspace(workspaceId: string | null) {
+  function selectWorkspace(workspaceId: string | null, remember = true): Service | null {
     clearServiceDragSelection();
     clearServiceDragState();
     activeWorkspace = workspaceId;
-    if (workspaceId) {
+    if (remember) {
+      const previousLastWorkspaceId = appSettings.lastWorkspaceId;
       const previousWorkspaceLastUsed = appSettings.workspaceLastUsed;
-      const workspaceLastUsed = { ...previousWorkspaceLastUsed, [workspaceId]: Date.now() };
-      appSettings = { ...appSettings, workspaceLastUsed };
+      const lastWorkspaceId = workspaceId ?? "";
+      const workspaceLastUsed = workspaceId
+        ? { ...previousWorkspaceLastUsed, [workspaceId]: Date.now() }
+        : previousWorkspaceLastUsed;
+      appSettings = { ...appSettings, lastWorkspaceId, workspaceLastUsed };
       workspaceUsagePersist = workspaceUsagePersist.then(async () => {
         try {
-          await setAppSettings({ workspaceLastUsed });
+          await setAppSettings({ lastWorkspaceId, workspaceLastUsed });
         } catch (err) {
-          if (appSettings.workspaceLastUsed === workspaceLastUsed) {
-            appSettings = { ...appSettings, workspaceLastUsed: previousWorkspaceLastUsed };
+          if (appSettings.lastWorkspaceId === lastWorkspaceId && appSettings.workspaceLastUsed === workspaceLastUsed) {
+            appSettings = { ...appSettings, lastWorkspaceId: previousLastWorkspaceId, workspaceLastUsed: previousWorkspaceLastUsed };
           }
-          error = `Unable to save workspace usage history: ${err}`;
+          error = `Unable to save workspace startup state: ${err}`;
         }
       });
     }
@@ -2785,7 +2828,7 @@
           (workspaces.find((workspace) => workspace.id === workspaceId)?.services ?? []).includes(
             service.id,
           )),
-    );
+    ) ?? null;
     if (candidate) {
       selectService(candidate);
     } else {
@@ -2793,6 +2836,11 @@
       serviceLoadError = null;
       void hideServices();
     }
+    return candidate;
+  }
+
+  function chooseWorkspace(workspaceId: string | null) {
+    selectWorkspace(workspaceId, true);
   }
 
   function chooseQuickSwitcherItem(item: { id: string; kind: QuickSwitcherMode }) {
@@ -3870,6 +3918,48 @@
                   </div>
                 </section>
               {:else}
+                <section class="settings-section" aria-labelledby="settings-workspaces-startup">
+                  <div class="section-heading">
+                    <h3 id="settings-workspaces-startup">Startup workspace</h3>
+                    <p>Choose which workspace Tauridium opens after restoring a session. Last-workspace restore takes precedence; the default remains the fallback if that workspace no longer exists.</p>
+                  </div>
+                  <div class="settings-list">
+                    <div class="setting-card">
+                      <div class="setting-copy">
+                        <span class="setting-label">Default workspace</span>
+                        <span class="setting-description">Used at startup when restoring the last workspace is disabled, or when the remembered workspace is unavailable.</span>
+                      </div>
+                      <select
+                        class="select setting-control workspace-startup-select"
+                        aria-label="Default workspace"
+                        bind:value={appSettings.defaultWorkspaceId}
+                        onchange={() => saveAppSetting("defaultWorkspaceId", appSettings.defaultWorkspaceId)}
+                      >
+                        <option value="">All services</option>
+                        {#each sortedWorkspaces as workspace (workspace.id)}
+                          <option value={workspace.id}>{workspace.name}</option>
+                        {/each}
+                      </select>
+                    </div>
+                    <label class="setting-card setting-card-toggle">
+                      <span class="setting-copy">
+                        <span class="setting-label">Restore last workspace on startup</span>
+                        <span class="setting-description">Start with the workspace that was active most recently. Enabling this remembers the workspace active right now.</span>
+                      </span>
+                      <span class="switch-control">
+                        <input
+                          class="switch-input"
+                          type="checkbox"
+                          checked={appSettings.restoreLastWorkspaceOnStartup}
+                          aria-label="Restore last workspace on startup"
+                          onchange={(event) => saveRestoreLastWorkspaceOnStartup(event.currentTarget.checked)}
+                        />
+                        <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+                      </span>
+                    </label>
+                  </div>
+                </section>
+
                 <section class="settings-section" aria-labelledby="settings-workspaces-switcher">
                   <div class="section-heading">
                     <h3 id="settings-workspaces-switcher">Quick workspace switcher</h3>

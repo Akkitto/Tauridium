@@ -37,7 +37,8 @@ class Patch0407Tests(unittest.TestCase):
 
   def test_disabled_services_are_closed_and_never_selected_or_preloaded(self) -> None:
     self.assertIn('if (s.isEnabled === false) return;', self.app)
-    self.assertIn('const first = sorted.find((s) => s.isEnabled !== false) ?? null;', self.app)
+    startup = self.app.split('function selectWorkspace(', 1)[1].split('function chooseWorkspace(', 1)[0]
+    self.assertIn('service.isEnabled !== false &&', startup)
     self.assertIn('s.isEnabled !== false &&', self.app)
     body = self.app.split('async function setServiceEnabled', 1)[1].split('async function toggleServiceEnabled', 1)[0]
     self.assertIn('await closeService(service.id)', body)

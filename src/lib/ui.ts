@@ -137,6 +137,25 @@ export function paged<T>(items: T[], page: number, pageSize: number): T[] {
   return items.slice(safePage * safeSize, safePage * safeSize + safeSize);
 }
 
+export function resolveStartupWorkspaceId(
+  workspaceIds: Iterable<string>,
+  defaultWorkspaceId: string,
+  restoreLastWorkspaceOnStartup: boolean,
+  lastWorkspaceId: string,
+): string | null {
+  const configured = new Set(workspaceIds);
+  const resolve = (workspaceId: string): string | null | undefined => {
+    if (!workspaceId) return null;
+    return configured.has(workspaceId) ? workspaceId : undefined;
+  };
+  if (restoreLastWorkspaceOnStartup) {
+    const last = resolve(lastWorkspaceId);
+    if (last !== undefined) return last;
+  }
+  const fallback = resolve(defaultWorkspaceId);
+  return fallback === undefined ? null : fallback;
+}
+
 // Recipe icon URL from the ferdium-recipes repository.
 export function recipeIcon(recipeId: string): string {
   return `https://raw.githubusercontent.com/ferdium/ferdium-recipes/main/recipes/${recipeId}/icon.svg`;

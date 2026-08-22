@@ -3140,6 +3140,9 @@ fn default_app_settings_value() -> Value {
     settings.insert("serviceOrder".into(), Value::Array(Vec::new()));
     settings.insert("workspaceOrder".into(), Value::Array(Vec::new()));
     settings.insert("workspaceQuickSwitchOrder".into(), "custom".into());
+    settings.insert("defaultWorkspaceId".into(), "".into());
+    settings.insert("restoreLastWorkspaceOnStartup".into(), false.into());
+    settings.insert("lastWorkspaceId".into(), "".into());
     settings.insert(
         "workspaceLastUsed".into(),
         Value::Object(serde_json::Map::new()),
@@ -3331,6 +3334,7 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         "sidebarServiceDragReorder",
         "captureServiceShortcuts",
         "customUrlTemplatesEnabled",
+        "restoreLastWorkspaceOnStartup",
     ] {
         if !object.get(key).is_some_and(Value::is_boolean) {
             return Err(format!("App setting {key} must be boolean"));
@@ -3371,6 +3375,18 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
             | "recentReverse"
     ) {
         return Err("App setting workspaceQuickSwitchOrder is invalid".into());
+    }
+    for key in ["defaultWorkspaceId", "lastWorkspaceId"] {
+        let workspace_id = object
+            .get(key)
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("App setting {key} must be a string"))?;
+        if workspace_id.len() > 256
+            || workspace_id.chars().any(char::is_control)
+            || (!workspace_id.is_empty() && workspace_id.trim().is_empty())
+        {
+            return Err(format!("App setting {key} is invalid"));
+        }
     }
     let workspace_last_used = object
         .get("workspaceLastUsed")
@@ -4917,6 +4933,25 @@ mod tests {
         settings["workspaceLastUsed"] = json!({"": 1});
         assert!(validate_app_settings_value(&settings).is_err());
         settings["workspaceLastUsed"] = json!({"workspace-a": -1});
+        assert!(validate_app_settings_value(&settings).is_err());
+    }
+
+    #[test]
+    fn feature_0503_settings_validate_workspace_startup_preferences() {
+        let mut settings = default_app_settings_value();
+        assert_eq!(settings["defaultWorkspaceId"], json!(""));
+        assert_eq!(settings["restoreLastWorkspaceOnStartup"], json!(false));
+        assert_eq!(settings["lastWorkspaceId"], json!(""));
+
+        settings["defaultWorkspaceId"] = json!("workspace-a");
+        settings["restoreLastWorkspaceOnStartup"] = json!(true);
+        settings["lastWorkspaceId"] = json!("workspace-b");
+        assert!(validate_app_settings_value(&settings).is_ok());
+
+        settings["restoreLastWorkspaceOnStartup"] = json!("yes");
+        assert!(validate_app_settings_value(&settings).is_err());
+        settings["restoreLastWorkspaceOnStartup"] = json!(true);
+        settings["lastWorkspaceId"] = json!("   ");
         assert!(validate_app_settings_value(&settings).is_err());
     }
 
