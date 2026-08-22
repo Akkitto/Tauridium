@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.8] - 2026-08-23
+
+### Fixed
+
+- Fixed Windows compilation of the 0.6.7 single-instance coordinator by enabling the `windows-sys` `Win32_Security` feature required by `CreateEventW` and `CreateMutexW`.
+
+### Release quality
+
+- Added focused 0.6.8 regression and release-invariant coverage so Windows instance coordination cannot be released without its required Windows security bindings again.
+
 ## [0.6.7] - 2026-08-23
 
 ### Added
