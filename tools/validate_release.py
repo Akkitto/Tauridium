@@ -1623,6 +1623,30 @@ def main() -> int:
     if test_marker not in patch_0504:
       fail(f"0.5.4 regression coverage is missing: {test_marker}")
 
+  patch_0601 = read("tools/test_patch_0601.py")
+  for marker in (
+    "defaultSidebarCollapsed: boolean;",
+    "restoreLastSidebarStateOnStartup: boolean;",
+    "resolveStartupSidebarCollapsed(",
+    "resolve_startup_sidebar_collapsed(&settings)",
+    "Default sidebar state",
+    "Restore last sidebar state on startup",
+    "export const COLLAPSED_SIDEBAR_WIDTH_PX = 52;",
+    "const COLLAPSED_SIDEBAR_W: f64 = 52.0;",
+    "width: 42px; height: 42px",
+    "padding-inline: 5px",
+  ):
+    if marker not in app + api_ts + main_rs + read("src/lib/ui.ts"):
+      fail(f"0.6.1 sidebar startup/layout invariant is missing: {marker}")
+  for test_marker in (
+    "test_sidebar_startup_preferences_mirror_workspace_precedence",
+    "test_appearance_exposes_default_and_restore_last_sidebar_startup_controls",
+    "test_collapsed_selection_target_is_square_and_larger_than_every_supported_icon",
+    "test_collapsed_rail_is_centered_without_shifting_the_existing_icon_anchor_right",
+  ):
+    if test_marker not in patch_0601:
+      fail(f"0.6.1 regression coverage is missing: {test_marker}")
+
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],
     cwd=ROOT,

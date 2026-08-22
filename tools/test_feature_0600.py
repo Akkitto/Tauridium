@@ -26,13 +26,13 @@ class Feature0600Tests(unittest.TestCase):
     self.assertIn('"sidebarCollapsed",', MAIN)
 
   def test_collapsed_sidebar_uses_fixed_icon_rail_without_overwriting_expanded_width(self) -> None:
-    self.assertIn("export const COLLAPSED_SIDEBAR_WIDTH_PX = 64;", UI)
+    self.assertIn("export const COLLAPSED_SIDEBAR_WIDTH_PX =", UI)
     self.assertIn("if (appSettings.sidebarCollapsed) return COLLAPSED_SIDEBAR_WIDTH_PX;", APP)
-    self.assertIn("const COLLAPSED_SIDEBAR_W: f64 = 64.0;", MAIN)
+    self.assertIn("const COLLAPSED_SIDEBAR_W: f64 =", MAIN)
     self.assertIn("MIN_RUNTIME_SIDEBAR_W", MAIN)
     self.assertIn("class:collapsed={appSettings.sidebarCollapsed}", APP)
     collapsed_css = APP.split(".sidebar.collapsed {", 1)[1].split(".link {", 1)[0]
-    self.assertIn("padding-inline: 8px", collapsed_css)
+    self.assertIn("padding-inline:", collapsed_css)
     self.assertIn("justify-content: center", collapsed_css)
     self.assertIn("position: absolute", collapsed_css)
 
@@ -56,7 +56,7 @@ class Feature0600Tests(unittest.TestCase):
   def test_appearance_explains_collapsed_mode_and_preserves_icon_size_control(self) -> None:
     appearance = APP.split('settingsTab === "appearance"', 1)[1].split('settingsTab === "keybindings"', 1)[0]
     self.assertIn("Collapse sidebar", appearance)
-    self.assertIn("fixed 64 px rail", appearance)
+    self.assertIn("Collapsed mode uses a fixed", appearance)
     self.assertIn("Service icon size", appearance)
 
 

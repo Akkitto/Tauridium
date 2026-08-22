@@ -197,8 +197,8 @@ fn migrate_legacy_application_identity(app: &AppHandle) -> Result<bool, String> 
 
 // Logical sidebar width; must match the shell CSS.
 const SIDEBAR_W: f64 = 240.0;
-const COLLAPSED_SIDEBAR_W: f64 = 64.0;
-const MIN_RUNTIME_SIDEBAR_W: f64 = 56.0;
+const COLLAPSED_SIDEBAR_W: f64 = 52.0;
+const MIN_RUNTIME_SIDEBAR_W: f64 = COLLAPSED_SIDEBAR_W;
 const MAX_SIDEBAR_W: f64 = 1200.0;
 // Modern Safari UA WITH the `Version/` token: WhatsApp requires Safari >= 15, while the webview
 // Native WKWebView does not always expose this token (which can trigger an unsupported-browser warning). Keep
@@ -3214,6 +3214,8 @@ fn default_app_settings_value() -> Value {
     settings.insert("sidebarWidthMode".into(), "pixels".into());
     settings.insert("sidebarWidthPercent".into(), 20.into());
     settings.insert("sidebarCollapsed".into(), false.into());
+    settings.insert("defaultSidebarCollapsed".into(), false.into());
+    settings.insert("restoreLastSidebarStateOnStartup".into(), true.into());
     settings.insert("customSidebarWidths".into(), Value::Array(Vec::new()));
     settings.insert("iconSize".into(), 24.into());
     settings.insert("grayscaleServices".into(), false.into());
@@ -3439,6 +3441,8 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         "customUrlTemplatesEnabled",
         "restoreLastWorkspaceOnStartup",
         "sidebarCollapsed",
+        "defaultSidebarCollapsed",
+        "restoreLastSidebarStateOnStartup",
     ] {
         if !object.get(key).is_some_and(Value::is_boolean) {
             return Err(format!("App setting {key} must be boolean"));
@@ -3731,6 +3735,26 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         validate_order_ids(&ids, label)?;
     }
     Ok(())
+}
+
+fn resolve_startup_sidebar_collapsed(settings: &Value) -> bool {
+    let default_collapsed = settings
+        .get("defaultSidebarCollapsed")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let restore_last = settings
+        .get("restoreLastSidebarStateOnStartup")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    let last_collapsed = settings
+        .get("sidebarCollapsed")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if restore_last {
+        last_collapsed
+    } else {
+        default_collapsed
+    }
 }
 
 fn merge_app_settings_value(stored: &Value) -> Result<Value, String> {
@@ -4695,10 +4719,7 @@ fn main() {
             {
                 let st = app.state::<AppState>();
                 let settings = st.settings.lock().unwrap();
-                let collapsed = settings
-                    .get("sidebarCollapsed")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false);
+                let collapsed = resolve_startup_sidebar_collapsed(&settings);
                 let w = if collapsed {
                     COLLAPSED_SIDEBAR_W
                 } else {
@@ -5231,6 +5252,30 @@ mod tests {
         );
         assert_eq!(merged["sidebarCollapsed"], json!(false));
         assert!(validate_app_settings_value(&merged).is_ok());
+    }
+
+    #[test]
+    fn patch_0601_sidebar_startup_preferences_default_and_restore_last() {
+        let defaults = merge_app_settings_value(&json!({})).unwrap();
+        assert_eq!(defaults["defaultSidebarCollapsed"], json!(false));
+        assert_eq!(defaults["restoreLastSidebarStateOnStartup"], json!(true));
+        assert!(!resolve_startup_sidebar_collapsed(&defaults));
+
+        let restore_last = merge_app_settings_value(&json!({
+            "defaultSidebarCollapsed": false,
+            "restoreLastSidebarStateOnStartup": true,
+            "sidebarCollapsed": true
+        }))
+        .unwrap();
+        assert!(resolve_startup_sidebar_collapsed(&restore_last));
+
+        let use_default = merge_app_settings_value(&json!({
+            "defaultSidebarCollapsed": true,
+            "restoreLastSidebarStateOnStartup": false,
+            "sidebarCollapsed": false
+        }))
+        .unwrap();
+        assert!(resolve_startup_sidebar_collapsed(&use_default));
     }
 
     #[test]

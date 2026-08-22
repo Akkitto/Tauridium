@@ -16,6 +16,7 @@
     orderedBySavedIds,
     orderWorkspacesForQuickSwitch,
     resolveStartupWorkspaceId,
+    resolveStartupSidebarCollapsed,
     reorderVisibleSubset,
     reorderVisibleSubsetAt,
     reorderVisibleGroupAt,
@@ -252,6 +253,8 @@
     sidebarWidthMode: "pixels",
     sidebarWidthPercent: 20,
     sidebarCollapsed: false,
+    defaultSidebarCollapsed: false,
+    restoreLastSidebarStateOnStartup: true,
     customSidebarWidths: [],
     iconSize: 24,
     grayscaleServices: false,
@@ -549,6 +552,15 @@
     window.addEventListener("resize", handleWindowResize);
     try {
       appSettings = await getAppSettings();
+      const startupSidebarCollapsed = resolveStartupSidebarCollapsed(
+        appSettings.defaultSidebarCollapsed,
+        appSettings.restoreLastSidebarStateOnStartup,
+        appSettings.sidebarCollapsed,
+      );
+      if (startupSidebarCollapsed !== appSettings.sidebarCollapsed) {
+        appSettings.sidebarCollapsed = startupSidebarCollapsed;
+        setAppSettings({ sidebarCollapsed: startupSidebarCollapsed }).catch(() => {});
+      }
       // Snap iconSize to a valid level for compatibility with older arbitrary values.
       const snapped = snapIconSize(appSettings.iconSize);
       if (snapped !== appSettings.iconSize) {
@@ -2655,6 +2667,24 @@
     }
   }
 
+  async function saveRestoreLastSidebarStateOnStartup(enabled: boolean) {
+    const previous = {
+      restoreLastSidebarStateOnStartup: appSettings.restoreLastSidebarStateOnStartup,
+      sidebarCollapsed: appSettings.sidebarCollapsed,
+    };
+    const update = enabled
+      ? { restoreLastSidebarStateOnStartup: true, sidebarCollapsed: appSettings.sidebarCollapsed }
+      : { restoreLastSidebarStateOnStartup: false };
+    appSettings = { ...appSettings, ...update };
+    try {
+      appSettings = await setAppSettings(update);
+      showToast("Saved", "success");
+    } catch (err) {
+      appSettings = { ...appSettings, ...previous };
+      error = String(err);
+    }
+  }
+
   async function saveRestoreLastWorkspaceOnStartup(enabled: boolean) {
     const previous = {
       restoreLastWorkspaceOnStartup: appSettings.restoreLastWorkspaceOnStartup,
@@ -4178,9 +4208,40 @@
                   <p>Adjust service density and placement without changing individual service configuration.</p>
                 </div>
                 <div class="settings-list">
-                  {@render appToggle("Collapse sidebar", "Use the compact icon-only rail. The expanded width is preserved and restored when reopened. Default shortcut: Ctrl+Shift+B.", "sidebarCollapsed", appSettings.sidebarCollapsed)}
+                  {@render appToggle("Collapse sidebar", "Use the compact icon-only rail now. The expanded width is preserved and restored when reopened. Default shortcut: Ctrl+Shift+B.", "sidebarCollapsed", appSettings.sidebarCollapsed)}
+                  <div class="setting-card">
+                    <div class="setting-copy">
+                      <span class="setting-label">Default sidebar state</span>
+                      <span class="setting-description">Used at startup when restoring the last sidebar state is disabled.</span>
+                    </div>
+                    <select
+                      class="select setting-control"
+                      aria-label="Default sidebar state"
+                      value={appSettings.defaultSidebarCollapsed ? "collapsed" : "expanded"}
+                      onchange={(event) => saveAppSetting("defaultSidebarCollapsed", event.currentTarget.value === "collapsed")}
+                    >
+                      <option value="expanded">Expanded</option>
+                      <option value="collapsed">Collapsed</option>
+                    </select>
+                  </div>
+                  <label class="setting-card setting-card-toggle">
+                    <span class="setting-copy">
+                      <span class="setting-label">Restore last sidebar state on startup</span>
+                      <span class="setting-description">Start with the sidebar state used most recently. When enabled, this takes precedence over the default sidebar state.</span>
+                    </span>
+                    <span class="switch-control">
+                      <input
+                        class="switch-input"
+                        type="checkbox"
+                        checked={appSettings.restoreLastSidebarStateOnStartup}
+                        aria-label="Restore last sidebar state on startup"
+                        onchange={(event) => saveRestoreLastSidebarStateOnStartup(event.currentTarget.checked)}
+                      />
+                      <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+                    </span>
+                  </label>
                   <div class="setting-card setting-card-stack">
-                    <div class="setting-copy"><span class="setting-label">Expanded sidebar width</span><span class="setting-description">Use a fixed pixel width or keep the expanded sidebar proportional to the Tauridium window. Collapsed mode uses a fixed 64 px rail for consistent icon alignment.</span></div>
+                    <div class="setting-copy"><span class="setting-label">Expanded sidebar width</span><span class="setting-description">Use a fixed pixel width or keep the expanded sidebar proportional to the Tauridium window. Collapsed mode uses a fixed 52 px rail for consistent icon alignment.</span></div>
                     <select class="select setting-control" aria-label="Sidebar width mode" value={appSettings.sidebarWidthMode} onchange={(event) => saveAppSetting("sidebarWidthMode", event.currentTarget.value)}>
                       <option value="pixels">Fixed pixels</option>
                       <option value="percent">Relative to window</option>
@@ -4732,11 +4793,17 @@
   .sidebar-collapse-button:hover { border-color: var(--border); background: var(--hover); color: var(--text2); }
   .sidebar-collapse-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .sidebar-collapse-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-  .sidebar.collapsed { padding-inline: 8px; }
-  .sidebar.collapsed .account { justify-content: center; }
+  .sidebar.collapsed { padding-inline: 5px; }
+  .sidebar.collapsed .account { width: 42px; justify-content: center; }
   .sidebar.collapsed .account-copy, .sidebar.collapsed .count { display: none; }
   .sidebar.collapsed .sidebar-collapse-button { margin-left: 0; }
-  .sidebar.collapsed .srow { position: relative; justify-content: center; gap: 0; min-height: 42px; padding: 7px; }
+  .sidebar.collapsed .svcarea { width: 42px; scrollbar-gutter: auto; scrollbar-width: none; }
+  .sidebar.collapsed .svcarea::-webkit-scrollbar { width: 0; height: 0; }
+  .sidebar.collapsed .svclist, .sidebar.collapsed .srow-wrap { width: 42px; }
+  .sidebar.collapsed .srow {
+    position: relative; width: 42px; height: 42px; min-height: 42px; flex: none;
+    justify-content: center; gap: 0; padding: 4px; box-sizing: border-box; border-radius: 8px;
+  }
   .sidebar.collapsed .srow-wrap.drag-before::before, .sidebar.collapsed .srow-wrap.drag-after::after { left: 4px; right: 4px; }
   .sidebar.collapsed .ubadge { position: absolute; top: 2px; right: 2px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 8px; font-size: 9px; line-height: 14px; }
   .link { background: none; border: none; color: var(--link); cursor: pointer; font-size: 12px; text-decoration: underline; }

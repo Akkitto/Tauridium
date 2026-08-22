@@ -68,7 +68,7 @@ export function hexToHsl(hex: string): { hue: number; saturation: number; lightn
   };
 }
 
-export const COLLAPSED_SIDEBAR_WIDTH_PX = 64;
+export const COLLAPSED_SIDEBAR_WIDTH_PX = 52;
 
 export const DEFAULT_KEYBINDINGS = {
   quickWorkspaceSwitch: "Ctrl+D",
@@ -189,6 +189,14 @@ export function resolveStartupWorkspaceId(
   }
   const fallback = resolve(defaultWorkspaceId);
   return fallback === undefined ? null : fallback;
+}
+
+export function resolveStartupSidebarCollapsed(
+  defaultSidebarCollapsed: boolean,
+  restoreLastSidebarStateOnStartup: boolean,
+  lastSidebarCollapsed: boolean,
+): boolean {
+  return restoreLastSidebarStateOnStartup ? lastSidebarCollapsed : defaultSidebarCollapsed;
 }
 
 // Recipe icon URL from the ferdium-recipes repository.

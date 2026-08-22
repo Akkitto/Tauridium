@@ -314,6 +314,8 @@ export interface AppSettings {
   sidebarWidthMode: "pixels" | "percent";
   sidebarWidthPercent: number;
   sidebarCollapsed: boolean;
+  defaultSidebarCollapsed: boolean;
+  restoreLastSidebarStateOnStartup: boolean;
   customSidebarWidths: number[];
   iconSize: number;
   grayscaleServices: boolean;

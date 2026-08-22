@@ -12,6 +12,7 @@ import {
   normalizeHexColor,
   orderWorkspacesForQuickSwitch,
   resolveStartupWorkspaceId,
+  resolveStartupSidebarCollapsed,
   paged,
   recipeIcon,
   sameDownloadPreference,
@@ -157,6 +158,18 @@ describe("0.4.9 service duplication helpers", () => {
     expect(duplicateServiceName("Slack", ["Slack"])).toBe("Slack Copy");
     expect(duplicateServiceName("Slack", ["Slack", "slack copy"])).toBe("Slack Copy 2");
     expect(duplicateServiceName("", ["Service Copy"])).toBe("Service Copy 2");
+  });
+});
+
+describe("resolveStartupSidebarCollapsed", () => {
+  it("restores the last state when requested", () => {
+    expect(resolveStartupSidebarCollapsed(false, true, true)).toBe(true);
+    expect(resolveStartupSidebarCollapsed(true, true, false)).toBe(false);
+  });
+
+  it("uses the configured default when restore-last is disabled", () => {
+    expect(resolveStartupSidebarCollapsed(true, false, false)).toBe(true);
+    expect(resolveStartupSidebarCollapsed(false, false, true)).toBe(false);
   });
 });
 
