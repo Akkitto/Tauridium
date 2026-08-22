@@ -63,6 +63,7 @@ def main() -> int:
   lock = json.loads(read("package-lock.json"))
   cargo = read("src-tauri/Cargo.toml")
   cargo_lock = read("src-tauri/Cargo.lock")
+  main_rs = read("src-tauri/src/main.rs")
   rust_toolchain = read("rust-toolchain.toml")
   version = tauri["version"]
 
@@ -74,6 +75,8 @@ def main() -> int:
     fail("package-lock.json root version differs from tauri.conf.json")
   if f'version = "{version}"' not in cargo:
     fail("Cargo.toml version differs from tauri.conf.json")
+  if ("CreateEventW" in main_rs or "CreateMutexW" in main_rs) and '"Win32_Security"' not in cargo:
+    fail("Windows instance coordination requires the windows-sys Win32_Security feature")
   tauridium_lock = re.search(r'\[\[package\]\]\nname = "tauridium"\nversion = "([^"]+)"', cargo_lock)
   if not tauridium_lock or tauridium_lock.group(1) != version:
     fail("Cargo.lock Tauridium version differs from tauri.conf.json")

@@ -37,7 +37,7 @@ rfd = { version = "0.16", default-features = false, features = ["common-controls
 tauri-plugin-window-state = "=2.4.1"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = ">=0.59, <=0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
+windows-sys = { version = ">=0.59, <=0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading"] }
 
 [[bin]]
 name = "tauridium"
