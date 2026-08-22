@@ -247,6 +247,7 @@
   let appSettings = $state<AppSettings>({
     autostart: false,
     startMinimized: false,
+    reuseExistingSessionOnLaunch: true,
     theme: "system",
     accentColor: "#ffc131",
     customAccentColors: [],
@@ -4674,6 +4675,12 @@
               </section>
 
             {:else if settingsTab === "advanced"}
+              <section class="settings-section" aria-labelledby="settings-advanced-instances">
+                <div class="section-heading"><h3 id="settings-advanced-instances">Application instances</h3><p>Control what happens when Tauridium is launched again while it is already running.</p></div>
+                <div class="settings-list">
+                  {@render appToggle("Reuse existing session on launch", "Enabled by default on Windows. Starting Tauridium.exe again reopens and focuses the existing session, including when it is hidden in the tray, instead of creating another Tauridium process and tray icon. Disable this to allow multiple independent Tauridium instances.", "reuseExistingSessionOnLaunch", appSettings.reuseExistingSessionOnLaunch)}
+                </div>
+              </section>
               <section class="settings-section" aria-labelledby="settings-advanced-context-menu">
                 <div class="section-heading"><h3 id="settings-advanced-context-menu">Service context menu</h3><p>Choose between Tauridium's original styled menu and the native fallback that always stays above service webviews.</p></div>
                 <div class="settings-list">

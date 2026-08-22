@@ -301,6 +301,7 @@ export interface DownloadPreferenceOverride {
 export interface AppSettings {
   autostart: boolean;
   startMinimized: boolean;
+  reuseExistingSessionOnLaunch: boolean;
   theme: "dark" | "light" | "oled" | "system";
   accentColor: string;
   customAccentColors: string[];

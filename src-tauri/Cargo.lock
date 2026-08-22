@@ -4147,6 +4147,7 @@ name = "tauridium"
 version = "0.6.6"
 dependencies = [
  "base64 0.22.1",
+ "dirs 6.0.0",
  "reqwest 0.12.28",
  "rfd",
  "serde",
@@ -4160,6 +4161,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
+ "windows-sys 0.60.2",
  "wry",
 ]
 
