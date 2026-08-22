@@ -161,7 +161,7 @@ def main() -> int:
 
   for marker in (
     "fmt-check:\n  cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
-    "release: release-clean ci release-clean package",
+    "release: release-clean ci\n  just release-clean\n  just package",
     "tools/python.ps1 tools/check_clean.py",
     "--all-targets --all-features --locked -- -D warnings",
     "--all-targets --all-features --locked",
@@ -1460,7 +1460,7 @@ def main() -> int:
   ):
     if marker not in app:
       fail(f"service/workspace ordering UI invariant is missing: {marker}")
-  sidebar = app.split('<aside class="sidebar">', 1)[-1].split("</aside>", 1)[0]
+  sidebar = app.split('<aside class="sidebar"', 1)[-1].split("</aside>", 1)[0]
   if "+ Add a service" in sidebar or "openAppSettings" in sidebar:
     fail("sidebar still consumes service-list space with Add Service or Settings buttons")
   svc_css = app.split(".svcarea {", 1)[-1].split(".account {", 1)[0]

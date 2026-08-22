@@ -68,12 +68,15 @@ export function hexToHsl(hex: string): { hue: number; saturation: number; lightn
   };
 }
 
+export const COLLAPSED_SIDEBAR_WIDTH_PX = 64;
+
 export const DEFAULT_KEYBINDINGS = {
   quickWorkspaceSwitch: "Ctrl+D",
   quickServiceSwitch: "Ctrl+S",
   openSettings: "Ctrl+,",
   addService: "Ctrl+N",
   addWorkspace: "Ctrl+Shift+N",
+  toggleSidebar: "Ctrl+Shift+B",
   nextService: "Ctrl+Tab",
   previousService: "Ctrl+Shift+Tab",
   nextWorkspace: "Ctrl+Alt+ArrowDown",

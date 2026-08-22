@@ -24,6 +24,7 @@
     serviceLabel,
     backupTimestamp,
     automaticBackupDue,
+    COLLAPSED_SIDEBAR_WIDTH_PX,
     DEFAULT_KEYBINDINGS,
     bindingStrokes,
     hexToHsl,
@@ -250,6 +251,7 @@
     sidebarWidth: 240,
     sidebarWidthMode: "pixels",
     sidebarWidthPercent: 20,
+    sidebarCollapsed: false,
     customSidebarWidths: [],
     iconSize: 24,
     grayscaleServices: false,
@@ -588,6 +590,7 @@
   }
 
   function effectiveSidebarWidthPx(): number {
+    if (appSettings.sidebarCollapsed) return COLLAPSED_SIDEBAR_WIDTH_PX;
     if (appSettings.sidebarWidthMode !== "percent") return appSettings.sidebarWidth;
     const preferred = window.innerWidth * (appSettings.sidebarWidthPercent / 100);
     // Preserve a useful service viewport and the same backend width ceiling on every display.
@@ -600,6 +603,7 @@
     const b = document.body;
     b.style.setProperty("--sidebar-w", `${effectiveSidebarWidthPx()}px`);
     b.style.setProperty("--icon-size", `${appSettings.iconSize}px`);
+    b.classList.toggle("sidebar-collapsed", !!appSettings.sidebarCollapsed);
     b.classList.toggle("grayscale", !!appSettings.grayscaleServices);
     // dim 0..100 controls grayscale icon opacity (100 = heavily faded).
     const op = Math.max(0.2, 1 - (appSettings.grayscaleDim ?? 50) / 130);
@@ -613,7 +617,7 @@
   }
 
   function handleWindowResize() {
-    if (appSettings.sidebarWidthMode !== "percent" || sidebarResizeFrame !== null) return;
+    if (appSettings.sidebarCollapsed || appSettings.sidebarWidthMode !== "percent" || sidebarResizeFrame !== null) return;
     sidebarResizeFrame = requestAnimationFrame(() => {
       sidebarResizeFrame = null;
       syncSidebarWidth();
@@ -2675,7 +2679,7 @@
     }
     if (key === "theme" || key === "accentColor") applyTheme();
     applyLayout();
-    if (key === "sidebarWidth" || key === "sidebarWidthMode" || key === "sidebarWidthPercent") {
+    if (key === "sidebarWidth" || key === "sidebarWidthMode" || key === "sidebarWidthPercent" || key === "sidebarCollapsed") {
       syncSidebarWidth();
     }
     try {
@@ -2703,6 +2707,10 @@
     } catch (err) {
       error = String(err);
     }
+  }
+
+  function toggleSidebarCollapsed() {
+    void saveAppSetting("sidebarCollapsed", !appSettings.sidebarCollapsed);
   }
 
   async function moveManagedService(serviceId: string, delta: number) {
@@ -2913,6 +2921,7 @@
       case "openSettings": openAppSettings(); break;
       case "addService": openAdd(); break;
       case "addWorkspace": openAddWorkspace(); break;
+      case "toggleSidebar": toggleSidebarCollapsed(); break;
       case "nextService": cycleService(1); break;
       case "previousService": cycleService(-1); break;
       case "nextWorkspace": cycleWorkspace(1); break;
@@ -3175,10 +3184,30 @@
   </main>
 {:else}
   <div class="shell">
-    <aside class="sidebar">
+    <aside class="sidebar" class:collapsed={appSettings.sidebarCollapsed}>
       <div class="account">
-        <strong title={me.local ? "Local" : me.firstname || me.email}>{me.local ? "Local" : me.firstname || me.email}</strong>
-        <span class="workspace-scope" title={activeWorkspaceName} aria-label={`Workspace: ${activeWorkspaceName}`}>{activeWorkspaceName}</span>
+        <div class="account-copy">
+          <strong title={me.local ? "Local" : me.firstname || me.email}>{me.local ? "Local" : me.firstname || me.email}</strong>
+          <span class="workspace-scope" title={activeWorkspaceName} aria-label={`Workspace: ${activeWorkspaceName}`}>{activeWorkspaceName}</span>
+        </div>
+        <button
+          class="sidebar-collapse-button"
+          type="button"
+          aria-label={appSettings.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-pressed={appSettings.sidebarCollapsed}
+          title={`${appSettings.sidebarCollapsed ? "Expand" : "Collapse"} sidebar (${appSettings.keybindings.toggleSidebar || "unassigned"})`}
+          onclick={toggleSidebarCollapsed}
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <rect x="2.5" y="3.5" width="15" height="13" rx="2"></rect>
+            <path d="M7 4v12"></path>
+            {#if appSettings.sidebarCollapsed}
+              <path d="m10.5 7 3 3-3 3"></path>
+            {:else}
+              <path d="m13.5 7-3 3 3 3"></path>
+            {/if}
+          </svg>
+        </button>
       </div>
 
       <div class="svcarea" role="region" aria-label="Service list drop area" ondragover={onServiceAreaDragOver} ondrop={onServiceAreaDrop}>
@@ -4149,8 +4178,9 @@
                   <p>Adjust service density and placement without changing individual service configuration.</p>
                 </div>
                 <div class="settings-list">
+                  {@render appToggle("Collapse sidebar", "Use the compact icon-only rail. The expanded width is preserved and restored when reopened. Default shortcut: Ctrl+Shift+B.", "sidebarCollapsed", appSettings.sidebarCollapsed)}
                   <div class="setting-card setting-card-stack">
-                    <div class="setting-copy"><span class="setting-label">Sidebar width</span><span class="setting-description">Use a fixed pixel width or keep the sidebar proportional to the Tauridium window.</span></div>
+                    <div class="setting-copy"><span class="setting-label">Expanded sidebar width</span><span class="setting-description">Use a fixed pixel width or keep the expanded sidebar proportional to the Tauridium window. Collapsed mode uses a fixed 64 px rail for consistent icon alignment.</span></div>
                     <select class="select setting-control" aria-label="Sidebar width mode" value={appSettings.sidebarWidthMode} onchange={(event) => saveAppSetting("sidebarWidthMode", event.currentTarget.value)}>
                       <option value="pixels">Fixed pixels</option>
                       <option value="percent">Relative to window</option>
@@ -4213,6 +4243,7 @@
                     ["openSettings", "Open Settings", "Open Tauridium application settings."],
                     ["addService", "Add service", "Open the add-service screen."],
                     ["addWorkspace", "Add workspace", "Create a new workspace."],
+                    ["toggleSidebar", "Toggle sidebar", "Collapse to the icon-only rail or restore the expanded sidebar."],
                     ["nextService", "Next service", "Move to the next enabled service."],
                     ["previousService", "Previous service", "Move to the previous enabled service."],
                     ["nextWorkspace", "Next workspace", "Move to the next workspace."],
@@ -4574,16 +4605,18 @@
       oncontextmenu={(e) => openServiceContextMenu(e, s)}
       onclick={(e) => onServiceRowClick(e, s)}
       onkeydown={(e) => openServiceContextMenuFromKeyboard(e, s)}
+      title={`${serviceLabel(s)}${hibernated.has(s.id) ? " · Hibernated" : ""}${(unreadMap[s.id] ?? 0) > 0 ? ` · ${unreadMap[s.id]} unread` : ""}`}
+      aria-label={`${serviceLabel(s)}${hibernated.has(s.id) ? ", hibernated" : ""}${(unreadMap[s.id] ?? 0) > 0 ? `, ${unreadMap[s.id]} unread` : ""}`}
     >
       {#if serviceIconFailed(s)}
         <span class="dot">{serviceLabel(s).slice(0, 1).toUpperCase()}</span>
       {:else}
         <img class="svc-icon" class:service-icon-inverted={serviceIconInverted(s.id)} src={displayedServiceIcon(s)} alt="" onerror={() => markIconFailed(s)} />
       {/if}
-      {#if appSettings.showServiceName}
+      {#if appSettings.showServiceName && !appSettings.sidebarCollapsed}
         <span class="srow-name">{serviceLabel(s)}</span>
       {/if}
-      {#if hibernated.has(s.id)}<span class="zzz" title="Hibernated">💤</span>{/if}
+      {#if hibernated.has(s.id) && !appSettings.sidebarCollapsed}<span class="zzz" title="Hibernated">💤</span>{/if}
       {#if s.isBadgeEnabled !== false && (unreadMap[s.id] ?? 0) > 0 && (s.isMuted !== true || appSettings.showMessageBadgeWhenMuted)}
         <span class="ubadge" class:muted={s.isMuted === true}>
           {unreadMap[s.id] > 99 ? "99+" : unreadMap[s.id]}
@@ -4688,9 +4721,24 @@
   }
   :global(body[data-svcloc="center"]) .svclist { margin-block: auto; }
   :global(body[data-svcloc="bottom"]) .svclist { margin-top: auto; }
-  .account { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
+  .account { display: flex; align-items: center; min-width: 0; min-height: 32px; font-size: 13px; }
+  .account-copy { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
   .account strong { flex: 0 1 auto; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .workspace-scope { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted2); }
+  .sidebar-collapse-button {
+    width: 30px; height: 30px; margin-left: 6px; flex: none; display: grid; place-items: center;
+    padding: 0; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer;
+  }
+  .sidebar-collapse-button:hover { border-color: var(--border); background: var(--hover); color: var(--text2); }
+  .sidebar-collapse-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .sidebar-collapse-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .sidebar.collapsed { padding-inline: 8px; }
+  .sidebar.collapsed .account { justify-content: center; }
+  .sidebar.collapsed .account-copy, .sidebar.collapsed .count { display: none; }
+  .sidebar.collapsed .sidebar-collapse-button { margin-left: 0; }
+  .sidebar.collapsed .srow { position: relative; justify-content: center; gap: 0; min-height: 42px; padding: 7px; }
+  .sidebar.collapsed .srow-wrap.drag-before::before, .sidebar.collapsed .srow-wrap.drag-after::after { left: 4px; right: 4px; }
+  .sidebar.collapsed .ubadge { position: absolute; top: 2px; right: 2px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 8px; font-size: 9px; line-height: 14px; }
   .link { background: none; border: none; color: var(--link); cursor: pointer; font-size: 12px; text-decoration: underline; }
   .svclist { display: flex; flex: none; flex-direction: column; gap: 2px; padding-right: 0; }
 

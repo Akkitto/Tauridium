@@ -197,6 +197,8 @@ fn migrate_legacy_application_identity(app: &AppHandle) -> Result<bool, String> 
 
 // Logical sidebar width; must match the shell CSS.
 const SIDEBAR_W: f64 = 240.0;
+const COLLAPSED_SIDEBAR_W: f64 = 64.0;
+const MIN_RUNTIME_SIDEBAR_W: f64 = 56.0;
 const MAX_SIDEBAR_W: f64 = 1200.0;
 // Modern Safari UA WITH the `Version/` token: WhatsApp requires Safari >= 15, while the webview
 // Native WKWebView does not always expose this token (which can trigger an unsupported-browser warning). Keep
@@ -412,6 +414,13 @@ fn build_native_application_menu(
         true,
         shortcut("reloadApp"),
     )?;
+    let toggle_sidebar = MenuItem::with_id(
+        app,
+        "toggle-sidebar",
+        "Toggle Sidebar",
+        true,
+        shortcut("toggleSidebar"),
+    )?;
     let devtools = MenuItem::with_id(
         app,
         "toggle-devtools",
@@ -427,6 +436,7 @@ fn build_native_application_menu(
             &reload_svc,
             &reload_app_item,
             &PredefinedMenuItem::separator(app)?,
+            &toggle_sidebar,
             &devtools,
         ],
     )?;
@@ -1352,12 +1362,13 @@ fn service_toast_overlay_script(message: &str, duration_ms: u64) -> Result<Strin
     ))
 }
 
-const SHORTCUT_ACTIONS: [&str; 12] = [
+const SHORTCUT_ACTIONS: [&str; 13] = [
     "quickWorkspaceSwitch",
     "quickServiceSwitch",
     "openSettings",
     "addService",
     "addWorkspace",
+    "toggleSidebar",
     "nextService",
     "previousService",
     "nextWorkspace",
@@ -2498,7 +2509,7 @@ fn close_service(app: AppHandle, state: State<'_, AppState>, service_id: String)
 // Change the sidebar width and reposition the active service webview.
 #[tauri::command]
 fn set_sidebar_width(app: AppHandle, state: State<'_, AppState>, width: f64) {
-    *state.sidebar_w.lock().unwrap() = width.clamp(160.0, MAX_SIDEBAR_W);
+    *state.sidebar_w.lock().unwrap() = width.clamp(MIN_RUNTIME_SIDEBAR_W, MAX_SIDEBAR_W);
     reposition_active(&app);
 }
 
@@ -3202,6 +3213,7 @@ fn default_app_settings_value() -> Value {
     settings.insert("sidebarWidth".into(), 240.into());
     settings.insert("sidebarWidthMode".into(), "pixels".into());
     settings.insert("sidebarWidthPercent".into(), 20.into());
+    settings.insert("sidebarCollapsed".into(), false.into());
     settings.insert("customSidebarWidths".into(), Value::Array(Vec::new()));
     settings.insert("iconSize".into(), 24.into());
     settings.insert("grayscaleServices".into(), false.into());
@@ -3257,6 +3269,7 @@ fn default_app_settings_value() -> Value {
     keybindings.insert("openSettings".into(), "Ctrl+,".into());
     keybindings.insert("addService".into(), "Ctrl+N".into());
     keybindings.insert("addWorkspace".into(), "Ctrl+Shift+N".into());
+    keybindings.insert("toggleSidebar".into(), "Ctrl+Shift+B".into());
     keybindings.insert("nextService".into(), "Ctrl+Tab".into());
     keybindings.insert("previousService".into(), "Ctrl+Shift+Tab".into());
     keybindings.insert("nextWorkspace".into(), "Ctrl+Alt+ArrowDown".into());
@@ -3425,6 +3438,7 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         "captureServiceShortcuts",
         "customUrlTemplatesEnabled",
         "restoreLastWorkspaceOnStartup",
+        "sidebarCollapsed",
     ] {
         if !object.get(key).is_some_and(Value::is_boolean) {
             return Err(format!("App setting {key} must be boolean"));
@@ -4680,14 +4694,20 @@ fn main() {
                 read_app_settings_value(app.handle());
             {
                 let st = app.state::<AppState>();
-                let w = st
-                    .settings
-                    .lock()
-                    .unwrap()
-                    .get("sidebarWidth")
-                    .and_then(Value::as_f64)
-                    .unwrap_or(SIDEBAR_W)
-                    .clamp(160.0, MAX_SIDEBAR_W); // Prevent corrupted settings from hiding the service.
+                let settings = st.settings.lock().unwrap();
+                let collapsed = settings
+                    .get("sidebarCollapsed")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                let w = if collapsed {
+                    COLLAPSED_SIDEBAR_W
+                } else {
+                    settings
+                        .get("sidebarWidth")
+                        .and_then(Value::as_f64)
+                        .unwrap_or(SIDEBAR_W)
+                        .clamp(160.0, MAX_SIDEBAR_W)
+                };
                 *st.sidebar_w.lock().unwrap() = w;
             }
 
@@ -4786,6 +4806,9 @@ fn main() {
                             hide_service_webviews(app, &state);
                             show_main(app);
                             let _ = app.emit("sign-out", ());
+                        }
+                        "toggle-sidebar" => {
+                            let _ = app.emit("shortcut-action", "toggleSidebar".to_string());
                         }
                         "toggle-devtools" => toggle_devtools(app),
                         "reload-service" => {
@@ -5202,6 +5225,11 @@ mod tests {
             json!("Ctrl+K Ctrl+W")
         );
         assert_eq!(merged["keybindings"]["addWorkspace"], json!("Ctrl+Shift+N"));
+        assert_eq!(
+            merged["keybindings"]["toggleSidebar"],
+            json!("Ctrl+Shift+B")
+        );
+        assert_eq!(merged["sidebarCollapsed"], json!(false));
         assert!(validate_app_settings_value(&merged).is_ok());
     }
 

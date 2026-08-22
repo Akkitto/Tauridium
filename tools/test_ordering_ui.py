@@ -93,7 +93,7 @@ class OrderingAndSidebarTests(unittest.TestCase):
     self.assertIn('return recipeId || "Unnamed service"', self.ui)
 
   def test_sidebar_reclaims_real_estate_and_scrolls_only_when_needed(self) -> None:
-    sidebar = self.app.split('<aside class="sidebar">', 1)[1].split("</aside>", 1)[0]
+    sidebar = self.app.split('<aside class="sidebar"', 1)[1].split("</aside>", 1)[0]
     self.assertNotIn("+ Add a service", sidebar)
     self.assertNotIn("openAppSettings", sidebar)
     self.assertIn('class="svcarea"', sidebar)
@@ -107,7 +107,7 @@ class OrderingAndSidebarTests(unittest.TestCase):
     self.assertIn("scrollbar-gutter: stable", css)
 
   def test_sidebar_has_no_workspace_strip_and_settings_tabs_wrap_without_horizontal_scroll(self) -> None:
-    sidebar = self.app.split('<aside class="sidebar">', 1)[1].split("</aside>", 1)[0]
+    sidebar = self.app.split('<aside class="sidebar"', 1)[1].split("</aside>", 1)[0]
     self.assertNotIn('class="wspills"', sidebar)
     self.assertNotIn('class="pill"', sidebar)
     settings_css = self.app.split(".settings-tabs {", 1)[1].split(".setting-tab {", 1)[0]

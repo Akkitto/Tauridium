@@ -109,7 +109,9 @@ quality: fmt-check lint check test
 
 ci: quality build
 
-release: release-clean ci release-clean package
+release: release-clean ci
+  just release-clean
+  just package
 
 [unix]
 package-native target:

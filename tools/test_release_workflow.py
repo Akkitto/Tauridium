@@ -36,7 +36,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")
     self.assertIn("quality: fmt-check lint check test", justfile)
     self.assertIn("ci: quality build", justfile)
-    self.assertIn("release: release-clean ci release-clean package", justfile)
+    self.assertIn("release: release-clean ci\n  just release-clean\n  just package", justfile)
+    self.assertNotIn("release: release-clean ci release-clean package", justfile)
     self.assertIn(
       "fmt-check:\n  cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
       justfile,

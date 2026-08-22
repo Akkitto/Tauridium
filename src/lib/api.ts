@@ -313,6 +313,7 @@ export interface AppSettings {
   sidebarWidth: number;
   sidebarWidthMode: "pixels" | "percent";
   sidebarWidthPercent: number;
+  sidebarCollapsed: boolean;
   customSidebarWidths: number[];
   iconSize: number;
   grayscaleServices: boolean;

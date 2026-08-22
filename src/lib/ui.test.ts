@@ -62,6 +62,7 @@ describe("0.4.0 appearance and navigation helpers", () => {
     expect(DEFAULT_KEYBINDINGS.quickWorkspaceSwitch).toBe("Ctrl+D");
     expect(DEFAULT_KEYBINDINGS.quickServiceSwitch).toBe("Ctrl+S");
     expect(DEFAULT_KEYBINDINGS.addWorkspace).toBe("Ctrl+Shift+N");
+    expect(DEFAULT_KEYBINDINGS.toggleSidebar).toBe("Ctrl+Shift+B");
     expect(bindingStrokes("Ctrl+K   Ctrl+S")).toEqual(["Ctrl+K", "Ctrl+S"]);
     const conflicts = shortcutConflicts({ a: "Ctrl+K Ctrl+S", b: "Ctrl+K Ctrl+S", c: "Ctrl+D" });
     expect(conflicts.get("Ctrl+K Ctrl+S")).toEqual(["a", "b"]);
@@ -83,6 +84,7 @@ describe("0.4.0 appearance and navigation helpers", () => {
       keyStrokeFromEvent(event("Comma", ";")), // layout-independent Ctrl+Comma
       keyStrokeFromEvent(event("KeyN", "n")),
       keyStrokeFromEvent(event("KeyN", "N", true, false, true)),
+      keyStrokeFromEvent(event("KeyB", "B", true, false, true)),
       keyStrokeFromEvent(event("Tab", "Tab")),
       keyStrokeFromEvent(event("Tab", "Tab", true, false, true)),
       keyStrokeFromEvent(event("ArrowDown", "ArrowDown", true, true)),

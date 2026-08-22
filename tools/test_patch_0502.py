@@ -13,7 +13,7 @@ MAIN = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
 
 class Patch0502Tests(unittest.TestCase):
   def test_sidebar_reclaims_sign_out_space_for_workspace_scope(self) -> None:
-    sidebar = APP.split('<aside class="sidebar">', 1)[1].split('<div class="svcarea"', 1)[0]
+    sidebar = APP.split('<aside class="sidebar"', 1)[1].split('<div class="svcarea"', 1)[0]
 
     self.assertNotIn("handleLogout", sidebar)
     self.assertNotIn(">sign out</button>", sidebar)
