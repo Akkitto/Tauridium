@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.6] - 2026-08-23
+
+### Fixed
+
+- Highlighted the currently active service in the quick service search with the same accent treatment used by the active workspace and selected service row.
+- Made both quick switchers close reliably with Escape or by pressing their configured shortcut again, including custom two-stroke bindings and duplicate native/webview shortcut delivery.
+- Clarified in Appearance that Windows taskbar-button labels always mirror the native window title, so an independent taskbar title is unsupported without replacing native window behavior.
+
+### Release quality
+
+- Added focused 0.6.6 regression coverage for active-service highlighting, quick-switcher shortcut toggling, Escape handling, custom chord support, duplicate shortcut de-duplication, and the Windows native-title constraint.
+
 ## [0.6.5] - 2026-08-22
 
 ### Added
