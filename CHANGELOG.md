@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.4] - 2026-08-22
+
+### Fixed
+
+- Highlighted the currently active workspace in the quick workspace switcher with the same accent background and foreground treatment used by selected service items, including the **All services** state. Keyboard/hover navigation remains a separate neutral cursor state.
+
+### Release quality
+
+- Added focused 0.6.4 regression coverage for current-workspace semantics, the All services fallback, and coherent accent styling.
+
 ## [0.6.3] - 2026-08-22
 
 ### Fixed
