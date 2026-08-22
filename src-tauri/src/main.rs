@@ -270,6 +270,7 @@ struct AppState {
     sidebar_w: Mutex<f64>,           // sidebar width (initialized during setup, default 240)
     desired_active: Mutex<Option<String>>, // last requested service (prevents focus stealing during switches)
     inflight: Mutex<HashSet<String>>,      // webviews being created (prevents duplicate add_child)
+    preloading: Mutex<HashSet<String>>, // off-screen webviews that must stay visible until initial load finishes
     download_workspaces: Mutex<HashMap<String, Option<String>>>, // active workspace context per service download
 }
 
@@ -297,6 +298,33 @@ fn native_service_menu_label(service: &NativeServiceMenuEntry) -> String {
     label.replace('&', "&&")
 }
 
+fn native_menu_accelerator(binding: &str) -> Option<String> {
+    let binding = binding.trim();
+    if binding.is_empty() || binding.contains(char::is_whitespace) {
+        return None;
+    }
+    let mut parts: Vec<&str> = binding.split('+').collect();
+    let key = parts.pop()?;
+    if key.is_empty() {
+        return None;
+    }
+    let key = match key {
+        "," => "Comma",
+        "." => "Period",
+        "-" => "Minus",
+        "=" => "Equal",
+        ";" => "Semicolon",
+        "'" => "Quote",
+        "[" => "BracketLeft",
+        "]" => "BracketRight",
+        "\\" => "Backslash",
+        "`" => "Backquote",
+        other => other,
+    };
+    parts.push(key);
+    Some(parts.join("+"))
+}
+
 fn build_native_application_menu(
     app: &AppHandle,
     services: &[NativeServiceMenuEntry],
@@ -310,7 +338,7 @@ fn build_native_application_menu(
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|binding| !binding.is_empty() && !binding.contains(char::is_whitespace))
-            .map(str::to_string)
+            .and_then(native_menu_accelerator)
     };
     let settings_item = MenuItem::with_id(
         app,
@@ -1429,7 +1457,10 @@ fn service_shortcut_bridge_js(settings: &Value, service_id: &str, nonce: &str) -
     if (e.altKey) parts.push('Alt');
     if (e.shiftKey) parts.push('Shift');
     if (e.metaKey) parts.push('Meta');
-    var key = e.key === ' ' ? 'Space' : (e.key && e.key.length === 1 ? e.key.toUpperCase() : e.key);
+    var code = String(e.code || '');
+    var codeKeys = {{Comma:',',Period:'.',Minus:'-',Equal:'=',Semicolon:';',Quote:"'",BracketLeft:'[',BracketRight:']',Backslash:'\\',Backquote:'`',Space:'Space',Tab:'Tab',ArrowDown:'ArrowDown',ArrowUp:'ArrowUp',ArrowLeft:'ArrowLeft',ArrowRight:'ArrowRight'}};
+    var key = /^Key[A-Z]$/.test(code) ? code.slice(3) : (/^Digit[0-9]$/.test(code) ? code.slice(5) : codeKeys[code]);
+    if (!key) key = e.key === ' ' ? 'Space' : (e.key && e.key.length === 1 ? e.key.toUpperCase() : e.key);
     if (!key) return null;
     parts.push(key);
     return parts.join('+');
@@ -1953,6 +1984,9 @@ async fn create_service_webview(
     let new_window_app = win.app_handle().clone();
     let new_window_label = label.clone();
     let mut builder = WebviewBuilder::new(label, WebviewUrl::External(url))
+        // Creation never takes focus. The active service is focused only after the latest
+        // requested switch wins the desired-active race.
+        .focused(false)
         .on_navigation(move |url| {
             if url.scheme() != "tauridium-shortcut" {
                 return true;
@@ -2001,15 +2035,26 @@ async fn create_service_webview(
         builder = builder.initialization_script(script);
     }
     // Emit loading state to the shell (spinner transitions from loading to ready).
+    // Preloaded/inactive services remain visible off-screen instead of being hidden. Browser
+    // engines may throttle hidden documents; Tauridium hibernation is a separate, explicit
+    // close operation controlled by the global timer and the per-service opt-in.
     let sid_evt = service_id.to_string();
     builder = builder.on_page_load(move |wv, payload| {
         let status = match payload.event() {
             PageLoadEvent::Started => "loading",
-            PageLoadEvent::Finished => "ready",
+            PageLoadEvent::Finished => {
+                wv.app_handle()
+                    .state::<AppState>()
+                    .preloading
+                    .lock()
+                    .unwrap()
+                    .remove(&sid_evt);
+                "ready"
+            }
         };
         let _ = wv.app_handle().emit(
             "svc-status",
-            serde_json::json!({ "id": sid_evt, "status": status }),
+            serde_json::json!({ "id": sid_evt.as_str(), "status": status }),
         );
     });
     // Preserve the filename suggested by the webview engine/server (for example an HTTP
@@ -2115,6 +2160,38 @@ struct ServiceViewRequest {
     dark: Option<DarkSettings>,
 }
 
+fn activate_service_webview(
+    app: &AppHandle,
+    state: &AppState,
+    service_id: &str,
+    pos: LogicalPosition<f64>,
+    size: LogicalSize<f64>,
+) -> bool {
+    let offscreen = LogicalPosition::new(-30000.0, 0.0);
+    let created: Vec<String> = state.created.lock().unwrap().iter().cloned().collect();
+    let mut activated = false;
+    for sid in created {
+        if let Some(wv) = app.get_webview(&format!("svc-{sid}")) {
+            if sid == service_id {
+                let _ = wv.set_position(pos);
+                let _ = wv.set_size(size);
+                let _ = wv.show();
+                let _ = wv.set_focus();
+                activated = true;
+            } else {
+                let _ = wv.set_position(offscreen);
+                let _ = wv.set_size(size);
+                let _ = wv.show();
+            }
+        }
+    }
+    if activated {
+        state.preloading.lock().unwrap().remove(service_id);
+        *state.active.lock().unwrap() = Some(service_id.to_string());
+    }
+    activated
+}
+
 #[tauri::command]
 async fn show_service(
     app: AppHandle,
@@ -2194,18 +2271,10 @@ async fn show_service(
         return Ok(());
     }
 
-    // Display the requested service and hide the others.
-    let created: Vec<String> = state.created.lock().unwrap().iter().cloned().collect();
-    for sid in created {
-        if let Some(wv) = app.get_webview(&format!("svc-{sid}")) {
-            if sid == service_id {
-                let _ = wv.show();
-            } else {
-                let _ = wv.hide();
-            }
-        }
-    }
-    *state.active.lock().unwrap() = Some(service_id);
+    // Display the requested service and park every other loaded service off-screen while
+    // keeping it alive. If a background preload still owns creation, it will activate the
+    // webview on completion only when this service remains the latest requested target.
+    let _ = activate_service_webview(&app, &state, &service_id, pos, size);
     Ok(())
 }
 
@@ -2263,7 +2332,9 @@ async fn preload_service(
             return Err(e.to_string());
         }
     };
-    // Off-screen: the webview loads the page without covering the active service.
+    // Off-screen and unfocused: keep the webview visible so its initial page load and
+    // background runtime can progress until it is selected or explicitly hibernated.
+    state.preloading.lock().unwrap().insert(service_id.clone());
     let offscreen = LogicalPosition::new(-30000.0, 0.0);
     let res = create_service_webview(
         &state,
@@ -2282,9 +2353,17 @@ async fn preload_service(
     )
     .await;
     state.inflight.lock().unwrap().remove(&service_id);
-    res?;
-    if let Some(wv) = app.get_webview(&format!("svc-{service_id}")) {
-        let _ = wv.hide();
+    if let Err(error) = res {
+        state.preloading.lock().unwrap().remove(&service_id);
+        return Err(error);
+    }
+    // A user can select this service while its background creation is in flight. In that
+    // race, show_service records desired_active and returns; complete the switch here without
+    // recreating or reloading the preloaded webview.
+    if state.desired_active.lock().unwrap().as_deref() == Some(service_id.as_str()) {
+        let sw = *state.sidebar_w.lock().unwrap();
+        let (pos, size) = service_rect(&win, sw)?;
+        let _ = activate_service_webview(&app, &state, &service_id, pos, size);
     }
     Ok(())
 }
@@ -2373,10 +2452,19 @@ async fn fetch_workspace_icon_url(url: String) -> Result<String, String> {
 }
 
 fn hide_service_webviews(app: &AppHandle, state: &AppState) {
+    let active = state.active.lock().unwrap().clone();
     let created: Vec<String> = state.created.lock().unwrap().iter().cloned().collect();
+    let offscreen = LogicalPosition::new(-30000.0, 0.0);
     for sid in created {
         if let Some(wv) = app.get_webview(&format!("svc-{sid}")) {
-            let _ = wv.hide();
+            if active.as_deref() == Some(sid.as_str()) {
+                // Hide only the focused/active child so the shell regains input for settings,
+                // add-service, quick-switcher, and similar full-screen panels.
+                let _ = wv.hide();
+            } else {
+                let _ = wv.set_position(offscreen);
+                let _ = wv.show();
+            }
         }
     }
     *state.active.lock().unwrap() = None;
@@ -2395,6 +2483,7 @@ fn close_service(app: AppHandle, state: State<'_, AppState>, service_id: String)
         let _ = wv.close();
     }
     state.created.lock().unwrap().remove(&service_id);
+    state.preloading.lock().unwrap().remove(&service_id);
     state
         .download_workspaces
         .lock()
@@ -2422,6 +2511,7 @@ fn close_services(app: AppHandle, state: State<'_, AppState>) {
         }
     }
     *state.active.lock().unwrap() = None;
+    state.preloading.lock().unwrap().clear();
     state.download_workspaces.lock().unwrap().clear();
     state.unread.lock().unwrap().clear();
     if let Some(win) = app.get_window("main") {
@@ -4844,6 +4934,26 @@ mod tests {
         assert!(!migrate_identity_directory(&current).unwrap());
 
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn patch_0504_native_shortcut_accelerators_canonicalize_default_punctuation() {
+        assert_eq!(
+            native_menu_accelerator("Ctrl+,"),
+            Some("Ctrl+Comma".to_string())
+        );
+        assert_eq!(
+            native_menu_accelerator("Ctrl+Shift+Tab"),
+            Some("Ctrl+Shift+Tab".to_string())
+        );
+        assert_eq!(native_menu_accelerator("Ctrl+K Ctrl+S"), None);
+    }
+
+    #[test]
+    fn patch_0504_hibernation_remains_disabled_by_default() {
+        let defaults = default_app_settings_value();
+        assert_eq!(defaults["hibernationTimer"], json!(0));
+        assert_eq!(defaults["preloadServices"], json!(true));
     }
 
     #[test]

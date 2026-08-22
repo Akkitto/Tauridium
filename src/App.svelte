@@ -292,7 +292,7 @@
   // Hibernation: suspended services have their webview closed while retaining the session.
   let hibernated = $state<Set<string>>(new Set());
   const hibTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  let preloadCancelled = false; // Cancels the preload chain on logout or session change.
+  let preloadGeneration = 0; // Invalidates older delayed preload chains without races.
 
   // Add service / local recipe management.
   type AddMode = "catalog" | "website" | "creator";
@@ -1017,9 +1017,13 @@
   // Gradually preload other active services in off-screen webviews,
   // making later switches nearly instantaneous. Skip services destined for
   // hibernation because they would be unloaded, and respect the setting.
+  function cancelPreloading() {
+    preloadGeneration += 1;
+  }
+
   function preloadRest(firstId: string | undefined) {
     if (!appSettings.preloadServices) return;
-    preloadCancelled = false;
+    const generation = ++preloadGeneration;
     const list = sorted.filter(
       (s) =>
         s.isEnabled !== false &&
@@ -1028,7 +1032,7 @@
     );
     let i = 0;
     const step = () => {
-      if (preloadCancelled) return; // Stop after logout or session change.
+      if (generation !== preloadGeneration) return; // Stop stale chains after logout/settings changes.
       const s = list[i++];
       if (!s) return;
       preloadService(s)
@@ -1162,6 +1166,26 @@
           .catch(() => {});
       }, secs * 1000),
     );
+  }
+
+  function reconcileHibernationTimers() {
+    for (const id of [...hibTimers.keys()]) clearHibTimer(id);
+    if (!(appSettings.hibernationTimer > 0)) {
+      // With hibernation disabled, there must be no delayed close left from an older setting.
+      hibernated = new Set();
+      if (appSettings.preloadServices) preloadRest(activeId ?? undefined);
+      return;
+    }
+    for (const service of services) {
+      if (
+        service.id !== activeId &&
+        service.isEnabled !== false &&
+        service.isHibernationEnabled === true &&
+        statusMap[service.id]
+      ) {
+        scheduleHibernation(service.id);
+      }
+    }
   }
 
   function selectService(s: Service) {
@@ -1457,6 +1481,12 @@
       }
       await setServiceFlags(s);
       await refreshNativeServicesMenu();
+      if (previous?.isHibernationEnabled !== s.isHibernationEnabled) {
+        clearHibTimer(s.id);
+        if (s.id !== activeId && s.isHibernationEnabled === true && statusMap[s.id]) {
+          scheduleHibernation(s.id);
+        }
+      }
       if (reload) {
         await closeService(s.id);
         const { [s.id]: _, ...rest } = statusMap;
@@ -2663,7 +2693,13 @@
         await closeServices();
         statusMap = {};
         if (restore && restore.isEnabled !== false) selectService(restore);
+        preloadRest(restore?.id);
       }
+      if (key === "preloadServices") {
+        if (value === true) preloadRest(activeId ?? undefined);
+        else cancelPreloading();
+      }
+      if (key === "hibernationTimer") reconcileHibernationTimers();
     } catch (err) {
       error = String(err);
     }
@@ -3066,7 +3102,7 @@
   async function handleLogout() {
     // Cleanup prevents hibernation timers, preloading, or reconnection from the
     // previous session from continuing and recreating webviews afterward.
-    preloadCancelled = true;
+    cancelPreloading();
     for (const id of [...hibTimers.keys()]) clearHibTimer(id);
     hibernated = new Set();
     stopReconnect();

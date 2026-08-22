@@ -1589,6 +1589,30 @@ def main() -> int:
     if test_marker not in patch_0429:
       fail(f"0.4.29 regression coverage is missing: {test_marker}")
 
+  patch_0504 = read("tools/test_patch_0504.py")
+  for marker in (
+    'preloading: Mutex<HashSet<String>>',
+    '.focused(false)',
+    'let offscreen = LogicalPosition::new(-30000.0, 0.0);',
+    'fn activate_service_webview(',
+    'let _ = wv.set_focus();',
+    'function reconcileHibernationTimers()',
+    'let preloadGeneration = 0;',
+    'if (/^Key[A-Z]$/.test(event.code)) return event.code.slice(3);',
+    '"," => "Comma"',
+  ):
+    if marker not in app + main_rs + read("src/lib/ui.ts"):
+      fail(f"0.5.4 shortcut/service lifecycle invariant is missing: {marker}")
+  for test_marker in (
+    "test_all_default_keybindings_share_layout_stable_matching",
+    "test_preload_keeps_webviews_alive_offscreen_until_first_use",
+    "test_hidden_panels_do_not_suspend_background_preloads",
+    "test_hibernation_is_off_by_default_and_only_explicit_timers_close_services",
+    "test_preload_toggle_applies_immediately_and_stale_chains_cannot_resume",
+  ):
+    if test_marker not in patch_0504:
+      fail(f"0.5.4 regression coverage is missing: {test_marker}")
+
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],
     cwd=ROOT,

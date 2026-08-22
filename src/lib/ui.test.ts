@@ -8,6 +8,7 @@ import {
   hexToHsl,
   hslToHex,
   iconSrc,
+  keyStrokeFromEvent,
   normalizeHexColor,
   orderWorkspacesForQuickSwitch,
   resolveStartupWorkspaceId,
@@ -64,6 +65,33 @@ describe("0.4.0 appearance and navigation helpers", () => {
     expect(bindingStrokes("Ctrl+K   Ctrl+S")).toEqual(["Ctrl+K", "Ctrl+S"]);
     const conflicts = shortcutConflicts({ a: "Ctrl+K Ctrl+S", b: "Ctrl+K Ctrl+S", c: "Ctrl+D" });
     expect(conflicts.get("Ctrl+K Ctrl+S")).toEqual(["a", "b"]);
+  });
+
+
+  it("matches every built-in default from stable physical key codes", () => {
+    const event = (code: string, key: string, ctrl = true, alt = false, shift = false) => ({
+      code,
+      key,
+      ctrlKey: ctrl,
+      altKey: alt,
+      shiftKey: shift,
+      metaKey: false,
+    }) as KeyboardEvent;
+    const strokes = [
+      keyStrokeFromEvent(event("KeyD", "d")),
+      keyStrokeFromEvent(event("KeyS", "s")),
+      keyStrokeFromEvent(event("Comma", ";")), // layout-independent Ctrl+Comma
+      keyStrokeFromEvent(event("KeyN", "n")),
+      keyStrokeFromEvent(event("KeyN", "N", true, false, true)),
+      keyStrokeFromEvent(event("Tab", "Tab")),
+      keyStrokeFromEvent(event("Tab", "Tab", true, false, true)),
+      keyStrokeFromEvent(event("ArrowDown", "ArrowDown", true, true)),
+      keyStrokeFromEvent(event("ArrowUp", "ArrowUp", true, true)),
+      keyStrokeFromEvent(event("KeyR", "r")),
+      keyStrokeFromEvent(event("KeyR", "R", true, false, true)),
+      keyStrokeFromEvent(event("KeyI", "i", true, true)),
+    ];
+    expect(strokes).toEqual(Object.values(DEFAULT_KEYBINDINGS));
   });
 
   it("pages large lists without mutating them", () => {

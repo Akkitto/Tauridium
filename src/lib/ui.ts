@@ -85,17 +85,49 @@ export const DEFAULT_KEYBINDINGS = {
 
 export type KeybindingAction = keyof typeof DEFAULT_KEYBINDINGS;
 
-export function keyStrokeFromEvent(event: KeyboardEvent): string | null {
+function canonicalShortcutKey(event: Pick<KeyboardEvent, "key" | "code">): string | null {
   const modifierKeys = new Set(["Control", "Shift", "Alt", "Meta"]);
   if (modifierKeys.has(event.key)) return null;
+
+  // Use physical codes for the keys used by Tauridium's defaults. This keeps native-menu,
+  // shell, and service-webview matching consistent across keyboard layouts and avoids
+  // browser-specific transformations of punctuation while Ctrl/Alt are held.
+  if (/^Key[A-Z]$/.test(event.code)) return event.code.slice(3);
+  if (/^Digit[0-9]$/.test(event.code)) return event.code.slice(5);
+  const codeKeys: Record<string, string> = {
+    Comma: ",",
+    Period: ".",
+    Minus: "-",
+    Equal: "=",
+    Semicolon: ";",
+    Quote: "'",
+    BracketLeft: "[",
+    BracketRight: "]",
+    Backslash: "\\",
+    Backquote: "`",
+    Space: "Space",
+    Tab: "Tab",
+    ArrowDown: "ArrowDown",
+    ArrowUp: "ArrowUp",
+    ArrowLeft: "ArrowLeft",
+    ArrowRight: "ArrowRight",
+  };
+  if (codeKeys[event.code]) return codeKeys[event.code];
+
+  let key = event.key;
+  if (key === " ") key = "Space";
+  else if (key.length === 1) key = key.toUpperCase();
+  return key || null;
+}
+
+export function keyStrokeFromEvent(event: KeyboardEvent): string | null {
+  const key = canonicalShortcutKey(event);
+  if (!key) return null;
   const parts: string[] = [];
   if (event.ctrlKey) parts.push("Ctrl");
   if (event.altKey) parts.push("Alt");
   if (event.shiftKey) parts.push("Shift");
   if (event.metaKey) parts.push("Meta");
-  let key = event.key;
-  if (key === " ") key = "Space";
-  else if (key.length === 1) key = key.toUpperCase();
   parts.push(key);
   return parts.join("+");
 }
