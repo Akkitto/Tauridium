@@ -317,6 +317,8 @@ export interface AppSettings {
   defaultSidebarCollapsed: boolean;
   restoreLastSidebarStateOnStartup: boolean;
   customSidebarWidths: number[];
+  collapsedServiceSpacing: number;
+  expandedServiceSpacing: number;
   iconSize: number;
   grayscaleServices: boolean;
   grayscaleDim: number;

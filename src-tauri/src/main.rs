@@ -3217,6 +3217,8 @@ fn default_app_settings_value() -> Value {
     settings.insert("defaultSidebarCollapsed".into(), false.into());
     settings.insert("restoreLastSidebarStateOnStartup".into(), true.into());
     settings.insert("customSidebarWidths".into(), Value::Array(Vec::new()));
+    settings.insert("collapsedServiceSpacing".into(), 2.into());
+    settings.insert("expandedServiceSpacing".into(), 2.into());
     settings.insert("iconSize".into(), 24.into());
     settings.insert("grayscaleServices".into(), false.into());
     settings.insert("grayscaleDim".into(), 50.into());
@@ -3608,6 +3610,8 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
     for (key, min, max) in [
         ("sidebarWidth", 160.0, 420.0),
         ("sidebarWidthPercent", 10.0, 40.0),
+        ("collapsedServiceSpacing", 2.0, 24.0),
+        ("expandedServiceSpacing", 2.0, 24.0),
         ("iconSize", 12.0, 64.0),
         ("grayscaleDim", 0.0, 100.0),
         ("hibernationTimer", 0.0, 86_400.0),
@@ -5252,6 +5256,24 @@ mod tests {
         );
         assert_eq!(merged["sidebarCollapsed"], json!(false));
         assert!(validate_app_settings_value(&merged).is_ok());
+    }
+
+    #[test]
+    fn patch_0602_sidebar_spacing_defaults_and_bounds_are_safe() {
+        let defaults = merge_app_settings_value(&json!({})).unwrap();
+        assert_eq!(defaults["collapsedServiceSpacing"], json!(2));
+        assert_eq!(defaults["expandedServiceSpacing"], json!(2));
+
+        let mut settings = defaults.clone();
+        settings["collapsedServiceSpacing"] = json!(24);
+        settings["expandedServiceSpacing"] = json!(24);
+        assert!(validate_app_settings_value(&settings).is_ok());
+
+        settings["collapsedServiceSpacing"] = json!(1);
+        assert!(validate_app_settings_value(&settings).is_err());
+        settings["collapsedServiceSpacing"] = json!(2);
+        settings["expandedServiceSpacing"] = json!(25);
+        assert!(validate_app_settings_value(&settings).is_err());
     }
 
     #[test]

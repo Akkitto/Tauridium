@@ -256,6 +256,8 @@
     defaultSidebarCollapsed: false,
     restoreLastSidebarStateOnStartup: true,
     customSidebarWidths: [],
+    collapsedServiceSpacing: 2,
+    expandedServiceSpacing: 2,
     iconSize: 24,
     grayscaleServices: false,
     grayscaleDim: 50,
@@ -615,6 +617,8 @@
     const b = document.body;
     b.style.setProperty("--sidebar-w", `${effectiveSidebarWidthPx()}px`);
     b.style.setProperty("--icon-size", `${appSettings.iconSize}px`);
+    b.style.setProperty("--collapsed-service-gap", `${appSettings.collapsedServiceSpacing}px`);
+    b.style.setProperty("--expanded-service-gap", `${appSettings.expandedServiceSpacing}px`);
     b.classList.toggle("sidebar-collapsed", !!appSettings.sidebarCollapsed);
     b.classList.toggle("grayscale", !!appSettings.grayscaleServices);
     // dim 0..100 controls grayscale icon opacity (100 = heavily faded).
@@ -771,6 +775,7 @@
         throw new Error("Tauridium could not verify the workspace download settings");
       }
       appSettings = persisted;
+      showToast("Saved", "success");
     } catch (err) {
       appSettings = { ...appSettings, workspaceDownloadSettings: previous };
       error = `Unable to save workspace download settings: ${err}`;
@@ -1272,6 +1277,7 @@
       }
       appSettings = { ...appSettings, serviceOrder: persisted };
       await refreshNativeServicesMenu();
+      showToast("Saved", "success");
     } catch (err) {
       appSettings = { ...appSettings, serviceOrder: previousIds };
       error = `Unable to save service order: ${err}`;
@@ -1893,6 +1899,7 @@
       if (persisted.length !== nextIds.length || persisted.some((id, i) => id !== nextIds[i])) {
         throw new Error("Tauridium could not verify the saved workspace order");
       }
+      showToast("Saved", "success");
     } catch (err) {
       appSettings = { ...appSettings, workspaceOrder: previousIds };
       error = `Unable to save workspace order: ${err}`;
@@ -1945,6 +1952,7 @@
       await updateWorkspace(managedWorkspace.id, name, managedWorkspace.services);
       await reloadWorkspaces();
       managedWorkspaceNameDraft = name;
+      showToast("Saved", "success");
     } catch (err) {
       error = `Unable to rename workspace: ${err}`;
       managedWorkspaceNameDraft = managedWorkspace.name;
@@ -1957,7 +1965,9 @@
     if (!managedWorkspace || managedWorkspaceBusy) return;
     managedWorkspaceBusy = true;
     try {
-      await toggleServiceInWorkspace(managedWorkspace, serviceId, member);
+      if (await toggleServiceInWorkspace(managedWorkspace, serviceId, member)) {
+        showToast("Saved", "success");
+      }
     } finally {
       managedWorkspaceBusy = false;
     }
@@ -1982,6 +1992,7 @@
       const nextFailed = new Set(failedWorkspaceIcons);
       nextFailed.delete(managedWorkspace.id);
       failedWorkspaceIcons = nextFailed;
+      showToast("Saved", "success");
     } catch (err) {
       appSettings = { ...appSettings, workspaceIcons: previous };
       error = `Unable to save workspace icon: ${err}`;
@@ -2702,6 +2713,7 @@
   }
 
   async function saveAppSetting(key: keyof AppSettings, value: unknown) {
+    const previous = (appSettings as Record<string, unknown>)[key];
     (appSettings as Record<string, unknown>)[key] = value;
     if (key === "sidebarServiceDragReorder" && value === false) {
       clearServiceDragState();
@@ -2712,12 +2724,26 @@
     if (key === "sidebarWidth" || key === "sidebarWidthMode" || key === "sidebarWidthPercent" || key === "sidebarCollapsed") {
       syncSidebarWidth();
     }
+
     try {
       appSettings = await setAppSettings({
         [key]: value,
       } as Partial<AppSettings>);
+    } catch (err) {
+      (appSettings as Record<string, unknown>)[key] = previous;
       applyTheme();
       applyLayout();
+      if (key === "sidebarWidth" || key === "sidebarWidthMode" || key === "sidebarWidthPercent" || key === "sidebarCollapsed") {
+        syncSidebarWidth();
+      }
+      error = String(err);
+      return;
+    }
+
+    applyTheme();
+    applyLayout();
+    showToast("Saved", "success");
+    try {
       if (key === "automaticBackupSchedule" && value !== "startup") {
         void maybeRunAutomaticBackup(false);
       }
@@ -2735,7 +2761,7 @@
       }
       if (key === "hibernationTimer") reconcileHibernationTimers();
     } catch (err) {
-      error = String(err);
+      error = `Setting was saved, but Tauridium could not fully apply it immediately: ${err}`;
     }
   }
 
@@ -2799,6 +2825,7 @@
       appSettings = await setAppSettings({ accentColor: color, customAccentColors });
       customColorOpen = false;
       applyTheme();
+      showToast("Saved", "success");
     } catch (err) {
       error = String(err);
     }
@@ -3088,7 +3115,8 @@
       const actual = persisted.serviceSandboxes[serviceId] ?? "";
       if (actual !== (sandboxId || "")) throw new Error("Tauridium could not verify the saved sandbox assignment");
       appSettings = persisted;
-      showServiceSettingsSaved(serviceId);
+      if (view === "svcSettings" && settingsSvc?.id === serviceId) showServiceSettingsSaved(serviceId);
+      else showToast("Saved", "success");
     } catch (err) {
       appSettings = { ...appSettings, serviceSandboxes: previous };
       error = `Unable to assign sandbox: ${err}`;
@@ -4268,6 +4296,20 @@
                       <p class="settings-note">Relative mode recalculates the service viewport while the window is resized. Updates are animation-frame throttled to avoid unnecessary layout work.</p>
                     {/if}
                   </div>
+                  <div class="setting-card setting-card-stack">
+                    <div class="setting-copy"><span class="setting-label">Collapsed icon spacing</span><span class="setting-description">Increase the vertical space between icon-only service targets. The current compact 2 px spacing is the minimum.</span></div>
+                    <div class="sidebar-width-control">
+                      <input class="range" type="range" min="2" max="24" step="1" value={appSettings.collapsedServiceSpacing} aria-label="Collapsed service icon spacing" oninput={(event) => { appSettings.collapsedServiceSpacing = Number(event.currentTarget.value); applyLayout(); }} onchange={() => saveAppSetting("collapsedServiceSpacing", appSettings.collapsedServiceSpacing)} />
+                      <output>{Math.round(appSettings.collapsedServiceSpacing)} px</output>
+                    </div>
+                  </div>
+                  <div class="setting-card setting-card-stack">
+                    <div class="setting-copy"><span class="setting-label">Expanded service spacing</span><span class="setting-description">Increase the vertical space between service rows in the expanded sidebar. The current compact 2 px spacing is the minimum.</span></div>
+                    <div class="sidebar-width-control">
+                      <input class="range" type="range" min="2" max="24" step="1" value={appSettings.expandedServiceSpacing} aria-label="Expanded service item spacing" oninput={(event) => { appSettings.expandedServiceSpacing = Number(event.currentTarget.value); applyLayout(); }} onchange={() => saveAppSetting("expandedServiceSpacing", appSettings.expandedServiceSpacing)} />
+                      <output>{Math.round(appSettings.expandedServiceSpacing)} px</output>
+                    </div>
+                  </div>
                   <div class="setting-card">
                     <div class="setting-copy"><span class="setting-label">Service icon size</span><span class="setting-description">Change icon size while preserving consistent sidebar spacing.</span></div>
                     <select class="select setting-control" aria-label="Service icon size" bind:value={appSettings.iconSize} onchange={() => saveAppSetting("iconSize", appSettings.iconSize)}>
@@ -4799,6 +4841,7 @@
   .sidebar.collapsed .sidebar-collapse-button { margin-left: 0; }
   .sidebar.collapsed .svcarea { width: 42px; scrollbar-gutter: auto; scrollbar-width: none; }
   .sidebar.collapsed .svcarea::-webkit-scrollbar { width: 0; height: 0; }
+  .sidebar.collapsed .svclist { gap: var(--collapsed-service-gap, 2px); }
   .sidebar.collapsed .svclist, .sidebar.collapsed .srow-wrap { width: 42px; }
   .sidebar.collapsed .srow {
     position: relative; width: 42px; height: 42px; min-height: 42px; flex: none;
@@ -4807,7 +4850,7 @@
   .sidebar.collapsed .srow-wrap.drag-before::before, .sidebar.collapsed .srow-wrap.drag-after::after { left: 4px; right: 4px; }
   .sidebar.collapsed .ubadge { position: absolute; top: 2px; right: 2px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 8px; font-size: 9px; line-height: 14px; }
   .link { background: none; border: none; color: var(--link); cursor: pointer; font-size: 12px; text-decoration: underline; }
-  .svclist { display: flex; flex: none; flex-direction: column; gap: 2px; padding-right: 0; }
+  .svclist { display: flex; flex: none; flex-direction: column; gap: var(--expanded-service-gap, 2px); padding-right: 0; }
 
   .srow-wrap { display: flex; align-items: center; position: relative; width: 100%; }
   .srow-wrap.draggable .srow { cursor: grab; }

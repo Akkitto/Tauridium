@@ -1647,6 +1647,30 @@ def main() -> int:
     if test_marker not in patch_0601:
       fail(f"0.6.1 regression coverage is missing: {test_marker}")
 
+  patch_0602 = read("tools/test_patch_0602.py")
+  for marker in (
+    "collapsedServiceSpacing: number;",
+    "expandedServiceSpacing: number;",
+    'settings.insert("collapsedServiceSpacing".into(), 2.into());',
+    'settings.insert("expandedServiceSpacing".into(), 2.into());',
+    "Collapsed icon spacing",
+    "Expanded service spacing",
+    'gap: var(--collapsed-service-gap, 2px)',
+    'gap: var(--expanded-service-gap, 2px)',
+    'showToast("Saved", "success")',
+  ):
+    if marker not in app + api_ts + main_rs:
+      fail(f"0.6.2 sidebar spacing/save-feedback invariant is missing: {marker}")
+  for test_marker in (
+    "test_sidebar_spacing_preferences_are_persisted_and_bounded",
+    "test_appearance_has_independent_spacing_sliders_with_current_spacing_as_minimum",
+    "test_spacing_is_live_previewed_without_changing_minimum_geometry",
+    "test_central_immediate_app_setting_path_shows_saved_toast",
+    "test_direct_immediate_settings_paths_also_show_saved_feedback",
+  ):
+    if test_marker not in patch_0602:
+      fail(f"0.6.2 regression coverage is missing: {test_marker}")
+
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],
     cwd=ROOT,
