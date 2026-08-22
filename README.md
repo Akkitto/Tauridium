@@ -12,7 +12,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-informational?style=plastic" alt="License: MIT" /></a>
 </p>
 
-Forget Franz, Ferdi, Ferdium and the rest. This is THE absolute best web app hub of all. I swear. Performant, beautiful and it just works™.
+Forget Franz, Ferdi, Ferdium and the rest. This is THE absolute best web app hub of all. I swear. Performant, beautiful and it just works(TM).
 
 Speedy Gonzales level desktop client for [Ferdium](https://ferdium.org) style web app service-workspace management & usage, built with **Tauri v2** (Rust + native WebView) instead of Electron. Use a Ferdium server for synchronised data, or run accountless with services and workspaces stored locally.
 
@@ -106,10 +106,10 @@ just build
 
 ## Technology
 
-* **Tauri v2 / Rust** — native application shell, WebViews and operating-system integration
-* **Svelte 5 / TypeScript** — user interface
-* **reqwest + rustls** — server communication outside the WebView
-* **wry** — vendored and patched for recipe IPC compatibility
+* **Tauri v2 / Rust** - native application shell, WebViews and operating-system integration
+* **Svelte 5 / TypeScript** - user interface
+* **reqwest + rustls** - server communication outside the WebView
+* **wry** - vendored and patched for recipe IPC compatibility
 
 ## Releases
 
@@ -119,7 +119,7 @@ Version tags trigger the release workflow after the repository quality gates pas
 
 ## Licence
 
-Copyright © 2026 [Daniel Braniewski](https://brani.dev)
+Copyright (c) 2026 [Daniel Braniewski](https://brani.dev)
 
 Tauridium is free software released under the [MIT License](LICENSE). You may use, copy,
 modify, merge, publish, distribute, sublicense, and/or sell copies subject to the complete

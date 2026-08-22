@@ -16,7 +16,7 @@
 ## \[0.54.4]
 
 - [`47d9470`](https://github.com/tauri-apps/wry/commit/47d9470e40160af8209da094364141917ec677a7) ([#1693](https://github.com/tauri-apps/wry/pull/1693) by [@Legend-Master](https://github.com/tauri-apps/wry/../../Legend-Master)) Updated dependency dom_query to 0.27.0, this fixed a bug where initialization scripts were escaped incorrectly on Android
-- [`1540788`](https://github.com/tauri-apps/wry/commit/1540788a0161235e1b89c70912725fd2f18cb813) ([#1692](https://github.com/tauri-apps/wry/pull/1692) by [@Sbenazar](https://github.com/tauri-apps/wry/../../Sbenazar)) fix(webkitgtk): normalize background color values to 0.0–1.0
+- [`1540788`](https://github.com/tauri-apps/wry/commit/1540788a0161235e1b89c70912725fd2f18cb813) ([#1692](https://github.com/tauri-apps/wry/pull/1692) by [@Sbenazar](https://github.com/tauri-apps/wry/../../Sbenazar)) fix(webkitgtk): normalize background color values to 0.0-1.0
 
 ## \[0.54.3]
 
@@ -438,12 +438,12 @@
 
 - [`e61e7f8`](https://github.com/tauri-apps/wry/commit/e61e7f8474c18752f5c60d3f1f5ba33b27e41d52)([#1090](https://github.com/tauri-apps/wry/pull/1090)) **Breaking change** Consistently use `WebView` in API names. The following APIs were renamed:
 
-  - `WebviewExtWindows` → `WebViewExtWindows`
-  - `WebviewExtUnix` → `WebViewExtUnix`
-  - `WebviewExtMacOS` → `WebViewExtMacOS`
-  - `WebviewExtIOS` → `WebViewExtIOS`
-  - `WebviewExtAndroid` → `WebViewExtAndroid`
-  - `WebviewUriLoader` → `WebViewUriLoader`
+  - `WebviewExtWindows` -> `WebViewExtWindows`
+  - `WebviewExtUnix` -> `WebViewExtUnix`
+  - `WebviewExtMacOS` -> `WebViewExtMacOS`
+  - `WebviewExtIOS` -> `WebViewExtIOS`
+  - `WebviewExtAndroid` -> `WebViewExtAndroid`
+  - `WebviewUriLoader` -> `WebViewUriLoader`
 - [`e61e7f8`](https://github.com/tauri-apps/wry/commit/e61e7f8474c18752f5c60d3f1f5ba33b27e41d52)([#1090](https://github.com/tauri-apps/wry/pull/1090)) Add `WebViewExtWindows::set_memory_usage_level` API to set the [memory usage target level](https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.core.corewebview2memoryusagetargetlevel) on Windows. Setting 'Low' memory usage target level when an application is going to inactive can significantly reduce the memory consumption. Please read the [guide for WebView2](https://github.com/MicrosoftEdge/WebView2Feedback/blob/main/specs/MemoryUsageTargetLevel.md) for more details.
 - [`e61e7f8`](https://github.com/tauri-apps/wry/commit/e61e7f8474c18752f5c60d3f1f5ba33b27e41d52)([#1090](https://github.com/tauri-apps/wry/pull/1090)) -   Add cfg_aliases for easier feature configuration. And add `os-webview` as default feature.
 - [`e61e7f8`](https://github.com/tauri-apps/wry/commit/e61e7f8474c18752f5c60d3f1f5ba33b27e41d52)([#1090](https://github.com/tauri-apps/wry/pull/1090)) Enhance initalization script implementation on Android supporting any kind of URL.

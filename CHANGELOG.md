@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.0] - 2026-08-22
+
+### Added
+
+- Added a persistent, accessible sidebar collapse mode that turns the service list into a carefully aligned 64 px icon-only rail while preserving the configured expanded width.
+- Added a dedicated sidebar collapse button, **View -> Toggle Sidebar**, and the default **Ctrl+Shift+B** keybinding, including service-webview shortcut capture and customizable keybinding support.
+
+### Changed
+
+- Kept account/workspace text and footer statistics out of collapsed mode, retained compact unread indicators and service tooltips, and kept icon sizing, drag-and-drop ordering, context menus, workspace filtering, themes, and sidebar list alignment working in both states.
+- Fixed the `release` just recipe so `release-clean` is not declared twice as a dependency; the post-CI cleanliness check is now an explicit step before packaging.
+- Normalized tracked Markdown typography with the supplied Unicode normalizer rules before release.
+
+### Release quality
+
+- Added focused 0.6.0 regression coverage for persistence, geometry, shortcut routing, accessibility, icon-only rendering, settings integration, and release-recipe semantics.
+
 ## [0.5.5] - 2026-08-22
 
 ### Changed
@@ -27,7 +44,7 @@
 
 ### Added
 
-- Added **Settings → Workspaces → Startup workspace** controls for choosing a default startup workspace and optionally restoring the workspace that was active most recently.
+- Added **Settings -> Workspaces -> Startup workspace** controls for choosing a default startup workspace and optionally restoring the workspace that was active most recently.
 
 ### Changed
 
@@ -67,7 +84,7 @@
 ### Added
 
 - Added an **About** menu immediately after **Services** in the native application menu, with direct links to the project homepage, project source tree, and author homepage.
-- Added a **Create service** action directly to **Settings → Services → Configured services**, reusing Tauridium's existing service creation flow.
+- Added a **Create service** action directly to **Settings -> Services -> Configured services**, reusing Tauridium's existing service creation flow.
 
 ### Fixed
 
@@ -77,7 +94,7 @@
 
 ### Changed
 
-- Restored Tauridium's original styled per-service right-click menu as the default. **Advanced → Service context menu** can disable it and switch to the native system popup retained from 0.4.28, which reliably stays above embedded service webviews.
+- Restored Tauridium's original styled per-service right-click menu as the default. **Advanced -> Service context menu** can disable it and switch to the native system popup retained from 0.4.28, which reliably stays above embedded service webviews.
 
 ### Release quality
 
@@ -131,9 +148,9 @@
 
 ### Added
 
-- Added arbitrary HTTP(S) workspace icon fetching in **Settings → Workspaces → Workspace settings**. A direct image URL is used as-is after validation; a normal website URL uses Tauridium's existing favicon discovery. The fetched icon is stored as self-contained image data so full backups and portable workspace/sandbox exports remain independent of the source website.
-- Added **Advanced → Downloads** settings for a configurable default download directory and an **Ask where to save each download** toggle.
-- Added per-service and per-workspace download overrides. Effective download behavior resolves in deterministic priority order: **service override → active workspace override → global Advanced defaults**.
+- Added arbitrary HTTP(S) workspace icon fetching in **Settings -> Workspaces -> Workspace settings**. A direct image URL is used as-is after validation; a normal website URL uses Tauridium's existing favicon discovery. The fetched icon is stored as self-contained image data so full backups and portable workspace/sandbox exports remain independent of the source website.
+- Added **Advanced -> Downloads** settings for a configurable default download directory and an **Ask where to save each download** toggle.
+- Added per-service and per-workspace download overrides. Effective download behavior resolves in deterministic priority order: **service override -> active workspace override -> global Advanced defaults**.
 
 ### Fixed
 
@@ -153,12 +170,12 @@
 
 ### Added
 
-- Added per-workspace icon assignment in **Settings → Workspaces → Workspace settings**. Workspace icons are selected from the same resolved service-icon sources Tauridium already uses, including preferred website icons and custom/local recipe icons.
+- Added per-workspace icon assignment in **Settings -> Workspaces -> Workspace settings**. Workspace icons are selected from the same resolved service-icon sources Tauridium already uses, including preferred website icons and custom/local recipe icons.
 - Workspace icon assignments are stored in app settings, included automatically in full backups, and embedded directly in portable workspace and sandbox exports so the chosen icon travels with exported workspace data.
 
 ### Fixed
 
-- Constrained the per-service **Search sandboxes…** field to the same compact control scale as **Search workspaces…** instead of stretching across the settings panel.
+- Constrained the per-service **Search sandboxes...** field to the same compact control scale as **Search workspaces...** instead of stretching across the settings panel.
 - Added an explicit accessible region role and label to the sidebar service drop area, eliminating the Svelte accessibility warning reported by the Windows-native 0.4.23 quality gate.
 - Workspace icon settings now validate supported HTTP(S)/image-data sources, reject malformed or oversized values, clean stale entries when workspaces disappear, and fall back safely when an assigned image cannot load.
 
@@ -178,7 +195,7 @@
 
 - The unused sidebar area below the last service is now a persistent **drop at end** target. Dragging below the current last row keeps the insertion indicator attached below that row instead of cancelling the drop.
 - Multi-service drag-and-drop moves the selected range as one stable block while preserving relative service order and all hidden/workspace-filtered canonical slots. Drag-over remains purely local; only the completed drop performs the verified order persistence write.
-- Assigning an active service to a sandbox from **Settings → Sandbox** no longer navigates away from Settings or opens the service webview. The changed webview is closed and recreated only when the user actually returns to that service.
+- Assigning an active service to a sandbox from **Settings -> Sandbox** no longer navigates away from Settings or opens the service webview. The changed webview is closed and recreated only when the user actually returns to that service.
 - Sandbox assignment writes are verified before the service webview is closed, with UI rollback on persistence failure and a distinct error if the saved assignment succeeds but the old webview cannot be closed.
 
 ### Release quality
@@ -190,7 +207,7 @@
 
 ### Fixed
 
-- Fixed **Settings → Services → Configured services** bypassing each service's icon preference and rendering the raw recipe/custom icon source instead of the resolved service icon. The list now uses the same icon-resolution path as the sidebar.
+- Fixed **Settings -> Services -> Configured services** bypassing each service's icon preference and rendering the raw recipe/custom icon source instead of the resolved service icon. The list now uses the same icon-resolution path as the sidebar.
 - Website-icon cache entries are used only while that service's **Use website icon** preference is enabled, so stale in-memory website icons cannot override a service after the preference is disabled.
 - Enabling **Use website icon** now hydrates the preferred website icon immediately when automatic preferred-icon fetching is enabled, without requiring an application restart.
 - Unified icon failure/fallback handling between the sidebar and Configured services so custom/local recipes and dynamically fetched icons degrade consistently to the service initial only when the selected icon actually fails.
@@ -216,7 +233,7 @@
 
 ### Added
 
-- Added **Advanced → Sidebar service ordering → Drag to reorder services**, enabled by default. Disabling it makes sidebar service rows non-draggable without changing the persisted canonical service order or the Settings → Services ordering controls.
+- Added **Advanced -> Sidebar service ordering -> Drag to reorder services**, enabled by default. Disabling it makes sidebar service rows non-draggable without changing the persisted canonical service order or the Settings -> Services ordering controls.
 
 ### Improved
 
@@ -324,7 +341,7 @@
 
 ### Changed
 
-- Renamed the native application-menu items **Settings…** to **Settings** and **Add Service…** to **Add Service**.
+- Renamed the native application-menu items **Settings...** to **Settings** and **Add Service...** to **Add Service**.
 - Redesigned Service Settings workspace membership as a coherent searchable, filterable, paginated manager with joined-state badges and explicit **Add**/**Remove** actions, plus a separate **Create & add** card.
 - Service-webview shortcut capture supports all configured single-stroke and two-stroke Tauridium bindings rather than only the developer-tools shortcut.
 
@@ -346,7 +363,7 @@
 ### Changed
 
 - Removed the workspace strip above the sidebar service list so the sidebar dedicates its vertical space to services; workspace switching remains available through the configurable quick switcher and Navigate shortcuts.
-- Added a dedicated **Settings → Workspaces** tab with Services-style search, 100-row pagination, creation, portable export, verified custom ordering, deletion, and per-workspace settings.
+- Added a dedicated **Settings -> Workspaces** tab with Services-style search, 100-row pagination, creation, portable export, verified custom ordering, deletion, and per-workspace settings.
 - Workspace settings now open in place of the long workspace list and provide searchable, paginated service membership management plus rename, export, and delete actions.
 - Added quick-switch workspace ordering modes for **Custom**, **Custom - reverse**, **Alphabetical - A to Z**, **Alphabetical - Z to A**, **Most recently used**, and **Least recently used**, while keeping **All services** pinned first.
 
@@ -404,7 +421,7 @@
 ### Changed
 
 - Newly created custom-recipe and Custom Website services now prefer a fetched website icon by default.
-- Improved alignment and responsive spacing of accent-color presets and the **Custom…** button.
+- Improved alignment and responsive spacing of accent-color presets and the **Custom...** button.
 - Moved **Only favorites in unread count** immediately after **Indirect message badge**.
 - Changing keybindings now recreates service webviews so service-focused shortcut bridges immediately use the latest configured binding.
 
@@ -658,8 +675,8 @@
 
 ### Changed
 
-- Rebuilt Settings → Services around the actual configured service list, with reliable names/fallback labels, live counts, service metadata, direct settings access, and explicit reorder controls.
-- Rebuilt the native Services menu from the same canonical ordered service list: it now shows the actual service names/count, has no phantom numbered entries, routes clicks by stable service id, and reserves `Ctrl/Cmd+1…9` for the first nine services only.
+- Rebuilt Settings -> Services around the actual configured service list, with reliable names/fallback labels, live counts, service metadata, direct settings access, and explicit reorder controls.
+- Rebuilt the native Services menu from the same canonical ordered service list: it now shows the actual service names/count, has no phantom numbered entries, routes clicks by stable service id, and reserves `Ctrl/Cmd+1...9` for the first nine services only.
 - Removed the sidebar Add Service and Settings buttons to dedicate more vertical space to services. Add Service and Settings now live in the Tauridium application menu; Settings reopens on the previously selected Settings section.
 - Refined workspace and Settings tab styling into compact, rounded, scrollable controls while keeping native application-menu behavior intact.
 

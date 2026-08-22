@@ -38,7 +38,7 @@ class Feature0500Tests(unittest.TestCase):
     self.assertIn("https://github.com/Akkitto/Tauridium", self.readme)
     self.assertIn("https://github.com/Akkitto/Tauridium/commits/master", self.readme)
     self.assertIn("https://brani.dev", self.readme)
-    self.assertIn("## Licence\n\nCopyright © 2026 [Daniel Braniewski](https://brani.dev)", self.readme)
+    self.assertIn("## Licence\n\nCopyright (c) 2026 [Daniel Braniewski](https://brani.dev)", self.readme)
     self.assertIn("[MIT License](LICENSE)", self.readme)
     self.assertNotIn("buymeacoffee", self.readme.lower())
     self.assertNotIn("This project is vibe-coded", self.readme)
