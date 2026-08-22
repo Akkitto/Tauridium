@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.2] - 2026-08-22
+
+### Added
+
+- Added independent **Settings -> Appearance -> Sidebar** sliders for collapsed icon spacing and expanded service-row spacing. Both preserve the existing compact 2 px spacing as the minimum and can increase it up to 24 px with live preview.
+
+### Fixed
+
+- Made the green **Saved** toast consistent for immediately persisted Settings controls by centralizing feedback in the app-setting save path and covering direct-save exceptions including workspace downloads, workspace name/icon/membership changes, service/workspace ordering, custom accents, and sandbox assignment.
+- Improved immediate-setting failure handling so a persistence failure restores the previous visual value, while failures in follow-up runtime application are reported without pretending the persisted setting was rolled back.
+
+### Release quality
+
+- Added focused 0.6.2 regression coverage for spacing defaults/ranges, live CSS application, minimum-density preservation, and Saved-toast coverage across central and direct persistence paths.
+
 ## [0.6.1] - 2026-08-22
 
 ### Added
