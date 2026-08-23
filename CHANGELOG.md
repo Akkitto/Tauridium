@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.9] - 2026-08-23
+
+### Fixed
+
+- Fixed the Linux `cargo clippy -- -D warnings` failure by compiling the Windows-only session-reuse settings helper only for Windows production builds (and unit tests).
+- Made Linux tray behavior rely on the supported **Show Tauridium** / **Quit** menu instead of unsupported tray click events and left-click menu control.
+- Added a `gio open` fallback when `xdg-open` is unavailable for external links on Linux.
+
+### Release quality
+
+- Added focused Linux portability regressions and release invariants for platform-gated instance coordination, tray interaction, external-link launching, and the canonical Linux clippy gate.
+
 ## [0.6.8] - 2026-08-23
 
 ### Fixed
