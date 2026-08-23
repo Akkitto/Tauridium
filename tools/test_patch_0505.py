@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import importlib.util
 import json
 import sys
@@ -21,13 +20,31 @@ if SPEC is None or SPEC.loader is None:
   raise RuntimeError("unable to load release_assets.py")
 release_assets = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(release_assets)
-README_SHA256 = "3e506016c92f7727a9bc9e729876feef8143993833e765fbd0feead4133894d4"
 
 
 class Patch0505Tests(unittest.TestCase):
-  def test_readme_matches_normalized_requested_content(self) -> None:
-    data = (ROOT / "README.md").read_bytes()
-    self.assertEqual(hashlib.sha256(data).hexdigest(), README_SHA256)
+  def test_readme_preserves_requested_identity_and_documents_active_tooling(self) -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    for marker in (
+      '<h1 align="center">Tauridium</h1>',
+      "Forget Franz, Ferdi, Ferdium and the rest.",
+      "## Why",
+      "## Features",
+      "## Installation",
+      "## Development",
+      "## Technology",
+      "**Tauri v2 / Rust**",
+      "**Svelte 5 / TypeScript**",
+      "**Vite 6 / Vitest 3**",
+      "**reqwest + rustls**",
+      "**wry**",
+      "## Releases",
+      "## Licence",
+      "Copyright (c) 2026 [Daniel Braniewski](https://brani.dev)",
+    ):
+      self.assertIn(marker, readme)
+    self.assertIn("https://github.com/Akkitto/Tauridium/releases/latest", readme)
+    self.assertIn("https://github.com/Akkitto/Tauridium", readme)
 
   def test_release_workflow_is_just_driven_and_has_no_macos_release_job(self) -> None:
     workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")

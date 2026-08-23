@@ -232,6 +232,35 @@ class PackageReleaseTests(unittest.TestCase):
       text=True,
     )
 
+  def test_source_zip_does_not_depend_on_path_relative_to(self) -> None:
+    self.init_git_repository()
+    context = PACKAGE.source_context("0.2.0")
+    output = self.root / "source.zip"
+
+    with mock.patch.object(Path, "relative_to", side_effect=AssertionError("relative_to used")):
+      PACKAGE.build_source(output, "0.2.0", context)
+
+    with zipfile.ZipFile(output) as archive:
+      self.assertIn("tauridium-0.2.0/.git/HEAD", archive.namelist())
+
+  def test_docs_evidence_does_not_depend_on_path_relative_to(self) -> None:
+    self.init_git_repository()
+    context = PACKAGE.source_context("0.2.0")
+    source_zip = self.root / "source.zip"
+    runtime_zip = self.root / "run.zip"
+    source_zip.write_bytes(b"source")
+    runtime_zip.write_bytes(b"runtime")
+    evidence_file = self.root / "release" / "evidence" / "windows" / "ci.txt"
+    evidence_file.parent.mkdir(parents=True)
+    evidence_file.write_text("ok\n", encoding="utf-8")
+    output = self.root / "docs.zip"
+
+    with mock.patch.object(Path, "relative_to", side_effect=AssertionError("relative_to used")):
+      PACKAGE.build_docs(output, "0.2.0", source_zip, [runtime_zip], context)
+
+    with zipfile.ZipFile(output) as archive:
+      self.assertIn("tauridium-0.2.0-doc/evidence/windows/ci.txt", archive.namelist())
+
   def test_source_zip_requires_git_history(self) -> None:
     self.write_manifest()
     context = PACKAGE.source_context("0.2.0")

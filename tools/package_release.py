@@ -337,7 +337,35 @@ def source_context(release_version: str) -> SourceContext:
   return load_source_manifest(release_version)
 
 
-def git_metadata_directories() -> tuple[Path, ...]:
+def tree_entries(root: Path) -> tuple[tuple[tuple[Path, str], ...], tuple[tuple[Path, str], ...]]:
+  """Return directory/file entries with traversal-owned relative archive paths.
+
+  Archive paths are carried while walking instead of being reconstructed with
+  lexical parent-path reconstruction. On Windows, the same directory can be
+  exposed through both its long name and an 8.3 short-name alias, making lexical
+  parent comparisons unreliable even when both paths identify the same directory.
+  """
+  directories: list[tuple[Path, str]] = []
+  files: list[tuple[Path, str]] = []
+  pending: list[tuple[Path, str]] = [(root, "")]
+  while pending:
+    current, relative_root = pending.pop()
+    child_directories: list[tuple[Path, str]] = []
+    for child in sorted(current.iterdir(), key=lambda path: path.name):
+      archive_path = f"{relative_root}/{child.name}" if relative_root else child.name
+      if child.is_dir():
+        directories.append((child, archive_path))
+        child_directories.append((child, archive_path))
+      elif child.is_file():
+        files.append((child, archive_path))
+    pending.extend(reversed(child_directories))
+  return (
+    tuple(sorted(directories, key=lambda entry: entry[1])),
+    tuple(sorted(files, key=lambda entry: entry[1])),
+  )
+
+
+def git_metadata_directories() -> tuple[tuple[Path, str], ...]:
   repository_root = git_repository_root()
   if repository_root is None:
     raise SystemExit(
@@ -347,15 +375,11 @@ def git_metadata_directories() -> tuple[Path, ...]:
   git_dir = repository_root / ".git"
   if not git_dir.is_dir():
     raise SystemExit("error: source ZIP packaging requires a .git directory")
-  return tuple(
-    sorted(
-      (path for path in git_dir.rglob("*") if path.is_dir()),
-      key=lambda path: path.as_posix(),
-    )
-  )
+  directories, _ = tree_entries(git_dir)
+  return directories
 
 
-def git_metadata_files() -> tuple[Path, ...]:
+def git_metadata_files() -> tuple[tuple[Path, str], ...]:
   repository_root = git_repository_root()
   if repository_root is None:
     raise SystemExit(
@@ -365,12 +389,7 @@ def git_metadata_files() -> tuple[Path, ...]:
   git_dir = repository_root / ".git"
   if not git_dir.is_dir():
     raise SystemExit("error: source ZIP packaging requires a .git directory")
-  files = tuple(
-    sorted(
-      (path for path in git_dir.rglob("*") if path.is_file()),
-      key=lambda path: path.as_posix(),
-    )
-  )
+  _, files = tree_entries(git_dir)
   if not files:
     raise SystemExit("error: .git directory contains no files")
   return files
@@ -378,17 +397,14 @@ def git_metadata_files() -> tuple[Path, ...]:
 
 def build_source(output: Path, release_version: str, context: SourceContext) -> None:
   prefix = f"tauridium-{release_version}/"
-  git_dir = ROOT / ".git"
   with zipfile.ZipFile(output, "w") as zf:
     for entry in context.entries:
       add_file(zf, entry.path, prefix + entry.archive_path, mode=entry.mode)
     add_bytes(zf, context.manifest_bytes, prefix + SOURCE_MANIFEST_NAME)
     add_directory(zf, prefix + ".git/")
-    for directory in git_metadata_directories():
-      archive_path = directory.relative_to(git_dir).as_posix()
+    for _directory, archive_path in git_metadata_directories():
       add_directory(zf, prefix + ".git/" + archive_path)
-    for source in git_metadata_files():
-      archive_path = source.relative_to(git_dir).as_posix()
+    for source, archive_path in git_metadata_files():
       if archive_path == "config":
         config = source.read_text(encoding="utf-8")
         config = re.sub(
@@ -592,9 +608,9 @@ def build_docs(
     add_bytes(zf, (manifest_git_log(context) + "\n").encode(), prefix + "GIT-LOG.txt")
     add_bytes(zf, context.manifest_bytes, prefix + SOURCE_MANIFEST_NAME)
     if evidence.is_dir():
-      for source in sorted(evidence.rglob("*")):
-        if source.is_file():
-          add_file(zf, source, prefix + "evidence/" + source.relative_to(evidence).as_posix())
+      _evidence_directories, evidence_files = tree_entries(evidence)
+      for source, archive_path in evidence_files:
+        add_file(zf, source, prefix + "evidence/" + archive_path)
 
 
 def main() -> int:
