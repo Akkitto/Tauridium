@@ -180,6 +180,37 @@ def signed_entry(assets_dir: Path, filename: str, release_version: str) -> dict[
   }
 
 
+def expected_updater_artifact_names(release_version: str) -> tuple[str, ...]:
+  return tuple(
+    filename
+    for arch_name in ("x64", "arm64")
+    for filename in (
+      f"tauridium-{release_version}-windows-{arch_name}-setup.exe",
+      f"tauridium-{release_version}-windows-{arch_name}.msi",
+      f"tauridium-{release_version}-linux-{arch_name}.AppImage",
+    )
+  )
+
+
+def signed_updater_state(assets_dir: Path, release_version: str) -> str:
+  expected = expected_updater_artifact_names(release_version)
+  present_signatures = [name for name in expected if (assets_dir / f"{name}.sig").is_file()]
+  if not present_signatures:
+    return "unsigned"
+
+  missing = [
+    name
+    for name in expected
+    if not (assets_dir / name).is_file() or not (assets_dir / f"{name}.sig").is_file()
+  ]
+  if missing:
+    raise SystemExit(
+      "error: signed updater release is incomplete; missing artifact/signature pairs: "
+      + ", ".join(missing)
+    )
+  return "signed"
+
+
 def generate_updater_manifest(assets_dir: Path, output: Path, require_all: bool) -> dict[str, object]:
   release_version = version()
   platforms: dict[str, dict[str, str]] = {}
@@ -265,6 +296,7 @@ def main() -> int:
   updater.add_argument("--assets-dir", type=Path, required=True)
   updater.add_argument("--output", type=Path)
   updater.add_argument("--require-all", action="store_true")
+  updater.add_argument("--if-signed", action="store_true")
 
   checksums = subparsers.add_parser("checksums")
   checksums.add_argument("--assets-dir", type=Path, required=True)
@@ -282,6 +314,10 @@ def main() -> int:
   if args.command == "updater-manifest":
     assets_dir = args.assets_dir.resolve()
     output = args.output.resolve() if args.output else assets_dir / "latest.json"
+    if args.if_signed and signed_updater_state(assets_dir, version()) == "unsigned":
+      output.unlink(missing_ok=True)
+      print("updater metadata skipped: no updater signatures were published")
+      return 0
     generate_updater_manifest(assets_dir, output, args.require_all)
     print(output)
     return 0

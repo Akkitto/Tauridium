@@ -124,6 +124,8 @@ jobs:
             os: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
+    env:
+      TAURI_UPDATER_SIGNING_ENABLED: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -159,28 +161,21 @@ jobs:
         run: just init
       - name: Scan Cargo cache for known malicious crates
         run: just rust-supply-chain-host
-      - name: Require updater signing key (Linux)
-        if: runner.os == 'Linux'
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        shell: bash
-        run: test -n "$TAURI_SIGNING_PRIVATE_KEY"
-      - name: Require updater signing key (Windows)
-        if: runner.os == 'Windows'
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        shell: pwsh
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
-            throw 'TAURI_SIGNING_PRIVATE_KEY is required for release updater artifacts.'
-          }
-      - name: Build native bundles
+      - name: Build native bundles with updater artifacts
+        if: env.TAURI_UPDATER_SIGNING_ENABLED == 'true'
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: just bundle-target ${{ matrix.target }}
-      - name: Collect and validate native assets
+      - name: Build native bundles without updater artifacts
+        if: env.TAURI_UPDATER_SIGNING_ENABLED != 'true'
+        run: just bundle-target-no-updater ${{ matrix.target }}
+      - name: Collect and validate signed native assets
+        if: env.TAURI_UPDATER_SIGNING_ENABLED == 'true'
         run: just package-native-signed ${{ matrix.target }}
+      - name: Collect native assets without updater signatures
+        if: env.TAURI_UPDATER_SIGNING_ENABLED != 'true'
+        run: just package-native ${{ matrix.target }}
       - name: Upload native assets (Linux)
         if: runner.os == 'Linux'
         env:
@@ -221,16 +216,18 @@ jobs:
         run: |
           mkdir -p release/published-assets
           gh release download "$GITHUB_REF_NAME" --dir release/published-assets
-      - name: Generate updater metadata and checksums
+      - name: Generate updater metadata when signed and always generate checksums
         run: |
-          just updater-manifest release/published-assets
+          just updater-manifest-if-signed release/published-assets
           just release-checksums release/published-assets
       - name: Upload metadata and publish
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          gh release upload "$GITHUB_REF_NAME" \
-            release/published-assets/latest.json \
-            release/published-assets/SHA256SUMS \
-            --clobber
+          files=(release/published-assets/SHA256SUMS)
+          if [[ -f release/published-assets/latest.json ]]; then
+            files+=(release/published-assets/latest.json)
+          fi
+          gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
           gh release edit "$GITHUB_REF_NAME" --draft=false --latest

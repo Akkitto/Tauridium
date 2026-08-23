@@ -57,7 +57,7 @@ class Patch0505Tests(unittest.TestCase):
       "just package-handoff",
       "just bundle-target ${{ matrix.target }}",
       "just package-native-signed ${{ matrix.target }}",
-      "just updater-manifest release/published-assets",
+      "just updater-manifest-if-signed release/published-assets",
       "just release-checksums release/published-assets",
       "gh release edit \"$GITHUB_REF_NAME\" --draft=false --latest",
       "windows-11-arm",
@@ -67,7 +67,8 @@ class Patch0505Tests(unittest.TestCase):
     self.assertNotIn("macos-latest", workflow)
     self.assertNotIn("tauri-apps/tauri-action", workflow)
     self.assertIn("permissions:\n  contents: read", workflow)
-    self.assertIn("TAURI_SIGNING_PRIVATE_KEY is required", workflow)
+    self.assertIn("bundle-target-no-updater", workflow)
+    self.assertIn("package-native ${{ matrix.target }}", workflow)
 
   def test_just_exposes_release_build_and_metadata_steps(self) -> None:
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")

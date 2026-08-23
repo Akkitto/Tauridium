@@ -71,6 +71,9 @@ bundle:
 bundle-target target:
   cargo tauri build --ci --target {{target}}
 
+bundle-target-no-updater target:
+  cargo tauri build --ci --target {{target}} --config '{"bundle": {"createUpdaterArtifacts": false}}'
+
 run:
   cargo tauri dev
 
@@ -160,6 +163,14 @@ updater-manifest assets_dir="release/published-assets":
 [windows]
 updater-manifest assets_dir="release/published-assets":
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/release_assets.py updater-manifest --assets-dir {{assets_dir}} --require-all
+
+[unix]
+updater-manifest-if-signed assets_dir="release/published-assets":
+  python3 tools/release_assets.py updater-manifest --assets-dir {{assets_dir}} --require-all --if-signed
+
+[windows]
+updater-manifest-if-signed assets_dir="release/published-assets":
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/release_assets.py updater-manifest --assets-dir {{assets_dir}} --require-all --if-signed
 
 [unix]
 release-checksums assets_dir="release/published-assets":

@@ -1574,7 +1574,7 @@ def main() -> int:
     "just package-handoff",
     "just bundle-target ${{ matrix.target }}",
     "just package-native-signed ${{ matrix.target }}",
-    "just updater-manifest release/published-assets",
+    "just updater-manifest-if-signed release/published-assets",
     "just release-checksums release/published-assets",
     'gh release edit "$GITHUB_REF_NAME" --draft=false --latest',
     "windows-11-arm",
@@ -1588,8 +1588,16 @@ def main() -> int:
     fail("release packaging must stay behind canonical just recipes, not tauri-action")
   if "permissions:\n  contents: read" not in release_workflow:
     fail("release workflow does not default to least-privilege read permissions")
-  if "TAURI_SIGNING_PRIVATE_KEY is required" not in release_workflow:
-    fail("release workflow does not fail closed when updater signing is unavailable")
+  for marker in (
+    "bundle-target-no-updater",
+    "if: env.TAURI_UPDATER_SIGNING_ENABLED == 'true'",
+    "if: env.TAURI_UPDATER_SIGNING_ENABLED != 'true'",
+    "just package-native ${{ matrix.target }}",
+  ):
+    if marker not in release_workflow:
+      fail(f"release workflow is missing optional updater-signing fallback: {marker}")
+  if "Require updater signing key" in release_workflow:
+    fail("release workflow must not fail normal native packaging solely because updater signing is unavailable")
   dependabot = read(".github/dependabot.yml")
   if "package-ecosystem: github-actions" not in dependabot or "interval: weekly" not in dependabot:
     fail("GitHub Actions dependencies are not covered by Dependabot")
