@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.13] - 2026-08-23
+
+### Fixed
+
+- Fixed unsigned Windows release builds failing before compilation because PowerShell stripped JSON key quotes from the inline Tauri `--config` argument. The no-updater build now passes a checked-in JSON config file, which is safe across PowerShell and POSIX shells.
+
+### Release quality
+
+- Added regression and release-invariant coverage that requires the file-based unsigned Tauri config, verifies it disables only updater artifact generation, and rejects inline JSON `--config` usage in release recipes.
+
 ## [0.6.12] - 2026-08-23
 
 ### Fixed
