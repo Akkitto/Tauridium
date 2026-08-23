@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.11] - 2026-08-23
+
+### Fixed
+
+- Made deterministic source and documentation packaging robust to Windows long-path/8.3 alias differences by carrying archive-relative names during traversal instead of reconstructing lexical parent paths.
+- Replaced the obsolete whole-README SHA-256 regression with semantic README identity and active-tooling checks so intentional Technology updates do not break unrelated releases.
+
+### Release quality
+
+- Added focused release-packaging regressions that make source and documentation archiving succeed even when `Path.relative_to()` is unavailable, covering the exact GitHub Actions failure class.
+
 ## [0.6.10] - 2026-08-23
 
 ### Build quality
