@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.12] - 2026-08-23
+
+### Fixed
+
+- Allowed release builds to publish normal Windows and Linux installers when `TAURI_SIGNING_PRIVATE_KEY` is not configured, instead of failing before bundling. Signed updater artifacts remain enabled automatically whenever the private key is available.
+- Made release finalization omit `latest.json` when no signed updater artifacts exist, while still rejecting incomplete partially signed updater artifact sets.
+
+### Release quality
+
+- Added focused regression coverage for signed and unsigned release paths, updater metadata publication, and fail-closed handling of partial updater signatures.
+
 ## [0.6.11] - 2026-08-23
 
 ### Fixed
