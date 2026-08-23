@@ -25,10 +25,12 @@ class Patch0612Tests(unittest.TestCase):
   def setUpClass(cls) -> None:
     cls.workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     cls.justfile = (ROOT / "justfile").read_text(encoding="utf-8")
+    cls.no_updater_config = (ROOT / "src-tauri/tauri.no-updater.conf.json").read_text(encoding="utf-8")
 
   def test_release_builds_without_updater_artifacts_when_signing_key_is_unavailable(self) -> None:
     self.assertIn("bundle-target-no-updater target:", self.justfile)
-    self.assertIn("createUpdaterArtifacts\": false", self.justfile)
+    self.assertIn("src-tauri/tauri.no-updater.conf.json", self.justfile)
+    self.assertIn("\"createUpdaterArtifacts\": false", self.no_updater_config)
     self.assertIn("if: env.TAURI_UPDATER_SIGNING_ENABLED == 'true'", self.workflow)
     self.assertIn("if: env.TAURI_UPDATER_SIGNING_ENABLED != 'true'", self.workflow)
     self.assertIn("run: just bundle-target-no-updater ${{ matrix.target }}", self.workflow)

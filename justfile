@@ -72,7 +72,7 @@ bundle-target target:
   cargo tauri build --ci --target {{target}}
 
 bundle-target-no-updater target:
-  cargo tauri build --ci --target {{target}} --config '{"bundle": {"createUpdaterArtifacts": false}}'
+  cargo tauri build --ci --target {{target}} --config src-tauri/tauri.no-updater.conf.json
 
 run:
   cargo tauri dev

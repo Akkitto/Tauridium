@@ -1598,6 +1598,18 @@ def main() -> int:
       fail(f"release workflow is missing optional updater-signing fallback: {marker}")
   if "Require updater signing key" in release_workflow:
     fail("release workflow must not fail normal native packaging solely because updater signing is unavailable")
+  no_updater_config = json.loads(read("src-tauri/tauri.no-updater.conf.json"))
+  if no_updater_config != {"bundle": {"createUpdaterArtifacts": False}}:
+    fail("unsigned native bundle config must disable only updater artifact creation")
+  justfile = read("justfile")
+  expected_unsigned_bundle = (
+    "cargo tauri build --ci --target {{target}} "
+    "--config src-tauri/tauri.no-updater.conf.json"
+  )
+  if expected_unsigned_bundle not in justfile:
+    fail("unsigned native bundle recipe must use the cross-shell-safe updater config file")
+  if "--config '{" in justfile or '--config "{' in justfile:
+    fail("Tauri inline JSON config is not cross-shell-safe on Windows and must not be used")
   dependabot = read(".github/dependabot.yml")
   if "package-ecosystem: github-actions" not in dependabot or "interval: weekly" not in dependabot:
     fail("GitHub Actions dependencies are not covered by Dependabot")
