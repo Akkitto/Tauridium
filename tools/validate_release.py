@@ -77,6 +77,14 @@ def main() -> int:
     fail("Cargo.toml version differs from tauri.conf.json")
   if ("CreateEventW" in main_rs or "CreateMutexW" in main_rs) and '"Win32_Security"' not in cargo:
     fail("Windows instance coordination requires the windows-sys Win32_Security feature")
+  if '#[cfg(any(windows, test))]\nfn reuse_existing_session_setting' not in main_rs:
+    fail("Windows-only instance preference helper must be cfg-gated on Linux")
+  linux_tray_markers = (
+    '#[cfg(not(target_os = "linux"))]\nuse tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};',
+    '#[cfg(not(target_os = "linux"))]\nfn toggle_main',
+  )
+  if any(marker not in main_rs for marker in linux_tray_markers):
+    fail("Linux tray click handling must remain platform-gated")
   tauridium_lock = re.search(r'\[\[package\]\]\nname = "tauridium"\nversion = "([^"]+)"', cargo_lock)
   if not tauridium_lock or tauridium_lock.group(1) != version:
     fail("Cargo.lock Tauridium version differs from tauri.conf.json")

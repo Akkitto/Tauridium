@@ -29,7 +29,9 @@ use std::sync::{
 };
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::tray::TrayIconBuilder;
+#[cfg(not(target_os = "linux"))]
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
 use tauri::webview::{
     DownloadEvent, NewWindowFeatures, NewWindowResponse, PageLoadEvent, WebviewBuilder,
 };
@@ -79,6 +81,7 @@ const IDENTITY_DIRECTORY_MARKERS: [&str; 8] = [
     "backups",
 ];
 
+#[cfg(any(windows, test))]
 fn reuse_existing_session_setting(stored: Option<&Value>) -> bool {
     stored
         .and_then(|value| value.get("reuseExistingSessionOnLaunch"))
@@ -1776,7 +1779,23 @@ fn open_external(url: &str) {
         }
     }
     #[cfg(all(unix, not(target_os = "macos")))]
-    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+    {
+        // xdg-open is the freedesktop standard launcher, but minimal Linux desktops and
+        // containers do not always install it. GTK/WebKit environments normally provide
+        // GIO, so fall back to `gio open` when the standard launcher is unavailable.
+        if let Err(xdg_error) = std::process::Command::new("xdg-open").arg(url).spawn() {
+            if let Err(gio_error) = std::process::Command::new("gio")
+                .arg("open")
+                .arg(url)
+                .spawn()
+            {
+                eprintln!(
+                    "Unable to open external URL on Linux: xdg-open failed ({xdg_error}); \
+                     gio open failed ({gio_error})"
+                );
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -4692,6 +4711,7 @@ fn show_main(app: &AppHandle) {
     }
 }
 
+#[cfg(not(target_os = "linux"))]
 fn toggle_main(app: &AppHandle) {
     if let Some(w) = app.get_window("main") {
         if w.is_visible().unwrap_or(false) {
@@ -4976,14 +4996,15 @@ fn main() {
                 });
             }
 
-            // Menu-bar/tray icon: show/quit; left click toggles the window.
+            // Menu-bar/tray icon. Linux tray implementations do not emit tray click events
+            // and do not support controlling left-click menu behavior, so Linux relies on
+            // the explicit Show Tauridium / Quit menu. Other desktop platforms retain the
+            // convenient left-click window toggle.
             let show = MenuItem::with_id(app, "show", "Show Tauridium", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
             let mut tray = TrayIconBuilder::with_id("main-tray")
-                .tooltip("Tauridium")
                 .menu(&menu)
-                .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => show_main(app),
                     "quit" => {
@@ -4991,17 +5012,23 @@ fn main() {
                         app.exit(0);
                     }
                     _ => {}
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        toggle_main(tray.app_handle());
-                    }
                 });
+            #[cfg(not(target_os = "linux"))]
+            {
+                tray = tray
+                    .tooltip("Tauridium")
+                    .show_menu_on_left_click(false)
+                    .on_tray_icon_event(|tray, event| {
+                        if let TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        } = event
+                        {
+                            toggle_main(tray.app_handle());
+                        }
+                    });
+            }
             if let Some(icon) = app.default_window_icon().cloned() {
                 tray = tray.icon(icon);
             }
