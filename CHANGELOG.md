@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.10] - 2026-08-23
+
+### Build quality
+
+- Added a mandatory Rust supply-chain guard for the August 2026 crates.io incident, blocking `arrayref` 0.3.10, `internment` 0.8.7, `append-only-vec` 0.1.9, and the deleted `proc-macro1`, `proc-macro-en`, `aovine`, `arone`, `aronenao`, and `tinymember` crate names in Cargo locks/manifests/vendor/cache checks.
+- Added Cargo registry lockfile checksum validation and made the supply-chain guard part of canonical quality, audit, CI, release-build, and deterministic packaging paths.
+- Confirmed Vite remains the active frontend build pipeline and documented Vite/Vitest in the README technology stack.
+- Removed the unused `tauri.conf.dev.json` and dormant `tauridium_custom.svg` icon draft, and replaced the generated generic `.gitignore` with concise project-specific rules.
+
 ## [0.6.9] - 2026-08-23
 
 ### Fixed
