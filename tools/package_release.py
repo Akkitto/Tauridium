@@ -9,6 +9,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import zipfile
 from dataclasses import dataclass
@@ -76,6 +77,22 @@ def require_pinned_rustfmt_clean() -> None:
     details = (result.stdout + result.stderr).strip()
     raise SystemExit(
       "error: release packaging refused because pinned rustfmt reports source drift"
+      + (f"\n{details}" if details else "")
+    )
+
+
+def require_rust_supply_chain_clean() -> None:
+  result = subprocess.run(
+    [sys.executable, "tools/check_rust_supply_chain.py"],
+    cwd=ROOT,
+    text=True,
+    capture_output=True,
+    check=False,
+  )
+  if result.returncode != 0:
+    details = (result.stdout + result.stderr).strip()
+    raise SystemExit(
+      "error: release packaging refused because the Rust supply-chain guard failed"
       + (f"\n{details}" if details else "")
     )
 
@@ -592,6 +609,7 @@ def main() -> int:
   args = parser.parse_args()
 
   require_pinned_rustfmt_clean()
+  require_rust_supply_chain_clean()
   release_version = version()
   context = source_context(release_version)
   output_dir = args.output_dir.resolve()

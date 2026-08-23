@@ -42,6 +42,8 @@ jobs:
         run: cargo install just --locked --version 1.56.0
       - name: Initialize build environment
         run: just init
+      - name: Scan Cargo cache for known malicious crates
+        run: just rust-supply-chain-host
       - name: Verify tag and master ancestry
         shell: bash
         run: |
@@ -155,6 +157,8 @@ jobs:
         run: just init-self-test
       - name: Initialize build environment
         run: just init
+      - name: Scan Cargo cache for known malicious crates
+        run: just rust-supply-chain-host
       - name: Require updater signing key (Linux)
         if: runner.os == 'Linux'
         env:

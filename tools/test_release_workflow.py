@@ -34,7 +34,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
 
   def test_release_uses_non_mutating_format_check_and_clean_gates(self) -> None:
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")
-    self.assertIn("quality: fmt-check lint check test", justfile)
+    self.assertIn("quality: rust-supply-chain fmt-check lint check test", justfile)
     self.assertIn("ci: quality build", justfile)
     self.assertIn("release: release-clean ci\n  just release-clean\n  just package", justfile)
     self.assertNotIn("release: release-clean ci release-clean package", justfile)
@@ -259,7 +259,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
     self.assertIn('components = ["rustfmt", "clippy"]', toolchain)
     self.assertIn('def require_pinned_rustfmt_clean() -> None:', package_release)
     self.assertIn('\"cargo\",\n        \"fmt\",', package_release)
-    self.assertIn('require_pinned_rustfmt_clean()\n  release_version = version()', package_release)
+    self.assertIn('require_pinned_rustfmt_clean()\n  require_rust_supply_chain_clean()\n  release_version = version()', package_release)
 
   def test_clean_checker_reports_exact_dirty_path(self) -> None:
     with tempfile.TemporaryDirectory() as temp:

@@ -21,7 +21,6 @@ class Feature0500Tests(unittest.TestCase):
     cls.api = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
     cls.package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
     cls.tauri = json.loads((ROOT / "src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
-    cls.tauri_dev = json.loads((ROOT / "src-tauri/tauri.conf.dev.json").read_text(encoding="utf-8"))
     cls.funding = (ROOT / ".github/FUNDING.yml").read_text(encoding="utf-8")
 
   def test_mit_license_retains_upstream_notice_and_adds_current_copyright(self) -> None:
@@ -54,7 +53,7 @@ class Feature0500Tests(unittest.TestCase):
 
   def test_runtime_identity_and_updater_use_current_namespace(self) -> None:
     self.assertEqual(self.tauri["identifier"], "dev.brani.tauridium")
-    self.assertEqual(self.tauri_dev["identifier"], "dev.brani.tauridium.dev")
+    self.assertIn('const APP_IDENTIFIER: &str = "dev.brani.tauridium.dev";', self.main)
     self.assertEqual(
       self.tauri["plugins"]["updater"]["endpoints"],
       ["https://github.com/Akkitto/Tauridium/releases/latest/download/latest.json"],

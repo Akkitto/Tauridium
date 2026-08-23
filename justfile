@@ -74,7 +74,7 @@ bundle-target target:
 run:
   cargo tauri dev
 
-audit:
+audit: rust-supply-chain-host
   npm audit --audit-level=high
   cargo audit
 
@@ -88,6 +88,22 @@ release-clean:
 [windows]
 release-clean:
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/check_clean.py
+
+[unix]
+rust-supply-chain:
+  python3 tools/check_rust_supply_chain.py
+
+[windows]
+rust-supply-chain:
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/check_rust_supply_chain.py
+
+[unix]
+rust-supply-chain-host:
+  python3 tools/check_rust_supply_chain.py --cache
+
+[windows]
+rust-supply-chain-host:
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/check_rust_supply_chain.py --cache
 
 [unix]
 package:
@@ -105,7 +121,7 @@ package:
 package-handoff:
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/package_release.py --build-handoff
 
-quality: fmt-check lint check test
+quality: rust-supply-chain fmt-check lint check test
 
 ci: quality build
 

@@ -113,6 +113,19 @@ def main() -> int:
 
   justfile = read("justfile")
   validate_just_recipe_platforms(justfile)
+  supply_chain_guard = ROOT / "tools/check_rust_supply_chain.py"
+  if not supply_chain_guard.is_file():
+    fail("Rust supply-chain guard is missing")
+  supply_chain_result = subprocess.run(
+    [sys.executable, str(supply_chain_guard)],
+    cwd=ROOT,
+    text=True,
+    capture_output=True,
+    check=False,
+  )
+  if supply_chain_result.returncode != 0:
+    details = (supply_chain_result.stdout + supply_chain_result.stderr).strip()
+    fail("Rust supply-chain guard failed" + (f": {details}" if details else ""))
   init_py = read("tools/init.py")
   init_ps1 = read("tools/init.ps1")
   python_ps1 = read("tools/python.ps1")
@@ -178,6 +191,8 @@ def main() -> int:
     "--all-targets --all-features --locked",
     "--all-features --locked",
     "cargo tauri build --no-bundle --ci",
+    "quality: rust-supply-chain fmt-check lint check test",
+    "tools/check_rust_supply_chain.py --cache",
   ):
     if marker not in justfile:
       fail(f"release workflow is missing non-mutating/locked gate: {marker}")
@@ -1506,6 +1521,17 @@ def main() -> int:
     if test_marker not in backup_test:
       fail(f"backup reliability regression coverage is missing: {test_marker}")
 
+  if (ROOT / "src-tauri/tauri.conf.dev.json").exists():
+    fail("unused tauri.conf.dev.json must not be reintroduced without an explicit --config consumer")
+  if (ROOT / "src-tauri/icons/tauridium_custom.svg").exists():
+    fail("unused tauridium_custom.svg icon draft must not be reintroduced")
+  readme = read("README.md")
+  if "**Vite 6 / Vitest 3** - frontend development/build pipeline and unit tests" not in readme:
+    fail("README technology stack does not document the active Vite/Vitest frontend toolchain")
+  gitignore = read(".gitignore")
+  if len(gitignore.splitlines()) > 60 or "toptal.com/developers/gitignore" in gitignore:
+    fail(".gitignore regressed to a generated generic template instead of project-specific rules")
+
   ci = read(".github/workflows/ci.yml")
   release_workflow = read(".github/workflows/release.yml")
   justfile = read("justfile")
@@ -1531,6 +1557,10 @@ def main() -> int:
     fail("tagged release workflow does not pin Rust 1.97.1 in all Rust jobs")
   if "run: just ci" not in ci or "run: just ci" not in release_workflow:
     fail("CI and release workflow must execute the canonical just ci gate")
+  if ci.count("run: just rust-supply-chain-host") != 2:
+    fail("CI must scan both restored Cargo caches for known malicious crates")
+  if release_workflow.count("run: just rust-supply-chain-host") != 2:
+    fail("release workflow must scan build/gate Cargo caches for known malicious crates")
   if "windows-native:" not in ci or "shell: pwsh" not in ci:
     fail("CI does not exercise the native Windows PowerShell workflow")
   for command in ("just init-self-test", "just init", "just ci"):

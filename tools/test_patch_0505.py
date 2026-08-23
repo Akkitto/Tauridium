@@ -21,7 +21,7 @@ if SPEC is None or SPEC.loader is None:
   raise RuntimeError("unable to load release_assets.py")
 release_assets = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(release_assets)
-README_SHA256 = "b1b95724451e8e53a5ad29c1acb87a5175533756290453faf9b7fd441dce2795"
+README_SHA256 = "3e506016c92f7727a9bc9e729876feef8143993833e765fbd0feead4133894d4"
 
 
 class Patch0505Tests(unittest.TestCase):

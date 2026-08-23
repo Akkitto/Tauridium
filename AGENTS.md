@@ -37,7 +37,8 @@ and workspace order, sessions, backups, exports, and upgrade compatibility.
 - Never hide failures with lint suppressions, unsafe casts, swallowed errors, or weakened
   assertions. Fix root causes and keep diagnostics actionable and non-spammy.
 - Keep dependencies locked and minimal. Network-dependent bootstrap/build steps must fail
-  clearly rather than silently changing quality gates.
+  clearly rather than silently changing quality gates. Run the repository Rust supply-chain
+  guard on every quality pass; never bypass blocked crate/version indicators.
 - Rust formatting is exact native `rustfmt` from pinned **Rust 1.97.1**. Clippy warnings
   are errors. Keep Svelte/TypeScript clean under `svelte-check` and Vitest.
 - Windows workflows must work in Windows PowerShell 5.1 and PowerShell 7. Prefer Scoop for

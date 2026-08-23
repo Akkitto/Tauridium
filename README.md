@@ -108,6 +108,7 @@ just build
 
 * **Tauri v2 / Rust** - native application shell, WebViews and operating-system integration
 * **Svelte 5 / TypeScript** - user interface
+* **Vite 6 / Vitest 3** - frontend development/build pipeline and unit tests
 * **reqwest + rustls** - server communication outside the WebView
 * **wry** - vendored and patched for recipe IPC compatibility
 
