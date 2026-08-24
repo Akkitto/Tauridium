@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.14] - 2026-08-24
+
+### Fixed
+
+- Fixed **Duplicate** in the pretty service right-click menu throwing a `Cannot read properties of null (reading 'name')` error because closing the menu invalidated its reactive service reference before the duplicate action consumed it.
+- Captured the selected service before closing the pretty context menu for Duplicate, Reload, and Enable/Disable, eliminating the same latent null-reference race across all asynchronous service actions.
+
+### Release quality
+
+- Added focused regression coverage that requires pretty context-menu actions to dispatch through a captured `Service` reference and rejects the previous close-then-read pattern.
+
 ## [0.6.13] - 2026-08-23
 
 ### Fixed
