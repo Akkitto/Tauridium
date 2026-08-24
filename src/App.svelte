@@ -919,6 +919,11 @@
     serviceContextMenu = null;
   }
 
+  function runServiceContextAction(service: Service, action: (selectedService: Service) => Promise<void>) {
+    closeServiceContextMenu();
+    void action(service);
+  }
+
   function openContextServiceSettings(service: Service) {
     openServiceSettings(service);
     closeServiceContextMenu();
@@ -4822,10 +4827,10 @@
     {#if contextService}
       <div class="service-context-menu" role="menu" tabindex="-1" aria-label={`${serviceLabel(contextService)} actions`} style={`left:${serviceContextMenu.x}px;top:${serviceContextMenu.y}px`} onkeydown={handleServiceContextMenuKeydown}>
         <button role="menuitem" onclick={() => openContextServiceSettings(contextService)}>Settings</button>
-        <button role="menuitem" disabled={contextService.isEnabled === false} onclick={() => { closeServiceContextMenu(); void reloadServiceFromUi(contextService); }}>Reload</button>
-        <button role="menuitem" onclick={() => { closeServiceContextMenu(); void duplicateServiceFromUi(contextService); }}>Duplicate</button>
+        <button role="menuitem" disabled={contextService.isEnabled === false} onclick={() => runServiceContextAction(contextService, reloadServiceFromUi)}>Reload</button>
+        <button role="menuitem" onclick={() => runServiceContextAction(contextService, duplicateServiceFromUi)}>Duplicate</button>
         <div class="service-context-separator" aria-hidden="true"></div>
-        <button role="menuitem" class:context-danger={contextService.isEnabled !== false} onclick={() => { closeServiceContextMenu(); void toggleServiceEnabled(contextService); }}>{contextService.isEnabled === false ? "Enable" : "Disable"}</button>
+        <button role="menuitem" class:context-danger={contextService.isEnabled !== false} onclick={() => runServiceContextAction(contextService, toggleServiceEnabled)}>{contextService.isEnabled === false ? "Enable" : "Disable"}</button>
       </div>
     {/if}
   </div>
