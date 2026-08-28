@@ -11,6 +11,22 @@ const MAX_ICON_BYTES: usize = 512 * 1024;
 const MAX_HTML_BYTES: usize = 1024 * 1024;
 const MISSING_SENTINEL: &str = "missing";
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ServiceIconLoad {
+    Disabled,
+    Cached(Option<String>),
+    Fetched(String),
+}
+
+impl ServiceIconLoad {
+    pub(crate) fn icon(self) -> Option<String> {
+        match self {
+            Self::Disabled | Self::Cached(None) => None,
+            Self::Cached(Some(icon)) | Self::Fetched(icon) => Some(icon),
+        }
+    }
+}
+
 fn cache_key(service_id: &str) -> String {
     use sha2::{Digest, Sha256};
     let digest = Sha256::digest(service_id.as_bytes());
@@ -231,15 +247,15 @@ pub(crate) async fn cached_or_fetch(
     page_url: &str,
     force: bool,
     should_fetch: bool,
-) -> Result<Option<String>, String> {
+) -> Result<ServiceIconLoad, String> {
     let path = cache_path(app, service_id)?;
     if !should_fetch {
-        return Ok(None);
+        return Ok(ServiceIconLoad::Disabled);
     }
     let previous = read_cache(&path);
     if !force {
-        if let Some(cached) = previous {
-            return Ok(cached);
+        if let Some(cached) = previous.clone() {
+            return Ok(ServiceIconLoad::Cached(cached));
         }
     }
 
@@ -252,7 +268,7 @@ pub(crate) async fn cached_or_fetch(
         Ok(icon) => {
             write_atomic(&path, &format!("{icon}\n"))
                 .map_err(|error| format!("Unable to cache website icon: {error}"))?;
-            Ok(Some(icon))
+            Ok(ServiceIconLoad::Fetched(icon))
         }
         Err(error) => {
             // A failed automatic discovery is negatively cached so startup does not repeatedly hit
@@ -325,5 +341,19 @@ mod tests {
         assert_eq!(key.len(), 64);
         assert!(key.bytes().all(|byte| byte.is_ascii_hexdigit()));
         assert_eq!(key, cache_key("service/with unsafe chars"));
+    }
+
+    #[test]
+    fn service_icon_load_preserves_cache_vs_network_origin() {
+        assert_eq!(ServiceIconLoad::Disabled.icon(), None);
+        assert_eq!(ServiceIconLoad::Cached(None).icon(), None);
+        assert_eq!(
+            ServiceIconLoad::Cached(Some("data:image/png;base64,cached".into())).icon(),
+            Some("data:image/png;base64,cached".into())
+        );
+        assert_eq!(
+            ServiceIconLoad::Fetched("data:image/png;base64,fetched".into()).icon(),
+            Some("data:image/png;base64,fetched".into())
+        );
     }
 }

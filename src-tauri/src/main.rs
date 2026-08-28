@@ -2582,13 +2582,17 @@ async fn get_service_icon(
     )
     .await;
     match &result {
-        Ok(Some(_)) => audit::best_effort(
+        Ok(icons::ServiceIconLoad::Fetched(_)) => audit::best_effort(
             &app,
             "info",
             "service-icon",
             if force { "refetch" } else { "fetch" },
             "success",
-            "Website icon cached",
+            if force {
+                "Website icon refetched and cached"
+            } else {
+                "Website icon fetched and cached"
+            },
             serde_json::json!({ "serviceId": request.service_id, "recipeId": request.recipe_id }),
         ),
         Err(error) if force => audit::best_effort(
@@ -2602,7 +2606,7 @@ async fn get_service_icon(
         ),
         _ => {}
     }
-    result
+    result.map(icons::ServiceIconLoad::icon)
 }
 
 #[tauri::command]
@@ -4647,6 +4651,28 @@ fn export_portable_bundle(
 }
 
 #[tauri::command]
+fn record_updater_error(app: AppHandle, action: String, message: String) -> Result<(), String> {
+    let action = action.trim();
+    if !matches!(action, "check" | "install") {
+        return Err("Unsupported updater audit action".into());
+    }
+    let message = message.trim();
+    if message.is_empty() {
+        return Err("Updater audit message must not be empty".into());
+    }
+    let message = message.chars().take(4096).collect::<String>();
+    audit::record(
+        &app,
+        "error",
+        "updater",
+        action,
+        "failure",
+        format!("Update {action} failed: {message}"),
+        serde_json::json!({ "applicationVersion": env!("CARGO_PKG_VERSION") }),
+    )
+}
+
+#[tauri::command]
 fn get_audit_log(app: AppHandle, limit: Option<usize>) -> Result<Vec<audit::AuditEntry>, String> {
     audit::read(&app, limit.unwrap_or(500).clamp(1, 10_000))
 }
@@ -5151,6 +5177,7 @@ fn main() {
             create_automatic_backup,
             restore_backup,
             export_portable_bundle,
+            record_updater_error,
             get_audit_log,
             export_audit_log,
             clear_audit_log,

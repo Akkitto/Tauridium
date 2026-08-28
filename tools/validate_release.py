@@ -515,6 +515,7 @@ def main() -> int:
     "restore_backup",
     "create_automatic_backup",
     "export_portable_bundle",
+    "record_updater_error",
     "get_audit_log",
     "export_audit_log",
     "clear_audit_log",
@@ -1820,6 +1821,35 @@ def main() -> int:
   ):
     if test_marker not in patch_0606:
       fail(f"0.6.6 regression coverage is missing: {test_marker}")
+
+  patch_0615 = read("tools/test_patch_0615.py")
+  updater_ts = read("src/lib/updater.ts")
+  icons_rs = read("src-tauri/src/icons.rs")
+  updater_test = read("src/lib/updater.test.ts")
+  for invariant, source in (
+    ('console.error(`[Tauridium updater] ${action} failed: ${message}`, error);', updater_ts),
+    ('await invoke("record_updater_error", { action, message });', updater_ts),
+    ('fn record_updater_error(app: AppHandle, action: String, message: String)', main_rs),
+    ('Ok(icons::ServiceIconLoad::Fetched(_)) => audit::best_effort', main_rs),
+    ('return Ok(ServiceIconLoad::Cached(cached));', icons_rs),
+    ('Ok(ServiceIconLoad::Fetched(icon))', icons_rs),
+    ('records update-check failures in the developer console and audit log', updater_test),
+  ):
+    if invariant not in source:
+      fail(f"0.6.15 updater/icon-cache invariant is missing: {invariant}")
+  for test_marker in (
+    "test_updater_failures_reach_developer_console_and_audit_log",
+    "test_updater_failure_logging_never_masks_original_failure",
+    "test_cached_service_icons_return_before_network_discovery",
+    "test_audit_records_only_real_icon_network_fetches",
+  ):
+    if test_marker not in patch_0615:
+      fail(f"0.6.15 regression coverage is missing: {test_marker}")
+  icon_command = main_rs.split("async fn get_service_icon", 1)[1].split(
+    "fn copy_service_icon_cache", 1
+  )[0]
+  if "ServiceIconLoad::Cached(_) => audit::best_effort" in icon_command:
+    fail("cached website icons must not be audited as network fetches")
 
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],
