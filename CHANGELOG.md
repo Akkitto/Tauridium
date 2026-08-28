@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.15] - 2026-08-28
+
+### Fixed
+
+- Logged updater check and install failures to the developer console and persisted them as error-level `updater` audit events, including failures from silent startup update checks.
+- Preserved the original updater failure even when audit persistence itself fails, while logging that secondary audit error separately.
+- Distinguished persistent website-icon cache hits from actual network fetches so ordinary startup cache reads no longer appear as repeated `service-icon` fetch events in the audit log.
+- Kept website icons strictly cache-first: existing positive or negative cache entries are reused without network access; network discovery runs only when the local cache is missing or when the user explicitly requests a refetch.
+
+### Release quality
+
+- Added frontend, Rust, Python regression, and release-invariant coverage for updater diagnostics and once-only website-icon fetching semantics.
+
 ## [0.6.14] - 2026-08-24
 
 ### Fixed
