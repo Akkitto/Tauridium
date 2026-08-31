@@ -140,10 +140,12 @@ class Feature0700Tests(unittest.TestCase):
     self.assertIn("os: windows-11-arm", workflow)
     self.assertIn("needs: scoop", workflow)
     for marker in (
-      "& $ScoopCommand install $ManifestPath",
+      "& $ScoopCommand install $AppSpec",
       "& $CheckverCommand -App $AutoupdateManifestPath -Update -ThrowError",
       "Scoop autoupdate produced an unexpected portable SHA-256.",
+      "$PreviousInstallInfo.bucket -ne $BucketName",
       "& $ScoopCommand update tauridium",
+      "$InstallInfo.bucket -ne $BucketName",
       "& $ScoopCommand uninstall tauridium",
       "--build-info-file",
       "Scoop did not create the Tauridium Start Menu shortcut.",

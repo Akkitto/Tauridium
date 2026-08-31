@@ -33,6 +33,11 @@ $ConfigRoot = Join-Path $RunRoot "config"
 $ServeRoot = Split-Path -Parent $Portable
 $ManifestPath = Join-Path $RunRoot "tauridium.json"
 $AutoupdateManifestPath = Join-Path $RunRoot "tauridium-autoupdate.json"
+$BucketName = "tauridium-ci"
+$BucketRoot = Join-Path $ScoopRoot "buckets\$BucketName"
+$BucketManifestDir = Join-Path $BucketRoot "bucket"
+$BucketManifestPath = Join-Path $BucketManifestDir "tauridium.json"
+$AppSpec = "$BucketName/tauridium"
 $VersionPath = Join-Path $ServeRoot "scoop-version.txt"
 $BuildInfoPath = Join-Path $RunRoot "build-info.json"
 $DataDir = Join-Path $env:APPDATA "dev.brani.tauridium"
@@ -48,6 +53,7 @@ if (-not (Test-Path -LiteralPath $ScoopCommand -PathType Leaf)) {
   throw "Pinned Scoop core could not be staged in its normal installation layout."
 }
 New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
+New-Item -ItemType Directory -Path $BucketManifestDir -Force | Out-Null
 
 $env:SCOOP = $ScoopRoot
 $env:SCOOP_CACHE = Join-Path $RunRoot "cache"
@@ -115,11 +121,22 @@ try {
 
   $PreviousManifest = $CurrentManifest | ConvertTo-Json -Depth 20 | ConvertFrom-Json
   $PreviousManifest.version = $PreviousVersion
-  $PreviousManifest | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $ManifestPath -Encoding utf8NoBOM
+  $PreviousManifest | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $BucketManifestPath -Encoding utf8NoBOM
 
-  & $ScoopCommand install $ManifestPath
+  # Install through a real isolated bucket, not a raw manifest path. This exercises the same
+  # bucket/install.json lookup that Scoop uses for normal package updates from Extras.
+  & $ScoopCommand install $AppSpec
   if ($LASTEXITCODE -ne 0) {
     throw "Scoop installation of the simulated previous Tauridium version failed."
+  }
+  $PreviousInstalledExe = Join-Path $ScoopRoot "apps\tauridium\$PreviousVersion\tauridium.exe"
+  if (-not (Test-Path -LiteralPath $PreviousInstalledExe -PathType Leaf)) {
+    throw "Scoop did not install the simulated previous Tauridium version through the local bucket."
+  }
+  $PreviousInstallInfoPath = Join-Path $ScoopRoot "apps\tauridium\$PreviousVersion\install.json"
+  $PreviousInstallInfo = Get-Content -LiteralPath $PreviousInstallInfoPath -Raw | ConvertFrom-Json
+  if ($PreviousInstallInfo.bucket -ne $BucketName) {
+    throw "Scoop did not record the expected bucket identity for Tauridium."
   }
 
   if (-not (Test-Path -LiteralPath $Shortcut -PathType Leaf)) {
@@ -131,15 +148,24 @@ try {
     throw "Tauridium application data must not live inside the Scoop installation root."
   }
 
-  $CurrentManifest | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $ManifestPath -Encoding utf8NoBOM
+  $CurrentManifest | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $BucketManifestPath -Encoding utf8NoBOM
   & $ScoopCommand update tauridium
   if ($LASTEXITCODE -ne 0) {
     throw "Scoop update to Tauridium $Version failed."
   }
 
   $InstalledExe = Join-Path $ScoopRoot "apps\tauridium\current\tauridium.exe"
+  $InstalledVersionExe = Join-Path $ScoopRoot "apps\tauridium\$Version\tauridium.exe"
   if (-not (Test-Path -LiteralPath $InstalledExe -PathType Leaf)) {
     throw "Tauridium executable is missing after Scoop update."
+  }
+  if (-not (Test-Path -LiteralPath $InstalledVersionExe -PathType Leaf)) {
+    throw "Scoop update did not install the current Tauridium version directory."
+  }
+  $InstallInfoPath = Join-Path $ScoopRoot "apps\tauridium\$Version\install.json"
+  $InstallInfo = Get-Content -LiteralPath $InstallInfoPath -Raw | ConvertFrom-Json
+  if ($InstallInfo.bucket -ne $BucketName) {
+    throw "Scoop update did not retain the expected Tauridium bucket identity."
   }
   if (-not (Test-Path -LiteralPath $PersistenceMarker -PathType Leaf)) {
     throw "Tauridium application data did not survive Scoop update."
@@ -169,7 +195,7 @@ try {
     throw "External Tauridium application data was removed by Scoop uninstall."
   }
 
-  & $ScoopCommand install $ManifestPath
+  & $ScoopCommand install $AppSpec
   if ($LASTEXITCODE -ne 0) {
     throw "Scoop reinstall failed."
   }
