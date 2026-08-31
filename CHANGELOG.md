@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.7.0] - 2026-08-31
+
+### Added
+
+- Added deterministic, directly runnable Windows portable release ZIPs for both x64 and ARM64, each containing only the production `tauridium.exe` and accompanied by an individual SHA-256 sidecar.
+- Added a repository-owned Scoop manifest template plus release tooling that renders a submission-ready manifest from the actual portable release hashes and deterministic GitHub Release URLs.
+- Added clean-machine Scoop integration gates for x64 and ARM64 using pinned Scoop 0.5.3, covering install, Scoop `checkver`/`autoupdate`, update, shortcut creation, runtime identity, uninstall, reinstall, and application-data survival.
+
+### Packaging
+
+- Made the Windows portable archives mandatory additional release assets without repurposing the existing source, runtime-build-handoff, or documentation ZIPs.
+- Added portable-package and Scoop-manifest validation to canonical release invariants and final release publication, including combined `SHA256SUMS`.
+- Kept Tauridium user state in Tauri's standard application data/config directories outside Scoop's versioned installation tree, so the Scoop manifest intentionally requires no `persist` entry.
+
+### Documentation
+
+- Documented Windows portable installation, the Microsoft Edge WebView2 Evergreen runtime requirement, Scoop persistence behavior, release integrity, and the official Scoop Extras submission workflow.
+- Added the installation and Scoop packaging guides to the deterministic documentation handoff.
+
+### Release quality
+
+- Added Scoop-specific regression coverage for portable archive determinism, x64/ARM64 architecture mapping, real release hashes, manifest field ordering, GUI shortcut semantics, GitHub `checkver`, `$version` autoupdate URLs, and release-workflow enforcement.
+
 ## [0.6.15] - 2026-08-28
 
 ### Fixed

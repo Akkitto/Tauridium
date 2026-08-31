@@ -22,7 +22,7 @@ from typing import Sequence
 ROOT = Path(__file__).resolve().parents[1]
 OS_RELEASE = Path("/etc/os-release")
 SYSTEM_DEPS_ENV = "TAURIDIUM_INIT_SYSTEM_DEPS"
-INIT_VERSION = "0.6.15"
+INIT_VERSION = "0.7.0"
 
 # Modules that Tauridium's Linux Tauri/WebKitGTK dependency graph needs at build
 # time. Checking modules instead of package names keeps init idempotent across
