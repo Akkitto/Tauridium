@@ -43,13 +43,16 @@ To my knowledge, this is, as of now, the only fully open source, fully free of c
 
 ### Windows
 
-Install with [Scoop](https://scoop.sh/):
+Tauridium is prepared for official distribution through the [Scoop Extras](https://github.com/ScoopInstaller/Extras) bucket. Once the upstream manifest has been accepted:
 
 ```powershell
+scoop bucket add extras
 scoop install tauridium
 ```
 
-Alternatively, download the native installer or portable build from [GitHub Releases](https://github.com/Akkitto/Tauridium/releases/latest).
+Until then, download the native installer or x64/ARM64 portable ZIP from [GitHub Releases](https://github.com/Akkitto/Tauridium/releases/latest). Windows builds require the Microsoft Edge WebView2 Runtime, which is normally provided by supported Windows 10 releases and Windows 11.
+
+See [Installation](docs/installation.md) for package details, persistence behavior and release integrity, and [Scoop packaging](packaging/scoop/README.md) for the upstream submission fixture and validation flow.
 
 ### Linux
 

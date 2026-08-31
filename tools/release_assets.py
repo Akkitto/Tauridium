@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from package_release import RuntimeArtifact, build_runtime, inspect_runtime, runtime_zip_name, version
+from scoop import package_portable
 
 ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY = "Akkitto/Tauridium"
@@ -112,6 +113,10 @@ def collect_native(target: str, output_dir: Path, require_signatures: bool) -> l
   run_zip = output_dir / runtime_zip_name(release_version, runtime.suffix)
   build_runtime(run_zip, release_version, [RuntimeArtifact(runtime_path, target, runtime.suffix)])
   written.append(run_zip)
+
+  if platform == "windows":
+    portable, portable_checksum = package_portable(runtime_path, target, output_dir)
+    written.extend((portable, portable_checksum))
 
   bundle_root = release_dir / "bundle"
   for bundle_dir, source_suffix, name_template, updater_artifact in BUNDLE_SPECS[platform]:
@@ -262,7 +267,9 @@ def write_release_notes(output: Path) -> None:
   body = (
     f"# Tauridium {release_version}\n\n"
     f"{changelog_notes(release_version)}\n\n"
-    "Download the package matching your platform and architecture below.\n"
+    "Download the package matching your platform and architecture below. Windows releases "
+    "include deterministic x64 and ARM64 portable ZIPs for Scoop-compatible installation. "
+    "The release also publishes a generated Scoop manifest and SHA-256 metadata.\n"
   )
   output.parent.mkdir(parents=True, exist_ok=True)
   output.write_text(body, encoding="utf-8")

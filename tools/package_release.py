@@ -604,6 +604,12 @@ def build_docs(
   with zipfile.ZipFile(output, "w") as zf:
     for name in ("README.md", "CHANGELOG.md", "AGENTS.md", "LICENSE"):
       add_file(zf, ROOT / name, prefix + name)
+    for source, archive_path in (
+      (ROOT / "docs" / "installation.md", "docs/installation.md"),
+      (ROOT / "packaging" / "scoop" / "README.md", "docs/scoop-packaging.md"),
+    ):
+      if source.is_file():
+        add_file(zf, source, prefix + archive_path)
     add_bytes(zf, checksums, prefix + "SHA256SUMS")
     add_bytes(zf, (manifest_git_log(context) + "\n").encode(), prefix + "GIT-LOG.txt")
     add_bytes(zf, context.manifest_bytes, prefix + SOURCE_MANIFEST_NAME)

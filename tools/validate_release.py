@@ -1851,6 +1851,68 @@ def main() -> int:
   if "ServiceIconLoad::Cached(_) => audit::best_effort" in icon_command:
     fail("cached website icons must not be audited as network fetches")
 
+  feature_0700 = read("tools/test_feature_0700.py")
+  scoop_py = read("tools/scoop.py")
+  scoop_template = read("packaging/scoop/tauridium.json.template")
+  scoop_docs = read("packaging/scoop/README.md")
+  installation_docs = read("docs/installation.md")
+  scoop_smoke = read("tools/test_scoop_install.ps1")
+  release_workflow = read(".github/workflows/release.yml")
+  release_assets = read("tools/release_assets.py")
+  for invariant, source in (
+    ('"x86_64-pc-windows-msvc": ("x64", "64bit")', scoop_py),
+    ('"aarch64-pc-windows-msvc": ("arm64", "arm64")', scoop_py),
+    ('Scoop portable archive must contain only tauridium.exe at the archive root', scoop_py),
+    ('tauridium-{release_version}-windows-{arch}-portable.zip', scoop_py),
+    ('"checkver": "github"', scoop_template),
+    ('"shortcuts": [', scoop_template),
+    ('"tauridium.exe",', scoop_template),
+    ('"Tauridium"', scoop_template),
+    ('tauridium-$version-windows-x64-portable.zip', scoop_template),
+    ('tauridium-$version-windows-arm64-portable.zip', scoop_template),
+    ('from scoop import package_portable', release_assets),
+    ('portable, portable_checksum = package_portable(runtime_path, target, output_dir)', release_assets),
+    ('just scoop-verify-collected ${{ matrix.target }}', release_workflow),
+    ('Scoop clean-machine ${{ matrix.label }}', release_workflow),
+    ('repository: ScoopInstaller/Scoop', release_workflow),
+    ('ref: v0.5.3', release_workflow),
+    ('os: windows-11-arm', release_workflow),
+    ('just scoop-release-manifest release/published-assets', release_workflow),
+    ('just scoop-validate-manifest', release_workflow),
+    ('tauridium-${VERSION}-scoop.json', release_workflow),
+    ('& $CheckverCommand -App $AutoupdateManifestPath -Update -ThrowError', scoop_smoke),
+    ('Scoop autoupdate produced an unexpected portable SHA-256.', scoop_smoke),
+    ('& $ScoopCommand update tauridium', scoop_smoke),
+    ('$ScoopCurrent = Join-Path $ScoopRoot "apps\\scoop\\current"', scoop_smoke),
+    ('Copy-Item -Path (Join-Path $ScoopCore "*") -Destination $ScoopCurrent -Recurse -Force', scoop_smoke),
+    ('--build-info-file', scoop_smoke),
+    ('ROOT / "docs" / "installation.md"', package_release),
+    ('ROOT / "packaging" / "scoop" / "README.md"', package_release),
+    ('Microsoft Edge WebView2 Runtime', installation_docs),
+    ('intentionally has no `persist` entry', installation_docs),
+    ('new-package issue first', scoop_docs),
+    ('/verify', scoop_docs),
+  ):
+    if invariant not in source:
+      fail(f"0.7.0 Scoop readiness invariant is missing: {invariant}")
+  if '\"bin\"' in scoop_template:
+    fail("Tauridium Scoop fixture must not create a GUI-only CLI shim")
+  if '\"persist\"' in scoop_template:
+    fail("Tauridium Scoop fixture must not duplicate standard OS application-data persistence")
+  for test_marker in (
+    "test_reference_manifest_matches_scoop_extras_shape",
+    "test_portable_windows_archives_are_minimal_deterministic_and_hashed",
+    "test_rendered_release_manifest_uses_hashes_from_both_portable_archives",
+    "test_local_manifest_can_exercise_scoop_checkver_and_autoupdate",
+    "test_release_collection_makes_portable_assets_mandatory_for_windows",
+    "test_release_runs_clean_scoop_integration_for_x64_and_arm64",
+    "test_release_publishes_submission_ready_manifest_and_checksums",
+    "test_documentation_handoff_includes_scoop_distribution_guidance",
+    "test_persistence_and_webview2_requirements_are_explicit",
+  ):
+    if test_marker not in feature_0700:
+      fail(f"0.7.0 Scoop regression coverage is missing: {test_marker}")
+
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],
     cwd=ROOT,

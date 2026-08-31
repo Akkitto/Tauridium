@@ -1,0 +1,34 @@
+{
+    "version": "{{version}}",
+    "description": "Lightweight Tauri-based web app service and workspace hub",
+    "homepage": "https://github.com/Akkitto/Tauridium",
+    "license": "MIT",
+    "notes": "Requires Microsoft Edge WebView2 Runtime. Windows 10 (April 2018 or later) and Windows 11 normally provide it with the operating system.",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/Akkitto/Tauridium/releases/download/v{{version}}/tauridium-{{version}}-windows-x64-portable.zip",
+            "hash": "{{windows-x64-sha256}}"
+        },
+        "arm64": {
+            "url": "https://github.com/Akkitto/Tauridium/releases/download/v{{version}}/tauridium-{{version}}-windows-arm64-portable.zip",
+            "hash": "{{windows-arm64-sha256}}"
+        }
+    },
+    "shortcuts": [
+        [
+            "tauridium.exe",
+            "Tauridium"
+        ]
+    ],
+    "checkver": "github",
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/Akkitto/Tauridium/releases/download/v$version/tauridium-$version-windows-x64-portable.zip"
+            },
+            "arm64": {
+                "url": "https://github.com/Akkitto/Tauridium/releases/download/v$version/tauridium-$version-windows-arm64-portable.zip"
+            }
+        }
+    }
+}

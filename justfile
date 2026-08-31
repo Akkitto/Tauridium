@@ -43,12 +43,14 @@ check:
   npm run check
   cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked
   python3 tools/validate_release.py
+  python3 tools/scoop.py validate-template
 
 [windows]
 check:
   npm run check
   cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/validate_release.py
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/scoop.py validate-template
 
 [unix]
 test:
@@ -171,6 +173,31 @@ updater-manifest-if-signed assets_dir="release/published-assets":
 [windows]
 updater-manifest-if-signed assets_dir="release/published-assets":
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/release_assets.py updater-manifest --assets-dir {{assets_dir}} --require-all --if-signed
+
+
+[unix]
+scoop-release-manifest assets_dir="release/published-assets":
+  python3 tools/scoop.py release-manifest --assets-dir {{assets_dir}}
+
+[windows]
+scoop-release-manifest assets_dir="release/published-assets":
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/scoop.py release-manifest --assets-dir {{assets_dir}}
+
+[unix]
+scoop-validate-manifest manifest assets_dir="release/published-assets":
+  python3 tools/scoop.py validate-manifest --manifest {{manifest}} --assets-dir {{assets_dir}}
+
+[windows]
+scoop-validate-manifest manifest assets_dir="release/published-assets":
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/scoop.py validate-manifest --manifest {{manifest}} --assets-dir {{assets_dir}}
+
+[windows]
+scoop-verify-portable portable target:
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/scoop.py verify-portable --portable {{portable}} --target {{target}}
+
+[windows]
+scoop-verify-collected target assets_dir="release/native":
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/scoop.py verify-collected --assets-dir {{assets_dir}} --target {{target}}
 
 [unix]
 release-checksums assets_dir="release/published-assets":

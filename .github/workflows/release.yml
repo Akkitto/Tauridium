@@ -176,6 +176,9 @@ jobs:
       - name: Collect native assets without updater signatures
         if: env.TAURI_UPDATER_SIGNING_ENABLED != 'true'
         run: just package-native ${{ matrix.target }}
+      - name: Verify portable Windows package
+        if: runner.os == 'Windows'
+        run: just scoop-verify-collected ${{ matrix.target }}
       - name: Upload native assets (Linux)
         if: runner.os == 'Linux'
         env:
@@ -192,9 +195,70 @@ jobs:
           if ($files.Count -eq 0) { throw 'No native release assets were collected.' }
           gh release upload $env:GITHUB_REF_NAME @files --clobber
 
+  scoop:
+    name: Scoop clean-machine ${{ matrix.label }}
+    needs: build
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset_arch: x64
+          - label: Windows ARM64
+            os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            asset_arch: arm64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: ScoopInstaller/Scoop
+          ref: v0.5.3
+          path: .scoop-core
+          persist-credentials: false
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Download staged portable package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Path release/scoop-assets -Force | Out-Null
+          gh release download $env:GITHUB_REF_NAME `
+            --pattern "tauridium-*-windows-${{ matrix.asset_arch }}-portable.zip*" `
+            --dir release/scoop-assets
+      - name: Verify downloaded portable package
+        run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/scoop.py verify-collected --assets-dir release/scoop-assets --target ${{ matrix.target }}
+      - name: Verify Scoop install, update, uninstall, and reinstall
+        run: |
+          $portable = Get-ChildItem -LiteralPath release/scoop-assets -File `
+            -Filter "tauridium-*-windows-${{ matrix.asset_arch }}-portable.zip"
+          if ($portable.Count -ne 1) { throw 'Expected exactly one portable Tauridium ZIP.' }
+          ./tools/test_scoop_install.ps1 `
+            -ScoopCore .scoop-core `
+            -Portable $portable.FullName `
+            -Target '${{ matrix.target }}' `
+            -PreviousVersion '0.0.0'
+
   publish:
     name: Finalize release
-    needs: build
+    needs: scoop
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     permissions:
@@ -207,6 +271,10 @@ jobs:
       - uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.13'
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          cache: npm
       - uses: dtolnay/rust-toolchain@1.97.1
       - name: Install just
         run: cargo install just --locked --version 1.56.0
@@ -216,16 +284,23 @@ jobs:
         run: |
           mkdir -p release/published-assets
           gh release download "$GITHUB_REF_NAME" --dir release/published-assets
-      - name: Generate updater metadata when signed and always generate checksums
+      - name: Generate and validate release metadata
         run: |
+          VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
           just updater-manifest-if-signed release/published-assets
+          just scoop-release-manifest release/published-assets
+          just scoop-validate-manifest "release/published-assets/tauridium-${VERSION}-scoop.json" release/published-assets
           just release-checksums release/published-assets
       - name: Upload metadata and publish
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          files=(release/published-assets/SHA256SUMS)
+          VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          files=(
+            release/published-assets/SHA256SUMS
+            "release/published-assets/tauridium-${VERSION}-scoop.json"
+          )
           if [[ -f release/published-assets/latest.json ]]; then
             files+=(release/published-assets/latest.json)
           fi
