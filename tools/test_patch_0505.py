@@ -59,7 +59,9 @@ class Patch0505Tests(unittest.TestCase):
       "just package-native-signed ${{ matrix.target }}",
       "just updater-manifest-if-signed release/published-assets",
       "just release-checksums release/published-assets",
-      "gh release edit \"$GITHUB_REF_NAME\" --draft=false --latest",
+      "actions/upload-artifact@v7.0.1",
+      "actions/download-artifact@v8.0.1",
+      "gh release create \"$GITHUB_REF_NAME\"",
       "windows-11-arm",
       "ubuntu-22.04-arm",
     ):

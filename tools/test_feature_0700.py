@@ -126,7 +126,8 @@ class Feature0700Tests(unittest.TestCase):
     self.assertIn("from scoop import package_portable", release_assets)
     self.assertIn("portable, portable_checksum = package_portable(runtime_path, target, output_dir)", release_assets)
     self.assertIn("just scoop-verify-collected ${{ matrix.target }}", workflow)
-    self.assertIn("tauridium-*-windows-${{ matrix.asset_arch }}-portable.zip*", workflow)
+    self.assertIn("name: native-${{ matrix.target }}", workflow)
+    self.assertIn("path: release/native/*", workflow)
     self.assertIn("scoop-verify-collected target", justfile)
 
   def test_release_runs_clean_scoop_integration_for_x64_and_arm64(self) -> None:
@@ -138,7 +139,7 @@ class Feature0700Tests(unittest.TestCase):
     self.assertIn("ref: v0.5.3", workflow)
     self.assertIn("os: windows-latest", workflow)
     self.assertIn("os: windows-11-arm", workflow)
-    self.assertIn("needs: scoop", workflow)
+    self.assertIn("needs: [handoff, build, scoop]", workflow)
     for marker in (
       "& $ScoopCommand install $AppSpec",
       "& $CheckverCommand -App $AutoupdateManifestPath -Update -ThrowError",

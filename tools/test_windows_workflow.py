@@ -134,10 +134,15 @@ class WindowsCiTests(unittest.TestCase):
 
   def test_release_windows_build_uses_native_just_path_without_bash(self) -> None:
     release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-    windows_upload = release.split("- name: Upload native assets (Windows)", 1)[1].split("publish:", 1)[0]
-    self.assertIn("shell: pwsh", windows_upload)
-    self.assertIn("just bundle-target ${{ matrix.target }}", release)
-    self.assertIn("just package-native-signed ${{ matrix.target }}", release)
+    build = release.split("  build:", 1)[1].split("  scoop:", 1)[0]
+    windows_install = build.split("- name: Install just (Windows)", 1)[1].split(
+      "- name: Verify Windows-native bootstrap", 1
+    )[0]
+    self.assertIn("shell: pwsh", windows_install)
+    self.assertNotIn("shell: bash", build)
+    self.assertIn("just bundle-target ${{ matrix.target }}", build)
+    self.assertIn("just package-native-signed ${{ matrix.target }}", build)
+    self.assertIn("uses: actions/upload-artifact@v7.0.1", build)
     self.assertNotIn("Sync app version to the tag", release)
 
 

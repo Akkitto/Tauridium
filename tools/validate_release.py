@@ -1577,7 +1577,9 @@ def main() -> int:
     "just package-native-signed ${{ matrix.target }}",
     "just updater-manifest-if-signed release/published-assets",
     "just release-checksums release/published-assets",
-    'gh release edit "$GITHUB_REF_NAME" --draft=false --latest',
+    "actions/upload-artifact@v7.0.1",
+    "actions/download-artifact@v8.0.1",
+    'gh release create "$GITHUB_REF_NAME" "${files[@]}"',
     "windows-11-arm",
     "ubuntu-22.04-arm",
   ):
@@ -1912,6 +1914,30 @@ def main() -> int:
   ):
     if test_marker not in feature_0700:
       fail(f"0.7.0 Scoop regression coverage is missing: {test_marker}")
+
+  patch_0701 = read("tools/test_patch_0701.py")
+  for invariant in (
+    "actions/upload-artifact@v7.0.1",
+    "actions/download-artifact@v8.0.1",
+    "name: release-handoff",
+    "name: native-${{ matrix.target }}",
+    "pattern: native-*",
+    "merge-multiple: true",
+    'gh release create "$GITHUB_REF_NAME" "${files[@]}"',
+  ):
+    if invariant not in release_workflow:
+      fail(f"0.7.1 release-staging invariant is missing: {invariant}")
+  for forbidden in ("gh release download", "--draft", "gh release upload", "gh release edit"):
+    if forbidden in release_workflow:
+      fail(f"0.7.1 release workflow must not use draft-release staging: {forbidden}")
+  for test_marker in (
+    "test_release_validation_uses_actions_artifacts_not_draft_release_assets",
+    "test_scoop_consumes_the_exact_native_artifact_from_the_same_run",
+    "test_public_release_is_created_only_after_all_validation_jobs",
+    "test_release_job_refuses_to_mutate_an_existing_public_release",
+  ):
+    if test_marker not in patch_0701:
+      fail(f"0.7.1 release-staging regression coverage is missing: {test_marker}")
 
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],

@@ -54,13 +54,11 @@ jobs:
       - name: Run canonical release gates
         run: just ci
 
-  draft:
-    name: Prepare draft release
+  handoff:
+    name: Stage release handoff
     needs: gate
     runs-on: ubuntu-22.04
     timeout-minutes: 20
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -78,35 +76,22 @@ jobs:
         run: |
           just package-handoff
           just release-notes
-      - name: Create or refresh draft release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            test "$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)" = "true"
-            gh release edit "$GITHUB_REF_NAME" \
-              --title "Tauridium ${GITHUB_REF_NAME#v}" \
-              --notes-file release/release-notes.md
-          else
-            gh release create "$GITHUB_REF_NAME" \
-              --verify-tag \
-              --draft \
-              --title "Tauridium ${GITHUB_REF_NAME#v}" \
-              --notes-file release/release-notes.md
-          fi
-          gh release upload "$GITHUB_REF_NAME" \
-            release/tauridium-*-src.zip \
-            release/tauridium-*-doc.zip \
-            release/tauridium-*-run-build-handoff.zip \
-            --clobber
+      - name: Stage handoff as workflow artifact
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: release-handoff
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            release/tauridium-*-src.zip
+            release/tauridium-*-doc.zip
+            release/tauridium-*-run-build-handoff.zip
+            release/release-notes.md
 
   build:
     name: Build ${{ matrix.label }}
-    needs: draft
+    needs: gate
     timeout-minutes: 90
-    permissions:
-      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -179,21 +164,13 @@ jobs:
       - name: Verify portable Windows package
         if: runner.os == 'Windows'
         run: just scoop-verify-collected ${{ matrix.target }}
-      - name: Upload native assets (Linux)
-        if: runner.os == 'Linux'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: gh release upload "$GITHUB_REF_NAME" release/native/* --clobber
-      - name: Upload native assets (Windows)
-        if: runner.os == 'Windows'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: pwsh
-        run: |
-          $files = Get-ChildItem -LiteralPath release/native -File | ForEach-Object { $_.FullName }
-          if ($files.Count -eq 0) { throw 'No native release assets were collected.' }
-          gh release upload $env:GITHUB_REF_NAME @files --clobber
+      - name: Stage native assets as workflow artifact
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: native-${{ matrix.target }}
+          if-no-files-found: error
+          compression-level: 0
+          path: release/native/*
 
   scoop:
     name: Scoop clean-machine ${{ matrix.label }}
@@ -236,13 +213,10 @@ jobs:
         with:
           python-version: '3.13'
       - name: Download staged portable package
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          New-Item -ItemType Directory -Path release/scoop-assets -Force | Out-Null
-          gh release download $env:GITHUB_REF_NAME `
-            --pattern "tauridium-*-windows-${{ matrix.asset_arch }}-portable.zip*" `
-            --dir release/scoop-assets
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: native-${{ matrix.target }}
+          path: release/scoop-assets
       - name: Verify downloaded portable package
         run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/scoop.py verify-collected --assets-dir release/scoop-assets --target ${{ matrix.target }}
       - name: Verify Scoop install, update, uninstall, and reinstall
@@ -258,7 +232,7 @@ jobs:
 
   publish:
     name: Finalize release
-    needs: scoop
+    needs: [handoff, build, scoop]
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     permissions:
@@ -278,12 +252,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.97.1
       - name: Install just
         run: cargo install just --locked --version 1.56.0
-      - name: Download staged release assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p release/published-assets
-          gh release download "$GITHUB_REF_NAME" --dir release/published-assets
+      - name: Download staged handoff assets
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: release-handoff
+          path: release/published-assets
+      - name: Download staged native assets
+        uses: actions/download-artifact@v8.0.1
+        with:
+          pattern: native-*
+          path: release/published-assets
+          merge-multiple: true
       - name: Generate and validate release metadata
         run: |
           VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
@@ -291,18 +270,25 @@ jobs:
           just scoop-release-manifest release/published-assets
           just scoop-validate-manifest "release/published-assets/tauridium-${VERSION}-scoop.json" release/published-assets
           just release-checksums release/published-assets
-      - name: Upload metadata and publish
+      - name: Publish verified release atomically
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
-          files=(
-            release/published-assets/SHA256SUMS
-            "release/published-assets/tauridium-${VERSION}-scoop.json"
-          )
-          if [[ -f release/published-assets/latest.json ]]; then
-            files+=(release/published-assets/latest.json)
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "A GitHub Release already exists for $GITHUB_REF_NAME; refusing to mutate published assets." >&2
+            exit 1
           fi
-          gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
-          gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+          mapfile -t files < <(
+            find release/published-assets -maxdepth 1 -type f \
+              ! -name 'release-notes.md' -print | sort
+          )
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo 'No verified release assets were staged.' >&2
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" "${files[@]}" \
+            --verify-tag \
+            --latest \
+            --title "Tauridium ${GITHUB_REF_NAME#v}" \
+            --notes-file release/published-assets/release-notes.md

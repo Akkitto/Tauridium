@@ -45,8 +45,10 @@ class Patch0612Tests(unittest.TestCase):
 
   def test_publish_only_uploads_updater_manifest_when_one_was_generated(self) -> None:
     self.assertIn("just updater-manifest-if-signed release/published-assets", self.workflow)
-    self.assertIn('if [[ -f release/published-assets/latest.json ]]; then', self.workflow)
-    self.assertIn('files+=(release/published-assets/latest.json)', self.workflow)
+    publish = self.workflow.split("- name: Publish verified release atomically", 1)[1]
+    self.assertIn("find release/published-assets -maxdepth 1 -type f", publish)
+    self.assertIn("! -name 'release-notes.md'", publish)
+    self.assertNotIn("latest.json", publish)
     self.assertIn("updater-manifest-if-signed assets_dir=\"release/published-assets\":", self.justfile)
 
   def test_unsigned_and_partial_updater_asset_sets_are_distinguished(self) -> None:
