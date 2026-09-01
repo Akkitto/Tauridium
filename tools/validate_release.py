@@ -1939,6 +1939,24 @@ def main() -> int:
     if test_marker not in patch_0701:
       fail(f"0.7.1 release-staging regression coverage is missing: {test_marker}")
 
+  patch_0702 = read("tools/test_patch_0702.py")
+  for invariant in (
+    '(Join-Path $ScoopRoot "buckets")',
+    '(Join-Path $ScoopRoot "cache")',
+    '(Join-Path $ScoopRoot "persist")',
+    '(Join-Path $ScoopRoot "shims")',
+    'New-Item -ItemType Directory -Path $Directory -Force',
+  ):
+    if invariant not in scoop_smoke:
+      fail(f"0.7.2 Scoop-layout invariant is missing: {invariant}")
+  for test_marker in (
+    "test_isolated_scoop_root_contains_installer_created_mutable_directories",
+    "test_scoop_core_is_staged_only_after_root_layout_exists",
+    "test_scoop_harness_still_uses_isolated_root",
+  ):
+    if test_marker not in patch_0702:
+      fail(f"0.7.2 Scoop-layout regression coverage is missing: {test_marker}")
+
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],
     cwd=ROOT,

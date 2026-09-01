@@ -46,7 +46,18 @@ $Shortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Scoop 
 $Server = $null
 
 Remove-Item -LiteralPath $RunRoot -Recurse -Force -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Path $ScoopCurrent -Force | Out-Null
+# Recreate the mutable directories produced by Scoop's installer. Staging only
+# apps\scoop\current is insufficient because Scoop loads commands from the
+# root shims directory before dispatching any subcommand.
+foreach ($Directory in @(
+  $ScoopCurrent,
+  (Join-Path $ScoopRoot "buckets"),
+  (Join-Path $ScoopRoot "cache"),
+  (Join-Path $ScoopRoot "persist"),
+  (Join-Path $ScoopRoot "shims")
+)) {
+  New-Item -ItemType Directory -Path $Directory -Force | Out-Null
+}
 Copy-Item -Path (Join-Path $ScoopCore "*") -Destination $ScoopCurrent -Recurse -Force
 $ScoopCommand = Join-Path $ScoopCurrent "bin\scoop.ps1"
 if (-not (Test-Path -LiteralPath $ScoopCommand -PathType Leaf)) {
