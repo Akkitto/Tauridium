@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.1] - 2026-09-01
+
+### Fixed
+
+- Fixed tagged-release Scoop validation failing with `release not found` because downstream Windows jobs attempted to download portable assets from a draft GitHub Release that GitHub CLI could not reliably resolve from Actions runners.
+- Staged deterministic handoff and per-target native outputs as immutable GitHub Actions artifacts, and made the Scoop clean-machine jobs consume the exact native artifact produced by the same workflow run.
+- Deferred GitHub Release creation until handoff, all four native builds, and both Scoop clean-machine matrices have passed, so validation no longer depends on a partially assembled public or draft release.
+
+### Release quality
+
+- Added 0.7.1 regression and release-invariant coverage forbidding draft-release staging and `gh release download` from validation jobs.
+- Added current GitHub artifact actions with strict missing-file and artifact-integrity behavior, merged all verified native assets only in the final publication job, and made publication refuse to mutate an already existing release for the tag.
+
 ## [0.7.0] - 2026-08-31
 
 ### Added
