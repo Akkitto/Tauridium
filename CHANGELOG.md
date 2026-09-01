@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.7.2] - 2026-09-02
+
+### Fixed
+
+- Fixed Scoop clean-machine validation failing before installation because the isolated Scoop root omitted the installer-created `shims` directory that Scoop enumerates while loading commands.
+- Recreated Scoop's standard mutable root layout (`buckets`, `cache`, `persist`, and `shims`) before staging the pinned Scoop core, matching the filesystem assumptions of a normal Scoop installation.
+
+### Release quality
+
+- Added 0.7.2 regression and release-invariant coverage requiring the isolated Scoop filesystem layout to exist before the pinned Scoop command is invoked.
+
 ## [0.7.1] - 2026-09-01
 
 ### Fixed
