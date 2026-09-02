@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.4] - 2026-09-02
+
+### Fixed
+
+- Fixed Scoop clean-machine validation racing the installed Tauridium runtime identity probe: Windows GUI-subsystem executables can return control to the shell before the process has completed, so the harness could read `build-info.json` before Tauridium created it.
+- Run the installed portable Tauridium build-information probe through `Start-Process -Wait -PassThru`, verify its process exit code, and require the probe output file to exist before parsing it.
+- Preserved the stronger post-update runtime checks for application name, release version, production build mode, and target architecture.
+
+### Release quality
+
+- Added 0.7.4 regression and release-invariant coverage requiring explicit completion of the Windows GUI runtime probe and forbidding the racy direct invocation path.
+
 ## [0.7.3] - 2026-09-02
 
 ### Fixed
