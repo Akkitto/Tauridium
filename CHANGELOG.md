@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.5] - 2026-09-02
+
+### Fixed
+
+- Added a narrowly scoped temporary compatibility workaround for Proton Mail and Proton Calendar authentication when Proton misclassifies hosted web apps as native Tauri clients through the generic `window.isTauri` marker.
+- Hide only the generic Tauri environment marker in service WebViews whose initial entry host is `mail.proton.me` or `calendar.proton.me`; Proton Pass, standalone Proton Account services, and unrelated services retain normal Tauridium/Tauri behavior.
+- Vendored and pinned Tauri 2.11.3 with a one-line marker-descriptor compatibility patch that makes `window.isTauri` configurable without changing its default value, IPC internals, permissions, commands, plugins, or security boundaries.
+
+### Release quality
+
+- Added regression and release-invariant coverage preventing Proton client-ID spoofing, request/session rewriting, generic WebView application, Proton Pass application, or modification of `window.__TAURI_INTERNALS__`.
+- Documented the workaround as temporary, including a concrete removal procedure for when Proton fixes the upstream environment-detection regression.
+
 ## [0.7.4] - 2026-09-02
 
 ### Fixed
