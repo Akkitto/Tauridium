@@ -5,6 +5,7 @@ mod backup;
 mod icons;
 mod local_profile;
 mod portable;
+mod proton_compat;
 mod recipes;
 
 // Tauridium — lightweight Ferdium client (Tauri v2).
@@ -2196,6 +2197,13 @@ async fn create_service_webview(
                 NewWindowResponse::Deny
             },
         );
+    // TEMPORARY Proton Mail/Calendar workaround. Keep this conditional at the
+    // service boundary rather than changing generic remote-webview behavior.
+    // The initialization script stays attached when the service navigates to
+    // account.proton.me during authentication.
+    if proton_compat::requires_tauri_marker_workaround(&host) {
+        builder = builder.initialization_script(proton_compat::TAURI_MARKER_WORKAROUND_JS);
+    }
     if let Some(ua) = ua.as_deref() {
         builder = builder.user_agent(ua);
     }

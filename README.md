@@ -115,6 +115,8 @@ just build
 * **reqwest + rustls** - server communication outside the WebView
 * **wry** - vendored and patched for recipe IPC compatibility
 
+Temporary service-specific compatibility workarounds are documented in [Compatibility](docs/compatibility.md).
+
 ## Releases
 
 See [`CHANGELOG.md`](CHANGELOG.md) for release history and [GitHub Releases](https://github.com/Akkitto/Tauridium/releases) for packaged releases.

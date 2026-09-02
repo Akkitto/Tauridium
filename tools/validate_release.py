@@ -2001,6 +2001,74 @@ def main() -> int:
     if test_marker not in patch_0704:
       fail(f"0.7.4 GUI build-info regression coverage is missing: {test_marker}")
 
+  patch_0705 = read("tools/test_patch_0705.py")
+  proton_compat = read("src-tauri/src/proton_compat.rs")
+  tauri_vendor_patch = read("vendor/tauri/src/manager/webview.rs")
+  tauri_patch_doc = read("vendor/tauri/TAURIDIUM-PATCH.md")
+  compatibility_doc = read("docs/compatibility.md")
+
+  for invariant in (
+    '"mail.proton.me" | "calendar.proton.me"',
+    "delete window.isTauri",
+    '!requires_tauri_marker_workaround("pass.proton.me")',
+    '!requires_tauri_marker_workaround("account.proton.me")',
+  ):
+    if invariant not in proton_compat:
+      fail(f"0.7.5 Proton compatibility invariant is missing: {invariant}")
+
+  if "window.isTauri = false" in proton_compat.split('TAURI_MARKER_WORKAROUND_JS: &str = r#"')[1].split('"#;')[0]:
+    fail("0.7.5 Proton compatibility must remove the marker rather than spoofing a false value")
+
+  for invariant in (
+    "value: true",
+    "configurable: true",
+  ):
+    marker_start = tauri_vendor_patch.find("Object.defineProperty(window, 'isTauri'")
+    marker_end = tauri_vendor_patch.find("});", marker_start)
+    if marker_start < 0 or invariant not in tauri_vendor_patch[marker_start:marker_end]:
+      fail(f"0.7.5 vendored Tauri marker invariant is missing: {invariant}")
+
+  cargo_manifest = read("src-tauri/Cargo.toml")
+  for invariant in (
+    'tauri = { version = "=2.11.3"',
+    'tauri = { path = "../vendor/tauri" }',
+    "TEMPORARY patched Tauri 2.11.3",
+  ):
+    if invariant not in cargo_manifest:
+      fail(f"0.7.5 temporary Tauri patch invariant is missing: {invariant}")
+
+  main_rs = read("src-tauri/src/main.rs")
+  if main_rs.count("if proton_compat::requires_tauri_marker_workaround(&host)") != 1:
+    fail("0.7.5 Proton workaround must be injected exactly once at the service boundary")
+
+  for invariant in (
+    "Temporary patch",
+    "## Removal",
+    "Do not expand this patch into a general hosted-site compatibility layer.",
+  ):
+    if invariant not in tauri_patch_doc:
+      fail(f"0.7.5 vendored Tauri patch removal guidance is missing: {invariant}")
+
+  for invariant in (
+    "Temporary Proton Mail and Calendar workaround",
+    "`pass.proton.me`",
+    "### Removal",
+    "Do not broaden this workaround",
+  ):
+    if invariant not in compatibility_doc:
+      fail(f"0.7.5 compatibility documentation invariant is missing: {invariant}")
+
+  for test_marker in (
+    "test_workaround_is_service_specific_and_excludes_pass",
+    "test_workaround_is_conditionally_injected_at_service_boundary",
+    "test_workaround_removes_only_generic_marker",
+    "test_vendored_tauri_patch_changes_only_marker_configurability",
+    "test_tauri_patch_is_exactly_pinned_and_documented_as_temporary",
+    "test_user_facing_compatibility_document_has_removal_boundary",
+  ):
+    if test_marker not in patch_0705:
+      fail(f"0.7.5 Proton compatibility regression coverage is missing: {test_marker}")
+
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],
     cwd=ROOT,
