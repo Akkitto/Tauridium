@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.3] - 2026-09-02
+
+### Fixed
+
+- Fixed Scoop clean-machine update validation entering unrelated Scoop/core bucket maintenance because the isolated harness omitted the fresh `last_update` configuration written by Scoop's installer.
+- Recreated Scoop's just-installed update state before any app command, keeping the Tauridium install/update lifecycle isolated from the default `main` bucket and external bucket network access.
+- Added Scoop's shim directory to the test process PATH only and restore the original PATH during cleanup, matching installer behavior without mutating the GitHub Actions runner's persistent user environment.
+
+### Release quality
+
+- Added 0.7.3 regression and release-invariant coverage requiring installer-equivalent fresh update state before Scoop install/update commands and forbidding a fabricated or downloaded `main` bucket in the isolated harness.
+
 ## [0.7.2] - 2026-09-02
 
 ### Fixed
