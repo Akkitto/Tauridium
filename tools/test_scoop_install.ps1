@@ -30,6 +30,8 @@ $RunRoot = Join-Path $env:RUNNER_TEMP "tauridium-scoop-$Target"
 $ScoopRoot = Join-Path $RunRoot "scoop"
 $ScoopCurrent = Join-Path $ScoopRoot "apps\scoop\current"
 $ConfigRoot = Join-Path $RunRoot "config"
+$ScoopConfigRoot = Join-Path $ConfigRoot "scoop"
+$ScoopConfigPath = Join-Path $ScoopConfigRoot "config.json"
 $ServeRoot = Split-Path -Parent $Portable
 $ManifestPath = Join-Path $RunRoot "tauridium.json"
 $AutoupdateManifestPath = Join-Path $RunRoot "tauridium-autoupdate.json"
@@ -44,6 +46,7 @@ $DataDir = Join-Path $env:APPDATA "dev.brani.tauridium"
 $PersistenceMarker = Join-Path $DataDir "scoop-ci-persistence.marker"
 $Shortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Scoop Apps\Tauridium.lnk"
 $Server = $null
+$OriginalPath = $env:PATH
 
 Remove-Item -LiteralPath $RunRoot -Recurse -Force -ErrorAction SilentlyContinue
 # Recreate the mutable directories produced by Scoop's installer. Staging only
@@ -70,6 +73,19 @@ $env:SCOOP = $ScoopRoot
 $env:SCOOP_CACHE = Join-Path $RunRoot "cache"
 $env:XDG_CONFIG_HOME = $ConfigRoot
 $env:SCOOP_NO_JUNCTIONS = "false"
+
+# Match the state produced by Scoop's installer. A real fresh install records
+# last_update immediately, so app commands do not begin by refreshing Scoop and
+# every configured bucket. Without this config, the isolated harness exercises
+# an artificial stale-install path and tries to maintain the default main bucket.
+New-Item -ItemType Directory -Path $ScoopConfigRoot -Force | Out-Null
+@{
+  last_update = [System.DateTime]::Now.ToString("o")
+} | ConvertTo-Json | Set-Content -LiteralPath $ScoopConfigPath -Encoding utf8NoBOM
+
+# The real installer also makes Scoop's shim directory available to the current
+# process. Keep this process-local so CI never mutates the runner user's PATH.
+$env:PATH = "$(Join-Path $ScoopRoot 'shims');$OriginalPath"
 
 try {
   $Listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
@@ -232,4 +248,5 @@ finally {
   Remove-Item -LiteralPath $VersionPath -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $RunRoot -Recurse -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $Shortcut -Force -ErrorAction SilentlyContinue
+  $env:PATH = $OriginalPath
 }

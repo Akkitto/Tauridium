@@ -1957,6 +1957,28 @@ def main() -> int:
     if test_marker not in patch_0702:
       fail(f"0.7.2 Scoop-layout regression coverage is missing: {test_marker}")
 
+  patch_0703 = read("tools/test_patch_0703.py")
+  for invariant in (
+    '$ScoopConfigPath = Join-Path $ScoopConfigRoot "config.json"',
+    'last_update = [System.DateTime]::Now.ToString("o")',
+    'Set-Content -LiteralPath $ScoopConfigPath -Encoding utf8NoBOM',
+    "$env:PATH = \"$(Join-Path $ScoopRoot 'shims');$OriginalPath\"",
+    '$env:PATH = $OriginalPath',
+  ):
+    if invariant not in scoop_smoke:
+      fail(f"0.7.3 fresh-Scoop-state invariant is missing: {invariant}")
+  for forbidden in ("buckets\\main", "bucket add main", "ScoopInstaller/Main"):
+    if forbidden.lower() in scoop_smoke.lower():
+      fail(f"0.7.3 Scoop harness must not depend on the default main bucket: {forbidden}")
+  for test_marker in (
+    "test_harness_recreates_installers_fresh_last_update_state",
+    "test_fresh_update_state_exists_before_any_scoop_app_command",
+    "test_harness_does_not_fabricate_or_fetch_default_main_bucket",
+    "test_shims_are_process_local_and_path_is_restored",
+  ):
+    if test_marker not in patch_0703:
+      fail(f"0.7.3 fresh-Scoop-state regression coverage is missing: {test_marker}")
+
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],
     cwd=ROOT,
