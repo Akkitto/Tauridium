@@ -199,9 +199,18 @@ try {
   }
 
   Remove-Item -LiteralPath $BuildInfoPath -Force -ErrorAction SilentlyContinue
-  & $InstalledExe --build-info-file $BuildInfoPath
-  if ($LASTEXITCODE -ne 0) {
-    throw "Installed Tauridium build-info probe failed."
+  # Tauridium is a Windows GUI-subsystem executable, so direct invocation from a
+  # shell can return before the process has finished. Run the build-information
+  # probe as an explicit process and wait for its deterministic early-exit path.
+  $BuildInfoProcess = Start-Process -FilePath $InstalledExe `
+    -ArgumentList @("--build-info-file", $BuildInfoPath) `
+    -Wait `
+    -PassThru
+  if ($BuildInfoProcess.ExitCode -ne 0) {
+    throw "Installed Tauridium build-info probe failed with exit code $($BuildInfoProcess.ExitCode)."
+  }
+  if (-not (Test-Path -LiteralPath $BuildInfoPath -PathType Leaf)) {
+    throw "Installed Tauridium build-info probe produced no output file."
   }
   $BuildInfo = Get-Content -LiteralPath $BuildInfoPath -Raw | ConvertFrom-Json
   if ($BuildInfo.name -ne "Tauridium" -or $BuildInfo.version -ne $Version) {

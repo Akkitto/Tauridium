@@ -1979,6 +1979,28 @@ def main() -> int:
     if test_marker not in patch_0703:
       fail(f"0.7.3 fresh-Scoop-state regression coverage is missing: {test_marker}")
 
+  patch_0704 = read("tools/test_patch_0704.py")
+  for invariant in (
+    '$BuildInfoProcess = Start-Process -FilePath $InstalledExe',
+    '-ArgumentList @("--build-info-file", $BuildInfoPath)',
+    '-Wait `',
+    '-PassThru',
+    '$BuildInfoProcess.ExitCode -ne 0',
+    'Test-Path -LiteralPath $BuildInfoPath -PathType Leaf',
+    'build-info probe produced no output file',
+  ):
+    if invariant not in scoop_smoke:
+      fail(f"0.7.4 GUI build-info probe invariant is missing: {invariant}")
+  if '& $InstalledExe --build-info-file $BuildInfoPath' in scoop_smoke:
+    fail("0.7.4 Scoop harness must wait for the GUI build-info process explicitly")
+  for test_marker in (
+    "test_gui_build_info_probe_waits_for_process_completion",
+    "test_build_info_file_is_checked_before_reading",
+    "test_runtime_identity_and_target_checks_remain_mandatory",
+  ):
+    if test_marker not in patch_0704:
+      fail(f"0.7.4 GUI build-info regression coverage is missing: {test_marker}")
+
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],
     cwd=ROOT,
