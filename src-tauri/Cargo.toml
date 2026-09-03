@@ -1,6 +1,6 @@
 [package]
 name = "tauridium"
-version = "0.7.5"
+version = "0.7.6"
 edition = "2021"
 rust-version = "1.97.1"
 description = "Tauridium — lightweight Tauri client for Ferdium"
@@ -47,8 +47,8 @@ path = "src/main.rs"
 # See vendor/wry/src/wkwebview/mod.rs. Reapply the patch when upgrading Wry.
 #
 # TEMPORARY patched Tauri 2.11.3: makes only the generic `window.isTauri` marker configurable
-# so Tauridium can hide it in Proton Mail/Calendar service webviews. The marker remains true
-# everywhere else and no IPC/ACL behavior is changed. Remove this path patch with
+# so Tauridium can hide it in selected Proton web-client service webviews. The marker remains
+# true everywhere else and no IPC/ACL behavior is changed. Remove this path patch with
 # src/proton_compat.rs once Proton fixes its upstream environment detection.
 [patch.crates-io]
 tauri = { path = "../vendor/tauri" }

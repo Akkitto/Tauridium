@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.6] - 2026-09-03
+
+### Fixed
+
+- Broadened the temporary Proton Tauri-marker compatibility workaround from Mail and Calendar to the hosted Proton web clients that currently expose platform-specific native client identities: Account Lite flows, Mail, Calendar, Pass, Authenticator, and Meet.
+- Kept the workaround evidence-based instead of applying it to all Proton domains; Drive, Wallet, Docs/Sheets, Lumo, Contacts, and unrelated services retain Tauridium's normal Tauri environment marker.
+- Preserved the narrow workaround mechanism: only the generic `window.isTauri` marker is removed in selected service WebViews, while Proton requests, cookies, client IDs, Tauri IPC, permissions, commands, plugins, and `window.__TAURI_INTERNALS__` remain untouched.
+
+### Release quality
+
+- Expanded Rust, Python regression, release-invariant, and compatibility-documentation coverage for the complete current Proton native-identity host set and its explicit exclusion boundary.
+- Updated the temporary vendored Tauri patch documentation and service-boundary comments so the removal procedure remains accurate as the upstream Proton issue evolves.
+
 ## [0.7.5] - 2026-09-02
 
 ### Fixed
