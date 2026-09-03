@@ -1,11 +1,12 @@
 /*
- * TEMPORARY Proton Mail/Calendar compatibility workaround.
+ * TEMPORARY Proton web-client compatibility workaround.
  *
  * Proton's shared web client currently treats the generic Tauri runtime marker
  * (`window.isTauri === true`) as proof that it is running inside Proton's own
  * native desktop shell. Tauridium is itself a Tauri application, so ordinary
- * hosted Mail/Calendar pages are otherwise misclassified as native Proton
- * clients and can select native client identities during authentication.
+ * hosted Proton pages with native platform client identities are otherwise
+ * misclassified as native Proton clients and can select native client identities
+ * during authentication.
  *
  * Keep this module intentionally small and service-specific. Remove it together
  * with the vendor/tauri marker-descriptor patch once Proton fixes its upstream
@@ -24,7 +25,15 @@ pub(crate) const TAURI_MARKER_WORKAROUND_JS: &str = r#"(function(){
 })();"#;
 
 pub(crate) fn requires_tauri_marker_workaround(initial_host: &str) -> bool {
-    matches!(initial_host, "mail.proton.me" | "calendar.proton.me")
+    matches!(
+        initial_host,
+        "account.proton.me"
+            | "mail.proton.me"
+            | "calendar.proton.me"
+            | "pass.proton.me"
+            | "authenticator.proton.me"
+            | "meet.proton.me"
+    )
 }
 
 #[cfg(test)]
@@ -32,20 +41,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn workaround_targets_only_proton_mail_and_calendar_entry_hosts() {
-        assert!(requires_tauri_marker_workaround("mail.proton.me"));
-        assert!(requires_tauri_marker_workaround("calendar.proton.me"));
+    fn workaround_targets_proton_web_clients_with_native_platform_identities() {
+        for host in [
+            "account.proton.me",
+            "mail.proton.me",
+            "calendar.proton.me",
+            "pass.proton.me",
+            "authenticator.proton.me",
+            "meet.proton.me",
+        ] {
+            assert!(requires_tauri_marker_workaround(host), "{host}");
+        }
 
-        // Proton Pass currently uses a separate native identity/authentication
-        // path and must retain Tauridium's ordinary Tauri environment marker.
-        assert!(!requires_tauri_marker_workaround("pass.proton.me"));
-
-        // Account is reached as a navigation within an already-classified
-        // Mail/Calendar service webview. The initialization script remains
-        // attached across navigations, so it does not need a global host rule.
-        assert!(!requires_tauri_marker_workaround("account.proton.me"));
-        assert!(!requires_tauri_marker_workaround("proton.me"));
-        assert!(!requires_tauri_marker_workaround("example.com"));
+        for host in [
+            "drive.proton.me",
+            "wallet.proton.me",
+            "docs.proton.me",
+            "sheets.proton.me",
+            "lumo.proton.me",
+            "contacts.proton.me",
+            "proton.me",
+            "example.com",
+        ] {
+            assert!(!requires_tauri_marker_workaround(host), "{host}");
+        }
     }
 
     #[test]

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression coverage for Tauridium 0.7.5 Proton Tauri-marker compatibility."""
+"""Regression coverage for Tauridium Proton Tauri-marker compatibility."""
 
 from __future__ import annotations
 
@@ -17,11 +17,26 @@ COMPAT_DOC = (ROOT / "docs/compatibility.md").read_text(encoding="utf-8")
 
 
 class Patch0705Tests(unittest.TestCase):
-  def test_workaround_is_service_specific_and_excludes_pass(self) -> None:
-    self.assertIn('"mail.proton.me" | "calendar.proton.me"', PROTON)
-    self.assertIn('!requires_tauri_marker_workaround("pass.proton.me")', PROTON)
-    self.assertIn('!requires_tauri_marker_workaround("account.proton.me")', PROTON)
-    self.assertNotIn('"pass.proton.me" |', PROTON)
+  def test_workaround_targets_all_current_native_identity_web_clients(self) -> None:
+    for host in (
+      "account.proton.me",
+      "mail.proton.me",
+      "calendar.proton.me",
+      "pass.proton.me",
+      "authenticator.proton.me",
+      "meet.proton.me",
+    ):
+      self.assertIn(f'"{host}"', PROTON)
+    production = PROTON.split("#[cfg(test)]", 1)[0]
+    for host in (
+      "drive.proton.me",
+      "wallet.proton.me",
+      "docs.proton.me",
+      "sheets.proton.me",
+      "lumo.proton.me",
+      "contacts.proton.me",
+    ):
+      self.assertNotIn(f'"{host}"', production)
 
   def test_workaround_is_conditionally_injected_at_service_boundary(self) -> None:
     conditional = "if proton_compat::requires_tauri_marker_workaround(&host)"
@@ -73,13 +88,15 @@ class Patch0705Tests(unittest.TestCase):
 
   def test_user_facing_compatibility_document_has_removal_boundary(self) -> None:
     for marker in (
-      "Temporary Proton Mail and Calendar workaround",
+      "Temporary Proton web-client workaround",
       "`mail.proton.me`",
       "`calendar.proton.me`",
       "`pass.proton.me`",
-      "It does not rewrite",
+      "`authenticator.proton.me`",
+      "`meet.proton.me`",
+      "does **not** rewrite",
       "### Removal",
-      "Do not broaden this workaround",
+      "Keep this host list aligned",
     ):
       self.assertIn(marker, COMPAT_DOC)
 

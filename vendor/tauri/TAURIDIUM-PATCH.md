@@ -9,8 +9,8 @@ Tauri's document-start runtime marker is normally defined as a non-configurable
 `window.isTauri === true` property. Tauridium changes only the property's
 `configurable` descriptor to `true`; its value remains `true` everywhere by default.
 
-Tauridium's own Proton Mail/Calendar compatibility module can therefore delete the
-marker in those two hosted-service webviews before page JavaScript runs. No Tauri IPC
+Tauridium's Proton compatibility module can therefore delete the marker only in the
+selected hosted Proton service WebViews before page JavaScript runs. No Tauri IPC
 capability, ACL, command, plugin, or `__TAURI_INTERNALS__` behavior is changed.
 
 This exists solely to work around the upstream Proton web-client environment-detection
@@ -19,7 +19,7 @@ desktop application.
 
 ## Removal
 
-When Proton no longer classifies ordinary hosted Mail/Calendar pages from the generic
+When Proton no longer classifies ordinary hosted Proton web clients from the generic
 Tauri marker alone:
 
 1. remove `src-tauri/src/proton_compat.rs`;

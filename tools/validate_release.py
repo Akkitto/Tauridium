@@ -2008,16 +2008,29 @@ def main() -> int:
   compatibility_doc = read("docs/compatibility.md")
 
   for invariant in (
-    '"mail.proton.me" | "calendar.proton.me"',
+    '"account.proton.me"',
+    '"mail.proton.me"',
+    '"calendar.proton.me"',
+    '"pass.proton.me"',
+    '"authenticator.proton.me"',
+    '"meet.proton.me"',
     "delete window.isTauri",
-    '!requires_tauri_marker_workaround("pass.proton.me")',
-    '!requires_tauri_marker_workaround("account.proton.me")',
   ):
     if invariant not in proton_compat:
-      fail(f"0.7.5 Proton compatibility invariant is missing: {invariant}")
+      fail(f"Proton compatibility invariant is missing: {invariant}")
+  for excluded_host in (
+    "drive.proton.me",
+    "wallet.proton.me",
+    "docs.proton.me",
+    "sheets.proton.me",
+    "lumo.proton.me",
+    "contacts.proton.me",
+  ):
+    if f'"{excluded_host}"' in proton_compat.split("#[cfg(test)]", 1)[0]:
+      fail(f"Proton compatibility must not become a blanket Proton rule: {excluded_host}")
 
   if "window.isTauri = false" in proton_compat.split('TAURI_MARKER_WORKAROUND_JS: &str = r#"')[1].split('"#;')[0]:
-    fail("0.7.5 Proton compatibility must remove the marker rather than spoofing a false value")
+    fail("Proton compatibility must remove the marker rather than spoofing a false value")
 
   for invariant in (
     "value: true",
@@ -2039,7 +2052,7 @@ def main() -> int:
 
   main_rs = read("src-tauri/src/main.rs")
   if main_rs.count("if proton_compat::requires_tauri_marker_workaround(&host)") != 1:
-    fail("0.7.5 Proton workaround must be injected exactly once at the service boundary")
+    fail("Proton workaround must be injected exactly once at the service boundary")
 
   for invariant in (
     "Temporary patch",
@@ -2050,16 +2063,18 @@ def main() -> int:
       fail(f"0.7.5 vendored Tauri patch removal guidance is missing: {invariant}")
 
   for invariant in (
-    "Temporary Proton Mail and Calendar workaround",
+    "Temporary Proton web-client workaround",
     "`pass.proton.me`",
+    "`authenticator.proton.me`",
+    "`meet.proton.me`",
     "### Removal",
-    "Do not broaden this workaround",
+    "Keep this host list aligned",
   ):
     if invariant not in compatibility_doc:
-      fail(f"0.7.5 compatibility documentation invariant is missing: {invariant}")
+      fail(f"Proton compatibility documentation invariant is missing: {invariant}")
 
   for test_marker in (
-    "test_workaround_is_service_specific_and_excludes_pass",
+    "test_workaround_targets_all_current_native_identity_web_clients",
     "test_workaround_is_conditionally_injected_at_service_boundary",
     "test_workaround_removes_only_generic_marker",
     "test_vendored_tauri_patch_changes_only_marker_configurability",
@@ -2067,7 +2082,7 @@ def main() -> int:
     "test_user_facing_compatibility_document_has_removal_boundary",
   ):
     if test_marker not in patch_0705:
-      fail(f"0.7.5 Proton compatibility regression coverage is missing: {test_marker}")
+      fail(f"Proton compatibility regression coverage is missing: {test_marker}")
 
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],
