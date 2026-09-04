@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.7.7] - 2026-09-04
+
+### Added
+
+- Added a service-level custom icon source URL control in each service's settings. Ordinary website URLs use favicon discovery, while direct HTTP(S) image URLs are fetched as the requested image and cached locally.
+- Added an **About** item as the first entry in the native top-bar About menu; it opens Settings directly on the About tab.
+
+### Changed
+
+- New services created while a workspace is active are added to that currently open workspace by default before the new service is selected.
+- Custom service icon payloads are validated before caching. Failed or incompatible replacements remove stale custom cache data, restore the service's normal default/recipe icon behavior, and record the failure in the Audit Log without storing the source URL.
+
+### Release quality
+
+- Added focused frontend, Rust, Python regression, and release-invariant coverage for active-workspace service creation, About routing, custom service icon fetching, image compatibility checks, audit logging, and fallback behavior.
+
 ## [0.7.6] - 2026-09-03
 
 ### Fixed
