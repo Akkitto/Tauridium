@@ -251,6 +251,10 @@ export function fetchWorkspaceIconUrl(url: string): Promise<string> {
   return invoke("fetch_workspace_icon_url", { url });
 }
 
+export function fetchServiceIconUrl(serviceId: string, url: string): Promise<string> {
+  return invoke("fetch_service_icon_url", { serviceId, url });
+}
+
 export function clearSandbox(sandboxId: string): Promise<void> {
   return invoke("clear_sandbox", { sandboxId });
 }

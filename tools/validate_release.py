@@ -2084,6 +2084,35 @@ def main() -> int:
     if test_marker not in patch_0705:
       fail(f"Proton compatibility regression coverage is missing: {test_marker}")
 
+  patch_0707 = read("tools/test_patch_0707.py")
+  api_test = read("src/lib/api.test.ts")
+  for invariant in (
+    "if (created && activeWorkspace)",
+    "await updateWorkspace(workspace.id, workspace.name, members);",
+    'let about_item = MenuItem::with_id(',
+    '"open-about" => {',
+    'let _ = app.emit("open-about", ());',
+    "Custom icon source URL",
+    "async function assignServiceIconFromUrl()",
+    'return invoke("fetch_service_icon_url", { serviceId, url });',
+    "pub(crate) async fn fetch_service_icon_url(",
+    '"Custom service icon source failed; default icon fallback selected"',
+    "fn image_bytes_look_compatible(",
+    "Website icon uses incompatible or invalid image data",
+  ):
+    if invariant not in app + api_ts + api_test + main_rs + icons_rs:
+      fail(f"0.7.7 workspace/About/service-icon invariant is missing: {invariant}")
+
+  for test_marker in (
+    "test_new_services_join_the_current_workspace_before_activation",
+    "test_about_menu_starts_with_about_and_routes_to_settings_about_tab",
+    "test_service_settings_accept_website_or_direct_icon_source_urls",
+    "test_custom_icon_failure_is_audited_and_restores_default_icon",
+    "test_incompatible_image_payloads_are_rejected_before_caching",
+  ):
+    if test_marker not in patch_0707:
+      fail(f"0.7.7 regression coverage is missing: {test_marker}")
+
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],
     cwd=ROOT,

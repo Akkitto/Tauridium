@@ -79,8 +79,34 @@ fn content_type_mime(response: &reqwest::Response, url: &Url) -> Option<String> 
         Some("image/webp".into())
     } else if path.ends_with(".ico") {
         Some("image/x-icon".into())
+    } else if path.ends_with(".avif") {
+        Some("image/avif".into())
+    } else if path.ends_with(".bmp") {
+        Some("image/bmp".into())
     } else {
         None
+    }
+}
+
+fn image_bytes_look_compatible(mime: &str, bytes: &[u8]) -> bool {
+    match mime {
+        "image/png" => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
+        "image/jpeg" => bytes.starts_with(&[0xff, 0xd8, 0xff]),
+        "image/gif" => bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a"),
+        "image/webp" => bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP",
+        "image/x-icon" | "image/vnd.microsoft.icon" => {
+            bytes.starts_with(&[0x00, 0x00, 0x01, 0x00]) || bytes.starts_with(b"\x89PNG\r\n\x1a\n")
+        }
+        "image/svg+xml" => bytes.windows(4).take(4096).any(|window| window == b"<svg"),
+        "image/avif" => {
+            bytes.len() >= 12
+                && &bytes[4..8] == b"ftyp"
+                && bytes[8..]
+                    .windows(4)
+                    .any(|brand| brand == b"avif" || brand == b"avis")
+        }
+        "image/bmp" => bytes.starts_with(b"BM"),
+        _ => false,
     }
 }
 
@@ -111,6 +137,11 @@ async fn fetch_image(client: &reqwest::Client, url: &Url) -> Result<String, Stri
         .map_err(|error| format!("Unable to read website icon: {error}"))?;
     if bytes.is_empty() || bytes.len() > MAX_ICON_BYTES {
         return Err("Website icon has an invalid size".into());
+    }
+    if !image_bytes_look_compatible(&mime, &bytes) {
+        return Err(format!(
+            "Website icon uses incompatible or invalid image data ({mime})"
+        ));
     }
     Ok(format!(
         "data:{mime};base64,{}",
@@ -179,23 +210,67 @@ fn icon_href_from_html(html: &str) -> Option<String> {
     None
 }
 
+fn looks_like_direct_image_url(url: &Url) -> bool {
+    let path = url.path().to_ascii_lowercase();
+    [
+        ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".avif", ".bmp",
+    ]
+    .iter()
+    .any(|extension| path.ends_with(extension))
+}
+
+async fn fetch_icon_url(
+    client: &reqwest::Client,
+    raw_url: &str,
+    kind: &str,
+) -> Result<String, String> {
+    let parsed =
+        Url::parse(raw_url.trim()).map_err(|error| format!("Invalid {kind} URL: {error}"))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(format!("{kind} URLs must use HTTP or HTTPS"));
+    }
+
+    // Accept either a direct image URL or an ordinary website URL. A URL ending in a supported
+    // image extension is treated as an explicit image and must itself be valid; silently replacing
+    // a broken direct image with the website favicon would hide an incompatible custom source.
+    // Ordinary page URLs fall back to favicon discovery. The result is always a self-contained
+    // data URL so persistent icon storage never depends on the remote source remaining available.
+    match fetch_image(client, &parsed).await {
+        Ok(icon) => Ok(icon),
+        Err(error) if looks_like_direct_image_url(&parsed) => Err(error),
+        Err(_) => discover_icon(client, &parsed).await,
+    }
+}
+
 pub(crate) async fn fetch_workspace_icon_url(
     client: &reqwest::Client,
     raw_url: &str,
 ) -> Result<String, String> {
-    let parsed = Url::parse(raw_url.trim())
-        .map_err(|error| format!("Invalid workspace icon URL: {error}"))?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-        return Err("Workspace icon URLs must use HTTP or HTTPS".into());
-    }
+    fetch_icon_url(client, raw_url, "workspace icon").await
+}
 
-    // Accept either a direct image URL or an ordinary website URL. Direct image URLs are
-    // preferred; when the response is HTML (or otherwise not an image), fall back to the
-    // same favicon discovery path used by service icons. The result is always a self-contained
-    // data URL so backups and portable exports never depend on this remote URL later.
-    match fetch_image(client, &parsed).await {
-        Ok(icon) => Ok(icon),
-        Err(_) => discover_icon(client, &parsed).await,
+pub(crate) async fn fetch_service_icon_url(
+    app: &AppHandle,
+    client: &reqwest::Client,
+    service_id: &str,
+    raw_url: &str,
+) -> Result<String, String> {
+    let path = cache_path(app, service_id)?;
+    match fetch_icon_url(client, raw_url, "service icon source").await {
+        Ok(icon) => {
+            if let Err(error) = write_atomic(&path, &format!("{icon}\n")) {
+                let _ = fs::remove_file(&path);
+                return Err(format!("Unable to cache custom service icon: {error}"));
+            }
+            Ok(icon)
+        }
+        Err(error) => {
+            // A custom source is an explicit replacement request. Do not retain a stale cached
+            // website/custom icon when the replacement fails; the UI must fall back to the
+            // service's recipe/default icon.
+            let _ = fs::remove_file(&path);
+            Err(error)
+        }
     }
 }
 
@@ -355,5 +430,42 @@ mod tests {
             ServiceIconLoad::Fetched("data:image/png;base64,fetched".into()).icon(),
             Some("data:image/png;base64,fetched".into())
         );
+    }
+
+    #[test]
+    fn direct_image_urls_are_classified_without_query_string_confusion() {
+        assert!(looks_like_direct_image_url(
+            &Url::parse("https://example.com/icon.svg?cache=1").unwrap()
+        ));
+        assert!(looks_like_direct_image_url(
+            &Url::parse("https://example.com/assets/icon.AVIF").unwrap()
+        ));
+        assert!(!looks_like_direct_image_url(
+            &Url::parse("https://example.com/products/icon").unwrap()
+        ));
+    }
+
+    #[test]
+    fn icon_payload_validation_rejects_declared_images_with_incompatible_bytes() {
+        assert!(image_bytes_look_compatible(
+            "image/png",
+            b"\x89PNG\r\n\x1a\nrest"
+        ));
+        assert!(image_bytes_look_compatible(
+            "image/x-icon",
+            b"\x00\x00\x01\x00rest"
+        ));
+        assert!(image_bytes_look_compatible(
+            "image/svg+xml",
+            br#"<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"></svg>"#
+        ));
+        assert!(!image_bytes_look_compatible(
+            "image/png",
+            b"<html>not an icon</html>"
+        ));
+        assert!(!image_bytes_look_compatible(
+            "image/tiff",
+            b"II*\x00unsupported"
+        ));
     }
 }

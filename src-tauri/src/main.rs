@@ -667,6 +667,7 @@ fn build_native_application_menu(
         .collect();
     let services_menu = Submenu::with_items(app, "Services", true, &service_refs)?;
 
+    let about_item = MenuItem::with_id(app, "open-about", "About", true, None::<&str>)?;
     let project_homepage = MenuItem::with_id(
         app,
         "open-project-homepage",
@@ -692,7 +693,13 @@ fn build_native_application_menu(
         app,
         "About",
         true,
-        &[&project_homepage, &project_source, &author_homepage],
+        &[
+            &about_item,
+            &PredefinedMenuItem::separator(app)?,
+            &project_homepage,
+            &project_source,
+            &author_homepage,
+        ],
     )?;
 
     Menu::with_items(
@@ -2628,6 +2635,40 @@ fn copy_service_icon_cache(
 #[tauri::command]
 async fn fetch_workspace_icon_url(url: String) -> Result<String, String> {
     icons::fetch_workspace_icon_url(&HTTP, &url).await
+}
+
+#[tauri::command]
+async fn fetch_service_icon_url(
+    app: AppHandle,
+    service_id: String,
+    url: String,
+) -> Result<String, String> {
+    if service_id.trim().is_empty() {
+        return Err("Custom service icon request is missing a service id".into());
+    }
+
+    let result = icons::fetch_service_icon_url(&app, &HTTP, &service_id, &url).await;
+    match &result {
+        Ok(_) => audit::best_effort(
+            &app,
+            "info",
+            "service-icon",
+            "custom-source",
+            "success",
+            "Custom service icon fetched and cached",
+            serde_json::json!({ "serviceId": service_id }),
+        ),
+        Err(error) => audit::best_effort(
+            &app,
+            "warning",
+            "service-icon",
+            "custom-source",
+            "failure",
+            "Custom service icon source failed; default icon fallback selected",
+            serde_json::json!({ "serviceId": service_id, "error": error }),
+        ),
+    }
+    result
 }
 
 fn hide_service_webviews(app: &AppHandle, state: &AppState) {
@@ -5092,6 +5133,12 @@ fn main() {
                             show_main(app);
                             let _ = app.emit("open-add-workspace", ());
                         }
+                        "open-about" => {
+                            let state = app.state::<AppState>();
+                            hide_service_webviews(app, &state);
+                            show_main(app);
+                            let _ = app.emit("open-about", ());
+                        }
                         "open-project-homepage" => open_external(PROJECT_HOMEPAGE),
                         "open-project-source" => open_external(PROJECT_SOURCE_CODE),
                         "open-author-homepage" => open_external(AUTHOR_HOMEPAGE),
@@ -5155,6 +5202,7 @@ fn main() {
             get_service_icon,
             copy_service_icon_cache,
             fetch_workspace_icon_url,
+            fetch_service_icon_url,
             hide_all_services,
             close_service,
             set_sidebar_width,

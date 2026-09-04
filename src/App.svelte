@@ -72,6 +72,7 @@
     getServiceIcon,
     copyServiceIconCache,
     fetchWorkspaceIconUrl,
+    fetchServiceIconUrl,
     clearSandbox,
     listRecipes,
     getRecipeStorageInfo,
@@ -173,6 +174,8 @@
   let serviceSandboxQuery = $state("");
   let serviceSandboxPage = $state(0);
   let sandboxAssignmentBusy = $state(false);
+  let serviceIconUrlDraft = $state("");
+  let serviceIconUrlBusy = $state(false);
   let newWorkspaceName = $state("");
 
   type Tab = "general" | "services" | "workspaces" | "appearance" | "keybindings" | "sandbox" | "privacy" | "backup" | "audit" | "advanced" | "updates" | "about";
@@ -901,6 +904,56 @@
     }
   }
 
+  async function assignServiceIconFromUrl() {
+    if (!settingsSvc || serviceIconUrlBusy) return;
+    const serviceId = settingsSvc.id;
+    const sourceUrl = normalizeWebsiteUrl(serviceIconUrlDraft);
+    if (!sourceUrl) return;
+
+    serviceIconUrlBusy = true;
+    error = null;
+    try {
+      if (settingsSvc.useFavicon !== true) {
+        await updateService(serviceId, { useFavicon: true });
+        settingsSvc = { ...settingsSvc, useFavicon: true };
+        services = services.map((service) =>
+          service.id === serviceId ? { ...service, useFavicon: true } : service,
+        );
+      }
+
+      const icon = await fetchServiceIconUrl(serviceId, sourceUrl);
+      serviceIcons = { ...serviceIcons, [serviceId]: icon };
+      const nextFailed = new Set(failedIcons);
+      nextFailed.delete(serviceId);
+      failedIcons = nextFailed;
+      iconFetchAttempted.add(`${serviceId}:website`);
+      serviceIconUrlDraft = "";
+      showServiceSettingsSaved(serviceId);
+    } catch (err) {
+      const { [serviceId]: _, ...remainingIcons } = serviceIcons;
+      serviceIcons = remainingIcons;
+      iconFetchAttempted.delete(`${serviceId}:website`);
+
+      // A rejected custom icon source must visibly fall back to the recipe/default icon rather
+      // than retaining the website-icon preference and silently rediscovering another favicon.
+      if (settingsSvc?.id === serviceId && settingsSvc.useFavicon === true) {
+        try {
+          await updateService(serviceId, { useFavicon: false });
+          settingsSvc = { ...settingsSvc, useFavicon: false };
+          services = services.map((service) =>
+            service.id === serviceId ? { ...service, useFavicon: false } : service,
+          );
+        } catch (fallbackError) {
+          error = `Unable to fetch custom icon: ${err}. The cached icon was removed, but Tauridium could not persist the default-icon fallback: ${fallbackError}`;
+          return;
+        }
+      }
+      error = `Unable to fetch custom icon: ${err}. The service is using its default icon.`;
+    } finally {
+      serviceIconUrlBusy = false;
+    }
+  }
+
   function hydrateServiceIcons() {
     if (!appSettings.fetchMissingServiceIcons) return;
     for (const service of services) {
@@ -1493,6 +1546,8 @@
     serviceWorkspaceBusy = false;
     serviceSandboxQuery = "";
     serviceSandboxPage = 0;
+    serviceIconUrlDraft = "";
+    serviceIconUrlBusy = false;
     svcDirty = false;
     svcReload = false;
     view = "svcSettings";
@@ -2290,6 +2345,19 @@
       await updateService(createdId, { useFavicon: true });
       services = services.map((service) => service.id === createdId ? { ...service, useFavicon: true } : service);
       created = services.find((service) => service.id === createdId) ?? created;
+    }
+    if (created && activeWorkspace) {
+      const workspace = workspaces.find((candidate) => candidate.id === activeWorkspace);
+      if (!workspace) {
+        throw new Error("The active workspace no longer exists; the new service was created but could not be added to it.");
+      }
+      if (!workspace.services.includes(created.id)) {
+        const members = [...workspace.services, created.id];
+        await updateWorkspace(workspace.id, workspace.name, members);
+        workspaces = workspaces.map((candidate) =>
+          candidate.id === workspace.id ? { ...candidate, services: members } : candidate,
+        );
+      }
     }
     await reconcileSavedOrders();
     await refreshNativeServicesMenu();
@@ -3737,6 +3805,28 @@
           <div class="setrow">
             <div><strong>Website icon cache</strong><p class="desc">Discard the cached result and fetch this service's current website icon again.</p></div>
             <button class="secondary sm" onclick={() => settingsSvc && loadServiceIcon(settingsSvc, true, true, true)}>Refetch icon</button>
+          </div>
+          <div class="setrow">
+            <label class="block">
+              Custom icon source URL
+              <div class="workspace-icon-url-row">
+                <input
+                  bind:value={serviceIconUrlDraft}
+                  placeholder="example.com or https://example.com/path/icon.svg"
+                  disabled={serviceIconUrlBusy}
+                  onkeydown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void assignServiceIconFromUrl();
+                    }
+                  }}
+                />
+                <button class="secondary sm" disabled={serviceIconUrlBusy || !serviceIconUrlDraft.trim()} onclick={assignServiceIconFromUrl}>
+                  {serviceIconUrlBusy ? "Fetching…" : "Use icon"}
+                </button>
+              </div>
+            </label>
+            <p class="desc">Use an ordinary website URL to discover its icon, or a direct HTTP(S) image URL. Tauridium stores the compatible image in the persistent service-icon cache. Failed or incompatible sources are recorded in the Audit log and fall back to this service's default icon.</p>
           </div>
           {@render toggle("Progress bar", "Service preference. Tauridium already shows a loading spinner per service.", "isProgressbarEnabled", settingsSvc.isProgressbarEnabled === true)}
           <div class="setrow">

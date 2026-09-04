@@ -209,4 +209,13 @@ describe("service icon cache commands", () => {
       targetServiceId: "duplicate-service",
     });
   });
+
+  it("fetches and caches a custom service icon source URL", async () => {
+    const { fetchServiceIconUrl } = await import("./api");
+    await fetchServiceIconUrl("service-123", "https://example.com/icon.svg");
+    expect(mocks.invoke).toHaveBeenCalledWith("fetch_service_icon_url", {
+      serviceId: "service-123",
+      url: "https://example.com/icon.svg",
+    });
+  });
 });
