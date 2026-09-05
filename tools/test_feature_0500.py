@@ -17,6 +17,7 @@ class Feature0500Tests(unittest.TestCase):
     cls.license = (ROOT / "LICENSE").read_text(encoding="utf-8")
     cls.cargo = (ROOT / "src-tauri/Cargo.toml").read_text(encoding="utf-8")
     cls.main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+    cls.single_instance = (ROOT / "src-tauri/src/single_instance.rs").read_text(encoding="utf-8")
     cls.app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
     cls.api = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
     cls.package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
@@ -53,7 +54,8 @@ class Feature0500Tests(unittest.TestCase):
 
   def test_runtime_identity_and_updater_use_current_namespace(self) -> None:
     self.assertEqual(self.tauri["identifier"], "dev.brani.tauridium")
-    self.assertIn('const APP_IDENTIFIER: &str = "dev.brani.tauridium.dev";', self.main)
+    self.assertIn('"dev.brani.tauridium.dev"', self.single_instance)
+    self.assertIn('"dev.brani.tauridium"', self.single_instance)
     self.assertEqual(
       self.tauri["plugins"]["updater"]["endpoints"],
       ["https://github.com/Akkitto/Tauridium/releases/latest/download/latest.json"],

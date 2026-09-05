@@ -7,6 +7,7 @@ mod local_profile;
 mod portable;
 mod proton_compat;
 mod recipes;
+mod single_instance;
 
 // Tauridium — lightweight Ferdium client (Tauri v2).
 //
@@ -22,6 +23,8 @@ use recipes::RecipeDraft;
 use serde::Deserialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+#[cfg(windows)]
+use single_instance::{windows_instance_preflight, WindowsInstancePreflight};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -45,11 +48,6 @@ use tauri::{
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 use tauri_plugin_window_state::{AppHandleExt as _, StateFlags};
-#[cfg(windows)]
-use windows_sys::Win32::{
-    Foundation::{CloseHandle, GetLastError, SetLastError, ERROR_ALREADY_EXISTS},
-    System::Threading::{CreateEventW, CreateMutexW, SetEvent, WaitForSingleObject, INFINITE},
-};
 
 // Shared HTTP client with connection pooling AND timeouts: without a timeout, a server
 // that accepts a connection but never responds can hang login/show_service indefinitely.
@@ -67,150 +65,6 @@ const PROJECT_HOMEPAGE: &str = "https://github.com/Akkitto/Tauridium";
 const PROJECT_SOURCE_CODE: &str = "https://github.com/Akkitto/Tauridium/tree/master";
 const AUTHOR_HOMEPAGE: &str = "https://brani.dev";
 const IDENTITY_MIGRATION_MARKER: &str = ".tauridium-identity-v1";
-#[cfg(all(windows, debug_assertions))]
-const APP_IDENTIFIER: &str = "dev.brani.tauridium.dev";
-#[cfg(all(windows, not(debug_assertions)))]
-const APP_IDENTIFIER: &str = "dev.brani.tauridium";
-const IDENTITY_DIRECTORY_MARKERS: [&str; 8] = [
-    "app_settings.json",
-    "local_profile.json",
-    "session.json",
-    "sessions",
-    "service-icons",
-    "recipes",
-    "audit",
-    "backups",
-];
-
-#[cfg(any(windows, test))]
-fn reuse_existing_session_setting(stored: Option<&Value>) -> bool {
-    stored
-        .and_then(|value| value.get("reuseExistingSessionOnLaunch"))
-        .and_then(Value::as_bool)
-        .unwrap_or(true)
-}
-
-#[cfg(windows)]
-fn preflight_app_settings_value() -> Option<Value> {
-    let path = dirs::data_dir()?
-        .join(APP_IDENTIFIER)
-        .join("app_settings.json");
-    let text = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str(&text).ok()
-}
-
-#[cfg(windows)]
-fn wide_kernel_object_name(suffix: &str) -> Vec<u16> {
-    format!("Local\\{APP_IDENTIFIER}.{suffix}")
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect()
-}
-
-#[cfg(windows)]
-struct WindowsInstanceCoordinator {
-    mutex: windows_sys::Win32::Foundation::HANDLE,
-    event: windows_sys::Win32::Foundation::HANDLE,
-}
-
-#[cfg(windows)]
-impl Drop for WindowsInstanceCoordinator {
-    fn drop(&mut self) {
-        unsafe {
-            if !self.event.is_null() {
-                let _ = CloseHandle(self.event);
-            }
-            if !self.mutex.is_null() {
-                let _ = CloseHandle(self.mutex);
-            }
-        }
-    }
-}
-
-#[cfg(windows)]
-enum WindowsInstancePreflight {
-    Continue(WindowsInstanceCoordinator),
-    ReuseExisting,
-}
-
-#[cfg(windows)]
-fn windows_instance_preflight() -> Result<WindowsInstancePreflight, String> {
-    let reuse_existing = reuse_existing_session_setting(preflight_app_settings_value().as_ref());
-    let mutex_name = wide_kernel_object_name("instance");
-    let event_name = wide_kernel_object_name("activate");
-    unsafe {
-        // CreateMutexW only guarantees ERROR_ALREADY_EXISTS when opening an existing
-        // named mutex. Reset the thread-local last error first so a stale value cannot
-        // make a fresh primary process look like a secondary process.
-        SetLastError(0);
-        let mutex = CreateMutexW(std::ptr::null(), 0, mutex_name.as_ptr());
-        if mutex.is_null() {
-            return Err(format!(
-                "Unable to initialize Tauridium instance coordination mutex: {}",
-                std::io::Error::last_os_error()
-            ));
-        }
-        let already_running = GetLastError() == ERROR_ALREADY_EXISTS;
-        let event = CreateEventW(std::ptr::null(), 0, 0, event_name.as_ptr());
-        if event.is_null() {
-            let _ = CloseHandle(mutex);
-            return Err(format!(
-                "Unable to initialize Tauridium instance activation event: {}",
-                std::io::Error::last_os_error()
-            ));
-        }
-        if already_running && reuse_existing {
-            if SetEvent(event) == 0 {
-                let _ = CloseHandle(event);
-                let _ = CloseHandle(mutex);
-                return Err(format!(
-                    "Unable to activate the existing Tauridium session: {}",
-                    std::io::Error::last_os_error()
-                ));
-            }
-            let _ = CloseHandle(event);
-            let _ = CloseHandle(mutex);
-            return Ok(WindowsInstancePreflight::ReuseExisting);
-        }
-        Ok(WindowsInstancePreflight::Continue(
-            WindowsInstanceCoordinator { mutex, event },
-        ))
-    }
-}
-
-#[cfg(windows)]
-fn start_windows_instance_activation_listener(app: AppHandle) {
-    std::thread::spawn(move || {
-        let event_name = wide_kernel_object_name("activate");
-        unsafe {
-            let event = CreateEventW(std::ptr::null(), 0, 0, event_name.as_ptr());
-            if event.is_null() {
-                eprintln!(
-                    "Unable to listen for Tauridium instance activation: {}",
-                    std::io::Error::last_os_error()
-                );
-                return;
-            }
-            loop {
-                if WaitForSingleObject(event, INFINITE) != 0 {
-                    break;
-                }
-                let main_thread_app = app.clone();
-                let _ = app.run_on_main_thread(move || {
-                    if let Some(window) = main_thread_app.get_webview_window("main") {
-                        let _ = window.show();
-                        if window.is_minimized().unwrap_or(false) {
-                            let _ = window.unminimize();
-                        }
-                        let _ = window.set_focus();
-                    }
-                    reposition_active(&main_thread_app);
-                });
-            }
-            let _ = CloseHandle(event);
-        }
-    });
-}
 
 fn identity_directory_suffix(current: &Path) -> &'static str {
     if current
@@ -3416,7 +3270,6 @@ fn default_app_settings_value() -> Value {
     let mut settings = serde_json::Map::<String, Value>::new();
     settings.insert("autostart".into(), false.into());
     settings.insert("startMinimized".into(), false.into());
-    settings.insert("reuseExistingSessionOnLaunch".into(), true.into());
     settings.insert("theme".into(), "system".into());
     settings.insert("accentColor".into(), "#ffc131".into());
     settings.insert("customAccentColors".into(), Value::Array(Vec::new()));
@@ -3648,7 +3501,6 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
     for key in [
         "autostart",
         "startMinimized",
-        "reuseExistingSessionOnLaunch",
         "closeToSystemTray",
         "privateNotifications",
         "showDisabledServices",
@@ -4015,7 +3867,9 @@ fn merge_app_settings_value(stored: &Value) -> Result<Value, String> {
             for (action, binding) in stored_bindings {
                 default_bindings.insert(action.clone(), binding.clone());
             }
-        } else {
+        } else if key != "reuseExistingSessionOnLaunch" {
+            // 0.7.8 made single-instance reuse mandatory on Windows. Ignore the
+            // retired opt-out when reading older app_settings.json files.
             base.insert(key.clone(), setting.clone());
         }
     }
@@ -4985,15 +4839,18 @@ fn main() {
     }
 
     #[cfg(windows)]
-    let _windows_instance_coordinator = match windows_instance_preflight() {
-        Ok(WindowsInstancePreflight::ReuseExisting) => return,
-        Ok(WindowsInstancePreflight::Continue(coordinator)) => Some(coordinator),
+    let windows_instance_coordinator = match windows_instance_preflight() {
+        Ok(WindowsInstancePreflight::ActivatedExisting) => return,
+        Ok(WindowsInstancePreflight::Primary(coordinator)) => coordinator,
         Err(error) => {
-            // Fail open: inability to coordinate instances must not make Tauridium unusable.
             eprintln!("{error}");
-            None
+            std::process::exit(2);
         }
     };
+    #[cfg(windows)]
+    windows_instance_coordinator.start_activation_listener();
+    #[cfg(windows)]
+    let windows_activation_target = windows_instance_coordinator.activation_target();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
@@ -5012,9 +4869,9 @@ fn main() {
                 .build(),
         )
         .manage(AppState::default())
-        .setup(|app| {
+        .setup(move |app| {
             #[cfg(windows)]
-            start_windows_instance_activation_listener(app.handle().clone());
+            windows_activation_target.bind(app.handle().clone());
 
             if let Err(error) = migrate_legacy_application_identity(app.handle()) {
                 eprintln!("Unable to migrate Tauridium application data to the current application identity: {error}");
@@ -5551,18 +5408,6 @@ mod tests {
         settings["automaticBackupRetentionMode"] = json!("age");
         settings["automaticBackupMaxAgeDays"] = json!(0);
         assert!(validate_app_settings_value(&settings).is_err());
-    }
-
-    #[test]
-    fn patch_0607_instance_reuse_setting_defaults_on_and_honours_explicit_off() {
-        assert!(reuse_existing_session_setting(None));
-        assert!(reuse_existing_session_setting(Some(&json!({}))));
-        assert!(reuse_existing_session_setting(Some(&json!({
-            "reuseExistingSessionOnLaunch": true
-        }))));
-        assert!(!reuse_existing_session_setting(Some(&json!({
-            "reuseExistingSessionOnLaunch": false
-        }))));
     }
 
     #[test]

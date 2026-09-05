@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.8] - 2026-09-06
+
+### Fixed
+
+- Replaced the Windows launch-again event signal with strict single-instance coordination: exactly one durable Tauridium application session owns a per-session named mutex, while subsequent executable launches redirect activation to that primary process and exit.
+- Added named-pipe request/acknowledgement IPC for secondary launches. Activation requests carry the launch arguments, working directory, and activation type, are queued safely while the primary UI is still starting, and are acknowledged before the secondary exits.
+- Made startup races fail closed instead of opening a parallel Tauridium session. Secondaries retry the primary IPC endpoint for a bounded five-second window and can atomically take over an abandoned/released mutex after a crash or shutdown.
+- Restored hidden or minimized primary windows on repeated launch, preserved an already-visible window's geometry, and granted the primary Windows foreground permission from the user-launched secondary before using the documented foreground API directly. Tauridium no longer relies on Tauri/tao's synthetic-input focus fallback for repeated-launch activation.
+- Retired the Advanced **Reuse existing session on launch** opt-out. Windows single-instance behavior is now an application invariant; legacy `reuseExistingSessionOnLaunch` values are ignored when older settings are loaded.
+
+### Release quality
+
+- Added Rust protocol round-trip coverage plus focused Python regression and release-invariant checks for atomic ownership, named-pipe IPC, bounded startup-race handling, acknowledgement, launch-context forwarding, foreground permission transfer, crash takeover, queued early activation, and removal of the parallel-instance opt-out.
+
 ## [0.7.7] - 2026-09-04
 
 ### Added

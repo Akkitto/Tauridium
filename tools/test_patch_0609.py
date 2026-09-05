@@ -8,15 +8,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+SINGLE_INSTANCE = (ROOT / "src-tauri/src/single_instance.rs").read_text(encoding="utf-8")
 VALIDATE = (ROOT / "tools/validate_release.py").read_text(encoding="utf-8")
 CI = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
 
 class Patch0609Tests(unittest.TestCase):
-  def test_windows_only_instance_preference_helper_is_not_dead_code_on_linux(self) -> None:
-    marker = '#[cfg(any(windows, test))]\nfn reuse_existing_session_setting'
-    self.assertIn(marker, MAIN)
-    self.assertIn("Windows-only instance preference helper must be cfg-gated on Linux", VALIDATE)
+  def test_windows_only_instance_coordination_is_cfg_gated_on_linux(self) -> None:
+    self.assertIn('#[cfg(windows)]\nmod windows {', SINGLE_INSTANCE)
+    windows_module = SINGLE_INSTANCE.split('#[cfg(windows)]\nmod windows {', 1)[1]
+    self.assertIn("CreateMutexW", windows_module)
+    self.assertIn("CreateNamedPipeW", windows_module)
+    self.assertNotIn("CreateMutexW", MAIN)
+    self.assertIn("Windows single-instance coordination requires windows-sys feature", VALIDATE)
 
   def test_linux_tray_does_not_rely_on_unsupported_click_events(self) -> None:
     self.assertIn(

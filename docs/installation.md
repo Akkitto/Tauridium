@@ -28,6 +28,26 @@ tauridium-X.Y.Z-windows-arm64-portable.zip
 Each portable ZIP contains only `tauridium.exe`. The release also publishes a SHA-256 sidecar
 for each portable ZIP, a combined `SHA256SUMS`, and a generated submission-ready Scoop manifest.
 
+### Repeated launches and the existing application session
+
+On Windows, Tauridium intentionally allows one durable application instance per logged-in desktop
+session. Starting `tauridium.exe` again does not create another Tauridium window, service session,
+or tray process. The short-lived secondary launch sends its activation context to the already
+running primary process, waits for acknowledgement, and exits; the primary window is shown and
+restored when necessary.
+
+The coordination is crash-safe and startup-race-safe. If a second launch arrives before the
+primary UI is ready, the activation is queued by the primary process. If the primary process has
+terminated, Windows releases/abandons the operating-system ownership object so a later launch can
+become the new primary. Tauridium does not use PID files, process-name scans, window-title matching,
+or duplicate-process killing for instance ownership.
+
+Launch arguments and the secondary process working directory are forwarded with the activation
+request so the existing process receives the original launch context. Windows foreground
+permission is transferred to the primary when the operating system permits it. The primary then uses
+Windows' foreground API directly and respects refusal rather than using synthetic keyboard-input focus
+workarounds; Windows remains in control of final foreground policy.
+
 ### Microsoft Edge WebView2 Runtime
 
 Tauridium uses Tauri's native Windows WebView and therefore requires the Microsoft Edge WebView2

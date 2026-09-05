@@ -80,7 +80,8 @@ class Patch0418Tests(unittest.TestCase):
     self.assertIn('if !start_minimized', reveal)
     plugin = MAIN.split('tauri_plugin_window_state::Builder::new()', 1)[1].split('.build(),', 1)[0]
     self.assertNotIn('skip_initial_state("main")', plugin)
-    setup = MAIN.split('.setup(|app|', 1)[1].split('start_badge_poller', 1)[0]
+    setup = MAIN.split('.setup(', 1)[1].split('start_badge_poller', 1)[0]
+    self.assertIn('|app|', setup)
     self.assertIn('reveal_main_window_after_startup_restore(app.handle(), start_minimized);', setup)
 
 

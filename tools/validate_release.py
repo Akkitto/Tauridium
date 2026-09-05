@@ -64,6 +64,7 @@ def main() -> int:
   cargo = read("src-tauri/Cargo.toml")
   cargo_lock = read("src-tauri/Cargo.lock")
   main_rs = read("src-tauri/src/main.rs")
+  single_instance_rs = read("src-tauri/src/single_instance.rs")
   rust_toolchain = read("rust-toolchain.toml")
   version = tauri["version"]
 
@@ -75,10 +76,23 @@ def main() -> int:
     fail("package-lock.json root version differs from tauri.conf.json")
   if f'version = "{version}"' not in cargo:
     fail("Cargo.toml version differs from tauri.conf.json")
-  if ("CreateEventW" in main_rs or "CreateMutexW" in main_rs) and '"Win32_Security"' not in cargo:
-    fail("Windows instance coordination requires the windows-sys Win32_Security feature")
-  if '#[cfg(any(windows, test))]\nfn reuse_existing_session_setting' not in main_rs:
-    fail("Windows-only instance preference helper must be cfg-gated on Linux")
+  windows_instance_features = (
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_Threading",
+    "Win32_UI_WindowsAndMessaging",
+  )
+  if "CreateMutexW" not in single_instance_rs or "CreateNamedPipeW" not in single_instance_rs:
+    fail("Windows single-instance coordination must use an atomic mutex plus named-pipe activation IPC")
+  for feature in windows_instance_features:
+    if f'"{feature}"' not in cargo:
+      fail(f"Windows single-instance coordination requires windows-sys feature {feature}")
+  if "reuseExistingSessionOnLaunch" in read("src/App.svelte") or "reuseExistingSessionOnLaunch: boolean" in read("src/lib/api.ts"):
+    fail("Windows single-instance reuse is mandatory and must not expose the retired multi-instance opt-out")
   linux_tray_markers = (
     '#[cfg(not(target_os = "linux"))]\nuse tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};',
     '#[cfg(not(target_os = "linux"))]\nfn toggle_main',
@@ -2112,6 +2126,36 @@ def main() -> int:
   ):
     if test_marker not in patch_0707:
       fail(f"0.7.7 regression coverage is missing: {test_marker}")
+
+  patch_0708 = read("tools/test_patch_0708.py")
+  for invariant in (
+    "CreateMutexW(std::ptr::null(), 1",
+    "CreateNamedPipeW",
+    "GetNamedPipeServerProcessId",
+    "AllowSetForegroundWindow(primary_pid)",
+    "SetForegroundWindow(hwnd.0)",
+    "WaitNamedPipeW",
+    "WAIT_ABANDONED",
+    "ACTIVATION_ACK",
+    'emit("single-instance-activation", request)',
+    "refusing to start a parallel application session",
+  ):
+    if invariant not in single_instance_rs:
+      fail(f"0.7.8 Windows single-instance invariant is missing: {invariant}")
+  if "WindowsInstancePreflight::ActivatedExisting) => return" not in main_rs:
+    fail("0.7.8 secondary launch must exit before constructing a second Tauri application")
+  if 'key != "reuseExistingSessionOnLaunch"' not in main_rs:
+    fail("0.7.8 must ignore the retired persisted multi-instance opt-out")
+  for test_marker in (
+    "test_named_mutex_is_owned_atomically_and_crash_takeover_is_supported",
+    "test_activation_pipe_starts_before_tauri_setup_and_acknowledges_requests",
+    "test_activation_carries_launch_context_and_is_queued_until_ui_is_ready",
+    "test_reactivation_restores_existing_window_without_recreating_it",
+    "test_startup_race_is_bounded_and_never_fails_open",
+    "test_legacy_multi_instance_opt_out_is_retired",
+  ):
+    if test_marker not in patch_0708:
+      fail(f"0.7.8 regression coverage is missing: {test_marker}")
 
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],
