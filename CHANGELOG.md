@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.7.9] - 2026-09-06
+
+### Fixed
+
+- Restored the identity-migration directory marker set accidentally dropped during the 0.7.8 single-instance refactor. Existing Tauridium data directories can again be detected and scored correctly during application-identity migration, and the Rust application now compiles past the affected migration helpers.
+
+### Release quality
+
+- Added focused regression and release-invariant coverage requiring the complete identity-migration marker set so future refactors cannot leave `identity_directory_has_project_data` or legacy-directory scoring with an undefined marker source.
+
 ## [0.7.8] - 2026-09-06
 
 ### Fixed

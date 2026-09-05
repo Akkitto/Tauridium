@@ -2157,6 +2157,29 @@ def main() -> int:
     if test_marker not in patch_0708:
       fail(f"0.7.8 regression coverage is missing: {test_marker}")
 
+  patch_0709 = read("tools/test_patch_0709.py")
+  for invariant in (
+    'const IDENTITY_DIRECTORY_MARKERS: [&str; 8] = [',
+    '"app_settings.json"',
+    '"local_profile.json"',
+    '"session.json"',
+    '"sessions"',
+    '"service-icons"',
+    '"recipes"',
+    '"audit"',
+    '"backups"',
+  ):
+    if invariant not in main_rs:
+      fail(f"0.7.9 identity-migration invariant is missing: {invariant}")
+  if main_rs.count("IDENTITY_DIRECTORY_MARKERS") < 3:
+    fail("0.7.9 identity-migration helpers must both consume the restored marker set")
+  for test_marker in (
+    "test_identity_directory_marker_set_is_defined_and_complete",
+    "test_identity_migration_helpers_use_the_marker_set",
+  ):
+    if test_marker not in patch_0709:
+      fail(f"0.7.9 regression coverage is missing: {test_marker}")
+
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],
     cwd=ROOT,

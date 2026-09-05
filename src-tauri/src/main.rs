@@ -65,6 +65,16 @@ const PROJECT_HOMEPAGE: &str = "https://github.com/Akkitto/Tauridium";
 const PROJECT_SOURCE_CODE: &str = "https://github.com/Akkitto/Tauridium/tree/master";
 const AUTHOR_HOMEPAGE: &str = "https://brani.dev";
 const IDENTITY_MIGRATION_MARKER: &str = ".tauridium-identity-v1";
+const IDENTITY_DIRECTORY_MARKERS: [&str; 8] = [
+    "app_settings.json",
+    "local_profile.json",
+    "session.json",
+    "sessions",
+    "service-icons",
+    "recipes",
+    "audit",
+    "backups",
+];
 
 fn identity_directory_suffix(current: &Path) -> &'static str {
     if current
