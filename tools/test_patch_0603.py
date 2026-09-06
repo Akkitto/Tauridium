@@ -18,7 +18,7 @@ class Patch0603Tests(unittest.TestCase):
     self.assertNotIn('skip_initial_state("main")', plugin)
     self.assertNotIn("restore_state(", reveal)
     self.assertNotIn("fn restore_main_window_state", MAIN)
-    self.assertIn("window.show();", reveal)
+    self.assertIn("window.show()", reveal)
 
   def test_hidden_window_reveal_does_not_replay_maximized_or_fullscreen_state(self) -> None:
     show = MAIN.split("fn show_main(app: &AppHandle)", 1)[1].split("fn toggle_main", 1)[0]
@@ -26,7 +26,8 @@ class Patch0603Tests(unittest.TestCase):
     for block in (show, toggle):
       self.assertNotIn("restore_state(", block)
       self.assertNotIn("restore_main_window_state", block)
-      self.assertIn(".show();", block)
+    self.assertIn(".show()", show)
+    self.assertIn("show_main(app);", toggle)
     self.assertIn("save_main_window_state(app);", toggle)
 
   def test_spacing_preview_switches_sidebar_to_the_mode_being_tuned(self) -> None:

@@ -48,6 +48,35 @@ permission is transferred to the primary when the operating system permits it. T
 Windows' foreground API directly and respects refusal rather than using synthetic keyboard-input focus
 workarounds; Windows remains in control of final foreground policy.
 
+### Startup diagnostics
+
+Normal Tauridium launches remain silent. For startup, tray-restoration, or repeated-launch debugging, run:
+
+```powershell
+.\tauridium.exe --startup-diagnostics
+```
+
+When possible, the release GUI-subsystem executable attaches to the invoking Windows console and
+prints structured initialization/activation events there. The same events are persisted under:
+
+```text
+%LOCALAPPDATA%\Tauridium\diagnostics\startup-<timestamp>-<pid>.log
+```
+
+If another Tauridium instance is already running, the diagnostic secondary forwards this log path
+through the session-local activation pipe. The existing primary appends its own window visibility,
+minimized state, native restore/show fallback, foreground result, activation completion, and
+acknowledgement events to the same file. After the primary has actually completed activation, the
+secondary replays those primary-side lines to its console before exiting. Failed primary activation is
+explicitly rejected rather than acknowledged, and pipe connection/wait retries include the Windows OS
+error in diagnostics. This makes tray-only UI failures distinguishable from activation-transport failures
+even when the original primary was started normally without a console.
+
+Diagnostics intentionally record argument counts rather than command-line values and do not dump the
+process environment, cookies, tokens, passwords, or other application credentials. A forwarded log
+path is accepted only when it is a Tauridium `startup-*.log` file directly inside Tauridium's own
+local diagnostics directory.
+
 ### Microsoft Edge WebView2 Runtime
 
 Tauridium uses Tauri's native Windows WebView and therefore requires the Microsoft Edge WebView2

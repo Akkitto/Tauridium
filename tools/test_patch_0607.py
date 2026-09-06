@@ -37,12 +37,13 @@ class Patch0607Tests(unittest.TestCase):
 
   def test_windows_instance_coordination_exits_before_tauri_after_ack(self) -> None:
     self.assertIn("windows_instance_preflight()", MAIN)
-    self.assertIn("WindowsInstancePreflight::ActivatedExisting) => return", MAIN)
+    self.assertIn("WindowsInstancePreflight::ActivatedExisting) => {", MAIN)
+    self.assertIn("process.exit_secondary", MAIN)
     self.assertIn("CreateMutexW", SINGLE_INSTANCE)
     self.assertIn("CreateNamedPipeW", SINGLE_INSTANCE)
     self.assertIn("ACTIVATION_ACK", SINGLE_INSTANCE)
     self.assertIn("AllowSetForegroundWindow", SINGLE_INSTANCE)
-    self.assertIn('get_webview_window("main")', SINGLE_INSTANCE)
+    self.assertIn('get_window("main")', SINGLE_INSTANCE)
     self.assertIn("window.unminimize()", SINGLE_INSTANCE)
     self.assertIn("SetForegroundWindow(hwnd.0)", SINGLE_INSTANCE)
     self.assertNotIn("window.set_focus()", SINGLE_INSTANCE)

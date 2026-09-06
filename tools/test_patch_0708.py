@@ -33,12 +33,12 @@ class Patch0708Tests(unittest.TestCase):
     self.assertIn('activation_type: "launch".into()', SINGLE)
     self.assertIn("std::env::args_os()", SINGLE)
     self.assertIn("std::env::current_dir()", SINGLE)
-    self.assertIn("state.pending.push(request)", SINGLE)
-    self.assertIn('emit("single-instance-activation", request)', SINGLE)
+    self.assertIn("state.pending.push(PendingActivation", SINGLE)
+    self.assertIn('emit("single-instance-activation", event_request)', SINGLE)
 
   def test_reactivation_restores_existing_window_without_recreating_it(self) -> None:
-    activation = SINGLE.split("fn schedule_activation", 1)[1].split("fn current_activation_request", 1)[0]
-    self.assertIn('get_webview_window("main")', activation)
+    activation = SINGLE.split("fn restore_main_window", 1)[1].split("fn current_activation_request", 1)[0]
+    self.assertIn('get_window("main")', activation)
     self.assertIn("window.show()", activation)
     self.assertIn("window.is_minimized()", activation)
     self.assertIn("window.unminimize()", activation)

@@ -83,7 +83,7 @@ class WindowStateTests(unittest.TestCase):
     body = self.main.split("fn toggle_main(app: &AppHandle)", 1)[1].split("\n}\n\n//", 1)[0]
     self.assertIn("save_main_window_state(app);", body)
     self.assertLess(body.index("save_main_window_state(app);"), body.index("let _ = w.hide();"))
-    self.assertIn("let _ = w.show();", body)
+    self.assertIn("show_main(app);", body)
     self.assertNotIn("restore_main_window_state", body)
     self.assertNotIn("restore_state(", body)
 

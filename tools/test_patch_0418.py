@@ -76,7 +76,7 @@ class Patch0418Tests(unittest.TestCase):
     self.assertIs(main_window["visible"], False)
     reveal = MAIN.split('fn reveal_main_window_after_startup_restore', 1)[1].split('fn show_main', 1)[0]
     self.assertNotIn('restore_state(', reveal)
-    self.assertIn('window.show();', reveal)
+    self.assertIn('window.show()', reveal)
     self.assertIn('if !start_minimized', reveal)
     plugin = MAIN.split('tauri_plugin_window_state::Builder::new()', 1)[1].split('.build(),', 1)[0]
     self.assertNotIn('skip_initial_state("main")', plugin)

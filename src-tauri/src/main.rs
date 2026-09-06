@@ -8,6 +8,7 @@ mod portable;
 mod proton_compat;
 mod recipes;
 mod single_instance;
+mod startup_diagnostics;
 
 // Tauridium — lightweight Ferdium client (Tauri v2).
 //
@@ -24,7 +25,9 @@ use serde::Deserialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 #[cfg(windows)]
-use single_instance::{windows_instance_preflight, WindowsInstancePreflight};
+use single_instance::{
+    show_existing_main_window, windows_instance_preflight, WindowsInstancePreflight,
+};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -4629,18 +4632,47 @@ fn save_main_window_state(app: &AppHandle) {
 }
 
 fn reveal_main_window_after_startup_restore(app: &AppHandle, start_minimized: bool) {
+    startup_diagnostics::log(
+        "primary",
+        "window.startup_visibility",
+        &format!("start_minimized={start_minimized}"),
+    );
     if let Some(window) = app.get_window("main") {
         // The window-state plugin restores the hidden main window exactly once from its
         // on_window_ready hook. Replaying restore_state here causes a second maximized/fullscreen
         // transition on Windows 11; only reveal the already-restored window.
         if !start_minimized {
-            let _ = window.show();
-            let _ = window.set_focus();
+            if let Err(error) = window.show() {
+                startup_diagnostics::log(
+                    "primary",
+                    "window.startup_show_error",
+                    &error.to_string(),
+                );
+            }
+            if let Err(error) = window.set_focus() {
+                startup_diagnostics::log(
+                    "primary",
+                    "window.startup_focus_error",
+                    &error.to_string(),
+                );
+            }
         }
+    } else {
+        startup_diagnostics::log(
+            "primary",
+            "window.startup_missing",
+            "main window was unavailable during startup visibility restoration",
+        );
     }
 }
 
 fn show_main(app: &AppHandle) {
+    #[cfg(windows)]
+    if let Err(error) = show_existing_main_window(app) {
+        startup_diagnostics::log("primary", "window.show_main_error", &error);
+    }
+
+    #[cfg(not(windows))]
     if let Some(w) = app.get_window("main") {
         // Hiding a live window does not discard its geometry/window mode. Restoring again before
         // every tray/menu reveal can replay maximized/fullscreen transitions on Windows.
@@ -4656,8 +4688,7 @@ fn toggle_main(app: &AppHandle) {
             save_main_window_state(app);
             let _ = w.hide();
         } else {
-            let _ = w.show();
-            let _ = w.set_focus();
+            show_main(app);
         }
     }
 }
@@ -4839,21 +4870,45 @@ fn write_build_info_if_requested() -> Result<bool, String> {
 }
 
 fn main() {
+    if let Err(error) = startup_diagnostics::initialize_from_args() {
+        startup_diagnostics::report_fatal("launch", "diagnostics.initialization_error", &error);
+        std::process::exit(2);
+    }
+    startup_diagnostics::log(
+        "launch",
+        "boot.begin",
+        "starting Tauridium process initialization",
+    );
+
     match write_build_info_if_requested() {
-        Ok(true) => return,
+        Ok(true) => {
+            startup_diagnostics::log(
+                "launch",
+                "build_info.completed",
+                "build-information probe completed",
+            );
+            return;
+        }
         Ok(false) => {}
         Err(error) => {
-            eprintln!("{error}");
+            startup_diagnostics::report_fatal("launch", "build_info.error", &error);
             std::process::exit(2);
         }
     }
 
     #[cfg(windows)]
     let windows_instance_coordinator = match windows_instance_preflight() {
-        Ok(WindowsInstancePreflight::ActivatedExisting) => return,
+        Ok(WindowsInstancePreflight::ActivatedExisting) => {
+            startup_diagnostics::log(
+                "secondary",
+                "process.exit_secondary",
+                "existing Tauridium session was activated; exiting secondary process",
+            );
+            return;
+        }
         Ok(WindowsInstancePreflight::Primary(coordinator)) => coordinator,
         Err(error) => {
-            eprintln!("{error}");
+            startup_diagnostics::report_fatal("launch", "instance.preflight_error", &error);
             std::process::exit(2);
         }
     };
@@ -4861,6 +4916,12 @@ fn main() {
     windows_instance_coordinator.start_activation_listener();
     #[cfg(windows)]
     let windows_activation_target = windows_instance_coordinator.activation_target();
+
+    startup_diagnostics::log(
+        "primary",
+        "tauri.builder",
+        "initializing notification, autostart, updater, process, dialog, window-state plugins, application state, menus, tray, and webviews",
+    );
 
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
@@ -4880,16 +4941,24 @@ fn main() {
         )
         .manage(AppState::default())
         .setup(move |app| {
-            #[cfg(windows)]
-            windows_activation_target.bind(app.handle().clone());
+            startup_diagnostics::log("primary", "tauri.setup.begin", "Tauri setup callback entered");
 
-            if let Err(error) = migrate_legacy_application_identity(app.handle()) {
-                eprintln!("Unable to migrate Tauridium application data to the current application identity: {error}");
+            match migrate_legacy_application_identity(app.handle()) {
+                Ok(migrated) => startup_diagnostics::log(
+                    "primary",
+                    "identity.migration",
+                    &format!("completed migrated={migrated}"),
+                ),
+                Err(error) => {
+                    startup_diagnostics::log("primary", "identity.migration_error", &error);
+                    eprintln!("Unable to migrate Tauridium application data to the current application identity: {error}");
+                }
             }
 
             // Cache app settings in memory for the poller, shutdown handling, and related logic.
             *app.state::<AppState>().settings.lock().unwrap() =
                 read_app_settings_value(app.handle());
+            startup_diagnostics::log("primary", "settings.loaded", "application settings loaded into memory");
             {
                 let st = app.state::<AppState>();
                 let settings = st.settings.lock().unwrap();
@@ -4908,6 +4977,7 @@ fn main() {
 
             let handle = app.handle().clone();
             if let Some(win) = app.get_window("main") {
+                startup_diagnostics::log("primary", "window.events", "main window event handler registered");
                 win.on_window_event(move |event| match event {
                     WindowEvent::Resized(_) => reposition_active(&handle),
                     // When focus returns (for example after closing devtools), reapply the
@@ -4974,6 +5044,7 @@ fn main() {
                 tray = tray.icon(icon);
             }
             tray.build(app)?;
+            startup_diagnostics::log("primary", "tray.ready", "system tray icon and menu created");
 
             // Native application menu: App / Edit / View / Navigate / Services / About. The Services submenu
             // starts empty and is rebuilt from the canonical ordered service list after auth.
@@ -5038,6 +5109,7 @@ fn main() {
                     }
                 });
             }
+            startup_diagnostics::log("primary", "menu.ready", "native application menu installed");
 
             // Request notification permission at startup.
             // Note: no-op on macOS desktop (the OS manages permission itself); effective
@@ -5055,7 +5127,18 @@ fn main() {
                 .unwrap_or(false);
             reveal_main_window_after_startup_restore(app.handle(), start_minimized);
 
+            // Bind activation only after startup visibility restoration. A repeated launch
+            // arriving during setup can therefore not be shown and then hidden again by the
+            // start-minimized/window-state startup path. Pending requests are completed here
+            // synchronously on the UI thread before their secondary receives an ACK.
+            #[cfg(windows)]
+            if let Err(error) = windows_activation_target.bind(app.handle().clone()) {
+                startup_diagnostics::log("primary", "activation.bind_error", &error);
+                return Err(std::io::Error::other(error).into());
+            }
+
             start_badge_poller(app.handle().clone());
+            startup_diagnostics::log("primary", "tauri.setup.completed", "Tauri setup completed successfully");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

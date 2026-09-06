@@ -65,6 +65,7 @@ def main() -> int:
   cargo_lock = read("src-tauri/Cargo.lock")
   main_rs = read("src-tauri/src/main.rs")
   single_instance_rs = read("src-tauri/src/single_instance.rs")
+  startup_diagnostics_rs = read("src-tauri/src/startup_diagnostics.rs")
   rust_toolchain = read("rust-toolchain.toml")
   version = tauri["version"]
 
@@ -81,6 +82,7 @@ def main() -> int:
     "Win32_Security",
     "Win32_Storage_FileSystem",
     "Win32_System_IO",
+    "Win32_System_Console",
     "Win32_System_Pipes",
     "Win32_System_RemoteDesktop",
     "Win32_System_Threading",
@@ -1226,7 +1228,7 @@ def main() -> int:
   )[0]
   if "restore_state(" in reveal_window or "restore_main_window_state" in reveal_window:
     fail("0.4.18 main window reveal must not replay the window-state plugin restore")
-  if "window.show();" not in reveal_window:
+  if "window.show()" not in reveal_window:
     fail("0.4.18 main window must reveal the plugin-restored hidden window")
   for marker in (
     'reveal_main_window_after_startup_restore(app.handle(), start_minimized);',
@@ -2137,12 +2139,12 @@ def main() -> int:
     "WaitNamedPipeW",
     "WAIT_ABANDONED",
     "ACTIVATION_ACK",
-    'emit("single-instance-activation", request)',
+    'emit("single-instance-activation", event_request)',
     "refusing to start a parallel application session",
   ):
     if invariant not in single_instance_rs:
       fail(f"0.7.8 Windows single-instance invariant is missing: {invariant}")
-  if "WindowsInstancePreflight::ActivatedExisting) => return" not in main_rs:
+  if "WindowsInstancePreflight::ActivatedExisting) => {" not in main_rs or "process.exit_secondary" not in main_rs:
     fail("0.7.8 secondary launch must exit before constructing a second Tauri application")
   if 'key != "reuseExistingSessionOnLaunch"' not in main_rs:
     fail("0.7.8 must ignore the retired persisted multi-instance opt-out")
@@ -2179,6 +2181,59 @@ def main() -> int:
   ):
     if test_marker not in patch_0709:
       fail(f"0.7.9 regression coverage is missing: {test_marker}")
+
+  patch_0710 = read("tools/test_patch_0710.py")
+  for invariant in (
+    "mpsc::sync_channel(1)",
+    "completion_rx.recv_timeout(ACTIVATION_UI_TIMEOUT)",
+    "ShowWindow(hwnd.0, SW_RESTORE)",
+    "ShowWindow(hwnd.0, SW_SHOW)",
+    "IsWindowVisible(hwnd.0)",
+    "IsIconic(hwnd.0)",
+    "Windows declined SetForegroundWindow",
+    "replay_forwarded_primary_lines_to_console",
+    "diagnostics_log: Option<String>",
+    "const ACTIVATION_NACK: u8 = 0",
+    '"activation.rejected"',
+    '"activation.pipe.connect_retry"',
+    '"activation.pipe.wait_retry"',
+  ):
+    if invariant not in single_instance_rs:
+      fail(f"0.7.10 completed Windows activation invariant is missing: {invariant}")
+  for invariant in (
+    'STARTUP_DIAGNOSTICS_FLAG: &str = "--startup-diagnostics"',
+    "AttachConsole(ATTACH_PARENT_PROCESS)",
+    'open("CONOUT$")',
+    "forwarded_path_is_safe",
+    "argument values are intentionally not logged",
+    'log("process", "panic"',
+  ):
+    if invariant not in startup_diagnostics_rs:
+      fail(f"0.7.10 startup diagnostics invariant is missing: {invariant}")
+  reveal_index = main_rs.find("reveal_main_window_after_startup_restore(app.handle(), start_minimized);")
+  bind_index = main_rs.find("windows_activation_target.bind(app.handle().clone())")
+  if reveal_index < 0 or bind_index < 0 or reveal_index >= bind_index:
+    fail("0.7.10 must bind queued Windows activation only after startup visibility restoration")
+  accept_index = single_instance_rs.find("if let Err(error) = target.accept(request)")
+  ack_index = single_instance_rs.find("write_all(pipe, &[ACTIVATION_ACK])?;")
+  if accept_index < 0 or ack_index < 0 or accept_index >= ack_index:
+    fail("0.7.10 activation acknowledgement must follow completed primary acceptance")
+  if '"Win32_System_Console"' not in cargo:
+    fail("0.7.10 startup diagnostics require windows-sys Win32_System_Console")
+  if "%LOCALAPPDATA%\\Tauridium\\diagnostics" not in read("docs/installation.md"):
+    fail("0.7.10 diagnostics location/CLI usage must be documented")
+  for test_marker in (
+    "test_secondary_ack_waits_for_completed_ui_activation",
+    "test_startup_queued_activation_is_bound_after_visibility_restore",
+    "test_tray_hidden_window_uses_native_restore_and_verification",
+    "test_diagnostics_flag_attaches_console_and_writes_file",
+    "test_existing_primary_can_append_to_secondary_diagnostics",
+    "test_diagnostics_do_not_forward_flag_or_dump_argument_values",
+    "test_startup_milestones_and_panics_are_recorded",
+    "test_failed_activation_is_explicitly_rejected_and_diagnosable",
+  ):
+    if test_marker not in patch_0710:
+      fail(f"0.7.10 regression coverage is missing: {test_marker}")
 
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],

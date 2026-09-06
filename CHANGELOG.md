@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.7.10] - 2026-09-06
+
+### Fixed
+
+- Made repeated Windows launches restore a tray-hidden primary reliably instead of treating a queued UI callback as a successful activation. The primary now completes the show/restore operation on the UI thread, verifies the native window is visible and not minimized, and only then acknowledges the secondary launch.
+- Added Win32 `ShowWindow` fallbacks (`SW_SHOW` / `SW_RESTORE`) and native `IsWindowVisible` / `IsIconic` verification around Tauri's window operations. Foreground activation remains policy-compliant: `SetForegroundWindow` refusal is recorded but never bypassed with synthetic keyboard input.
+- Moved activation-target binding until after startup window-state/start-minimized restoration. A repeated launch that arrives during primary startup can therefore no longer be shown and then hidden again by later startup visibility logic.
+- Reused the hardened Windows restore path for tray/menu **Show Tauridium** actions so tray recovery and repeated-executable activation do not diverge.
+
+### Added
+
+- Added `--startup-diagnostics`. The flag attaches a release GUI-subsystem process to its invoking Windows console when possible and writes the same structured startup diagnostics to `%LOCALAPPDATA%\Tauridium\diagnostics\startup-<timestamp>-<pid>.log`.
+- Diagnostic secondary launches forward their log path through the existing activation IPC. The already-running primary appends its activation/window-state decisions to that same confined diagnostics file, and the secondary replays those primary-side lines to its console after acknowledgement.
+- Failed activation is explicitly NACKed instead of being indistinguishable from a dropped pipe. Diagnostic runs also record named-pipe open/wait retry errors and replay forwarded primary-side failure details before the secondary exits, making transport failures and UI-restoration failures distinguishable.
+- Startup diagnostics cover process/build context, single-instance ownership, named-pipe connection and acknowledgement, foreground-permission transfer, Tauri setup milestones, identity migration, settings, tray/menu creation, startup visibility, queued activation, pre/post native window state, foreground result, and panics. Command-line values and environment variables are intentionally not dumped.
+
+### Release quality
+
+- Added focused 0.7.10 regression and release-invariant coverage for synchronous UI acknowledgement, startup-race ordering, tray-hidden native restoration, diagnostics path confinement, console attachment, diagnostics IPC forwarding, argument redaction, and removal of the diagnostics flag from application activation arguments.
+
 ## [0.7.9] - 2026-09-06
 
 ### Fixed
