@@ -2235,6 +2235,39 @@ def main() -> int:
     if test_marker not in patch_0710:
       fail(f"0.7.10 regression coverage is missing: {test_marker}")
 
+  patch_0711 = read("tools/test_patch_0711.py")
+  gitattributes = read(".gitattributes")
+  for invariant in (
+    "vendor/** linguist-vendored",
+    "src-tauri/assets/darkreader.js linguist-vendored",
+    "src-tauri/gen/** linguist-generated",
+    ".tauridium-source-manifest.json linguist-generated",
+    "docs/** linguist-documentation",
+    "tools/** linguist-detectable=false",
+    "packaging/** linguist-detectable=false",
+    ".github/** linguist-detectable=false",
+    "src/**/*.test.ts linguist-detectable=false",
+  ):
+    if invariant not in gitattributes:
+      fail(f"0.7.11 GitHub Linguist invariant is missing: {invariant}")
+  for forbidden in (
+    "linguist-language=Rust",
+    "*.py linguist-detectable=false",
+    "*.js linguist-detectable=false",
+    "*.ts linguist-detectable=false",
+    "*.svelte linguist-detectable=false",
+  ):
+    if forbidden in gitattributes:
+      fail(f"0.7.11 must not manipulate genuine language classification: {forbidden}")
+  for test_marker in (
+    "test_auxiliary_repository_code_is_not_detectable",
+    "test_vendor_generated_and_documentation_paths_are_classified_truthfully",
+    "test_genuine_application_sources_remain_detectable",
+    "test_configuration_uses_path_roles_not_language_relabelling",
+  ):
+    if test_marker not in patch_0711:
+      fail(f"0.7.11 regression coverage is missing: {test_marker}")
+
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],
     cwd=ROOT,

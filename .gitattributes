@@ -1,0 +1,32 @@
+# GitHub Linguist classification.
+#
+# Keep Tauridium's genuine application implementation detectable while
+# classifying repository support files according to their actual purpose.
+# See: https://github.com/github-linguist/linguist/blob/main/docs/overrides.md
+
+# Third-party sources vendored to make Tauridium's patched Tauri/Wry build
+# reproducible are not Tauridium implementation code.
+vendor/** linguist-vendored
+src-tauri/assets/darkreader.js linguist-vendored
+
+# Generated metadata and schemas are derived artifacts, not authored code.
+src-tauri/gen/** linguist-generated
+.tauridium-source-manifest.json linguist-generated
+vite-env.d.ts linguist-generated
+
+# Documentation is intentionally separate from repository language statistics.
+docs/** linguist-documentation
+
+# Development, validation, packaging, and repository automation support the
+# application but do not represent Tauridium's implementation language.
+tools/** linguist-detectable=false
+packaging/** linguist-detectable=false
+.github/** linguist-detectable=false
+justfile linguist-detectable=false
+vite.config.ts linguist-detectable=false
+svelte.config.js linguist-detectable=false
+
+# Frontend tests are support code. Production Svelte/TypeScript remains
+# detectable so the language bar continues to represent Tauridium honestly.
+src/**/*.test.ts linguist-detectable=false
+src/**/*.spec.ts linguist-detectable=false

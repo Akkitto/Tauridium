@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.7.11] - 2026-09-14
+
+### Changed
+
+- Added repository-local GitHub Linguist classification so the language breakdown reflects Tauridium's implementation rather than auxiliary tooling, tests, packaging, CI automation, generated schemas, documentation, or vendored dependencies.
+- Kept genuine Rust/Tauri backend, Svelte/TypeScript frontend, and recipe runtime sources detectable. No unrelated source language is relabelled as Rust and no extension-wide exclusion is used to manipulate the language bar.
+
+### Release quality
+
+- Added focused 0.7.11 regression and release-invariant coverage using `git check-attr` to verify the intended path classifications and to prevent genuine application sources from being hidden or relabelled in future changes.
+
 ## [0.7.10] - 2026-09-06
 
 ### Fixed
