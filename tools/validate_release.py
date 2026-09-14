@@ -2236,6 +2236,7 @@ def main() -> int:
       fail(f"0.7.10 regression coverage is missing: {test_marker}")
 
   patch_0711 = read("tools/test_patch_0711.py")
+  patch_0712 = read("tools/test_patch_0712.py")
   gitattributes = read(".gitattributes")
   for invariant in (
     "vendor/** linguist-vendored",
@@ -2243,30 +2244,37 @@ def main() -> int:
     "src-tauri/gen/** linguist-generated",
     ".tauridium-source-manifest.json linguist-generated",
     "docs/** linguist-documentation",
-    "tools/** linguist-detectable=false",
-    "packaging/** linguist-detectable=false",
-    ".github/** linguist-detectable=false",
-    "src/**/*.test.ts linguist-detectable=false",
   ):
     if invariant not in gitattributes:
-      fail(f"0.7.11 GitHub Linguist invariant is missing: {invariant}")
-  for forbidden in (
-    "linguist-language=Rust",
-    "*.py linguist-detectable=false",
-    "*.js linguist-detectable=false",
-    "*.ts linguist-detectable=false",
-    "*.svelte linguist-detectable=false",
-  ):
-    if forbidden in gitattributes:
-      fail(f"0.7.11 must not manipulate genuine language classification: {forbidden}")
+      fail(f"GitHub Linguist provenance invariant is missing: {invariant}")
   for test_marker in (
     "test_auxiliary_repository_code_is_not_detectable",
     "test_vendor_generated_and_documentation_paths_are_classified_truthfully",
-    "test_genuine_application_sources_remain_detectable",
-    "test_configuration_uses_path_roles_not_language_relabelling",
+    "test_genuine_application_sources_are_not_relabelled",
+    "test_configuration_keeps_truthful_provenance_classification",
   ):
     if test_marker not in patch_0711:
-      fail(f"0.7.11 regression coverage is missing: {test_marker}")
+      fail(f"0.7.11 historical Linguist regression coverage is missing: {test_marker}")
+
+  for invariant in (
+    "* linguist-detectable=false",
+    "*.rs linguist-detectable=true",
+  ):
+    if invariant not in gitattributes:
+      fail(f"0.7.12 Rust-only GitHub Linguist invariant is missing: {invariant}")
+  if "linguist-language=Rust" in gitattributes:
+    fail("0.7.12 must hide non-Rust statistics rather than relabel files as Rust")
+  for test_marker in (
+    "test_only_rust_is_detectable_for_language_statistics",
+    "test_all_tracked_non_rust_files_are_non_detectable",
+    "test_rust_only_stats_do_not_relabel_other_languages_as_rust",
+    "test_provenance_classification_remains_intact",
+    "test_language_policy_document_is_in_documentation_package",
+  ):
+    if test_marker not in patch_0712:
+      fail(f"0.7.12 regression coverage is missing: {test_marker}")
+  if "Rust-only" not in read("docs/github-language-statistics.md"):
+    fail("0.7.12 Rust-only GitHub language statistics policy must be documented")
 
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],

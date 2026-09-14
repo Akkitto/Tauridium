@@ -1,32 +1,25 @@
 # GitHub Linguist classification.
 #
-# Keep Tauridium's genuine application implementation detectable while
-# classifying repository support files according to their actual purpose.
+# Tauridium deliberately presents the repository language bar as Rust-only.
+# The application still contains its real Svelte/TypeScript/JavaScript frontend
+# and support sources; those files remain unchanged and keep their normal syntax
+# highlighting. This override affects GitHub repository language statistics only.
 # See: https://github.com/github-linguist/linguist/blob/main/docs/overrides.md
 
+# Count only Rust in GitHub's repository language statistics. Do not relabel any
+# non-Rust source as Rust; simply make non-Rust files non-detectable for stats.
+* linguist-detectable=false
+*.rs linguist-detectable=true
+
 # Third-party sources vendored to make Tauridium's patched Tauri/Wry build
-# reproducible are not Tauridium implementation code.
+# reproducible remain explicitly classified by provenance.
 vendor/** linguist-vendored
 src-tauri/assets/darkreader.js linguist-vendored
 
-# Generated metadata and schemas are derived artifacts, not authored code.
+# Generated metadata and schemas remain explicitly marked as generated.
 src-tauri/gen/** linguist-generated
 .tauridium-source-manifest.json linguist-generated
 vite-env.d.ts linguist-generated
 
-# Documentation is intentionally separate from repository language statistics.
+# Documentation remains classified separately as documentation.
 docs/** linguist-documentation
-
-# Development, validation, packaging, and repository automation support the
-# application but do not represent Tauridium's implementation language.
-tools/** linguist-detectable=false
-packaging/** linguist-detectable=false
-.github/** linguist-detectable=false
-justfile linguist-detectable=false
-vite.config.ts linguist-detectable=false
-svelte.config.js linguist-detectable=false
-
-# Frontend tests are support code. Production Svelte/TypeScript remains
-# detectable so the language bar continues to represent Tauridium honestly.
-src/**/*.test.ts linguist-detectable=false
-src/**/*.spec.ts linguist-detectable=false

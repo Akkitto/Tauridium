@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.7.12] - 2026-09-14
+
+### Changed
+
+- Changed GitHub Linguist policy from role-based multi-language statistics to an explicit Rust-only repository language bar. All non-Rust files are now non-detectable for language statistics, while Rust remains detectable.
+- Kept all Svelte, TypeScript, JavaScript, Python, PowerShell, packaging, recipe, documentation, and automation files unchanged and normally classified for syntax highlighting; no non-Rust source is relabelled as Rust.
+- Retained explicit vendored, generated, and documentation provenance markers alongside the Rust-only statistics policy.
+
+### Documentation
+
+- Documented that the GitHub language bar is intentionally a presentation of Tauridium's primary native implementation language rather than a complete inventory of every language present in the repository.
+
+### Release quality
+
+- Added exhaustive 0.7.12 regression coverage requiring every tracked non-Rust file to resolve to `linguist-detectable=false`, representative Rust files to resolve to `true`, and all language relabelling to remain absent.
+
 ## [0.7.11] - 2026-09-14
 
 ### Changed

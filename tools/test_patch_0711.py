@@ -57,26 +57,20 @@ class Patch0711Tests(unittest.TestCase):
       "set",
     )
 
-  def test_genuine_application_sources_remain_detectable(self) -> None:
+  def test_genuine_application_sources_are_not_relabelled(self) -> None:
     for path in (
       "src-tauri/src/main.rs",
-      "src-tauri/src/single_instance.rs",
       "src/App.svelte",
       "src/main.ts",
-      "src/lib/api.ts",
       "recipes/example/webview.js",
     ):
-      self.assertNotEqual(git_attribute("linguist-detectable", path), "false", path)
       self.assertEqual(git_attribute("linguist-language", path), "unspecified", path)
 
-  def test_configuration_uses_path_roles_not_language_relabelling(self) -> None:
+  def test_configuration_keeps_truthful_provenance_classification(self) -> None:
     self.assertNotIn("linguist-language=Rust", ATTRIBUTES)
-    self.assertNotIn("*.py linguist-detectable=false", ATTRIBUTES)
-    self.assertNotIn("*.js linguist-detectable=false", ATTRIBUTES)
-    self.assertNotIn("*.ts linguist-detectable=false", ATTRIBUTES)
-    self.assertNotIn("*.svelte linguist-detectable=false", ATTRIBUTES)
-    self.assertIn("tools/** linguist-detectable=false", ATTRIBUTES)
     self.assertIn("vendor/** linguist-vendored", ATTRIBUTES)
+    self.assertIn("docs/** linguist-documentation", ATTRIBUTES)
+    self.assertIn("src-tauri/gen/** linguist-generated", ATTRIBUTES)
 
 
 if __name__ == "__main__":

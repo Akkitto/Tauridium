@@ -606,6 +606,7 @@ def build_docs(
       add_file(zf, ROOT / name, prefix + name)
     for source, archive_path in (
       (ROOT / "docs" / "installation.md", "docs/installation.md"),
+      (ROOT / "docs" / "github-language-statistics.md", "docs/github-language-statistics.md"),
       (ROOT / "packaging" / "scoop" / "README.md", "docs/scoop-packaging.md"),
     ):
       if source.is_file():
