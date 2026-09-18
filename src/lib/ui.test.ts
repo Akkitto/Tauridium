@@ -15,6 +15,7 @@ import {
   resolveStartupSidebarCollapsed,
   paged,
   recipeIcon,
+  recipeSourceLabel,
   sameDownloadPreference,
   shortcutConflicts,
   snapIconSize,
@@ -187,6 +188,16 @@ describe("recipeIcon / iconSrc", () => {
   it("falls back to the recipe icon when no custom icon", () => {
     expect(iconSrc({ iconUrl: null, recipeId: "slack" })).toBe(recipeIcon("slack"));
     expect(iconSrc({ recipeId: "gmail" })).toBe(recipeIcon("gmail"));
+  });
+});
+
+
+describe("recipeSourceLabel", () => {
+  it("uses user-facing recipe origin terminology", () => {
+    expect(recipeSourceLabel("remote")).toBe("Ferdium recipe");
+    expect(recipeSourceLabel("bundled")).toBe("Tauridium built-in");
+    expect(recipeSourceLabel("custom")).toBe("Personal recipe");
+    expect(recipeSourceLabel(undefined)).toBe("Unknown recipe");
   });
 });
 

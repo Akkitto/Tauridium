@@ -16,7 +16,7 @@ use crate::recipes::CustomRecipeBackup;
 use crate::replace_file;
 
 const EXPORT_FORMAT: &str = "tauridium-service-export";
-const EXPORT_SCHEMA: u32 = 1;
+const EXPORT_SCHEMA: u32 = 2;
 const MAX_SERVICES: usize = 10_000;
 const MAX_RECIPES: usize = 10_000;
 const MAX_ICON_BYTES: usize = 512 * 1024;
@@ -29,7 +29,7 @@ const MANIFEST_PATH: &str = "manifest.json";
 pub(crate) struct ServiceExportRequest {
     pub services: Vec<Value>,
     #[serde(default)]
-    pub include_all_local_recipes: bool,
+    pub include_all_personal_recipes: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -37,9 +37,9 @@ pub(crate) struct ServiceExportRequest {
 pub(crate) struct ServiceExportSummary {
     pub path: String,
     pub service_count: usize,
-    pub custom_recipe_count: usize,
+    pub portable_recipe_count: usize,
     pub service_icon_count: usize,
-    pub include_all_local_recipes: bool,
+    pub include_all_personal_recipes: bool,
     pub archive_sha256: String,
     pub integrity_verified: bool,
 }
@@ -60,7 +60,7 @@ struct ExportedService {
     #[serde(skip_serializing_if = "Option::is_none")]
     icon: Option<ExportedAsset>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    local_recipe_path: Option<String>,
+    portable_recipe_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -78,9 +78,9 @@ struct ServiceExportManifest {
     schema: u32,
     app_version: String,
     exported_at_unix: u64,
-    include_all_local_recipes: bool,
+    include_all_personal_recipes: bool,
     services: Vec<ExportedService>,
-    local_recipes: Vec<ExportedRecipe>,
+    portable_recipes: Vec<ExportedRecipe>,
     security: Value,
 }
 
@@ -343,7 +343,7 @@ fn select_recipes(
     include_all: bool,
 ) -> Result<Vec<CustomRecipeBackup>, String> {
     if all_recipes.len() > MAX_RECIPES {
-        return Err("Too many local recipes to export".into());
+        return Err("Too many personal recipes to export".into());
     }
     if include_all {
         return Ok(all_recipes.to_vec());
@@ -363,7 +363,7 @@ fn recipe_package(recipe: &CustomRecipeBackup) -> Result<Vec<u8>, String> {
     let mut package = sanitize_service(&recipe.package);
     let object = package
         .as_object_mut()
-        .ok_or_else(|| format!("Local recipe {} package must be an object", recipe.id))?;
+        .ok_or_else(|| format!("Personal recipe {} package must be an object", recipe.id))?;
     object.remove("tauridium");
     if !object.contains_key("license") {
         object.insert("license".into(), Value::String("MIT".into()));
@@ -373,7 +373,7 @@ fn recipe_package(recipe: &CustomRecipeBackup) -> Result<Vec<u8>, String> {
             bytes.push(b'\n');
             bytes
         })
-        .map_err(|error| format!("Unable to serialize local recipe {}: {error}", recipe.id))
+        .map_err(|error| format!("Unable to serialize personal recipe {}: {error}", recipe.id))
 }
 
 fn is_custom_website_service(service: &Value) -> bool {
@@ -416,7 +416,7 @@ fn custom_website_recipe_package(service: &Value, id: &str) -> Result<Vec<u8>, S
         "license": "MIT",
         "config": {
             "serviceURL": url,
-            "hasCustomUrl": true,
+            "hasCustomUrl": false,
             "hasTeamId": false
         }
     });
@@ -471,7 +471,7 @@ fn asset(path: String, media_type: &str, bytes: &[u8]) -> ExportedAsset {
 }
 
 fn readme() -> Vec<u8> {
-    b"# Tauridium service export\n\nThis ZIP is a portable, reviewable export of selected Tauridium services. `manifest.json` contains service settings and SHA-256 metadata for included assets. Secret-like fields (passwords, tokens, cookies, authorization values, and secrets) are deliberately redacted. Website session storage, cookies, authentication state, and other browser profile data are never exported.\n\n`icons/services/` contains locally available service icons. `recipes/<id>/` contains local recipes in the upstream Ferdium recipe layout: `package.json`, `index.js`, `icon.svg`, and optional `webview.js`. Recipe folders can be reviewed before copying into the `recipes/` directory of the Ferdium recipes repository.\n\nTauridium does not fetch remote icon URLs during export; the bundle only captures icon bytes already present locally.\n".to_vec()
+    b"# Tauridium service export\n\nThis ZIP is a portable, reviewable export of selected Tauridium services. `manifest.json` contains service settings and SHA-256 metadata for included assets. Secret-like fields (passwords, tokens, cookies, authorization values, and secrets) are deliberately redacted. Website session storage, cookies, authentication state, and other browser profile data are never exported.\n\nRecipe terminology:\n- **Ferdium recipes** come from the upstream Ferdium catalog. They are referenced by recipe id and are not copied into the ZIP.\n- **Tauridium built-in recipes** ship with Tauridium. They are also referenced by recipe id and are not bulk-exported as personal recipes.\n- **Personal recipes** are recipes the user created or imported on this device. Referenced personal recipes are included automatically, and the export option can include all of them.\n- **Custom websites** are one-off services created with Tauridium's built-in Custom Website template. When exported, Tauridium generates a standalone Ferdium-compatible recipe for each included custom website.\n\n`icons/services/` contains locally available service icons. `recipes/<id>/` contains exported personal recipes and generated Custom Website recipes in the upstream Ferdium recipe layout: `package.json`, `index.js`, `icon.svg`, and optional `webview.js`. Recipe folders can be reviewed before copying into the `recipes/` directory of the Ferdium recipes repository.\n\nTauridium does not fetch remote icon URLs during export; the bundle only captures icon bytes already present locally.\n".to_vec()
 }
 
 pub(crate) fn save(
@@ -498,7 +498,7 @@ pub(crate) fn save(
     let recipes = select_recipes(
         &request.services,
         all_recipes,
-        request.include_all_local_recipes,
+        request.include_all_personal_recipes,
     )?;
     let recipe_ids = recipes
         .iter()
@@ -507,7 +507,7 @@ pub(crate) fn save(
     let custom_websites = custom_website_services(
         &request.services,
         all_local_services,
-        request.include_all_local_recipes,
+        request.include_all_personal_recipes,
     )?;
     let custom_website_recipe_ids = custom_websites
         .iter()
@@ -545,7 +545,7 @@ pub(crate) fn save(
         } else {
             None
         };
-        let local_recipe_path = if let Some(recipe_id) = custom_website_recipe_ids.get(id) {
+        let portable_recipe_path = if let Some(recipe_id) = custom_website_recipe_ids.get(id) {
             Some(format!("recipes/{recipe_id}/"))
         } else {
             recipe_id(service)
@@ -556,7 +556,7 @@ pub(crate) fn save(
         exported_services.push(ExportedService {
             service: service_for_manifest(service, icon_embedded_as_asset),
             icon,
-            local_recipe_path,
+            portable_recipe_path,
         });
     }
 
@@ -649,9 +649,9 @@ pub(crate) fn save(
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs(),
-        include_all_local_recipes: request.include_all_local_recipes,
+        include_all_personal_recipes: request.include_all_personal_recipes,
         services: exported_services,
-        local_recipes: exported_recipes,
+        portable_recipes: exported_recipes,
         security: json!({
             "secretsRedacted": true,
             "browserSessionDataIncluded": false,
@@ -707,9 +707,9 @@ pub(crate) fn save(
     Ok(ServiceExportSummary {
         path: path.to_string_lossy().into_owned(),
         service_count: request.services.len(),
-        custom_recipe_count: exported_recipe_count,
+        portable_recipe_count: exported_recipe_count,
         service_icon_count: icon_count,
-        include_all_local_recipes: request.include_all_local_recipes,
+        include_all_personal_recipes: request.include_all_personal_recipes,
         archive_sha256,
         integrity_verified: true,
     })
@@ -870,7 +870,7 @@ mod tests {
             package["config"]["serviceURL"],
             "https://dashboard.example.test/path"
         );
-        assert_eq!(package["config"]["hasCustomUrl"], true);
+        assert_eq!(package["config"]["hasCustomUrl"], false);
         assert_eq!(package["version"], "1.0.0");
     }
 

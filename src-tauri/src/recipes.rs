@@ -57,6 +57,15 @@ fn generic_icon(label: &str) -> String {
     )
 }
 
+fn bundled_icon_svg(recipe_id: &str, label: &str) -> String {
+    match recipe_id {
+        "arli-ai" => include_str!("../bundled-recipes/arli-ai/icon.svg").to_string(),
+        "porkbun" => include_str!("../bundled-recipes/porkbun/icon.svg").to_string(),
+        "deluxhost" => include_str!("../bundled-recipes/deluxhost/icon.svg").to_string(),
+        _ => generic_icon(label),
+    }
+}
+
 fn bundled_recipes() -> Vec<(&'static str, &'static str, &'static str, bool, &'static str)> {
     vec![
         (
@@ -72,6 +81,27 @@ fn bundled_recipes() -> Vec<(&'static str, &'static str, &'static str, bool, &'s
             "https://nano-gpt.com/chat",
             false,
             "NanoGPT browser chat.",
+        ),
+        (
+            "arli-ai",
+            "Arli AI",
+            "https://www.arliai.com/account?lang=en",
+            false,
+            "Arli AI account and inference dashboard.",
+        ),
+        (
+            "porkbun",
+            "Porkbun",
+            "https://porkbun.com/",
+            false,
+            "Porkbun domain management and account portal.",
+        ),
+        (
+            "deluxhost",
+            "DeluxHost",
+            "https://dash.deluxhost.net/en/dashboard",
+            false,
+            "DeluxHost customer dashboard.",
         ),
         (
             "chutes",
@@ -253,7 +283,7 @@ fn bundled_previews() -> Vec<Value> {
                 id,
                 &package,
                 "bundled",
-                Some(svg_data_uri(&generic_icon(name))),
+                Some(svg_data_uri(&bundled_icon_svg(id, name))),
             ))
         })
         .collect()
@@ -537,7 +567,7 @@ pub(crate) fn local_icon_url(app: &AppHandle, recipe_id: &str) -> Option<String>
         .into_iter()
         .find(|recipe| recipe.0 == recipe_id)
     {
-        return Some(svg_data_uri(&generic_icon(recipe.1)));
+        return Some(svg_data_uri(&bundled_icon_svg(recipe.0, recipe.1)));
     }
     let path = custom_recipes_dir(app)
         .ok()?
@@ -790,6 +820,41 @@ mod tests {
                 .and_then(Value::as_str),
             Some("https://opencode.ai/go")
         );
+    }
+
+    #[test]
+    fn patch_0715_public_recipes_use_exported_endpoints_and_icons() {
+        let expected = [
+            (
+                "arli-ai",
+                "Arli AI",
+                "https://www.arliai.com/account?lang=en",
+            ),
+            ("porkbun", "Porkbun", "https://porkbun.com/"),
+            (
+                "deluxhost",
+                "DeluxHost",
+                "https://dash.deluxhost.net/en/dashboard",
+            ),
+        ];
+
+        for (id, name, url) in expected {
+            let recipe = bundled_recipe(id).unwrap();
+            assert_eq!(recipe.get("name").and_then(Value::as_str), Some(name));
+            assert_eq!(
+                recipe.pointer("/config/serviceURL").and_then(Value::as_str),
+                Some(url)
+            );
+            assert_eq!(
+                recipe
+                    .pointer("/config/hasCustomUrl")
+                    .and_then(Value::as_bool),
+                Some(false)
+            );
+            let icon = bundled_icon_svg(id, name);
+            assert!(icon.contains("<svg"));
+            assert!(icon.contains("viewBox"));
+        }
     }
 
     #[test]

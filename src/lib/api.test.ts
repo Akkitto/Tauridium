@@ -238,13 +238,13 @@ describe("service export commands", () => {
     };
     await exportServiceBundle("/tmp/services.zip", {
       services: [service],
-      includeAllLocalRecipes: true,
+      includeAllPersonalRecipes: true,
     });
     expect(mocks.invoke).toHaveBeenCalledWith("export_service_bundle", {
       path: "/tmp/services.zip",
       request: {
         services: [service],
-        includeAllLocalRecipes: true,
+        includeAllPersonalRecipes: true,
       },
     });
   });

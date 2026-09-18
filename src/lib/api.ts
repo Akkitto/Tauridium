@@ -462,15 +462,15 @@ export function exportPortableBundle(
 
 export interface ServiceExportRequest {
   services: Service[];
-  includeAllLocalRecipes: boolean;
+  includeAllPersonalRecipes: boolean;
 }
 
 export interface ServiceExportSummary {
   path: string;
   serviceCount: number;
-  customRecipeCount: number;
+  portableRecipeCount: number;
   serviceIconCount: number;
-  includeAllLocalRecipes: boolean;
+  includeAllPersonalRecipes: boolean;
   archiveSha256: string;
   integrityVerified: boolean;
 }

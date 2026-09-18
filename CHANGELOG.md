@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.7.15] - 2026-09-18
+
+### Added
+
+- Added Arli AI, Porkbun, and DeluxHost as Tauridium built-in recipes using the exported public-service URLs and locally supplied icons.
+- Added explicit recipe-origin labels throughout the service catalog and configured-service list: **Ferdium recipe**, **Tauridium built-in**, **Personal recipe**, and **Custom website**.
+
+### Changed
+
+- Reworded service export around **personal recipes** and **Custom websites** so Tauridium built-ins are no longer ambiguously described as local recipes. The bulk-export option is now **Include all personal recipes & custom websites**.
+- Made the configured-services list independently scrollable while retaining pagination, search, workspace filtering, and ordering, so large installations do not require scrolling the entire Settings page through dozens or hundreds of services.
+- Made the unused area of each configured-service row toggle that service's export checkbox; reorder and Service settings controls remain independent interactive targets.
+
+### Fixed
+
+- Validated the 0.7.14 service-export ZIP structure, paths, CRCs, manifest sizes, SHA-256 metadata, icons, and generated recipe files, then corrected generated Custom Website recipes to use fixed Ferdium URLs (`hasCustomUrl: false`) instead of contradictory custom-URL semantics.
+- Bumped the service-export manifest to schema 2 and renamed ambiguous manifest fields to **personal/portable recipe** terminology while preserving the same verified ZIP container and security properties.
+
+### Release quality
+
+- Added focused Rust, frontend-helper, and Python regression coverage for the three bundled public services, bundled icons, schema-2 export semantics, recipe-origin terminology, bounded service-list scrolling, and whole-row export selection.
+
 ## [0.7.14] - 2026-09-18
 
 ### Fixed

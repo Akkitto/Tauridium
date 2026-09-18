@@ -209,6 +209,19 @@ export function iconSrc(s: { iconUrl?: string | null; recipeId: string }): strin
   return s.iconUrl || recipeIcon(s.recipeId);
 }
 
+export function recipeSourceLabel(source: "bundled" | "custom" | "remote" | undefined): string {
+  switch (source) {
+    case "remote":
+      return "Ferdium recipe";
+    case "bundled":
+      return "Tauridium built-in";
+    case "custom":
+      return "Personal recipe";
+    default:
+      return "Unknown recipe";
+  }
+}
+
 // Filter and sort the recipe catalog used by the add-service screen.
 export function filterRecipes<T extends { id: string; name: string }>(
   recipes: T[],

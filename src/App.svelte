@@ -10,6 +10,7 @@
     filterRecipes,
     snapIconSize,
     recipeIdFromName,
+    recipeSourceLabel,
     normalizeWebsiteUrl,
     websiteName,
     looksLikeWebsite,
@@ -186,7 +187,7 @@
   let managedWorkspaceFilter = $state("all");
   let managedServicePage = $state(0);
   let serviceExportSelection = $state<Set<string>>(new Set());
-  let serviceExportIncludeAllLocalRecipes = $state(false);
+  let serviceExportIncludeAllPersonalRecipes = $state(false);
   let serviceExportBusy = $state(false);
   let serviceExportStatus = $state("");
   let managedWorkspaceQuery = $state("");
@@ -2500,6 +2501,7 @@
     error = null;
     view = "appSettings";
     hideServices();
+    if ("services" === settingsTab && allRecipes.length === 0) void refreshRecipes();
   }
 
   function openAddWorkspace() {
@@ -2719,6 +2721,7 @@
     }
     settingsTab = id as Tab;
     if (settingsTab === "audit") void refreshAuditLog();
+    if (settingsTab === "services" && allRecipes.length === 0) void refreshRecipes();
   }
 
   async function doExportBackup() {
@@ -2938,6 +2941,13 @@
     serviceExportSelection = next;
   }
 
+  function configuredServiceRecipeLabel(service: Service): string {
+    if (service.recipeId === "custom-website") return "Custom website";
+    const recipe = allRecipes.find((candidate) => candidate.id === service.recipeId);
+    if (recipe?.source) return recipeSourceLabel(recipe.source);
+    return service.isLocalRecipe ? "Recipe source unavailable" : "Ferdium recipe";
+  }
+
   function selectAllServiceExports() {
     serviceExportSelection = new Set(sorted.map((service) => service.id));
   }
@@ -2947,7 +2957,7 @@
   }
 
   async function doServiceExport(selectedServices: Service[]) {
-    if (serviceExportBusy || (selectedServices.length === 0 && !serviceExportIncludeAllLocalRecipes)) return;
+    if (serviceExportBusy || (selectedServices.length === 0 && !serviceExportIncludeAllPersonalRecipes)) return;
     serviceExportBusy = true;
     serviceExportStatus = "";
     error = null;
@@ -2960,9 +2970,9 @@
       if (!path) return;
       const summary = await exportServiceBundle(path, {
         services: selectedServices,
-        includeAllLocalRecipes: serviceExportIncludeAllLocalRecipes,
+        includeAllPersonalRecipes: serviceExportIncludeAllPersonalRecipes,
       });
-      serviceExportStatus = `Exported ${summary.serviceCount} service(s), ${summary.serviceIconCount} locally available service icon(s), and ${summary.customRecipeCount} local recipe(s) to a verified ZIP bundle.`;
+      serviceExportStatus = `Exported ${summary.serviceCount} service(s), ${summary.serviceIconCount} locally available service icon(s), and ${summary.portableRecipeCount} portable recipe(s) to a verified ZIP bundle.`;
     } catch (err) {
       error = `Service export failed: ${err}`;
     } finally {
@@ -3955,7 +3965,7 @@
               <button class="secondary sm" onclick={() => importRecipe(false)}>Import package.json…</button>
             </div>
             {#if recipeStorage}
-              <p class="recipe-path">Local recipes: <code>{recipeStorage.recipesDir}</code></p>
+              <p class="recipe-path">Personal recipe folder: <code>{recipeStorage.recipesDir}</code></p>
             {/if}
             {#if recipesLoading}
               <p class="sub">Loading catalog…</p>
@@ -3969,14 +3979,14 @@
                       {#if r.description}<span class="result-desc">{r.description}</span>{/if}
                     </span>
                     <span class="result-meta">
-                      {#if r.source && r.source !== "remote"}<span class="source-badge">{r.source}</span>{/if}
+                      {#if r.source}<span class="source-badge">{recipeSourceLabel(r.source)}</span>{/if}
                       <span class="result-id">{r.id}</span>
                     </span>
                   </button>
                 {:else}
                   <div class="empty-recipe">
                     <strong>No preset recipe matches.</strong>
-                    <p class="sub">You can still add the site directly or create a reusable local recipe.</p>
+                    <p class="sub">You can still add the site directly or create a reusable personal recipe.</p>
                     <div class="recipe-tools">
                       <button class="primary sm" onclick={() => openCustomWebsite(recipeQuery)}>Add a custom website</button>
                       <button class="secondary sm" onclick={openRecipeCreator}>Create a recipe</button>
@@ -3988,7 +3998,7 @@
           {:else if addMode === "website"}
             <div class="creator-card">
               <h3>Custom Website</h3>
-              <p class="sub">A local service backed by Tauridium's built-in Custom Website recipe. It stays on this device and does not require a Ferdium server recipe.</p>
+              <p class="sub">A one-off service that uses Tauridium’s built-in Custom Website template. It is not a reusable personal recipe, but service export can generate a standalone Ferdium-compatible recipe for it.</p>
               <label class="block">Website URL<input bind:value={customWebsiteUrl} placeholder="https://example.com" /></label>
               <label class="block">Name (optional)<input bind:value={newServiceName} placeholder="derived from the hostname" /></label>
               <div class="recipe-actions">
@@ -3998,8 +4008,8 @@
             </div>
           {:else}
             <div class="creator-card">
-              <h3>Local recipe creator</h3>
-              <p class="sub">Creates a reusable recipe under Tauridium's configuration folder. Name, id, and URL are enough for a basic recipe.</p>
+              <h3>Personal recipe creator</h3>
+              <p class="sub">Creates a reusable personal recipe under Tauridium's configuration folder. Name, id, and URL are enough for a basic recipe.</p>
               <div class="creator-grid">
                 <label class="block">Recipe name<input value={recipeDraft.name} oninput={(e) => setRecipeName(e.currentTarget.value)} placeholder="My AI Service" /></label>
                 <label class="block">Recipe id<input value={recipeDraft.id} oninput={(e) => { recipeIdEdited = true; recipeDraft.id = e.currentTarget.value.toLowerCase(); }} placeholder="my-ai-service" /></label>
@@ -4066,7 +4076,7 @@
               <section class="settings-section" aria-labelledby="settings-services-configured">
                 <div class="section-heading">
                   <h3 id="settings-services-configured">Configured services <span class="section-count">{services.length}</span></h3>
-                  <p>Search or separate the list by workspace. Reordering a filtered workspace changes only those visible service slots while preserving the canonical global order.</p>
+                  <p>Search or separate the list by workspace. Recipe origins are shown as Ferdium recipe, Tauridium built-in, Personal recipe, or Custom website. Reordering a filtered workspace changes only those visible service slots while preserving the canonical global order.</p>
                 </div>
                 <div class="managed-toolbar service-managed-toolbar">
                   <input
@@ -4100,25 +4110,25 @@
                       <span class="status-badge">{selectedServiceExports.length} selected</span>
                       <button class="secondary sm" disabled={!services.length || serviceExportBusy} onclick={selectAllServiceExports}>Select all</button>
                       <button class="secondary sm" disabled={!serviceExportSelection.size || serviceExportBusy} onclick={clearServiceExportSelection}>Clear</button>
-                      <button class="primary sm" disabled={serviceExportBusy || (!selectedServiceExports.length && !serviceExportIncludeAllLocalRecipes)} onclick={() => doServiceExport(selectedServiceExports)}>{selectedServiceExports.length ? "Export selected…" : "Export local recipes…"}</button>
+                      <button class="primary sm" disabled={serviceExportBusy || (!selectedServiceExports.length && !serviceExportIncludeAllPersonalRecipes)} onclick={() => doServiceExport(selectedServiceExports)}>{selectedServiceExports.length ? "Export selected…" : "Export personal recipes…"}</button>
                     </div>
                   </div>
                   <label class="setting-card setting-card-toggle service-export-recipe-toggle">
                     <div class="setting-copy">
-                      <span class="setting-label">Include all local recipes</span>
-                      <span class="setting-description">Also include every locally created recipe, even when no selected service currently uses it. Referenced local recipes are always included. Recipe folders are emitted in Ferdium’s upstream-compatible structure.</span>
+                      <span class="setting-label">Include all personal recipes & custom websites</span>
+                      <span class="setting-description">Also include every recipe you created or imported on this device plus every Custom Website service, even when it is not selected. Referenced personal recipes and selected Custom Websites are always included. Ferdium catalog recipes and Tauridium built-in recipes are referenced by id rather than bulk-exported.</span>
                     </div>
                     <span class="switch-control">
-                      <input class="switch-input" type="checkbox" bind:checked={serviceExportIncludeAllLocalRecipes} disabled={serviceExportBusy} aria-label="Include all local recipes in service export" />
+                      <input class="switch-input" type="checkbox" bind:checked={serviceExportIncludeAllPersonalRecipes} disabled={serviceExportBusy} aria-label="Include all personal recipes and custom websites in service export" />
                       <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
                     </span>
                   </label>
                 </div>
                 {#if serviceExportStatus}<p class="settings-status">{serviceExportStatus}</p>{/if}
-                <div class="managed-list" role="list" aria-label="Configured services">
+                <div class="managed-list service-managed-list" role="list" aria-label="Configured services">
                   {#each managedServiceRows as service, index (service.id)}
-                    <div class="managed-row" class:selected={serviceExportSelection.has(service.id)} role="listitem">
-                      <div class="managed-identity service-export-identity">
+                    <div class="managed-row service-export-row" class:selected={serviceExportSelection.has(service.id)} role="listitem">
+                      <label class="managed-identity service-export-identity service-export-toggle">
                         <input
                           class="service-export-checkbox"
                           type="checkbox"
@@ -4133,9 +4143,9 @@
                         {/if}
                         <div class="managed-copy">
                           <strong>{serviceLabel(service)}</strong>
-                          <span>{service.isEnabled ? "Enabled" : "Disabled"} · {service.recipeId || "Unknown recipe"}{service.isLocalRecipe ? " · Local recipe" : ""}</span>
+                          <span>{service.isEnabled ? "Enabled" : "Disabled"} · {service.recipeId || "Unknown recipe"} · {configuredServiceRecipeLabel(service)}</span>
                         </div>
-                      </div>
+                      </label>
                       <div class="managed-actions">
                         <button class="icon-button compact" disabled={serviceOrderBusy || managedServicePage * MANAGED_SERVICE_PAGE_SIZE + index === 0} aria-label={`Move ${serviceLabel(service)} up`} title="Move up" onclick={() => moveManagedService(service.id, -1)}>↑</button>
                         <button class="icon-button compact" disabled={serviceOrderBusy || managedServicePage * MANAGED_SERVICE_PAGE_SIZE + index === managedServices.length - 1} aria-label={`Move ${serviceLabel(service)} down`} title="Move down" onclick={() => moveManagedService(service.id, 1)}>↓</button>
@@ -5325,7 +5335,7 @@
   .result-name { font-weight: 600; }
   .result-desc { color: var(--muted); font-size: 11px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .result-meta { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
-  .source-badge { padding: 2px 6px; border-radius: 999px; background: var(--hover); color: var(--accent-soft); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+  .source-badge { padding: 2px 6px; border-radius: 999px; background: var(--hover); color: var(--accent-soft); font-size: 10px; font-weight: 700; letter-spacing: 0.02em; }
   .empty-recipe { padding: 14px; border: 1px dashed var(--border2); border-radius: 10px; display: flex; flex-direction: column; gap: 8px; }
   .empty-recipe .sub { margin: 0; }
   .creator-card { display: flex; flex-direction: column; gap: 12px; }
@@ -5455,6 +5465,15 @@
   .service-export-recipe-toggle { min-height: 62px; }
   .service-export-identity { flex: 1 1 auto; }
   .service-export-checkbox { width: 17px; height: 17px; flex: none; accent-color: var(--accent); }
+  .service-managed-list {
+    max-height: min(58vh, 680px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    padding-right: 3px;
+  }
+  .service-export-toggle { align-self: stretch; cursor: pointer; min-width: 0; }
+  .service-export-toggle:hover { background: var(--hover); border-radius: 8px; }
   .workspace-managed-toolbar { grid-template-columns: minmax(0, 1fr) auto; }
   .workspace-create-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
   .workspace-order-select { min-width: 210px; max-width: 280px; }

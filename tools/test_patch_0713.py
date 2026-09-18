@@ -21,10 +21,10 @@ class Patch0713Tests(unittest.TestCase):
       'onclick={selectAllServiceExports}',
       'onclick={clearServiceExportSelection}',
       'onclick={() => doServiceExport(selectedServiceExports)}',
-      'bind:checked={serviceExportIncludeAllLocalRecipes}',
+      'bind:checked={serviceExportIncludeAllPersonalRecipes}',
       'let serviceExportStatus = $state("");',
-      'Export local recipes…',
-      'Include all local recipes',
+      'Export personal recipes…',
+      'Include all personal recipes & custom websites',
     ):
       self.assertIn(marker, APP)
 

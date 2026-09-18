@@ -4602,9 +4602,9 @@ fn export_service_bundle(
                 serde_json::json!({
                     "path": path,
                     "serviceCount": summary.service_count,
-                    "customRecipeCount": summary.custom_recipe_count,
+                    "portableRecipeCount": summary.portable_recipe_count,
                     "serviceIconCount": summary.service_icon_count,
-                    "includeAllLocalRecipes": summary.include_all_local_recipes,
+                    "includeAllPersonalRecipes": summary.include_all_personal_recipes,
                     "archiveSha256": summary.archive_sha256,
                 }),
             );
