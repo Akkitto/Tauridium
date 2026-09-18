@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.7.14] - 2026-09-18
+
+### Fixed
+
+- Fixed Windows `just check` / `just release` Rust compilation by selecting `flate2`'s portable Rust backend explicitly. ZIP compression no longer relies on incidental platform-specific Cargo feature unification, which allowed Linux to pass while Windows failed with “You need to choose a zlib backend”.
+- Updated the test dependency to patched Vitest 4.1.11 and pinned transitive `devalue` to 5.9.2, removing the moderate-severity advisories reported by `npm audit` for `@vitest/mocker` and malformed `devalue` input.
+
+### Release quality
+
+- Added 0.7.14 regression coverage that locks the cross-platform Deflate backend invariant and the patched frontend dependency floors so the Windows-only compression failure and known vulnerable resolutions cannot silently return.
+
 ## [0.7.13] - 2026-09-18
 
 ### Added

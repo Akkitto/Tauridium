@@ -1,6 +1,6 @@
 [package]
 name = "tauridium"
-version = "0.7.13"
+version = "0.7.14"
 edition = "2021"
 rust-version = "1.97.1"
 description = "Tauridium — lightweight Tauri client for Ferdium"
@@ -25,6 +25,9 @@ dirs = "6"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sha2 = "0.10"
 base64 = "0.22"
+# zip intentionally disables defaults; select flate2's portable Rust backend explicitly.
+# This must remain unconditional so Windows cannot depend on platform-specific feature unification.
+flate2 = { version = "=1.1.9", default-features = false, features = ["rust_backend"] }
 zip = { version = "=4.6.1", default-features = false, features = ["deflate-flate2"] }
 tauri-plugin-notification = "2"
 tauri-plugin-autostart = "2"

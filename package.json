@@ -1,6 +1,6 @@
 {
   "name": "tauridium",
-  "version": "0.7.13",
+  "version": "0.7.14",
   "description": "Tauridium - lightweight Tauri client for Ferdium",
   "author": "Daniel Braniewski",
   "homepage": "https://github.com/Akkitto/Tauridium",
@@ -35,9 +35,12 @@
     "svelte-check": "^4",
     "typescript": "^5",
     "vite": "^6",
-    "vitest": "^3"
+    "vitest": "4.1.11"
   },
   "allowScripts": {
     "esbuild@0.25.12": true
+  },
+  "overrides": {
+    "devalue": "5.9.2"
   }
 }
