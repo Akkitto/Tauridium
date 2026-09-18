@@ -7,6 +7,7 @@ mod local_profile;
 mod portable;
 mod proton_compat;
 mod recipes;
+mod service_export;
 mod single_instance;
 mod startup_diagnostics;
 
@@ -4566,6 +4567,65 @@ fn export_portable_bundle(
 }
 
 #[tauri::command]
+fn export_service_bundle(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    request: service_export::ServiceExportRequest,
+) -> Result<service_export::ServiceExportSummary, String> {
+    let operation = (|| -> Result<service_export::ServiceExportSummary, String> {
+        let custom_recipes = recipes::backup_custom_recipes(&app)?;
+        let local_services = state
+            .local_profile
+            .lock()
+            .unwrap()
+            .local_recipe_services_value();
+        let local_services = local_services.as_array().cloned().unwrap_or_default();
+        service_export::save(
+            &app,
+            Path::new(&path),
+            env!("CARGO_PKG_VERSION"),
+            request,
+            &custom_recipes,
+            &local_services,
+        )
+    })();
+    match operation {
+        Ok(summary) => {
+            audit::best_effort(
+                &app,
+                "info",
+                "export",
+                "services",
+                "success",
+                "Exported Tauridium service bundle",
+                serde_json::json!({
+                    "path": path,
+                    "serviceCount": summary.service_count,
+                    "customRecipeCount": summary.custom_recipe_count,
+                    "serviceIconCount": summary.service_icon_count,
+                    "includeAllLocalRecipes": summary.include_all_local_recipes,
+                    "archiveSha256": summary.archive_sha256,
+                }),
+            );
+            Ok(summary)
+        }
+        Err(error) => {
+            audit::best_effort(
+                &app,
+                "error",
+                "export",
+                "services",
+                "failure",
+                error.clone(),
+                serde_json::json!({ "path": path }),
+            );
+            Err(error)
+        }
+    }
+}
+
+#[tauri::command]
 fn record_updater_error(app: AppHandle, action: String, message: String) -> Result<(), String> {
     let action = action.trim();
     if !matches!(action, "check" | "install") {
@@ -5182,6 +5242,7 @@ fn main() {
             create_automatic_backup,
             restore_backup,
             export_portable_bundle,
+            export_service_bundle,
             record_updater_error,
             get_audit_log,
             export_audit_log,

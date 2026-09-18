@@ -92,6 +92,7 @@
     restoreBackup,
     createAutomaticBackup,
     exportPortableBundle,
+    exportServiceBundle,
     getAuditLog,
     exportAuditLog,
     clearAuditLog,
@@ -184,6 +185,10 @@
   let managedServiceQuery = $state("");
   let managedWorkspaceFilter = $state("all");
   let managedServicePage = $state(0);
+  let serviceExportSelection = $state<Set<string>>(new Set());
+  let serviceExportIncludeAllLocalRecipes = $state(false);
+  let serviceExportBusy = $state(false);
+  let serviceExportStatus = $state("");
   let managedWorkspaceQuery = $state("");
   let managedWorkspacePage = $state(0);
   let managedWorkspaceId = $state<string | null>(null);
@@ -500,6 +505,9 @@
   );
   const managedServiceRows = $derived(
     paged(managedServices, managedServicePage, MANAGED_SERVICE_PAGE_SIZE),
+  );
+  const selectedServiceExports = $derived(
+    sorted.filter((service) => serviceExportSelection.has(service.id)),
   );
   const keybindingConflicts = $derived(shortcutConflicts(appSettings.keybindings));
   const quickSwitcherItems = $derived.by(() => {
@@ -2923,6 +2931,45 @@
     }
   }
 
+  function setServiceExportSelected(serviceId: string, selected: boolean) {
+    const next = new Set(serviceExportSelection);
+    if (selected) next.add(serviceId);
+    else next.delete(serviceId);
+    serviceExportSelection = next;
+  }
+
+  function selectAllServiceExports() {
+    serviceExportSelection = new Set(sorted.map((service) => service.id));
+  }
+
+  function clearServiceExportSelection() {
+    serviceExportSelection = new Set();
+  }
+
+  async function doServiceExport(selectedServices: Service[]) {
+    if (serviceExportBusy || (selectedServices.length === 0 && !serviceExportIncludeAllLocalRecipes)) return;
+    serviceExportBusy = true;
+    serviceExportStatus = "";
+    error = null;
+    try {
+      const path = await saveDialog({
+        title: "Export Tauridium services",
+        defaultPath: `tauridium-services-${backupTimestamp()}.zip`,
+        filters: [{ name: "Tauridium service export", extensions: ["zip"] }],
+      });
+      if (!path) return;
+      const summary = await exportServiceBundle(path, {
+        services: selectedServices,
+        includeAllLocalRecipes: serviceExportIncludeAllLocalRecipes,
+      });
+      serviceExportStatus = `Exported ${summary.serviceCount} service(s), ${summary.serviceIconCount} locally available service icon(s), and ${summary.customRecipeCount} local recipe(s) to a verified ZIP bundle.`;
+    } catch (err) {
+      error = `Service export failed: ${err}`;
+    } finally {
+      serviceExportBusy = false;
+    }
+  }
+
   async function moveManagedService(serviceId: string, delta: number) {
     if (serviceOrderBusy) return;
     const visibleIds = managedServices.map((service) => service.id);
@@ -4043,10 +4090,42 @@
                   </select>
                   <button class="primary" onclick={openAdd}>Create service</button>
                 </div>
+                <div class="service-export-panel">
+                  <div class="service-export-summary">
+                    <div class="setting-copy">
+                      <span class="setting-label">Portable service export</span>
+                      <span class="setting-description">Select any subset below, then export one self-contained ZIP. Locally stored icon bytes are included as files; secret-like service fields and browser session data are excluded.</span>
+                    </div>
+                    <div class="setting-actions service-export-actions">
+                      <span class="status-badge">{selectedServiceExports.length} selected</span>
+                      <button class="secondary sm" disabled={!services.length || serviceExportBusy} onclick={selectAllServiceExports}>Select all</button>
+                      <button class="secondary sm" disabled={!serviceExportSelection.size || serviceExportBusy} onclick={clearServiceExportSelection}>Clear</button>
+                      <button class="primary sm" disabled={serviceExportBusy || (!selectedServiceExports.length && !serviceExportIncludeAllLocalRecipes)} onclick={() => doServiceExport(selectedServiceExports)}>{selectedServiceExports.length ? "Export selected…" : "Export local recipes…"}</button>
+                    </div>
+                  </div>
+                  <label class="setting-card setting-card-toggle service-export-recipe-toggle">
+                    <div class="setting-copy">
+                      <span class="setting-label">Include all local recipes</span>
+                      <span class="setting-description">Also include every locally created recipe, even when no selected service currently uses it. Referenced local recipes are always included. Recipe folders are emitted in Ferdium’s upstream-compatible structure.</span>
+                    </div>
+                    <span class="switch-control">
+                      <input class="switch-input" type="checkbox" bind:checked={serviceExportIncludeAllLocalRecipes} disabled={serviceExportBusy} aria-label="Include all local recipes in service export" />
+                      <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+                    </span>
+                  </label>
+                </div>
+                {#if serviceExportStatus}<p class="settings-status">{serviceExportStatus}</p>{/if}
                 <div class="managed-list" role="list" aria-label="Configured services">
                   {#each managedServiceRows as service, index (service.id)}
-                    <div class="managed-row" role="listitem">
-                      <div class="managed-identity">
+                    <div class="managed-row" class:selected={serviceExportSelection.has(service.id)} role="listitem">
+                      <div class="managed-identity service-export-identity">
+                        <input
+                          class="service-export-checkbox"
+                          type="checkbox"
+                          checked={serviceExportSelection.has(service.id)}
+                          aria-label={`Select ${serviceLabel(service)} for export`}
+                          onchange={(event) => setServiceExportSelected(service.id, event.currentTarget.checked)}
+                        />
                         {#if serviceIconFailed(service)}
                           <span class="managed-icon fallback">{serviceLabel(service).slice(0, 1).toUpperCase()}</span>
                         {:else}
@@ -5370,6 +5449,12 @@
   .settings-panel .range { width: 140px; margin-left: 0; }
   .managed-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, 220px); gap: 8px; }
   .service-managed-toolbar { grid-template-columns: minmax(0, 1fr) minmax(160px, 220px) auto; }
+  .service-export-panel { display: flex; flex-direction: column; gap: 8px; }
+  .service-export-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 18px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--input); }
+  .service-export-actions { flex-wrap: wrap; }
+  .service-export-recipe-toggle { min-height: 62px; }
+  .service-export-identity { flex: 1 1 auto; }
+  .service-export-checkbox { width: 17px; height: 17px; flex: none; accent-color: var(--accent); }
   .workspace-managed-toolbar { grid-template-columns: minmax(0, 1fr) auto; }
   .workspace-create-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
   .workspace-order-select { min-width: 210px; max-width: 280px; }
@@ -5542,12 +5627,13 @@
     .setting-actions { justify-content: flex-start; }
     .managed-row { align-items: flex-start; flex-direction: column; }
     .managed-actions { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
+    .service-export-actions { justify-content: flex-start; }
     .workspace-detail-heading { align-items: center; }
     .workspace-name-control { min-width: 0; }
     .settings-panel .swatches { justify-content: flex-start; max-width: none; }
     .range-control { min-width: 0; }
     .settings-panel .range { flex: 1; width: auto; }
-    .managed-toolbar, .workspace-create-row, .workspace-name-control, .sandbox-create-row, .backup-location-row, .audit-toolbar, .service-workspace-create, .service-workspace-create-card, .workspace-icon-current, .workspace-icon-url-row, .download-setting-row { grid-template-columns: 1fr; }
+    .managed-toolbar, .workspace-create-row, .workspace-name-control, .sandbox-create-row, .backup-location-row, .audit-toolbar, .service-workspace-create, .service-workspace-create-card, .workspace-icon-current, .workspace-icon-url-row, .download-setting-row, .service-export-summary { grid-template-columns: 1fr; }
     .service-workspace-overview { flex-direction: column; }
     .service-workspace-toolbar { flex-direction: column; }
     .service-workspace-filters { width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); }

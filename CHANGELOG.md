@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.13] - 2026-09-18
+
+### Added
+
+- Added portable service export from **Settings → Services** with per-service checkboxes, Select all/Clear controls, filtered-list-safe selection, and export of any selected subset as one ZIP bundle.
+- Added an **Include all local recipes** switch. Local recipes referenced by selected services are always included; enabling the switch also includes locally created recipes that currently have no selected service instance and synthesizes standalone Ferdium-ready recipes for ad-hoc Custom Website services.
+- Exported locally available service icons as normal archive files instead of Base64-expanding the manifest. Local recipe icons, package metadata, generated `index.js`, and optional `webview.js` are emitted in Ferdium's upstream recipe-folder structure.
+
+### Security and reliability
+
+- Service exports deliberately exclude browser cookies/session storage/authentication state and redact password, token, secret, cookie, and authorization-like service fields. Export never performs network icon downloads; only icon bytes already stored locally are packaged.
+- Added deterministic bounded ZIP generation with path-traversal/duplicate-entry rejection, per-file SHA-256 metadata, CRC verification, a 256 MiB uncompressed safety ceiling, staged writes, full reread verification, SHA-256 verification, and atomic replacement of existing exports.
+- Added focused Rust, TypeScript, and release-invariant regression coverage for service selection, recipe inclusion policy, icon decoding, secret redaction, Ferdium recipe conversion, ZIP integrity, command wiring, and audit integration.
+
 ## [0.7.12] - 2026-09-14
 
 ### Changed

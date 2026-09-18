@@ -2276,6 +2276,31 @@ def main() -> int:
   if "Rust-only" not in read("docs/github-language-statistics.md"):
     fail("0.7.12 Rust-only GitHub language statistics policy must be documented")
 
+  patch_0713 = read("tools/test_patch_0713.py")
+  service_export_rs = read("src-tauri/src/service_export.rs")
+  for invariant in (
+    'const EXPORT_FORMAT: &str = "tauridium-service-export";',
+    "const MAX_UNCOMPRESSED_BYTES: usize = 256 * 1024 * 1024;",
+    "ZipWriter::new(cursor)",
+    "CompressionMethod::Deflated",
+    "verify_zip(&archive, &entries)?;",
+    '"browserSessionDataIncluded": false',
+    '"remoteIconsFetchedDuringExport": false',
+    'module.exports = Ferdium => Ferdium;',
+  ):
+    if invariant not in service_export_rs:
+      fail(f"0.7.13 service export invariant is missing: {invariant}")
+  for test_marker in (
+    "test_services_settings_support_subset_and_all_selection",
+    "test_service_export_uses_a_single_verified_zip_bundle",
+    "test_service_export_embeds_local_icons_and_ferdium_recipe_files",
+    "test_export_redacts_secrets_and_never_fetches_icons",
+    "test_export_command_is_typed_registered_and_audited",
+    "test_export_has_focused_rust_regressions",
+  ):
+    if test_marker not in patch_0713:
+      fail(f"0.7.13 regression coverage is missing: {test_marker}")
+
   english = subprocess.run(
     [sys.executable, "tools/check_english.py"],
     cwd=ROOT,

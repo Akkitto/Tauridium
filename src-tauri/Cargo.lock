@@ -4142,7 +4142,7 @@ dependencies = [
 
 [[package]]
 name = "tauridium"
-version = "0.7.12"
+version = "0.7.13"
 dependencies = [
  "base64 0.22.1",
  "dirs 6.0.0",
@@ -4161,6 +4161,7 @@ dependencies = [
  "tauri-plugin-window-state",
  "windows-sys 0.60.2",
  "wry",
+ "zip",
 ]
 
 [[package]]
@@ -5671,6 +5672,7 @@ checksum = "caa8cd6af31c3b31c6631b8f483848b91589021b28fffe50adada48d4f4d2ed1"
 dependencies = [
  "arbitrary",
  "crc32fast",
+ "flate2",
  "indexmap 2.14.0",
  "memchr",
 ]

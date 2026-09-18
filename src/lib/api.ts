@@ -460,6 +460,28 @@ export function exportPortableBundle(
   return invoke("export_portable_bundle", { path, kind, payload });
 }
 
+export interface ServiceExportRequest {
+  services: Service[];
+  includeAllLocalRecipes: boolean;
+}
+
+export interface ServiceExportSummary {
+  path: string;
+  serviceCount: number;
+  customRecipeCount: number;
+  serviceIconCount: number;
+  includeAllLocalRecipes: boolean;
+  archiveSha256: string;
+  integrityVerified: boolean;
+}
+
+export function exportServiceBundle(
+  path: string,
+  request: ServiceExportRequest,
+): Promise<ServiceExportSummary> {
+  return invoke("export_service_bundle", { path, request });
+}
+
 export interface AuditEntry {
   timestampUnixMs: number;
   level: "info" | "warning" | "error" | string;

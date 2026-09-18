@@ -55,6 +55,11 @@ fn read_cache(path: &Path) -> Option<Option<String>> {
         .then_some(Some(value.to_string()))
 }
 
+pub(crate) fn cached_data_uri(app: &AppHandle, service_id: &str) -> Option<String> {
+    let path = cache_path(app, service_id).ok()?;
+    read_cache(&path).flatten()
+}
+
 fn content_type_mime(response: &reqwest::Response, url: &Url) -> Option<String> {
     if let Some(value) = response
         .headers()

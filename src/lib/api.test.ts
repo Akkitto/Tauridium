@@ -219,3 +219,33 @@ describe("service icon cache commands", () => {
     });
   });
 });
+
+
+describe("service export commands", () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    mocks.invoke.mockResolvedValue(undefined);
+  });
+
+  it("exports the selected service subset with the local-recipe policy", async () => {
+    const { exportServiceBundle } = await import("./api");
+    const service = {
+      id: "service-123",
+      name: "Example",
+      recipeId: "example",
+      iconUrl: null,
+      isEnabled: true,
+    };
+    await exportServiceBundle("/tmp/services.zip", {
+      services: [service],
+      includeAllLocalRecipes: true,
+    });
+    expect(mocks.invoke).toHaveBeenCalledWith("export_service_bundle", {
+      path: "/tmp/services.zip",
+      request: {
+        services: [service],
+        includeAllLocalRecipes: true,
+      },
+    });
+  });
+});
