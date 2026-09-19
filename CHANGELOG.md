@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.16] - 2026-09-19
+
+### Fixed
+
+- Restored the configured-service row structure in **Settings → Services** so export checkboxes remain left-aligned, service icons and titles stay in their original positions, metadata remains directly beneath each title, and row actions remain aligned on the right.
+- Reworked the expanded export-selection click target so it no longer wraps or participates in the service identity flex layout. A separate zero-layout overlay label now toggles the checkbox across non-interactive row space, while the checkbox, reorder controls, and **Service settings** button retain their native independent behavior.
+- Preserved the bounded, independently scrollable configured-service list introduced in 0.7.15 without changing its row geometry.
+
+### Release quality
+
+- Added 0.7.16 regression coverage that locks the pre-0.7.15 service-row DOM layout, left-aligned checkbox geometry, zero-layout click overlay, action-button click isolation, and removal of the layout-breaking wrapper label.
+
 ## [0.7.15] - 2026-09-18
 
 ### Added

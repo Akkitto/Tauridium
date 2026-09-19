@@ -84,9 +84,10 @@ class Patch0715Tests(unittest.TestCase):
   def test_service_export_selection_uses_the_whole_noninteractive_row(self) -> None:
     for marker in (
       'class="managed-row service-export-row"',
-      '<label class="managed-identity service-export-identity service-export-toggle">',
+      'class="service-export-row-toggle"',
+      'class="managed-identity service-export-identity"',
       'onchange={(event) => setServiceExportSelected(service.id, event.currentTarget.checked)}',
-      '.service-export-toggle {',
+      '.service-export-row-toggle {',
     ):
       self.assertIn(marker, APP)
     self.assertNotIn("toggleServiceExportFromRow", APP)

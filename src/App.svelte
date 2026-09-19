@@ -4128,8 +4128,14 @@
                 <div class="managed-list service-managed-list" role="list" aria-label="Configured services">
                   {#each managedServiceRows as service, index (service.id)}
                     <div class="managed-row service-export-row" class:selected={serviceExportSelection.has(service.id)} role="listitem">
-                      <label class="managed-identity service-export-identity service-export-toggle">
+                      <label
+                        class="service-export-row-toggle"
+                        for={`service-export-${service.id}`}
+                        title={`Select ${serviceLabel(service)} for export`}
+                      ></label>
+                      <div class="managed-identity service-export-identity">
                         <input
+                          id={`service-export-${service.id}`}
                           class="service-export-checkbox"
                           type="checkbox"
                           checked={serviceExportSelection.has(service.id)}
@@ -4145,7 +4151,7 @@
                           <strong>{serviceLabel(service)}</strong>
                           <span>{service.isEnabled ? "Enabled" : "Disabled"} · {service.recipeId || "Unknown recipe"} · {configuredServiceRecipeLabel(service)}</span>
                         </div>
-                      </label>
+                      </div>
                       <div class="managed-actions">
                         <button class="icon-button compact" disabled={serviceOrderBusy || managedServicePage * MANAGED_SERVICE_PAGE_SIZE + index === 0} aria-label={`Move ${serviceLabel(service)} up`} title="Move up" onclick={() => moveManagedService(service.id, -1)}>↑</button>
                         <button class="icon-button compact" disabled={serviceOrderBusy || managedServicePage * MANAGED_SERVICE_PAGE_SIZE + index === managedServices.length - 1} aria-label={`Move ${serviceLabel(service)} down`} title="Move down" onclick={() => moveManagedService(service.id, 1)}>↓</button>
@@ -5463,8 +5469,13 @@
   .service-export-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 18px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--input); }
   .service-export-actions { flex-wrap: wrap; }
   .service-export-recipe-toggle { min-height: 62px; }
-  .service-export-identity { flex: 1 1 auto; }
-  .service-export-checkbox { width: 17px; height: 17px; flex: none; accent-color: var(--accent); }
+  .service-export-row { position: relative; isolation: isolate; }
+  .service-export-row-toggle { position: absolute; inset: 0; z-index: 0; border-radius: inherit; cursor: pointer; }
+  .service-export-row:hover:not(.selected) { border-color: var(--border2); background: var(--hover); }
+  .service-export-identity { position: relative; z-index: 1; flex: 1 1 auto; pointer-events: none; }
+  .service-export-checkbox { width: 17px; height: 17px; margin: 0; flex: none; accent-color: var(--accent); pointer-events: auto; cursor: pointer; }
+  .service-export-row .managed-actions { position: relative; z-index: 1; pointer-events: none; }
+  .service-export-row .managed-actions > * { pointer-events: auto; }
   .service-managed-list {
     max-height: min(58vh, 680px);
     overflow-y: auto;
@@ -5472,8 +5483,6 @@
     scrollbar-gutter: stable;
     padding-right: 3px;
   }
-  .service-export-toggle { align-self: stretch; cursor: pointer; min-width: 0; }
-  .service-export-toggle:hover { background: var(--hover); border-radius: 8px; }
   .workspace-managed-toolbar { grid-template-columns: minmax(0, 1fr) auto; }
   .workspace-create-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
   .workspace-order-select { min-width: 210px; max-width: 280px; }
