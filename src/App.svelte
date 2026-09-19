@@ -4107,10 +4107,10 @@
                       <span class="setting-description">Select any subset below, then export one self-contained ZIP. Locally stored icon bytes are included as files; secret-like service fields and browser session data are excluded.</span>
                     </div>
                     <div class="setting-actions service-export-actions">
-                      <span class="status-badge">{selectedServiceExports.length} selected</span>
-                      <button class="secondary sm" disabled={!services.length || serviceExportBusy} onclick={selectAllServiceExports}>Select all</button>
-                      <button class="secondary sm" disabled={!serviceExportSelection.size || serviceExportBusy} onclick={clearServiceExportSelection}>Clear</button>
-                      <button class="primary sm" disabled={serviceExportBusy || (!selectedServiceExports.length && !serviceExportIncludeAllPersonalRecipes)} onclick={() => doServiceExport(selectedServiceExports)}>{selectedServiceExports.length ? "Export selected…" : "Export personal recipes…"}</button>
+                      <span class="status-badge service-export-selected-count">{selectedServiceExports.length} selected</span>
+                      <button class="secondary sm service-export-select-all" disabled={!services.length || serviceExportBusy} onclick={selectAllServiceExports}>Select all</button>
+                      <button class="secondary sm service-export-clear" disabled={!serviceExportSelection.size || serviceExportBusy} onclick={clearServiceExportSelection}>Clear</button>
+                      <button class="primary sm service-export-submit" disabled={serviceExportBusy || (!selectedServiceExports.length && !serviceExportIncludeAllPersonalRecipes)} onclick={() => doServiceExport(selectedServiceExports)}>{selectedServiceExports.length ? "Export selected…" : "Export personal recipes…"}</button>
                     </div>
                   </div>
                   <label class="setting-card setting-card-toggle service-export-recipe-toggle">
@@ -5467,7 +5467,15 @@
   .service-managed-toolbar { grid-template-columns: minmax(0, 1fr) minmax(160px, 220px) auto; }
   .service-export-panel { display: flex; flex-direction: column; gap: 8px; }
   .service-export-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 18px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--input); }
-  .service-export-actions { flex-wrap: wrap; }
+  .service-export-actions {
+    display: grid;
+    grid-template-columns: 104px 82px 62px 184px;
+    align-items: center;
+    gap: 8px;
+  }
+  .service-export-actions > * { width: 100%; box-sizing: border-box; }
+  .service-export-selected-count { justify-content: center; white-space: nowrap; }
+  .service-export-submit { white-space: nowrap; }
   .service-export-recipe-toggle { min-height: 62px; }
   .service-export-row { position: relative; isolation: isolate; }
   .service-export-row-toggle { position: absolute; inset: 0; z-index: 0; border-radius: inherit; cursor: pointer; }
@@ -5655,7 +5663,11 @@
     .setting-actions { justify-content: flex-start; }
     .managed-row { align-items: flex-start; flex-direction: column; }
     .managed-actions { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
-    .service-export-actions { justify-content: flex-start; }
+    .service-export-actions {
+      width: 100%;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .service-export-submit { grid-column: 1 / -1; }
     .workspace-detail-heading { align-items: center; }
     .workspace-name-control { min-width: 0; }
     .settings-panel .swatches { justify-content: flex-start; max-width: none; }

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.7.17] - 2026-09-19
+
+### Fixed
+
+- Stabilized the **Settings → Services → Portable service export** action bar so changing between **Export personal recipes…** and **Export selected…** no longer resizes the export button or shifts **Select all** and **Clear**.
+- Replaced the wrapping export-action flex layout with reserved deterministic columns on normal-width settings panels and a three-column responsive layout on narrow panels, keeping all controls aligned without changing export behavior.
+
+### Release quality
+
+- Added focused 0.7.17 regression coverage for fixed export-action geometry, responsive layout, unchanged dynamic button semantics, and preservation of the 0.7.16 configured-service row fix.
+
 ## [0.7.16] - 2026-09-19
 
 ### Fixed
