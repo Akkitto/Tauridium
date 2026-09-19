@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.7.18] - 2026-09-19
+
+### Fixed
+
+- Bounded **Settings → Workspaces → Configured workspaces** to an independent vertical scrolling region so large workspace collections no longer expand the main Settings page.
+- Matched the established **Configured services** list geometry (`min(58vh, 680px)`) while preserving workspace search, existing 100-item pagination, reordering, workspace settings, export, and empty-state behavior.
+
+### Release quality
+
+- Added focused 0.7.18 regression coverage for workspace-list scrolling, service/workspace bounded-scroll parity, unchanged workspace search and pagination, and preservation of the 0.7.17 deterministic Portable Service Export action bar.
+
 ## [0.7.17] - 2026-09-19
 
 ### Fixed

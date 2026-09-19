@@ -4466,7 +4466,7 @@
                     <button class="primary" disabled={!newWorkspaceName.trim()} onclick={handleCreateWorkspace}>Create workspace</button>
                   </div>
                   {#if portableExportStatus}<p class="settings-status">{portableExportStatus}</p>{/if}
-                  <div class="managed-list" role="list" aria-label="Configured workspaces">
+                  <div class="managed-list workspace-managed-list" role="list" aria-label="Configured workspaces">
                     {#each managedWorkspaceRows as workspace, index (workspace.id)}
                       <div class="managed-row" class:selected={managedWorkspaceId === workspace.id} role="listitem">
                         <div class="managed-identity workspace-managed-identity">
@@ -5485,6 +5485,13 @@
   .service-export-row .managed-actions { position: relative; z-index: 1; pointer-events: none; }
   .service-export-row .managed-actions > * { pointer-events: auto; }
   .service-managed-list {
+    max-height: min(58vh, 680px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    padding-right: 3px;
+  }
+  .workspace-managed-list {
     max-height: min(58vh, 680px);
     overflow-y: auto;
     overscroll-behavior: contain;
