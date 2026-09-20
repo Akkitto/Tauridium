@@ -249,3 +249,20 @@ describe("service export commands", () => {
     });
   });
 });
+
+
+describe("audit log commands", () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    mocks.invoke.mockResolvedValue(undefined);
+  });
+
+  it("loads a bounded audit page with an opaque cursor", async () => {
+    const { getAuditLogPage } = await import("./api");
+    await getAuditLogPage("opaque-cursor", 100);
+    expect(mocks.invoke).toHaveBeenCalledWith("get_audit_log_page", {
+      cursor: "opaque-cursor",
+      limit: 100,
+    });
+  });
+});

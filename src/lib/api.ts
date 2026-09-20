@@ -492,8 +492,21 @@ export interface AuditEntry {
   details: unknown;
 }
 
+export interface AuditLogPage {
+  entries: AuditEntry[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
 export function getAuditLog(limit = 500): Promise<AuditEntry[]> {
   return invoke("get_audit_log", { limit });
+}
+
+export function getAuditLogPage(
+  cursor: string | null = null,
+  limit = 100,
+): Promise<AuditLogPage> {
+  return invoke("get_audit_log_page", { cursor, limit });
 }
 
 export function exportAuditLog(path: string): Promise<number> {

@@ -1,6 +1,6 @@
 {
   "name": "tauridium",
-  "version": "0.7.18",
+  "version": "0.7.19",
   "description": "Tauridium - lightweight Tauri client for Ferdium",
   "author": "Daniel Braniewski",
   "homepage": "https://github.com/Akkitto/Tauridium",

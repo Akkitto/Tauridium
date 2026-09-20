@@ -4653,6 +4653,21 @@ fn get_audit_log(app: AppHandle, limit: Option<usize>) -> Result<Vec<audit::Audi
 }
 
 #[tauri::command]
+fn get_audit_log_page(
+    app: AppHandle,
+    cursor: Option<String>,
+    limit: Option<usize>,
+) -> Result<audit::AuditLogPage, String> {
+    audit::read_page(
+        &app,
+        cursor.as_deref(),
+        limit
+            .unwrap_or(audit::AUDIT_PAGE_DEFAULT)
+            .clamp(1, audit::AUDIT_PAGE_MAX),
+    )
+}
+
+#[tauri::command]
 fn export_audit_log(app: AppHandle, path: String) -> Result<usize, String> {
     let count = audit::export(&app, Path::new(&path))?;
     audit::best_effort(
@@ -5245,6 +5260,7 @@ fn main() {
             export_service_bundle,
             record_updater_error,
             get_audit_log,
+            get_audit_log_page,
             export_audit_log,
             clear_audit_log,
             open_external_url,

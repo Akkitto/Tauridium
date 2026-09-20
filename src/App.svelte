@@ -94,7 +94,7 @@
     createAutomaticBackup,
     exportPortableBundle,
     exportServiceBundle,
-    getAuditLog,
+    getAuditLogPage,
     exportAuditLog,
     clearAuditLog,
     getAppMetadata,
@@ -201,6 +201,7 @@
   let downloadSettingsBusy = $state(false);
   let workspaceUsagePersist: Promise<void> = Promise.resolve();
   const MANAGED_SERVICE_PAGE_SIZE = 100;
+  const AUDIT_PAGE_SIZE = 100;
   const MAX_SIDEBAR_WIDTH_PX = 1200;
 
   let customColorOpen = $state(false);
@@ -251,6 +252,10 @@
   let auditLevel = $state("all");
   let auditBusy = $state(false);
   let auditStatus = $state("");
+  let auditCursor = $state<string | null>(null);
+  let auditHasMore = $state(false);
+  let auditInitialized = $state(false);
+  let auditRequestGeneration = 0;
   let sidebarResizeFrame: number | null = null;
 
   let appSettings = $state<AppSettings>({
@@ -2672,20 +2677,83 @@
     }
   }
 
+  function auditLoadedStatus() {
+    return auditHasMore
+      ? `${auditEntries.length} audit event(s) loaded. Older retained history is available.`
+      : `${auditEntries.length} audit event(s) loaded. End of retained history reached.`;
+  }
+
   async function refreshAuditLog() {
+    if (auditBusy) return;
+    const requestGeneration = ++auditRequestGeneration;
     auditBusy = true;
     auditStatus = "";
     try {
-      auditEntries = await getAuditLog(5000);
-      auditStatus = `${auditEntries.length} most recent audit event(s) loaded.`;
+      const page = await getAuditLogPage(null, AUDIT_PAGE_SIZE);
+      if (requestGeneration !== auditRequestGeneration) return;
+      auditEntries = page.entries;
+      auditCursor = page.nextCursor;
+      auditHasMore = page.hasMore;
+      auditInitialized = true;
+      auditStatus = auditLoadedStatus();
     } catch (err) {
-      auditStatus = `Unable to load audit log: ${err}`;
+      if (requestGeneration === auditRequestGeneration) {
+        auditStatus = `Unable to load audit log: ${err}`;
+      }
     } finally {
-      auditBusy = false;
+      if (requestGeneration === auditRequestGeneration) auditBusy = false;
     }
   }
 
+  async function loadOlderAuditLog() {
+    if (auditBusy || !auditHasMore || !auditCursor) return;
+    const cursor = auditCursor;
+    const requestGeneration = ++auditRequestGeneration;
+    auditBusy = true;
+    try {
+      const page = await getAuditLogPage(cursor, AUDIT_PAGE_SIZE);
+      if (requestGeneration !== auditRequestGeneration || auditCursor !== cursor) return;
+      auditEntries = [...auditEntries, ...page.entries];
+      auditCursor = page.nextCursor;
+      auditHasMore = page.hasMore;
+      auditStatus = auditLoadedStatus();
+    } catch (err) {
+      if (requestGeneration === auditRequestGeneration) {
+        auditStatus = `Unable to load older audit events: ${err}`;
+      }
+    } finally {
+      if (requestGeneration === auditRequestGeneration) auditBusy = false;
+    }
+  }
+
+  function auditLoadMoreObserver(node: HTMLElement) {
+    if (typeof IntersectionObserver === "undefined") return {};
+    const root = node.closest(".audit-list");
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (
+          entries.some((entry) => entry.isIntersecting)
+          && !auditQuery.trim()
+          && auditLevel === "all"
+        ) {
+          void loadOlderAuditLog();
+        }
+      },
+      { root, rootMargin: "0px 0px 180px 0px" },
+    );
+    observer.observe(node);
+    return {
+      destroy() {
+        observer.disconnect();
+      },
+    };
+  }
+
   async function doExportAuditLog() {
+    if (auditBusy) return;
+    const requestGeneration = ++auditRequestGeneration;
+    let refreshAfterExport = false;
+    auditBusy = true;
     try {
       const path = await saveDialog({
         title: "Export Tauridium audit log",
@@ -2694,24 +2762,43 @@
       });
       if (!path) return;
       const count = await exportAuditLog(path);
+      if (requestGeneration !== auditRequestGeneration) return;
       auditStatus = `Exported ${count} audit event(s).`;
-      await refreshAuditLog();
+      refreshAfterExport = true;
     } catch (err) {
-      auditStatus = `Audit export failed: ${err}`;
+      if (requestGeneration === auditRequestGeneration) {
+        auditStatus = `Audit export failed: ${err}`;
+      }
+    } finally {
+      if (requestGeneration === auditRequestGeneration) auditBusy = false;
     }
+    if (refreshAfterExport) await refreshAuditLog();
   }
 
   async function doClearAuditLog() {
-    const confirmed = await confirmAsk(
-      "Clear the local Tauridium audit history? A new audit event recording this clear action will remain.",
-    );
-    if (!confirmed) return;
+    if (auditBusy) return;
+    const requestGeneration = ++auditRequestGeneration;
+    auditBusy = true;
     try {
+      const confirmed = await confirmAsk(
+        "Clear the local Tauridium audit history? A new audit event recording this clear action will remain.",
+      );
+      if (!confirmed) return;
       await clearAuditLog();
-      await refreshAuditLog();
+      if (requestGeneration !== auditRequestGeneration) return;
+      auditEntries = [];
+      auditCursor = null;
+      auditHasMore = false;
+      auditInitialized = false;
     } catch (err) {
-      auditStatus = `Unable to clear audit log: ${err}`;
+      if (requestGeneration === auditRequestGeneration) {
+        auditStatus = `Unable to clear audit log: ${err}`;
+      }
+      return;
+    } finally {
+      if (requestGeneration === auditRequestGeneration) auditBusy = false;
     }
+    await refreshAuditLog();
   }
 
   function selectSettingsTab(id: string) {
@@ -2720,7 +2807,7 @@
       return;
     }
     settingsTab = id as Tab;
-    if (settingsTab === "audit") void refreshAuditLog();
+    if (settingsTab === "audit" && !auditInitialized) void refreshAuditLog();
     if (settingsTab === "services" && allRecipes.length === 0) void refreshRecipes();
   }
 
@@ -4849,6 +4936,7 @@
                   <button class="secondary sm" disabled={auditBusy || !auditEntries.length} onclick={doClearAuditLog}>Clear…</button>
                 </div>
                 {#if auditStatus}<p class="settings-status">{auditStatus}</p>{/if}
+                {#if auditHasMore && (auditQuery.trim() || auditLevel !== "all")}<p class="settings-note">Filters apply to loaded events. Load older events to expand the searchable history.</p>{/if}
                 <div class="audit-list" role="list" aria-label="Tauridium audit events">
                   {#each filteredAuditEntries as entry}
                     <article class="audit-entry" class:audit-warning={entry.level === "warning"} class:audit-error={entry.level === "error"} role="listitem">
@@ -4859,8 +4947,15 @@
                   {:else}
                     <div class="managed-empty"><strong>No matching audit events</strong><span>Change the filter or refresh the log.</span></div>
                   {/each}
+                  {#if auditHasMore}
+                    <div class="audit-load-more" use:auditLoadMoreObserver>
+                      <button class="secondary sm" disabled={auditBusy} onclick={loadOlderAuditLog}>{auditBusy ? "Loading…" : "Load older events"}</button>
+                    </div>
+                  {:else if auditInitialized && auditEntries.length}
+                    <div class="audit-history-end">End of retained audit history.</div>
+                  {/if}
                 </div>
-                <p class="settings-note">Audit files rotate locally when they grow large. The UI loads the latest 5,000 events; exported JSONL preserves chronological order.</p>
+                <p class="settings-note">Audit files rotate locally when they grow large. The UI initially loads the newest 100 events and loads older retained history on demand; exported JSONL preserves chronological order.</p>
               </section>
 
             {:else if settingsTab === "advanced"}
@@ -5561,8 +5656,8 @@
   .backup-location-row code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .number-with-unit { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
   .audit-toolbar { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(120px, 160px) auto auto auto; gap: 8px; align-items: center; }
-  .audit-list { display: flex; flex-direction: column; gap: 8px; max-height: min(56vh, 620px); overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
-  .audit-entry { display: flex; flex-direction: column; gap: 6px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--input); }
+  .audit-list { display: flex; flex-direction: column; gap: 8px; max-height: min(56vh, 620px); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding-right: 2px; }
+  .audit-entry { display: flex; flex-direction: column; gap: 6px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--input); content-visibility: auto; contain-intrinsic-size: 88px; }
   .audit-entry.audit-warning { border-color: color-mix(in srgb, #ffbf69 55%, var(--border)); }
   .audit-entry.audit-error { border-color: color-mix(in srgb, #ff7373 62%, var(--border)); }
   .audit-entry-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--muted); font-size: 11px; }
@@ -5570,6 +5665,8 @@
   .audit-level { min-height: 20px; display: inline-flex; align-items: center; padding: 0 6px; border: 1px solid var(--border2); border-radius: 999px; color: var(--text2); font-weight: 700; text-transform: uppercase; font-size: 10px; }
   .audit-entry strong { color: var(--text2); font-size: 13px; line-height: 1.35; }
   .audit-entry pre { max-height: 190px; margin: 0; padding: 9px; overflow: auto; border-radius: 7px; background: var(--bg); color: var(--muted); font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .audit-load-more { display: flex; justify-content: center; padding: 4px 0 2px; }
+  .audit-history-end { padding: 6px 0 2px; color: var(--muted); font-size: 11px; text-align: center; }
   .sandbox-create-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
   .sandbox-card { align-items: start; }
   .sandbox-name { max-width: 320px; }

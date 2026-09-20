@@ -533,6 +533,7 @@ def main() -> int:
     "export_portable_bundle",
     "record_updater_error",
     "get_audit_log",
+    "get_audit_log_page",
     "export_audit_log",
     "clear_audit_log",
     "get_service_icon",

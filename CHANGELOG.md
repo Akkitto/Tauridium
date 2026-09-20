@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.19] - 2026-09-20
+
+### Fixed
+
+- Changed **Settings → Audit log** to open from a bounded 100-event recent tail instead of rereading and processing thousands of retained JSONL records on every tab visit.
+- Added cursor-based reverse JSONL paging across retained rotations, with older history loaded progressively through an `IntersectionObserver` sentinel and a manual **Load older events** fallback.
+- Preserved already loaded Audit Log state when switching Settings tabs, while explicit **Refresh** resets to the newest bounded page and **Export** still includes the complete retained audit history.
+- Added lightweight deferred rendering for loaded audit rows and retained client-side filtering without implicitly downloading the full history.
+
+### Release quality
+
+- Added focused Rust, TypeScript, and repository regression coverage for bounded tail I/O, pagination within and across rotations, long/no-final-newline JSONL records, empty files, stale cursors, append/rotation races, incremental-load guards, filter semantics, clear/reset behavior, and complete export compatibility.
+
 ## [0.7.18] - 2026-09-19
 
 ### Fixed
