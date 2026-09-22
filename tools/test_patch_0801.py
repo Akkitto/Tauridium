@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -36,6 +37,27 @@ class Patch0801Tests(unittest.TestCase):
     strict = "cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked"
     self.assertGreaterEqual(justfile.count(strict), 2)
     self.assertNotIn("cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --offline", justfile)
+
+  def test_all_feature_lock_graph_is_current(self) -> None:
+    result = subprocess.run(
+      [
+        "cargo",
+        "metadata",
+        "--manifest-path",
+        "src-tauri/Cargo.toml",
+        "--all-features",
+        "--locked",
+        "--offline",
+        "--no-deps",
+        "--format-version",
+        "1",
+      ],
+      cwd=ROOT,
+      text=True,
+      capture_output=True,
+      check=False,
+    )
+    self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
 
   def test_patch_release_metadata_is_present(self) -> None:
     self.assertIn("## [0.8.1] - 2026-09-22", self.read("CHANGELOG.md"))
