@@ -39,7 +39,7 @@ class FlatpakReleaseTests(unittest.TestCase):
     manifest = self.read("flatpak/dev.brani.tauridium.yml")
     for marker in (
       "runtime: org.gnome.Platform",
-      "runtime-version: '50'",
+      "runtime-version: '51'",
       "org.freedesktop.Sdk.Extension.rust-stable",
       "org.freedesktop.Sdk.Extension.node24",
       "--share=network",
