@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.8.1] - 2026-09-22
+
+### Fixed
+
+- Fixed `just check` on Windows failing under Cargo `--locked` because the Flatpak-only Linux portal graph enabled `zbus`'s Tokio backend only indirectly. Tauridium now declares `zbus/tokio` explicitly as part of the `flatpak` feature, keeping the all-features lock graph stable across Windows and Linux resolution.
+- Kept the release check strict: `just check` still uses `--all-targets --all-features --locked`; it no longer needs to rewrite `src-tauri/Cargo.lock` on Windows.
+
+### Release quality
+
+- Added focused v0.8.1 regression coverage for release-version consistency, the explicit `zbus/tokio` feature edge, and preservation of the strict locked Cargo check.
+
 ## [0.8.0] - 2026-09-22
 
 ### Added

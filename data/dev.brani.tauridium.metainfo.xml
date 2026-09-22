@@ -24,6 +24,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.8.1" date="2026-09-22">
+      <description>
+        <p>Fixes strict Windows Cargo checks by making the Flatpak zbus Tokio feature relationship explicit and lockfile-stable across target resolution.</p>
+      </description>
+    </release>
     <release version="0.8.0" date="2026-09-22">
       <description>
         <p>Adds a dedicated Flatpak distribution mode, upstream desktop metadata, portal-first host integration, and Flathub packaging support.</p>

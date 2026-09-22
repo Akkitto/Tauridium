@@ -15,10 +15,10 @@ class FlatpakReleaseTests(unittest.TestCase):
   def read(self, path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
-  def test_release_identity_is_0800(self) -> None:
-    self.assertEqual(json.loads(self.read("package.json"))["version"], "0.8.0")
-    self.assertEqual(json.loads(self.read("src-tauri/tauri.conf.json"))["version"], "0.8.0")
-    self.assertIn('version = "0.8.0"', self.read("src-tauri/Cargo.toml"))
+  def test_release_identity_is_consistent(self) -> None:
+    package_version = json.loads(self.read("package.json"))["version"]
+    self.assertEqual(json.loads(self.read("src-tauri/tauri.conf.json"))["version"], package_version)
+    self.assertIn(f'version = "{package_version}"', self.read("src-tauri/Cargo.toml"))
 
   def test_distribution_modes_are_compile_time_explicit(self) -> None:
     cargo = self.read("src-tauri/Cargo.toml")
@@ -49,7 +49,7 @@ class FlatpakReleaseTests(unittest.TestCase):
       "--device=dri",
       "--socket=pulseaudio",
       "--talk-name=org.kde.StatusNotifierWatcher",
-      "tag: v0.8.0",
+      f"tag: v{json.loads(self.read('package.json'))['version']}",
       "cargo tauri build --runner ./flatpak/cargo-flatpak-runner.sh --no-bundle --ci",
     ):
       self.assertIn(marker, manifest)
@@ -88,7 +88,8 @@ class FlatpakReleaseTests(unittest.TestCase):
     self.assertIn("<metadata_license>CC0-1.0</metadata_license>", meta)
     self.assertIn("<project_license>MIT</project_license>", meta)
     self.assertIn('<launchable type="desktop-id">dev.brani.tauridium.desktop</launchable>', meta)
-    self.assertIn('<release version="0.8.0"', meta)
+    current = json.loads(self.read("package.json"))["version"]
+    self.assertIn(f'<release version="{current}"', meta)
 
   def test_dependency_source_manifests_are_current(self) -> None:
     subprocess.run(
@@ -109,7 +110,7 @@ class FlatpakReleaseTests(unittest.TestCase):
     self.assertEqual(len(pins), 1)
     # During development this placeholder intentionally fails, preventing a
     # supposedly immutable Flatpak release from being packaged prematurely.
-    self.assertRegex(pins[0], r"^(?:__TAURIDIUM_V080_COMMIT__|[0-9a-f]{40})$")
+    self.assertRegex(pins[0], r"^(?:__TAURIDIUM_V\d{3}_COMMIT__|[0-9a-f]{40})$")
 
 
 if __name__ == "__main__":

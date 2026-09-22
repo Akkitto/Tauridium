@@ -1,6 +1,6 @@
 [package]
 name = "tauridium"
-version = "0.8.0"
+version = "0.8.1"
 edition = "2021"
 rust-version = "1.97.1"
 description = "Tauridium — lightweight Tauri client for Ferdium"
@@ -23,6 +23,7 @@ native-distribution = [
 ]
 flatpak = [
   "dep:zbus",
+  "zbus/tokio",
   "tauri-plugin-dialog/xdg-portal",
   "rfd/xdg-portal",
   "rfd/wayland",
