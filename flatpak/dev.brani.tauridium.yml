@@ -1,0 +1,65 @@
+id: dev.brani.tauridium
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node24
+command: tauridium
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --socket=pulseaudio
+  - --talk-name=org.kde.StatusNotifierWatcher
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node24/bin
+modules:
+  - name: tauri-cli
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/tauri-cli/cargo
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      - cargo build --manifest-path tauri-cli/Cargo.toml --release --locked --offline
+      - install -Dm755 tauri-cli/target/release/cargo-tauri /app/bin/cargo-tauri
+    sources:
+      - type: archive
+        archive-type: tar-gzip
+        url: https://static.crates.io/crates/tauri-cli/tauri-cli-2.11.3.crate
+        sha256: efa0d07c7dc71b7c8ae5ba1b536080c379230934dcfe54d784772a5f3bd8c61b
+        strip-components: 1
+        dest: tauri-cli
+      - tauri-cli-cargo-sources.json
+
+  - name: tauridium
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/tauridium/cargo
+        CARGO_NET_OFFLINE: 'true'
+        npm_config_cache: /run/build/tauridium/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+    build-commands:
+      - cd source && npm ci --offline --ignore-scripts=false --cache=/run/build/tauridium/flatpak-node/npm-cache
+      - cd source && npm run build
+      - cd source && cargo tauri build --runner ./flatpak/cargo-flatpak-runner.sh --no-bundle --ci
+      - install -Dm755 source/src-tauri/target/release/tauridium /app/bin/tauridium
+      - install -Dm644 source/data/dev.brani.tauridium.desktop /app/share/applications/dev.brani.tauridium.desktop
+      - install -Dm644 source/data/dev.brani.tauridium.metainfo.xml /app/share/metainfo/dev.brani.tauridium.metainfo.xml
+      - install -Dm644 source/data/dev.brani.tauridium.svg /app/share/icons/hicolor/scalable/apps/dev.brani.tauridium.svg
+      - install -Dm644 source/LICENSE /app/share/licenses/dev.brani.tauridium/LICENSE
+    sources:
+      - type: git
+        url: https://github.com/Akkitto/Tauridium.git
+        tag: v0.8.0
+        commit: __TAURIDIUM_V080_COMMIT__
+        dest: source
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - cargo-sources.json
+      - node-sources.json

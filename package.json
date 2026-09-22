@@ -1,6 +1,6 @@
 {
   "name": "tauridium",
-  "version": "0.7.19",
+  "version": "0.8.0",
   "description": "Tauridium - lightweight Tauri client for Ferdium",
   "author": "Daniel Braniewski",
   "homepage": "https://github.com/Akkitto/Tauridium",
@@ -24,9 +24,7 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-dialog": "^2",
-    "@tauri-apps/plugin-process": "^2",
-    "@tauri-apps/plugin-updater": "^2"
+    "@tauri-apps/plugin-dialog": "^2"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5",

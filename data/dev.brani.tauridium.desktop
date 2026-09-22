@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Tauridium
+Comment=Organize web services in persistent workspaces
+Exec=tauridium
+Icon=dev.brani.tauridium
+Terminal=false
+Categories=Network;InstantMessaging;
+StartupNotify=true

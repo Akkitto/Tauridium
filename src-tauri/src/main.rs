@@ -2,6 +2,9 @@
 
 mod audit;
 mod backup;
+mod distribution;
+#[cfg(all(target_os = "linux", feature = "flatpak"))]
+mod flatpak_portal;
 mod icons;
 mod local_profile;
 mod portable;
@@ -23,6 +26,8 @@ use base64::Engine;
 use local_profile::{validate_recipe_id, LocalProfile};
 use recipes::RecipeDraft;
 use serde::Deserialize;
+#[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
+use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 #[cfg(windows)]
@@ -49,8 +54,12 @@ use tauri::{
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, State, Url, WebviewUrl, WindowEvent,
     Wry,
 };
+#[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
 use tauri_plugin_autostart::ManagerExt;
+#[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
 use tauri_plugin_notification::{NotificationExt, PermissionState};
+#[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
+use tauri_plugin_updater::UpdaterExt;
 use tauri_plugin_window_state::{AppHandleExt as _, StateFlags};
 
 // Shared HTTP client with connection pooling AND timeouts: without a timeout, a server
@@ -1625,9 +1634,15 @@ unsafe extern "system" {
     ) -> isize;
 }
 
-fn open_external(url: &str) {
+fn open_external(url: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    let _ = std::process::Command::new("open").arg(url).spawn();
+    {
+        std::process::Command::new("open")
+            .arg(url)
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| format!("Unable to open external URL through macOS: {error}"))
+    }
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::ffi::OsStrExt;
@@ -1651,26 +1666,46 @@ fn open_external(url: &str) {
             )
         };
         if result <= 32 {
-            eprintln!("Unable to open external URL through the Windows shell (code {result})");
+            Err(format!(
+                "Unable to open external URL through the Windows shell (code {result})"
+            ))
+        } else {
+            Ok(())
         }
     }
-    #[cfg(all(unix, not(target_os = "macos")))]
+    #[cfg(all(target_os = "linux", feature = "flatpak"))]
     {
-        // xdg-open is the freedesktop standard launcher, but minimal Linux desktops and
-        // containers do not always install it. GTK/WebKit environments normally provide
-        // GIO, so fall back to `gio open` when the standard launcher is unavailable.
-        if let Err(xdg_error) = std::process::Command::new("xdg-open").arg(url).spawn() {
-            if let Err(gio_error) = std::process::Command::new("gio")
+        flatpak_portal::open_uri(url)
+    }
+    #[cfg(all(
+        target_os = "linux",
+        feature = "native-distribution",
+        not(feature = "flatpak")
+    ))]
+    {
+        // Native Linux retains the ordinary host launcher path. Flatpak builds compile this
+        // branch out entirely and use org.freedesktop.portal.OpenURI instead.
+        match std::process::Command::new("xdg-open").arg(url).spawn() {
+            Ok(_) => Ok(()),
+            Err(xdg_error) => std::process::Command::new("gio")
                 .arg("open")
                 .arg(url)
                 .spawn()
-            {
-                eprintln!(
-                    "Unable to open external URL on Linux: xdg-open failed ({xdg_error}); \
-                     gio open failed ({gio_error})"
-                );
-            }
+                .map(|_| ())
+                .map_err(|gio_error| {
+                    format!(
+                        "Unable to open external URL on Linux: xdg-open failed ({xdg_error}); gio open failed ({gio_error})"
+                    )
+                }),
         }
+    }
+    #[cfg(all(unix, not(target_os = "macos"), not(target_os = "linux")))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(url)
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| format!("Unable to open external URL: {error}"))
     }
 }
 
@@ -1680,8 +1715,38 @@ fn open_external_url(url: String) -> Result<(), String> {
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err("External links must use HTTP or HTTPS".to_string());
     }
-    open_external(parsed.as_str());
-    Ok(())
+    open_external(parsed.as_str())
+}
+
+fn show_system_notification(
+    app: &AppHandle,
+    title: &str,
+    body: Option<&str>,
+) -> Result<(), String> {
+    // `app` is used by the native notification plugin; Flatpak notifications go directly
+    // through the portal and deliberately do not initialize that plugin.
+    let _ = app;
+    #[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
+    {
+        let builder = app.notification().builder().title(title);
+        let builder = if let Some(body) = body.filter(|body| !body.is_empty()) {
+            builder.body(body)
+        } else {
+            builder
+        };
+        builder
+            .show()
+            .map_err(|error| format!("Unable to show system notification: {error}"))
+    }
+    #[cfg(all(target_os = "linux", feature = "flatpak"))]
+    {
+        flatpak_portal::add_notification(title, body)
+    }
+    #[cfg(all(not(target_os = "linux"), feature = "flatpak"))]
+    {
+        let _ = (app, title, body);
+        Err("Flatpak distribution mode is supported only on Linux".to_string())
+    }
 }
 
 // Download filename derived from the URL (last path segment; the
@@ -2059,7 +2124,9 @@ async fn create_service_webview(
                 if url.scheme() == "mailto"
                     || (open_links_externally && matches!(url.scheme(), "http" | "https"))
                 {
-                    open_external(url.as_str());
+                    if let Err(error) = open_external(url.as_str()) {
+                        eprintln!("Unable to open external link: {error}");
+                    }
                     return NewWindowResponse::Deny;
                 }
                 if matches!(url.scheme(), "http" | "https") {
@@ -2131,7 +2198,7 @@ async fn create_service_webview(
             let suggested_name = suggested_download_filename(destination, &url);
             let directory = effective_download_directory(&app, &preferences.directory);
 
-            if preferences.ask_each_download {
+            if distribution::is_flatpak() || preferences.ask_each_download {
                 let parent = webview.window();
                 let Some(path) = ask_download_destination(&parent, &directory, &suggested_name)
                 else {
@@ -2154,13 +2221,8 @@ async fn create_service_webview(
                 .and_then(|value| value.to_str())
                 .map(sanitize_download_filename)
                 .unwrap_or_else(|| sanitize_download_filename(&download_filename(&url)));
-            let _ = webview
-                .app_handle()
-                .notification()
-                .builder()
-                .title("Tauridium")
-                .body(format!("Downloaded \"{filename}\""))
-                .show();
+            let message = format!("Downloaded \"{filename}\"");
+            let _ = show_system_notification(webview.app_handle(), "Tauridium", Some(&message));
             true
         }
         _ => true,
@@ -3218,13 +3280,14 @@ fn start_badge_poller(app: AppHandle) {
                                 if title.is_empty() && body.is_empty() {
                                     continue;
                                 }
-                                let b = app2.notification().builder();
                                 let _ = if private {
-                                    b.title("New message").show()
+                                    show_system_notification(&app2, "New message", None)
                                 } else {
-                                    b.title(if title.is_empty() { "Message" } else { title })
-                                        .body(body)
-                                        .show()
+                                    show_system_notification(
+                                        &app2,
+                                        if title.is_empty() { "Message" } else { title },
+                                        Some(body),
+                                    )
                                 };
                             }
                         }
@@ -3902,36 +3965,60 @@ fn read_app_settings_value(app: &AppHandle) -> Value {
 }
 
 fn effective_app_settings_value(app: &AppHandle) -> Value {
-    let mut value = read_app_settings_value(app);
-    if let Ok(enabled) = app.autolaunch().is_enabled() {
-        if let Some(object) = value.as_object_mut() {
-            object.insert("autostart".into(), Value::Bool(enabled));
+    let value = read_app_settings_value(app);
+    #[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
+    {
+        let mut value = value;
+        if let Ok(enabled) = app.autolaunch().is_enabled() {
+            if let Some(object) = value.as_object_mut() {
+                object.insert("autostart".into(), Value::Bool(enabled));
+            }
         }
+        value
     }
+    #[cfg(any(not(feature = "native-distribution"), feature = "flatpak"))]
     value
 }
 
+#[cfg(any(test, all(feature = "native-distribution", not(feature = "flatpak"))))]
 fn autostart_needs_update(current: bool, desired: bool) -> bool {
     current != desired
 }
 
-fn apply_autostart_setting(app: &AppHandle, settings: &Value) -> Result<(), String> {
-    let Some(enabled) = settings.get("autostart").and_then(Value::as_bool) else {
-        return Ok(());
-    };
-    let current = app
-        .autolaunch()
-        .is_enabled()
-        .map_err(|error| format!("Unable to inspect autostart state: {error}"))?;
-    if !autostart_needs_update(current, enabled) {
-        return Ok(());
+fn apply_autostart_setting(app: &AppHandle, settings: &Value) -> Result<bool, String> {
+    // Native builds use the autostart plugin; Flatpak builds use the Background portal.
+    let _ = app;
+    let enabled = settings
+        .get("autostart")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    #[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
+    {
+        let current = app
+            .autolaunch()
+            .is_enabled()
+            .map_err(|error| format!("Unable to inspect autostart state: {error}"))?;
+        if !autostart_needs_update(current, enabled) {
+            return Ok(current);
+        }
+        let result = if enabled {
+            app.autolaunch().enable()
+        } else {
+            app.autolaunch().disable()
+        };
+        result
+            .map(|_| enabled)
+            .map_err(|error| format!("Unable to update autostart: {error}"))
     }
-    let result = if enabled {
-        app.autolaunch().enable()
-    } else {
-        app.autolaunch().disable()
-    };
-    result.map_err(|error| format!("Unable to update autostart: {error}"))
+    #[cfg(all(target_os = "linux", feature = "flatpak"))]
+    {
+        flatpak_portal::request_autostart(enabled)
+    }
+    #[cfg(all(not(target_os = "linux"), feature = "flatpak"))]
+    {
+        let _ = app;
+        Err("Flatpak autostart is supported only on Linux".to_string())
+    }
 }
 
 fn persist_app_settings(app: &AppHandle, state: &AppState, settings: &Value) -> Result<(), String> {
@@ -3952,6 +4039,11 @@ fn persist_app_settings(app: &AppHandle, state: &AppState, settings: &Value) -> 
 #[tauri::command]
 fn get_app_settings(app: AppHandle) -> Value {
     effective_app_settings_value(&app)
+}
+
+#[tauri::command]
+fn get_distribution_info() -> distribution::DistributionInfo {
+    distribution::info()
 }
 
 fn validate_order_ids(ids: &[String], label: &str) -> Result<(), String> {
@@ -4051,7 +4143,10 @@ fn set_app_settings(
         }
         validate_app_settings_value(&value)?;
         if autostart_changed {
-            apply_autostart_setting(&app, &value)?;
+            let actual = apply_autostart_setting(&app, &value)?;
+            if let Some(object) = value.as_object_mut() {
+                object.insert("autostart".into(), Value::Bool(actual));
+            }
         }
         if let Err(error) = persist_app_settings(&app, &state, &value) {
             if autostart_changed {
@@ -4150,13 +4245,17 @@ fn export_backup(
 }
 
 fn automatic_backup_root(app: &AppHandle, settings: &Value) -> Result<PathBuf, String> {
-    let configured = settings
-        .get("automaticBackupDirectory")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .unwrap_or_default();
-    if !configured.is_empty() {
-        return Ok(PathBuf::from(configured));
+    // Flatpak scheduled backups stay in sandbox-private storage. A directory selected through
+    // FileChooser/Documents is not assumed to grant permanent recursive access across restarts.
+    if !distribution::is_flatpak() {
+        let configured = settings
+            .get("automaticBackupDirectory")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or_default();
+        if !configured.is_empty() {
+            return Ok(PathBuf::from(configured));
+        }
     }
     app.path()
         .app_config_dir()
@@ -4466,10 +4565,30 @@ fn perform_restore_backup(
     let mut summary = document
         .summary(path)
         .with_recovery_backup_path(&recovery_path);
-    if let Err(error) = apply_autostart_setting(app, &app_settings) {
-        summary = summary.with_warning(format!(
-            "Backup data restored successfully, but the operating-system autostart integration could not be synchronized: {error}"
-        ));
+    match apply_autostart_setting(app, &app_settings) {
+        Ok(actual) => {
+            if app_settings.get("autostart").and_then(Value::as_bool) != Some(actual) {
+                let mut corrected = app_settings.clone();
+                if let Some(object) = corrected.as_object_mut() {
+                    object.insert("autostart".into(), Value::Bool(actual));
+                }
+                if let Err(error) = persist_app_settings(app, state, &corrected) {
+                    summary = summary.with_warning(format!(
+                        "Backup data restored, but Tauridium could not persist the autostart state returned by the operating system: {error}"
+                    ));
+                } else {
+                    summary = summary.with_warning(
+                        "The operating system did not grant the requested Launch at Login state; Tauridium stored the effective state instead."
+                            .to_string(),
+                    );
+                }
+            }
+        }
+        Err(error) => {
+            summary = summary.with_warning(format!(
+                "Backup data restored successfully, but the operating-system autostart integration could not be synchronized: {error}"
+            ));
+        }
     }
     Ok(summary)
 }
@@ -4623,6 +4742,55 @@ fn export_service_bundle(
             Err(error)
         }
     }
+}
+
+#[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeUpdateInfo {
+    version: String,
+    body: Option<String>,
+    date: Option<String>,
+}
+
+#[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
+#[tauri::command]
+async fn check_native_update(app: AppHandle) -> Result<Option<NativeUpdateInfo>, String> {
+    let updater = app
+        .updater()
+        .map_err(|error| format!("Unable to initialize updater: {error}"))?;
+    let update = updater
+        .check()
+        .await
+        .map_err(|error| format!("Unable to check for updates: {error}"))?;
+    Ok(update.map(|update| NativeUpdateInfo {
+        version: update.version,
+        body: update.body,
+        date: update.date.map(|date| date.to_string()),
+    }))
+}
+
+#[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
+#[tauri::command]
+async fn install_native_update(app: AppHandle, expected_version: String) -> Result<(), String> {
+    let update = app
+        .updater()
+        .map_err(|error| format!("Unable to initialize updater: {error}"))?
+        .check()
+        .await
+        .map_err(|error| format!("Unable to check for updates before installation: {error}"))?
+        .ok_or_else(|| "No update is currently available".to_string())?;
+    if update.version != expected_version {
+        return Err(format!(
+            "Available update changed from {expected_version} to {}; check again before installing",
+            update.version
+        ));
+    }
+    update
+        .download_and_install(|_, _| {}, || {})
+        .await
+        .map_err(|error| format!("Unable to download or install update: {error}"))?;
+    app.restart();
 }
 
 #[tauri::command]
@@ -4995,17 +5163,23 @@ fn main() {
     startup_diagnostics::log(
         "primary",
         "tauri.builder",
-        "initializing notification, autostart, updater, process, dialog, window-state plugins, application state, menus, tray, and webviews",
+        &format!(
+            "initializing {} distribution plugins, dialog, window-state, application state, menus, tray, and webviews",
+            distribution::mode().as_str()
+        ),
     );
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
+    let builder = builder
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build());
+
+    builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_window_state::Builder::new()
@@ -5063,14 +5237,15 @@ fn main() {
                         // Persist geometry/state before either hiding to tray or allowing a real close.
                         save_main_window_state(&handle);
                         // Close to tray: hide instead of quitting; otherwise quit.
-                        let close_to_tray = handle
-                            .state::<AppState>()
-                            .settings
-                            .lock()
-                            .unwrap()
-                            .get("closeToSystemTray")
-                            .and_then(Value::as_bool)
-                            .unwrap_or(true);
+                        let close_to_tray = !distribution::is_flatpak()
+                            && handle
+                                .state::<AppState>()
+                                .settings
+                                .lock()
+                                .unwrap()
+                                .get("closeToSystemTray")
+                                .and_then(Value::as_bool)
+                                .unwrap_or(true);
                         if close_to_tray {
                             api.prevent_close();
                             if let Some(w) = handle.get_window("main") {
@@ -5115,6 +5290,12 @@ fn main() {
                         }
                     });
             }
+            #[cfg(target_os = "linux")]
+            {
+                let tray_cache = app.path().app_cache_dir()?.join("tray-icon");
+                std::fs::create_dir_all(&tray_cache)?;
+                tray = tray.temp_dir_path(tray_cache);
+            }
             if let Some(icon) = app.default_window_icon().cloned() {
                 tray = tray.icon(icon);
             }
@@ -5152,9 +5333,9 @@ fn main() {
                             show_main(app);
                             let _ = app.emit("open-about", ());
                         }
-                        "open-project-homepage" => open_external(PROJECT_HOMEPAGE),
-                        "open-project-source" => open_external(PROJECT_SOURCE_CODE),
-                        "open-author-homepage" => open_external(AUTHOR_HOMEPAGE),
+                        "open-project-homepage" => { let _ = open_external(PROJECT_HOMEPAGE); },
+                        "open-project-source" => { let _ = open_external(PROJECT_SOURCE_CODE); },
+                        "open-author-homepage" => { let _ = open_external(AUTHOR_HOMEPAGE); },
                         "sign-out" => {
                             let state = app.state::<AppState>();
                             hide_service_webviews(app, &state);
@@ -5186,20 +5367,22 @@ fn main() {
             }
             startup_diagnostics::log("primary", "menu.ready", "native application menu installed");
 
-            // Request notification permission at startup.
-            // Note: no-op on macOS desktop (the OS manages permission itself); effective
-            // on mobile, Windows, and signed .app builds.
+            // Native packages retain Tauri's notification permission flow. Flatpak builds
+            // use the XDG Notification portal directly and need no plugin permission request.
+            #[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
             if let Ok(state) = app.notification().permission_state() {
                 if state != PermissionState::Granted {
                     let _ = app.notification().request_permission();
                 }
             }
             // The main window is configured hidden so fullscreen/maximized restoration happens
-            // off-screen. Reveal it only after restoration unless startup-in-background is enabled.
-            let start_minimized = read_app_settings_value(app.handle())
-                .get("startMinimized")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
+            // off-screen. Flatpak keeps the main window recoverable even on desktops without
+            // StatusNotifier support, so start-minimized is intentionally disabled there.
+            let start_minimized = !distribution::is_flatpak()
+                && read_app_settings_value(app.handle())
+                    .get("startMinimized")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
             reveal_main_window_after_startup_restore(app.handle(), start_minimized);
 
             // Bind activation only after startup visibility restoration. A repeated launch
@@ -5253,12 +5436,17 @@ fn main() {
             set_workspace_order,
             sync_services_menu,
             set_app_settings,
+            get_distribution_info,
             export_backup,
             create_automatic_backup,
             restore_backup,
             export_portable_bundle,
             export_service_bundle,
             record_updater_error,
+            #[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
+            check_native_update,
+            #[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
+            install_native_update,
             get_audit_log,
             get_audit_log_page,
             export_audit_log,

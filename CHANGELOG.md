@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.8.0] - 2026-09-22
+
+### Added
+
+- Added an explicit native/Flatpak distribution mode for the first Flathub-capable Tauridium release, keeping native packaging behavior separate from sandbox-specific integration.
+- Added upstream Freedesktop desktop metadata, AppStream metadata, and a self-contained `dev.brani.tauridium` scalable icon for Flatpak/desktop integration.
+- Added Flatpak portal paths for external URLs, notifications, Launch at Login consent, and user-selected file destinations, with automatic backups kept in app-private storage in Flatpak mode.
+
+### Changed
+
+- Flatpak mode no longer initializes or exposes Tauridium's native GitHub updater; updates are presented as managed by Flatpak/Flathub while native packages retain the existing updater.
+- Flatpak mode keeps the main window recoverable on desktops without a visible status tray and stores temporary tray-icon data in Tauridium's application cache.
+- Flatpak downloads require an explicit destination instead of broad host filesystem access, and Flatpak automatic backups no longer require persistent access to an arbitrary host directory.
+
+### Release quality
+
+- Added Flatpak packaging/source-build inputs and validation coverage while preserving the existing native release workflow and portal-free native behavior.
+
 ## [0.7.19] - 2026-09-20
 
 ### Fixed

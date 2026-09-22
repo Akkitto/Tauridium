@@ -21,6 +21,28 @@ def read(path: str) -> str:
   return (ROOT / path).read_text(encoding="utf-8")
 
 
+def extract_generate_handler_body(main_rs: str) -> str:
+  """Return the complete tauri::generate_handler! body, including nested attributes."""
+  marker = "tauri::generate_handler!["
+  start = main_rs.find(marker)
+  if start < 0:
+    fail("Tauri invoke handler is missing")
+
+  body_start = start + len(marker)
+  depth = 1
+  for index in range(body_start, len(main_rs)):
+    char = main_rs[index]
+    if char == "[":
+      depth += 1
+    elif char == "]":
+      depth -= 1
+      if depth == 0:
+        return main_rs[body_start:index]
+
+  fail("Tauri invoke handler has an unterminated generate_handler! macro")
+  raise AssertionError("unreachable")
+
+
 def validate_just_recipe_platforms(justfile: str) -> None:
   """Reject duplicate recipes unless each definition is platform-disjoint."""
   pending_platforms: set[str] = set()
@@ -539,7 +561,7 @@ def main() -> int:
     "get_service_icon",
     "get_app_metadata",
   )
-  handler = main_rs.split("tauri::generate_handler![", 1)[-1].split("]", 1)[0]
+  handler = extract_generate_handler_body(main_rs)
   for command in required_backend:
     if command not in handler:
       fail(f"Tauri handler is missing {command}")

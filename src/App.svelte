@@ -83,6 +83,7 @@
     updateWorkspace,
     deleteWorkspace,
     getAppSettings,
+    getDistributionInfo,
     setAppSettings,
     setServiceOrder,
     setWorkspaceOrder,
@@ -110,6 +111,7 @@
     type RecipeDraft,
     type RecipeStorageInfo,
     type AppSettings,
+    type DistributionInfo,
     type BackupSummary,
     type SandboxDefinition,
     type PortablePayload,
@@ -233,7 +235,18 @@
   let sandboxServiceQuery = $state("");
   let sandboxServicePage = $state(0);
 
-  // Updates (automatic updater).
+  const nativeDistribution: DistributionInfo = {
+    mode: "native",
+    updaterManagedExternally: false,
+    portalFileAccess: false,
+    portalNotifications: false,
+    portalAutostart: false,
+    downloadsRequireDestination: false,
+    automaticBackupsUsePrivateStorage: false,
+  };
+  let distributionInfo = $state<DistributionInfo>(nativeDistribution);
+
+  // Updates (native packages only; Flatpak delegates updates to the package manager).
   let appVer = $state("");
   let updateInfo = $state<Update | null>(null);
   let updChecking = $state(false);
@@ -623,6 +636,11 @@
     window.addEventListener("keydown", handleGlobalKeydown, true);
     window.addEventListener("resize", handleWindowResize);
     try {
+      distributionInfo = await getDistributionInfo();
+    } catch {
+      distributionInfo = nativeDistribution;
+    }
+    try {
       appSettings = await getAppSettings();
       const startupSidebarCollapsed = resolveStartupSidebarCollapsed(
         appSettings.defaultSidebarCollapsed,
@@ -659,7 +677,9 @@
     getAppMetadata()
       .then((metadata) => (appMetadata = metadata))
       .catch(() => {});
-    checkUpdates(true); // Silent startup check.
+    if (!distributionInfo.updaterManagedExternally) {
+      checkUpdates(true); // Silent native-package startup check.
+    }
   });
 
   function applyTheme() {
@@ -2878,6 +2898,11 @@
   }
 
   async function checkUpdates(silent = false) {
+    if (distributionInfo.updaterManagedExternally) {
+      updateInfo = null;
+      updStatus = "Updates are managed by Flatpak/Flathub.";
+      return;
+    }
     updChecking = true;
     if (!silent) updStatus = "";
     try {
@@ -4154,9 +4179,23 @@
                   <p>Choose how Tauridium behaves when the desktop session starts and when its window closes.</p>
                 </div>
                 <div class="settings-list">
-                  {@render appToggle("Launch at login", `Start Tauridium automatically ${loginText}.`, "autostart", appSettings.autostart)}
-                  {@render appToggle("Start in background", `Launch with the main window hidden while Tauridium remains available in the ${trayWord}.`, "startMinimized", appSettings.startMinimized)}
-                  {@render appToggle("Close to tray", `Hide Tauridium to the ${trayWord} when the window close button is used instead of quitting the app.`, "closeToSystemTray", appSettings.closeToSystemTray)}
+                  {@render appToggle(
+                    "Launch at login",
+                    distributionInfo.portalAutostart
+                      ? "Request desktop permission through the XDG Background portal. The desktop controls whether autostart is granted."
+                      : `Start Tauridium automatically ${loginText}.`,
+                    "autostart",
+                    appSettings.autostart,
+                  )}
+                  {#if distributionInfo.mode === "flatpak"}
+                    <div class="setting-card info-card">
+                      <div class="setting-copy"><span class="setting-label">Background/tray startup</span><span class="setting-description">Flatpak keeps the main window recoverable on desktops that do not expose status icons. Start in background and Close to tray are therefore disabled for this package.</span></div>
+                      <span class="status-badge">Desktop-safe</span>
+                    </div>
+                  {:else}
+                    {@render appToggle("Start in background", `Launch with the main window hidden while Tauridium remains available in the ${trayWord}.`, "startMinimized", appSettings.startMinimized)}
+                    {@render appToggle("Close to tray", `Hide Tauridium to the ${trayWord} when the window close button is used instead of quitting the app.`, "closeToSystemTray", appSettings.closeToSystemTray)}
+                  {/if}
                 </div>
               </section>
             {:else if settingsTab === "services"}
@@ -4888,11 +4927,15 @@
                     <select class="setting-control" aria-label="Automatic backup schedule" value={appSettings.automaticBackupSchedule} onchange={(e) => saveAppSetting("automaticBackupSchedule", e.currentTarget.value)}><option value="off">Off</option><option value="startup">On program startup</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select>
                   </div>
                   <div class="setting-card setting-card-stack">
-                    <div class="setting-copy"><span class="setting-label">Output folder</span><span class="setting-description">Choose the folder used for scheduled and on-demand automatic backups. Leave unset to use Tauridium's managed configuration folder.</span></div>
-                    <div class="backup-location-row">
-                      <code title={appSettings.automaticBackupDirectory || "Tauridium configuration/backups/automatic (default)"}>{appSettings.automaticBackupDirectory || "Tauridium configuration/backups/automatic (default)"}</code>
-                      <div class="setting-actions"><button class="secondary sm" onclick={chooseAutomaticBackupDirectory}>Choose folder…</button><button class="secondary sm" disabled={!appSettings.automaticBackupDirectory} onclick={useDefaultAutomaticBackupDirectory}>Use default</button></div>
-                    </div>
+                    <div class="setting-copy"><span class="setting-label">Output folder</span><span class="setting-description">{distributionInfo.automaticBackupsUsePrivateStorage ? "Flatpak stores scheduled backups in Tauridium's private application data so recurring writes do not require broad host filesystem access." : "Choose the folder used for scheduled and on-demand automatic backups. Leave unset to use Tauridium's managed configuration folder."}</span></div>
+                    {#if distributionInfo.automaticBackupsUsePrivateStorage}
+                      <div class="backup-location-row"><code>Tauridium private data/backups/automatic</code><span class="status-badge">Sandboxed</span></div>
+                    {:else}
+                      <div class="backup-location-row">
+                        <code title={appSettings.automaticBackupDirectory || "Tauridium configuration/backups/automatic (default)"}>{appSettings.automaticBackupDirectory || "Tauridium configuration/backups/automatic (default)"}</code>
+                        <div class="setting-actions"><button class="secondary sm" onclick={chooseAutomaticBackupDirectory}>Choose folder…</button><button class="secondary sm" disabled={!appSettings.automaticBackupDirectory} onclick={useDefaultAutomaticBackupDirectory}>Use default</button></div>
+                      </div>
+                    {/if}
                   </div>
                   <div class="setting-card">
                     <div class="setting-copy"><span class="setting-label">Retention strategy</span><span class="setting-description">Choose a simple count, age limit, both limits together, or tiered GFS-style history.</span></div>
@@ -4981,18 +5024,25 @@
               <section class="settings-section" aria-labelledby="settings-advanced-downloads">
                 <div class="section-heading"><h3 id="settings-advanced-downloads">Downloads</h3><p>Choose where websites save downloads. Tauridium preserves the filename suggested by the website or server, including attachment names and extensions.</p></div>
                 <div class="settings-list">
-                  <div class="setting-card">
-                    <div class="setting-copy">
-                      <span class="setting-label">Default download directory</span>
-                      <span class="setting-description" title={downloadDirectoryLabel(appSettings.downloadDirectory)}>{downloadDirectoryLabel(appSettings.downloadDirectory)}</span>
+                  {#if distributionInfo.downloadsRequireDestination}
+                    <div class="setting-card info-card">
+                      <div class="setting-copy"><span class="setting-label">Portal-selected destination</span><span class="setting-description">Flatpak asks where to save every download through the desktop file portal. Tauridium does not receive broad access to your home directory or Downloads folder.</span></div>
+                      <span class="status-badge">Portal</span>
                     </div>
-                    <div class="setting-actions">
-                      <button class="secondary sm" onclick={chooseGlobalDownloadDirectory}>Choose folder…</button>
-                      <button class="secondary sm" disabled={!appSettings.downloadDirectory} onclick={() => saveAppSetting("downloadDirectory", "")}>Use system Downloads</button>
+                  {:else}
+                    <div class="setting-card">
+                      <div class="setting-copy">
+                        <span class="setting-label">Default download directory</span>
+                        <span class="setting-description" title={downloadDirectoryLabel(appSettings.downloadDirectory)}>{downloadDirectoryLabel(appSettings.downloadDirectory)}</span>
+                      </div>
+                      <div class="setting-actions">
+                        <button class="secondary sm" onclick={chooseGlobalDownloadDirectory}>Choose folder…</button>
+                        <button class="secondary sm" disabled={!appSettings.downloadDirectory} onclick={() => saveAppSetting("downloadDirectory", "")}>Use system Downloads</button>
+                      </div>
                     </div>
-                  </div>
-                  {@render appToggle("Ask where to save each download", "Show a native Save dialog for every download. The dialog starts with the website/server-suggested filename and the effective download directory.", "askEachDownload", appSettings.askEachDownload)}
-                  <p class="settings-note">Priority: service override → active workspace override → these global defaults. Directory overrides are device-specific settings and full backups preserve them; portable workspace exports intentionally omit filesystem paths.</p>
+                    {@render appToggle("Ask where to save each download", "Show a native Save dialog for every download. The dialog starts with the website/server-suggested filename and the effective download directory.", "askEachDownload", appSettings.askEachDownload)}
+                    <p class="settings-note">Priority: service override → active workspace override → these global defaults. Directory overrides are device-specific settings and full backups preserve them; portable workspace exports intentionally omit filesystem paths.</p>
+                  {/if}
                 </div>
               </section>
               <section class="settings-section" aria-labelledby="settings-advanced-browser">
@@ -5037,18 +5087,24 @@
               </section>
             {:else if settingsTab === "updates"}
               <section class="settings-section" aria-labelledby="settings-updates-version">
-                <div class="section-heading"><h3 id="settings-updates-version">Updates</h3><p>Keep Tauridium current using signed releases published through the project repository.</p></div>
+                <div class="section-heading"><h3 id="settings-updates-version">Updates</h3><p>{distributionInfo.updaterManagedExternally ? "This package is updated by Flatpak/Flathub." : "Keep Tauridium current using signed releases published through the project repository."}</p></div>
                 <div class="settings-list">
                   <div class="setting-card">
                     <div class="setting-copy"><span class="setting-label">Current version</span><span class="setting-description">Tauridium {appVer ? `v${appVer}` : "version information is loading"}.</span></div>
-                    {#if updateInfo}
+                    {#if distributionInfo.updaterManagedExternally}
+                      <span class="status-badge">Managed by Flatpak</span>
+                    {:else if updateInfo}
                       <button class="primary" disabled={updInstalling} onclick={doInstall}>{updInstalling ? "Installing…" : `Update to v${updateInfo.version}`}</button>
                     {:else}
                       <button class="secondary" disabled={updChecking} onclick={() => checkUpdates(false)}>{updChecking ? "Checking…" : "Check for updates"}</button>
                     {/if}
                   </div>
-                  {#if updateInfo}<p class="settings-status">Version {updateInfo.version} is available. Tauridium will restart after installation.</p>{/if}
-                  {#if updStatus}<p class="settings-status">{updStatus}</p>{/if}
+                  {#if distributionInfo.updaterManagedExternally}
+                    <p class="settings-status">Native GitHub update checks and installation are disabled in this Flatpak build.</p>
+                  {:else}
+                    {#if updateInfo}<p class="settings-status">Version {updateInfo.version} is available. Tauridium will restart after installation.</p>{/if}
+                    {#if updStatus}<p class="settings-status">{updStatus}</p>{/if}
+                  {/if}
                 </div>
               </section>
             {:else if settingsTab === "about"}

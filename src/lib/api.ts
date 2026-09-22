@@ -302,6 +302,20 @@ export interface DownloadPreferenceOverride {
   askEachDownload: boolean;
 }
 
+export interface DistributionInfo {
+  mode: "native" | "flatpak";
+  updaterManagedExternally: boolean;
+  portalFileAccess: boolean;
+  portalNotifications: boolean;
+  portalAutostart: boolean;
+  downloadsRequireDestination: boolean;
+  automaticBackupsUsePrivateStorage: boolean;
+}
+
+export function getDistributionInfo(): Promise<DistributionInfo> {
+  return invoke("get_distribution_info");
+}
+
 export interface AppSettings {
   autostart: boolean;
   startMinimized: boolean;

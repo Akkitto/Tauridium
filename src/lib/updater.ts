@@ -1,9 +1,11 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
-import { relaunch } from "@tauri-apps/plugin-process";
-import { check, type Update } from "@tauri-apps/plugin-updater";
 
-export type { Update };
+export interface Update {
+  version: string;
+  body?: string | null;
+  date?: string | null;
+}
 
 type UpdaterAuditAction = "check" | "install";
 
@@ -27,21 +29,20 @@ export function appVersion(): Promise<string> {
   return getVersion();
 }
 
-// Check the update endpoint; return null when the application is current.
+// Native packages expose updater operations only through backend commands. Flatpak builds
+// omit those commands entirely, so their UI never calls this path.
 export async function checkForUpdate(): Promise<Update | null> {
   try {
-    return await check();
+    return await invoke<Update | null>("check_native_update");
   } catch (error) {
     await reportUpdaterError("check", error);
     throw error;
   }
 }
 
-// Download and install the update, then relaunch the application.
 export async function installUpdate(update: Update): Promise<void> {
   try {
-    await update.downloadAndInstall();
-    await relaunch();
+    await invoke("install_native_update", { expectedVersion: update.version });
   } catch (error) {
     await reportUpdaterError("install", error);
     throw error;

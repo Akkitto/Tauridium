@@ -208,6 +208,30 @@ release-checksums assets_dir="release/published-assets":
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/release_assets.py checksums --assets-dir {{assets_dir}}
 
 [unix]
+flatpak-sources:
+  python3 tools/generate_flatpak_sources.py
+
+[unix]
+flatpak-build:
+  flatpak run --command=flathub-build org.flatpak.Builder --install flatpak/dev.brani.tauridium.yml
+
+[unix]
+flatpak-test:
+  flatpak run dev.brani.tauridium
+
+[unix]
+flatpak-lint:
+  flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest flatpak/dev.brani.tauridium.yml
+  flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream data/dev.brani.tauridium.metainfo.xml
+  flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
+  desktop-file-validate data/dev.brani.tauridium.desktop
+  flatpak info --show-permissions dev.brani.tauridium
+
+[unix]
+flatpak-clean:
+  rm -rf .flatpak-builder build-dir repo
+
+[unix]
 clean:
   rm -rf dist release src-tauri/target
 

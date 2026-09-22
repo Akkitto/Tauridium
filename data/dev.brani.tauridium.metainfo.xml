@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.brani.tauridium</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Tauridium</name>
+  <summary>Organize web services in persistent workspaces</summary>
+  <developer id="dev.brani">
+    <name>Daniel Braniewski</name>
+  </developer>
+  <description>
+    <p>Tauridium is a desktop client for organizing multiple web services in persistent, isolated webviews.</p>
+    <p>It supports local accountless use or Ferdium server synchronization, workspaces, bundled and custom recipes, per-service settings, portable exports, transactional backups, and a structured local audit log.</p>
+  </description>
+  <launchable type="desktop-id">dev.brani.tauridium.desktop</launchable>
+  <content_rating type="oars-1.1"/>
+  <url type="homepage">https://github.com/Akkitto/Tauridium</url>
+  <url type="bugtracker">https://github.com/Akkitto/Tauridium/issues</url>
+  <url type="vcs-browser">https://github.com/Akkitto/Tauridium</url>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v0.8.0/data/screenshots/tauridium-0.8.0-main.png</image>
+      <caption>Tauridium sign-in and local accountless start screen</caption>
+    </screenshot>
+  </screenshots>
+  <releases>
+    <release version="0.8.0" date="2026-09-22">
+      <description>
+        <p>Adds a dedicated Flatpak distribution mode, upstream desktop metadata, portal-first host integration, and Flathub packaging support.</p>
+      </description>
+    </release>
+  </releases>
+</component>

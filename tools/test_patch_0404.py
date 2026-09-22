@@ -37,7 +37,8 @@ class Patch0404Tests(unittest.TestCase):
     self.assertNotIn(".is_enabled().ok()", body)
     self.assertIn("Unable to inspect autostart state", body)
     self.assertIn("autostart_needs_update", body)
-    self.assertIn("return Ok(())", body)
+    self.assertIn("return Ok(current)", body)
+    self.assertIn("flatpak_portal::request_autostart(enabled)", body)
     self.assertIn("autostart_application_is_idempotent_when_os_state_already_matches", self.main)
 
   def test_automatic_backup_directory_is_persisted_validated_and_user_selectable(self) -> None:
@@ -232,7 +233,7 @@ class Patch0404Tests(unittest.TestCase):
     self.assertIn("BackupDocument::new", export)
 
   def test_new_backend_commands_are_registered(self) -> None:
-    handler = self.main.split("tauri::generate_handler![", 1)[1].split("]", 1)[0]
+    handler = self.main.split("tauri::generate_handler![", 1)[1].split("])", 1)[0]
     for command in ("export_portable_bundle", "get_audit_log", "export_audit_log", "clear_audit_log"):
       self.assertIn(command, handler)
 

@@ -23,6 +23,20 @@ def load_release_validator():
 
 
 class ReleaseWorkflowTests(unittest.TestCase):
+  def test_generate_handler_parser_keeps_commands_after_cfg_attribute(self) -> None:
+    validator = load_release_validator()
+    source = """
+      .invoke_handler(tauri::generate_handler![
+        login,
+        #[cfg(all(feature = \"native-distribution\", not(feature = \"flatpak\")))]
+        check_native_update,
+        get_audit_log,
+      ])
+    """
+    handler = validator.extract_generate_handler_body(source)
+    self.assertIn("check_native_update", handler)
+    self.assertIn("get_audit_log", handler)
+
   def test_platform_specific_just_recipes_are_disjoint(self) -> None:
     validator = load_release_validator()
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")
@@ -202,7 +216,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
 
   def test_download_notification_uses_valid_quoted_format_string(self) -> None:
     main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
-    self.assertIn(r'.body(format!("Downloaded \"{filename}\""))', main)
+    self.assertIn(r'let message = format!("Downloaded \"{filename}\"");', main)
+    self.assertIn('show_system_notification(webview.app_handle(), "Tauridium", Some(&message))', main)
     self.assertIn('.and_then(Path::file_name)', main)
     self.assertNotIn('format!("Downloaded "{}""', main)
 

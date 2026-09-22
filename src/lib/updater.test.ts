@@ -1,33 +1,36 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  check: vi.fn(),
   getVersion: vi.fn(),
   invoke: vi.fn(),
-  relaunch: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/app", () => ({ getVersion: mocks.getVersion }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
-vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: mocks.relaunch }));
-vi.mock("@tauri-apps/plugin-updater", () => ({ check: mocks.check }));
 
 import { checkForUpdate, installUpdate } from "./updater";
 
 describe("updater diagnostics", () => {
   beforeEach(() => {
-    mocks.check.mockReset();
     mocks.getVersion.mockReset();
     mocks.invoke.mockReset();
-    mocks.relaunch.mockReset();
-    mocks.invoke.mockResolvedValue(undefined);
     vi.restoreAllMocks();
+  });
+
+  it("uses the backend-only native updater command", async () => {
+    const update = { version: "0.8.1", body: "Fixes", date: null };
+    mocks.invoke.mockResolvedValueOnce(update);
+
+    await expect(checkForUpdate()).resolves.toEqual(update);
+    expect(mocks.invoke).toHaveBeenCalledWith("check_native_update");
   });
 
   it("records update-check failures in the developer console and audit log", async () => {
     const error = new Error("Could not fetch a valid release JSON from the remote");
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    mocks.check.mockRejectedValue(error);
+    mocks.invoke
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce(undefined);
 
     await expect(checkForUpdate()).rejects.toBe(error);
 
@@ -35,27 +38,36 @@ describe("updater diagnostics", () => {
       "[Tauridium updater] check failed: Could not fetch a valid release JSON from the remote",
       error,
     );
-    expect(mocks.invoke).toHaveBeenCalledWith("record_updater_error", {
+    expect(mocks.invoke).toHaveBeenNthCalledWith(2, "record_updater_error", {
       action: "check",
       message: "Could not fetch a valid release JSON from the remote",
+    });
+  });
+
+  it("installs through the backend without exposing updater capability to the webview", async () => {
+    mocks.invoke.mockResolvedValueOnce(undefined);
+
+    await installUpdate({ version: "0.8.1" });
+
+    expect(mocks.invoke).toHaveBeenCalledWith("install_native_update", {
+      expectedVersion: "0.8.1",
     });
   });
 
   it("records install failures without replacing the original updater error", async () => {
     const error = new Error("signature verification failed");
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    const update = {
-      downloadAndInstall: vi.fn().mockRejectedValue(error),
-    };
+    mocks.invoke
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce(undefined);
 
-    await expect(installUpdate(update as never)).rejects.toBe(error);
+    await expect(installUpdate({ version: "0.8.1" })).rejects.toBe(error);
 
-    expect(mocks.relaunch).not.toHaveBeenCalled();
     expect(consoleError).toHaveBeenCalledWith(
       "[Tauridium updater] install failed: signature verification failed",
       error,
     );
-    expect(mocks.invoke).toHaveBeenCalledWith("record_updater_error", {
+    expect(mocks.invoke).toHaveBeenNthCalledWith(2, "record_updater_error", {
       action: "install",
       message: "signature verification failed",
     });
@@ -64,8 +76,7 @@ describe("updater diagnostics", () => {
   it("keeps the updater failure visible even if audit persistence also fails", async () => {
     const error = new Error("remote unavailable");
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    mocks.check.mockRejectedValue(error);
-    mocks.invoke.mockRejectedValue(new Error("audit disk unavailable"));
+    mocks.invoke.mockRejectedValue(error);
 
     await expect(checkForUpdate()).rejects.toBe(error);
 
