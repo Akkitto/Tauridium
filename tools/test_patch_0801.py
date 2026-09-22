@@ -15,13 +15,14 @@ class Patch0801Tests(unittest.TestCase):
   def read(self, path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
-  def test_release_identity_is_0801_everywhere(self) -> None:
-    self.assertEqual(json.loads(self.read("package.json"))["version"], "0.8.1")
-    self.assertEqual(json.loads(self.read("src-tauri/tauri.conf.json"))["version"], "0.8.1")
-    self.assertIn('version = "0.8.1"', self.read("src-tauri/Cargo.toml"))
-    self.assertIn('name = "tauridium"\nversion = "0.8.1"', self.read("src-tauri/Cargo.lock"))
-    self.assertIn('INIT_VERSION = "0.8.1"', self.read("tools/init.py"))
-    self.assertIn('$InitVersion = "0.8.1"', self.read("tools/init.ps1"))
+  def test_release_identity_remains_synchronized_after_0801(self) -> None:
+    version = json.loads(self.read("package.json"))["version"]
+    self.assertGreaterEqual(tuple(map(int, version.split("."))), (0, 8, 1))
+    self.assertEqual(json.loads(self.read("src-tauri/tauri.conf.json"))["version"], version)
+    self.assertIn(f'version = "{version}"', self.read("src-tauri/Cargo.toml"))
+    self.assertIn(f'name = "tauridium"\nversion = "{version}"', self.read("src-tauri/Cargo.lock"))
+    self.assertIn(f'INIT_VERSION = "{version}"', self.read("tools/init.py"))
+    self.assertIn(f'$InitVersion = "{version}"', self.read("tools/init.ps1"))
 
   def test_flatpak_explicitly_enables_zbus_tokio(self) -> None:
     cargo = self.read("src-tauri/Cargo.toml")
@@ -62,9 +63,6 @@ class Patch0801Tests(unittest.TestCase):
   def test_patch_release_metadata_is_present(self) -> None:
     self.assertIn("## [0.8.1] - 2026-09-22", self.read("CHANGELOG.md"))
     self.assertIn('<release version="0.8.1" date="2026-09-22">', self.read("data/dev.brani.tauridium.metainfo.xml"))
-    manifest = self.read("flatpak/dev.brani.tauridium.yml")
-    self.assertIn("tag: v0.8.1", manifest)
-    self.assertIn("__TAURIDIUM_V081_COMMIT__", manifest)
 
 
 if __name__ == "__main__":

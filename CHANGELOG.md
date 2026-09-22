@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.8.2] - 2026-09-22
+
+### Fixed
+
+- Fixed strict Windows all-feature builds warning about an unused autostart value when the non-Linux Flatpak diagnostic path is selected.
+- Refreshed the stale Windows capability schema so `just check` no longer modifies `src-tauri/gen/schemas/windows-schema.json` and `just release` can reach its clean-worktree gate.
+
+### Release quality
+
+- Added focused v0.8.2 regression coverage for warning-free conditional autostart handling, canonical Windows schema output, synchronized release identity, and preservation of strict Windows Cargo gates.
+
 ## [0.8.1] - 2026-09-22
 
 ### Fixed

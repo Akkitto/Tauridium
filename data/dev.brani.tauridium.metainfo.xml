@@ -24,6 +24,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.8.2" date="2026-09-22">
+      <description>
+        <p>Fixes strict Windows all-feature warnings and keeps generated capability schemas clean across release checks.</p>
+      </description>
+    </release>
     <release version="0.8.1" date="2026-09-22">
       <description>
         <p>Fixes strict Windows Cargo checks by making the Flatpak zbus Tokio feature relationship explicit and lockfile-stable across target resolution.</p>

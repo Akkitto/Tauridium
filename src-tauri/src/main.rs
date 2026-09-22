@@ -3988,6 +3988,10 @@ fn autostart_needs_update(current: bool, desired: bool) -> bool {
 fn apply_autostart_setting(app: &AppHandle, settings: &Value) -> Result<bool, String> {
     // Native builds use the autostart plugin; Flatpak builds use the Background portal.
     let _ = app;
+    #[cfg(any(
+        all(feature = "native-distribution", not(feature = "flatpak")),
+        all(target_os = "linux", feature = "flatpak")
+    ))]
     let enabled = settings
         .get("autostart")
         .and_then(Value::as_bool)
@@ -4017,6 +4021,7 @@ fn apply_autostart_setting(app: &AppHandle, settings: &Value) -> Result<bool, St
     #[cfg(all(not(target_os = "linux"), feature = "flatpak"))]
     {
         let _ = app;
+        let _ = settings;
         Err("Flatpak autostart is supported only on Linux".to_string())
     }
 }
