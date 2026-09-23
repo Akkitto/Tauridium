@@ -15,6 +15,11 @@
 # reproducible remain explicitly classified by provenance.
 vendor/** linguist-vendored
 src-tauri/assets/darkreader.js linguist-vendored
+flatpak/shared-modules/** linguist-vendored
+
+# Preserve upstream patch context exactly while keeping whitespace checks strict
+# for Tauridium-authored patches and source files.
+flatpak/shared-modules/**/*.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
 
 # Generated metadata and schemas remain explicitly marked as generated.
 src-tauri/gen/** linguist-generated

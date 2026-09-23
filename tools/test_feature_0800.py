@@ -39,9 +39,10 @@ class FlatpakReleaseTests(unittest.TestCase):
     manifest = self.read("flatpak/dev.brani.tauridium.yml")
     for marker in (
       "runtime: org.gnome.Platform",
-      "runtime-version: '50'",
+      "runtime-version: '51'",
       "org.freedesktop.Sdk.Extension.rust-stable",
       "org.freedesktop.Sdk.Extension.node24",
+      "shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json",
       "--share=network",
       "--share=ipc",
       "--socket=wayland",
@@ -50,7 +51,8 @@ class FlatpakReleaseTests(unittest.TestCase):
       "--socket=pulseaudio",
       "--talk-name=org.kde.StatusNotifierWatcher",
       f"tag: v{json.loads(self.read('package.json'))['version']}",
-      "cargo tauri build --runner ./flatpak/cargo-flatpak-runner.sh --no-bundle --ci",
+      "chmod +x source/flatpak/cargo-flatpak-runner.sh",
+      "cargo tauri build --runner ../flatpak/cargo-flatpak-runner.sh --no-bundle --ci",
     ):
       self.assertIn(marker, manifest)
     for forbidden in (
@@ -71,6 +73,19 @@ class FlatpakReleaseTests(unittest.TestCase):
     capability = self.read("src-tauri/capabilities/default.json")
     self.assertNotIn("updater", capability)
 
+  def test_flatpak_vendors_tray_runtime_dependency(self) -> None:
+    module = self.read(
+      "flatpak/shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json"
+    )
+    self.assertIn('"name": "libayatana-appindicator"', module)
+    self.assertIn('"commit": "31e8bb083b307e1cc96af4874a94707727bd1e79"', module)
+    self.assertIn('"commit": "611bb384b73fa6311777ba4c41381a06f5b99dad"', module)
+
+  def test_flatpak_builder_output_is_ignored(self) -> None:
+    ignore = self.read(".gitignore")
+    for path in (".flatpak-builder/", "build-dir/", "repo/"):
+      self.assertIn(path, ignore)
+
   def test_flatpak_uses_frontend_portals(self) -> None:
     portal = self.read("src-tauri/src/flatpak_portal.rs")
     self.assertIn("org.freedesktop.portal.Background", portal)
@@ -88,6 +103,11 @@ class FlatpakReleaseTests(unittest.TestCase):
     self.assertIn("<metadata_license>CC0-1.0</metadata_license>", meta)
     self.assertIn("<project_license>MIT</project_license>", meta)
     self.assertIn('<launchable type="desktop-id">dev.brani.tauridium.desktop</launchable>', meta)
+    self.assertIn(
+      "https://raw.githubusercontent.com/Akkitto/Tauridium/v0.8.3/"
+      "data/screenshots/tauridium-0.8.0-main.png",
+      meta,
+    )
     current = json.loads(self.read("package.json"))["version"]
     self.assertIn(f'<release version="{current}"', meta)
 
@@ -103,14 +123,13 @@ class FlatpakReleaseTests(unittest.TestCase):
     self.assertGreater(len(cargo_sources), 500)
     self.assertGreater(len(node_sources), 100)
     self.assertGreater(len(cli_sources), 500)
+    self.assertIn('directory = "cargo/vendor"', cargo_sources[-1]["contents"])
+    self.assertIn('directory = "cargo/vendor"', cli_sources[-1]["contents"])
 
   def test_manifest_source_pin_must_be_materialized_before_release(self) -> None:
     manifest = self.read("flatpak/dev.brani.tauridium.yml")
     pins = re.findall(r"^\s*commit:\s*(\S+)$", manifest, flags=re.MULTILINE)
-    self.assertEqual(len(pins), 1)
-    # During development this placeholder intentionally fails, preventing a
-    # supposedly immutable Flatpak release from being packaged prematurely.
-    self.assertRegex(pins[0], r"^(?:__TAURIDIUM_V\d{3}_COMMIT__|[0-9a-f]{40})$")
+    self.assertEqual(pins, ["2ad65ffb0abf921696eec5555cb90b268dacac21"])
 
 
 if __name__ == "__main__":

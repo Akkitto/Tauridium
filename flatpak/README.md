@@ -22,6 +22,11 @@ against the `Cargo.lock` shipped in the `tauri-cli 2.11.3` crate before a
 dependency/toolchain change. The exact flatpak-builder-tools revision used for a
 Flathub submission should be recorded in the human-authored submission PR.
 
+The AppIndicator dependency is vendored from Flathub `shared-modules` revision
+`cb9ec602a1ece1c76d5a4f8aa1d87c4a6bf99c3e`. Update the complete
+`intltool` and `libayatana-appindicator` module directories together rather than
+editing their upstream files independently.
+
 ## Build and validation
 
 Use the current Flathub Builder application and a clean checkout:

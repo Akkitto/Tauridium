@@ -1,0 +1,11 @@
+--- a/source/data/dev.brani.tauridium.metainfo.xml
++++ b/source/data/dev.brani.tauridium.metainfo.xml
+@@ -19,7 +19,7 @@
+   <url type="vcs-browser">https://github.com/Akkitto/Tauridium</url>
+   <screenshots>
+     <screenshot type="default">
+-      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v0.8.0/data/screenshots/tauridium-0.8.0-main.png</image>
++      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v0.8.3/data/screenshots/tauridium-0.8.0-main.png</image>
+       <caption>Tauridium sign-in and local accountless start screen</caption>
+     </screenshot>
+   </screenshots>

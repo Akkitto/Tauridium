@@ -38,3 +38,8 @@ Thumbs.db
 # Tauridium release output
 release/
 .tauridium-source-manifest.json
+
+# Flatpak builder output
+.flatpak-builder/
+build-dir/
+repo/

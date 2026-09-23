@@ -27,11 +27,9 @@ TAURI_CLI_OUTPUT = FLATPAK_DIR / "tauri-cli-cargo-sources.json"
 
 CARGO_CONFIG = (
   '[source.vendored-sources]\n'
-  'directory = "vendor"\n\n'
+  'directory = "cargo/vendor"\n\n'
   '[source.crates-io]\n'
-  'replace-with = "vendored-sources"\n\n'
-  '[net]\n'
-  'offline = true\n'
+  'replace-with = "vendored-sources"\n'
 )
 
 

@@ -61,7 +61,8 @@ class Patch0803Tests(unittest.TestCase):
     )
     manifest = self.read("flatpak/dev.brani.tauridium.yml")
     self.assertIn("tag: v0.8.3", manifest)
-    self.assertIn("__TAURIDIUM_V083_COMMIT__", manifest)
+    self.assertIn("commit: 2ad65ffb0abf921696eec5555cb90b268dacac21", manifest)
+    self.assertIn("path: fix-v0.8.3-appstream-screenshot.patch", manifest)
 
   def test_flatpak_gate_restores_modified_deleted_and_created_schemas(self) -> None:
     guard = load_schema_guard()
