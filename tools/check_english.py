@@ -10,6 +10,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SKIP_DIRS = {".git", "node_modules", "target", "dist", "release", "__pycache__"}
 BINARY_SUFFIXES = {".png", ".ico", ".icns", ".zip", ".exe", ".dll", ".so", ".dylib", ".woff", ".woff2", ".ttf"}
+GENERATED_TEXT_FILENAMES = {
+  "cargo-sources.json",
+  "node-sources.json",
+  "tauri-cli-cargo-sources.json",
+}
 
 # Hex encoding keeps the checker itself English-only while still matching legacy text.
 _HIGH_CONFIDENCE_HEX = (
@@ -93,7 +98,10 @@ LEGACY_ACCENTS = set("\u00e0\u00e2\u00e7\u00e9\u00e8\u00ea\u00eb\u00ee\u00ef\u00
 
 def tracked_files(root: Path = ROOT) -> list[Path]:
   git = subprocess.run(
-    ["git", "ls-files", "-z"], cwd=root, capture_output=True, check=False
+    ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+    cwd=root,
+    capture_output=True,
+    check=False,
   )
   if git.returncode == 0:
     return [root / item.decode("utf-8") for item in git.stdout.split(b"\0") if item]
@@ -120,7 +128,7 @@ def scan_text(text: str) -> list[str]:
 
 
 def scan_file(path: Path) -> list[tuple[int, str]]:
-  if path.suffix.lower() in BINARY_SUFFIXES:
+  if path.name in GENERATED_TEXT_FILENAMES or path.suffix.lower() in BINARY_SUFFIXES:
     return []
   try:
     raw = path.read_bytes()

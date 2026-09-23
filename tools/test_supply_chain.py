@@ -84,6 +84,19 @@ class RustSupplyChainTests(unittest.TestCase):
       findings = guard.scan_crate_archives(cache)
       self.assertEqual({item.package for item in findings}, {"proc-macro-en", "append-only-vec"})
 
+  def test_generated_build_trees_are_not_repository_inputs(self) -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+      root = Path(temp_dir)
+      generated = root / ".flatpak-builder" / "build" / "crate"
+      generated.mkdir(parents=True)
+      (generated / "Cargo.lock").write_text(
+        'version = 4\n\n[[package]]\nname = "demo"\nversion = "1.0.0"\n'
+        'source = "registry+https://github.com/rust-lang/crates.io-index"\n',
+        encoding="utf-8",
+      )
+      (generated / "proc-macro-en-9.9.9.crate").write_bytes(b"")
+      self.assertEqual(guard.scan_repository(root), [])
+
 
 if __name__ == "__main__":
   unittest.main()

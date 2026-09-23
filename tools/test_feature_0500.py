@@ -4,10 +4,21 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def project_files() -> list[Path]:
+  result = subprocess.run(
+    ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+    cwd=ROOT,
+    capture_output=True,
+    check=True,
+  )
+  return [ROOT / item.decode("utf-8") for item in result.stdout.split(b"\0") if item]
 
 
 class Feature0500Tests(unittest.TestCase):
@@ -38,7 +49,10 @@ class Feature0500Tests(unittest.TestCase):
     self.assertIn("https://github.com/Akkitto/Tauridium", self.readme)
     self.assertIn("https://github.com/Akkitto/Tauridium/commits/master", self.readme)
     self.assertIn("https://brani.dev", self.readme)
-    self.assertIn("## Licence\n\nCopyright (c) 2026 [Daniel Braniewski](https://brani.dev)", self.readme)
+    self.assertIn(
+      "## Licence\n\nCopyright © 2026  [Daniel Braniewski](https://brani.dev/)",
+      self.readme,
+    )
     self.assertIn("[MIT License](LICENSE)", self.readme)
     self.assertNotIn("buymeacoffee", self.readme.lower())
     self.assertNotIn("This project is vibe-coded", self.readme)
@@ -87,8 +101,8 @@ class Feature0500Tests(unittest.TestCase):
     copyrights = [line for line in self.license.splitlines() if line.startswith("Copyright (c)")]
     upstream_holder = copyrights[1].split("2026 ", 1)[1]
     violations: list[str] = []
-    for path in ROOT.rglob("*"):
-      if not path.is_file() or ".git" in path.parts or "vendor" in path.parts:
+    for path in project_files():
+      if not path.is_file() or "vendor" in path.parts:
         continue
       if path.name == ".tauridium-source-manifest.json" or path == ROOT / "LICENSE":
         continue

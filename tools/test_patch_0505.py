@@ -40,7 +40,7 @@ class Patch0505Tests(unittest.TestCase):
       "**wry**",
       "## Releases",
       "## Licence",
-      "Copyright (c) 2026 [Daniel Braniewski](https://brani.dev)",
+      "Copyright © 2026  [Daniel Braniewski](https://brani.dev/)",
     ):
       self.assertIn(marker, readme)
     self.assertIn("https://github.com/Akkitto/Tauridium/releases/latest", readme)

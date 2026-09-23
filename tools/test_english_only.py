@@ -29,6 +29,9 @@ class EnglishOnlyTests(unittest.TestCase):
   def test_plain_english_is_accepted(self) -> None:
     self.assertEqual(CHECK.scan_text("The server is unreachable from the application window."), [])
 
+  def test_generated_dependency_manifests_are_not_treated_as_prose(self) -> None:
+    self.assertEqual(CHECK.scan_file(ROOT / "flatpak/tauri-cli-cargo-sources.json"), [])
+
 
 if __name__ == "__main__":
   unittest.main()

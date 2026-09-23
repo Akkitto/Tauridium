@@ -30,6 +30,19 @@ MALICIOUS_NAMES: frozenset[str] = frozenset(
 )
 
 DEPENDENCY_TABLES = {"dependencies", "dev-dependencies", "build-dependencies"}
+GENERATED_REPOSITORY_DIRS = frozenset(
+  {
+    ".flatpak-builder",
+    ".git",
+    "__pycache__",
+    "build-dir",
+    "dist",
+    "node_modules",
+    "release",
+    "repo",
+    "target",
+  }
+)
 
 
 @dataclass(frozen=True)
@@ -139,16 +152,29 @@ def scan_crate_archives(root: Path) -> list[Finding]:
   return findings
 
 
+def iter_repository_files(root: Path):
+  for directory, child_directories, filenames in os.walk(root):
+    child_directories[:] = [
+      name for name in child_directories if name not in GENERATED_REPOSITORY_DIRS
+    ]
+    current = Path(directory)
+    for filename in filenames:
+      yield current / filename
+
+
 def scan_repository(root: Path = ROOT) -> list[Finding]:
   findings: list[Finding] = []
-  for path in sorted(root.rglob("Cargo.lock")):
-    if ".git" not in path.parts:
+  paths = sorted(iter_repository_files(root))
+  for path in paths:
+    if path.name == "Cargo.lock":
       findings.extend(scan_lockfile(path))
-  for filename in ("Cargo.toml", "Cargo.toml.orig"):
-    for path in sorted(root.rglob(filename)):
-      if ".git" not in path.parts:
-        findings.extend(scan_manifest(path))
-  findings.extend(scan_crate_archives(root))
+    elif path.name in {"Cargo.toml", "Cargo.toml.orig"}:
+      findings.extend(scan_manifest(path))
+    elif path.suffix == ".crate":
+      name, version = crate_archive_identity(path)
+      if name:
+        reason = blocked_reason(name, version) or "suspicious deleted crate archive"
+        findings.append(Finding(path, name, version, reason))
   return findings
 
 

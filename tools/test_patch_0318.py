@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import subprocess
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def project_files() -> list[Path]:
+  result = subprocess.run(
+    ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+    cwd=ROOT,
+    capture_output=True,
+    check=True,
+  )
+  return [ROOT / item.decode("utf-8") for item in result.stdout.split(b"\0") if item]
 
 
 class Patch0318Tests(unittest.TestCase):
@@ -71,8 +82,8 @@ class Patch0318Tests(unittest.TestCase):
     self.assertIn('days_in_month(year, month)', body)
 
   def test_local_only_wording_is_absent_from_current_tracked_text(self) -> None:
-    for path in ROOT.rglob('*'):
-      if not path.is_file() or '.git' in path.parts:
+    for path in project_files():
+      if not path.is_file():
         continue
       if path.suffix.lower() not in {'.rs', '.ts', '.svelte', '.py', '.md', '.json', '.toml', '.ps1', ''}:
         continue
