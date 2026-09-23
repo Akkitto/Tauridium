@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 
 // Tauri-recommended Vite setup: fixed port, preserve console output, ignore src-tauri.
@@ -7,6 +7,9 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig({
   plugins: [svelte()],
   clearScreen: false,
+  test: {
+    include: ["src/**/*.test.ts"],
+  },
   server: {
     port: 1420,
     strictPort: true,

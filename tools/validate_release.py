@@ -1578,6 +1578,11 @@ def main() -> int:
     fail("unused tauri.conf.dev.json must not be reintroduced without an explicit --config consumer")
   if (ROOT / "src-tauri/icons/tauridium_custom.svg").exists():
     fail("unused tauridium_custom.svg icon draft must not be reintroduced")
+  vite_config = read("vite.config.ts")
+  if 'import { defineConfig } from "vitest/config";' not in vite_config:
+    fail("Vite config does not load Vitest-aware configuration types")
+  if 'include: ["src/**/*.test.ts"]' not in vite_config:
+    fail("Vitest discovery is not confined to canonical frontend sources")
   readme = read("README.md")
   if "**Vite 6 / Vitest 3** - frontend development/build pipeline and unit tests" not in readme:
     fail("README technology stack does not document the active Vite/Vitest frontend toolchain")
