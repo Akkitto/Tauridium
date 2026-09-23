@@ -35,13 +35,20 @@ fmt:
 fmt-check:
   cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 
+[unix]
+lint:
+  cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
+  cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --no-default-features --features flatpak --locked -- -D warnings
+
+[windows]
 lint:
   cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings
 
 [unix]
 check:
   npm run check
-  cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked
+  cargo check --manifest-path src-tauri/Cargo.toml --all-targets --locked
+  cargo check --manifest-path src-tauri/Cargo.toml --all-targets --no-default-features --features flatpak --locked
   python3 tools/validate_release.py
   python3 tools/scoop.py validate-template
 
@@ -56,7 +63,8 @@ check:
 test:
   python3 -m unittest discover -s tools -p 'test_*.py'
   npm test
-  cargo test --manifest-path src-tauri/Cargo.toml --all-features --locked
+  cargo test --manifest-path src-tauri/Cargo.toml --locked
+  cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --features flatpak --locked
 
 [windows]
 test:
@@ -83,6 +91,12 @@ audit: rust-supply-chain-host
   npm audit --audit-level=high
   cargo audit
 
+[unix]
+doc:
+  cargo doc --manifest-path src-tauri/Cargo.toml --no-deps --locked
+  cargo doc --manifest-path src-tauri/Cargo.toml --no-deps --no-default-features --features flatpak --locked
+
+[windows]
 doc:
   cargo doc --manifest-path src-tauri/Cargo.toml --no-deps --all-features --locked
 

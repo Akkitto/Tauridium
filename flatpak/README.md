@@ -34,6 +34,6 @@ flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
 flatpak info --show-permissions dev.brani.tauridium
 ```
 
-The source pin in `dev.brani.tauridium.yml` must equal the public immutable `v0.8.2`
+The source pin in `dev.brani.tauridium.yml` must equal the public immutable `v0.8.3`
 tag commit. The file intentionally requests no host/home filesystem access and no
 explicit `org.freedesktop.portal.*` bus permissions.

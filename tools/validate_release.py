@@ -234,6 +234,17 @@ def main() -> int:
   ):
     if marker not in justfile:
       fail(f"release workflow is missing non-mutating/locked gate: {marker}")
+  unix_matrix_markers = (
+    "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings",
+    "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --no-default-features --features flatpak --locked -- -D warnings",
+    "cargo check --manifest-path src-tauri/Cargo.toml --all-targets --locked",
+    "cargo check --manifest-path src-tauri/Cargo.toml --all-targets --no-default-features --features flatpak --locked",
+    "cargo test --manifest-path src-tauri/Cargo.toml --locked",
+    "cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --features flatpak --locked",
+  )
+  for marker in unix_matrix_markers:
+    if marker not in justfile:
+      fail(f"Unix native/Flatpak release matrix is missing: {marker}")
   if "release: fmt lint" in justfile:
     fail("release workflow must not mutate Rust source with cargo fmt")
   for marker in (

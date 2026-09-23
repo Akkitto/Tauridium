@@ -36,7 +36,8 @@ class Patch0801Tests(unittest.TestCase):
   def test_windows_check_remains_strict_and_all_features(self) -> None:
     justfile = self.read("justfile")
     strict = "cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked"
-    self.assertGreaterEqual(justfile.count(strict), 2)
+    windows_check = justfile.split("[windows]\ncheck:", 1)[1].split("\n[", 1)[0]
+    self.assertIn(strict, windows_check)
     self.assertNotIn("cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --offline", justfile)
 
   def test_all_feature_lock_graph_is_current(self) -> None:

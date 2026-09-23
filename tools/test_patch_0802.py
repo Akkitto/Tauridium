@@ -13,9 +13,9 @@ class Patch0802Tests(unittest.TestCase):
   def read(self, path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
-  def test_release_identity_is_0802_everywhere(self) -> None:
-    version = "0.8.2"
-    self.assertEqual(json.loads(self.read("package.json"))["version"], version)
+  def test_release_identity_remains_synchronized_after_0802(self) -> None:
+    version = json.loads(self.read("package.json"))["version"]
+    self.assertGreaterEqual(tuple(map(int, version.split("."))), (0, 8, 2))
     self.assertEqual(json.loads(self.read("src-tauri/tauri.conf.json"))["version"], version)
     self.assertIn(f'version = "{version}"', self.read("src-tauri/Cargo.toml"))
     self.assertIn(f'name = "tauridium"\nversion = "{version}"', self.read("src-tauri/Cargo.lock"))
@@ -48,9 +48,6 @@ class Patch0802Tests(unittest.TestCase):
       '<release version="0.8.2" date="2026-09-22">',
       self.read("data/dev.brani.tauridium.metainfo.xml"),
     )
-    manifest = self.read("flatpak/dev.brani.tauridium.yml")
-    self.assertIn("tag: v0.8.2", manifest)
-    self.assertIn("__TAURIDIUM_V082_COMMIT__", manifest)
     justfile = self.read("justfile")
     self.assertIn(
       "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings",

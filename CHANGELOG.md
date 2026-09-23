@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.3] - 2026-09-23
+
+### Fixed
+
+- Fixed Linux `just check` and release gates failing because Cargo all-features builds enabled the mutually exclusive GTK3 and XDG portal file-dialog backends together.
+
+### Release quality
+
+- Split Unix lint, check, test, and documentation gates into locked native and Flatpak feature matrices while preserving strict all-features validation on Windows.
+
 ## [0.8.2] - 2026-09-22
 
 ### Fixed
