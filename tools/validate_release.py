@@ -245,6 +245,8 @@ def main() -> int:
   for marker in unix_matrix_markers:
     if marker not in justfile:
       fail(f"Unix native/Flatpak release matrix is missing: {marker}")
+  if justfile.count("python3 tools/run_preserving_schemas.py cargo") != 4:
+    fail("every Unix Flatpak Cargo gate must preserve canonical generated schemas")
   if "release: fmt lint" in justfile:
     fail("release workflow must not mutate Rust source with cargo fmt")
   for marker in (

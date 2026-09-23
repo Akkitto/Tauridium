@@ -8,7 +8,7 @@
 
 ### Release quality
 
-- Split Unix lint, check, test, and documentation gates into locked native and Flatpak feature matrices while preserving strict all-features validation on Windows.
+- Split Unix lint, check, test, and documentation gates into locked native and Flatpak feature matrices, preserving canonical generated schemas around Flatpak checks while retaining strict all-features validation on Windows.
 
 ## [0.8.2] - 2026-09-22
 
