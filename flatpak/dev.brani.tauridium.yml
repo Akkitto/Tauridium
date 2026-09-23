@@ -59,13 +59,11 @@ modules:
     sources:
       - type: git
         url: https://github.com/Akkitto/Tauridium.git
-        tag: v0.8.3
-        commit: 2ad65ffb0abf921696eec5555cb90b268dacac21
+        tag: v0.8.4
+        commit: __TAURIDIUM_V084_COMMIT__
         dest: source
         x-checker-data:
           type: git
           tag-pattern: ^v([\d.]+)$
-      - type: patch
-        path: fix-v0.8.3-appstream-screenshot.patch
       - cargo-sources.json
       - node-sources.json

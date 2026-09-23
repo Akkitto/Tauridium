@@ -19,11 +19,16 @@
   <url type="vcs-browser">https://github.com/Akkitto/Tauridium</url>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v0.8.3/data/screenshots/tauridium-0.8.0-main.png</image>
+      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v0.8.4/data/screenshots/tauridium-0.8.0-main.png</image>
       <caption>Tauridium sign-in and local accountless start screen</caption>
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.8.4" date="2026-09-23">
+      <description>
+        <p>Upgrades Flatpak packaging to GNOME 51 and keeps generated builder worktrees out of canonical release validation.</p>
+      </description>
+    </release>
     <release version="0.8.3" date="2026-09-23">
       <description>
         <p>Fixes Linux release gates by validating native and Flatpak dialog backends in separate Cargo feature matrices.</p>

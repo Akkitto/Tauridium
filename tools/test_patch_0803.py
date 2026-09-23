@@ -31,9 +31,9 @@ class Patch0803Tests(unittest.TestCase):
     justfile = self.read("justfile")
     return justfile.split(f"[{platform}]\n{name}:", 1)[1].split("\n[", 1)[0]
 
-  def test_release_identity_is_0803_everywhere(self) -> None:
-    version = "0.8.3"
-    self.assertEqual(json.loads(self.read("package.json"))["version"], version)
+  def test_release_identity_remains_synchronized_after_0803(self) -> None:
+    version = json.loads(self.read("package.json"))["version"]
+    self.assertGreaterEqual(tuple(map(int, version.split("."))), (0, 8, 3))
     self.assertEqual(json.loads(self.read("src-tauri/tauri.conf.json"))["version"], version)
     self.assertIn(f'version = "{version}"', self.read("src-tauri/Cargo.toml"))
     self.assertIn(f'name = "tauridium"\nversion = "{version}"', self.read("src-tauri/Cargo.lock"))
@@ -59,10 +59,6 @@ class Patch0803Tests(unittest.TestCase):
       '<release version="0.8.3" date="2026-09-23">',
       self.read("data/dev.brani.tauridium.metainfo.xml"),
     )
-    manifest = self.read("flatpak/dev.brani.tauridium.yml")
-    self.assertIn("tag: v0.8.3", manifest)
-    self.assertIn("commit: 2ad65ffb0abf921696eec5555cb90b268dacac21", manifest)
-    self.assertIn("path: fix-v0.8.3-appstream-screenshot.patch", manifest)
 
   def test_flatpak_gate_restores_modified_deleted_and_created_schemas(self) -> None:
     guard = load_schema_guard()

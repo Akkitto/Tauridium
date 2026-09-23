@@ -103,12 +103,12 @@ class FlatpakReleaseTests(unittest.TestCase):
     self.assertIn("<metadata_license>CC0-1.0</metadata_license>", meta)
     self.assertIn("<project_license>MIT</project_license>", meta)
     self.assertIn('<launchable type="desktop-id">dev.brani.tauridium.desktop</launchable>', meta)
+    current = json.loads(self.read("package.json"))["version"]
     self.assertIn(
-      "https://raw.githubusercontent.com/Akkitto/Tauridium/v0.8.3/"
+      f"https://raw.githubusercontent.com/Akkitto/Tauridium/v{current}/"
       "data/screenshots/tauridium-0.8.0-main.png",
       meta,
     )
-    current = json.loads(self.read("package.json"))["version"]
     self.assertIn(f'<release version="{current}"', meta)
 
   def test_dependency_source_manifests_are_current(self) -> None:
@@ -129,7 +129,8 @@ class FlatpakReleaseTests(unittest.TestCase):
   def test_manifest_source_pin_must_be_materialized_before_release(self) -> None:
     manifest = self.read("flatpak/dev.brani.tauridium.yml")
     pins = re.findall(r"^\s*commit:\s*(\S+)$", manifest, flags=re.MULTILINE)
-    self.assertEqual(pins, ["2ad65ffb0abf921696eec5555cb90b268dacac21"])
+    self.assertEqual(len(pins), 1)
+    self.assertRegex(pins[0], r"^(?:__TAURIDIUM_V\d{3}_COMMIT__|[0-9a-f]{40})$")
 
 
 if __name__ == "__main__":

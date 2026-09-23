@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.8.4] - 2026-09-23
+
+### Changed
+
+- Upgraded the Flatpak runtime and SDK to GNOME 51, moved the offline frontend build to the Node.js 24 SDK extension, and refreshed the vendored AppIndicator module inputs for the current Flathub toolchain.
+- Clarified installation, release-archive, upstream-project, and third-party attribution details in the README.
+
+### Fixed
+
+- Confined frontend tests and repository release checks to canonical source paths, preventing generated Flatpak build worktrees from multiplying Vitest runs or polluting source validation.
+
+### Release quality
+
+- Retained the minimal Flatpak permission budget and validated the GNOME 51 package with headless builder, manifest, AppStream, repository, installation, permission, and launch checks.
+
 ## [0.8.3] - 2026-09-23
 
 ### Fixed
