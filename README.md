@@ -12,7 +12,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-informational?style=plastic" alt="License: MIT" /></a>
 </p>
 
-Forget Franz, Ferdi, Ferdium and the rest. This is THE absolute best web app hub of all. I swear. Performant, beautiful and it just works(TM).
+Forget Franz, Ferdi, Ferdium and the rest. This is THE absolute best web app hub of all. I swear. Performant, beautiful and it just works™.
 
 Speedy Gonzales level desktop client for [Ferdium](https://ferdium.org) style web app service-workspace management & usage, built with **Tauri v2** (Rust + native WebView) instead of Electron. Use a Ferdium server for synchronised data, or run accountless with services and workspaces stored locally.
 
@@ -43,14 +43,14 @@ To my knowledge, this is, as of now, the only fully open source, fully free of c
 
 ### Windows
 
-Tauridium is prepared for official distribution through the [Scoop Extras](https://github.com/ScoopInstaller/Extras) bucket. Once the upstream manifest has been accepted:
+Tauridium is prepared for official distribution through the [Scoop Extras](https://github.com/ScoopInstaller/Extras) bucket. As of now, you get Tauridium by using the author's bucket, as follows.
 
 ```powershell
-scoop bucket add extras
+scoop bucket add master https://github.com/Akkitto/scoop-bucket-master
 scoop install tauridium
 ```
 
-Until then, download the native installer or x64/ARM64 portable ZIP from [GitHub Releases](https://github.com/Akkitto/Tauridium/releases/latest). Windows builds require the Microsoft Edge WebView2 Runtime, which is normally provided by supported Windows 10 releases and Windows 11.
+Alternatively, download the native installer or x64/ARM64 portable ZIP from [GitHub Releases](https://github.com/Akkitto/Tauridium/releases/latest). Windows builds require the Microsoft Edge WebView2 Runtime, which is normally provided by supported Windows 10 releases and Windows 11.
 
 See [Installation](docs/installation.md) for package details, persistence behavior and release integrity, and [Scoop packaging](packaging/scoop/README.md) for the upstream submission fixture and validation flow.
 
@@ -125,7 +125,7 @@ Version tags trigger the release workflow after the repository quality gates pas
 
 ## Licence
 
-Copyright (c) 2026 [Daniel Braniewski](https://brani.dev)
+Copyright © 2026  [Daniel Braniewski](https://brani.dev/)
 
 Tauridium is free software released under the [MIT License](LICENSE). You may use, copy,
 modify, merge, publish, distribute, sublicense, and/or sell copies subject to the complete
