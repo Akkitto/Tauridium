@@ -261,8 +261,10 @@ def main() -> int:
   package_main = package_release.split("def main() -> int:", 1)[-1]
   if package_main.index("require_pinned_rustfmt_clean()") > package_main.index("context = source_context(release_version)"):
     fail("release packaging validates source context before enforcing pinned rustfmt")
-  if "git status" not in check_clean or "--porcelain" not in check_clean:
+  if 'command.extend(["status", "--porcelain", "--untracked-files=all"])' not in check_clean:
     fail("release clean-worktree checker is incomplete")
+  if 'command.extend(["-c", "core.filemode=false"])' not in check_clean:
+    fail("release clean-worktree checker does not handle Windows file-mode limitations")
   for test_marker in (
     "test_release_uses_non_mutating_format_check_and_clean_gates",
     "test_production_runtime_uses_tauri_cli_and_raw_release_is_guarded",
@@ -344,11 +346,11 @@ def main() -> int:
 
   for package_marker in (
     'SOURCE_MANIFEST_NAME = ".tauridium-source-manifest.json"',
-    '["git", "rev-parse", "--show-toplevel"]',
+    'git_command("rev-parse", "--show-toplevel")',
     "return load_source_manifest(release_version)",
     "source-manifest checksum mismatch",
     "context.manifest_bytes",
-    '["git", "ls-files", "--stage", "-z"]',
+    'git_command("ls-files", "--stage", "-z")',
     'def git_metadata_files()',
     'prefix + ".git/" + archive_path',
     'r"(?m)^(\\s*filemode\\s*=\\s*).*$"',

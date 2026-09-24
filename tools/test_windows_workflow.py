@@ -91,6 +91,10 @@ class WindowsBootstrapTests(unittest.TestCase):
     self.assertLess(refresh, node)
     self.assertIn('$DefaultScoopShims = Join-Path $HOME "scoop\\shims"', self.script)
 
+  def test_bootstrap_normalizes_filemode_for_cross_platform_git_checkouts(self) -> None:
+    self.assertIn('git.exe -C $Root config --local core.filemode false', self.script)
+    self.assertIn('+ Git working-tree file-mode tracking: disabled on Windows', self.script)
+
   def test_bootstrap_prefers_scoop_then_falls_back_to_winget(self) -> None:
     package_pairs = (
       ('+ scoop install nodejs-lts', '+ winget.exe install OpenJS.NodeJS.LTS (fallback)'),

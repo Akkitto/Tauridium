@@ -75,6 +75,16 @@ class PackageReleaseTests(unittest.TestCase):
     (self.root / PACKAGE.SOURCE_MANIFEST_NAME).write_bytes(PACKAGE.manifest_bytes(manifest))
     return manifest
 
+  def test_windows_git_commands_ignore_unsupported_worktree_file_modes(self) -> None:
+    self.assertEqual(
+      PACKAGE.git_command("status", "--porcelain", platform_name="nt"),
+      ["git", "-c", "core.filemode=false", "status", "--porcelain"],
+    )
+    self.assertEqual(
+      PACKAGE.git_command("status", "--porcelain", platform_name="posix"),
+      ["git", "status", "--porcelain"],
+    )
+
   def test_extracted_source_uses_manifest_without_git(self) -> None:
     self.write_manifest()
 

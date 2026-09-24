@@ -22,6 +22,16 @@ def load_release_validator():
   return module
 
 
+def load_clean_checker():
+  path = ROOT / "tools/check_clean.py"
+  spec = importlib.util.spec_from_file_location("tauridium_check_clean", path)
+  if spec is None or spec.loader is None:
+    raise RuntimeError("unable to load clean-worktree checker")
+  module = importlib.util.module_from_spec(spec)
+  spec.loader.exec_module(module)
+  return module
+
+
 class ReleaseWorkflowTests(unittest.TestCase):
   def test_generate_handler_parser_keeps_commands_after_cfg_attribute(self) -> None:
     validator = load_release_validator()
@@ -307,6 +317,25 @@ class ReleaseWorkflowTests(unittest.TestCase):
       )
       self.assertNotEqual(dirty.returncode, 0)
       self.assertIn("tracked.txt", dirty.stderr + dirty.stdout)
+
+  def test_windows_clean_checker_ignores_unsupported_worktree_file_modes(self) -> None:
+    checker = load_clean_checker()
+
+    self.assertEqual(
+      checker.git_status_command("nt"),
+      [
+        "git",
+        "-c",
+        "core.filemode=false",
+        "status",
+        "--porcelain",
+        "--untracked-files=all",
+      ],
+    )
+    self.assertEqual(
+      checker.git_status_command("posix"),
+      ["git", "status", "--porcelain", "--untracked-files=all"],
+    )
 
 
 if __name__ == "__main__":

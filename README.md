@@ -127,6 +127,10 @@ creating release ZIPs. At the exact version tag it also creates the source, runt
 documentation ZIPs. The lower-level `just package` command remains tag-only so immutable
 artifacts cannot accidentally be produced from an untagged commit.
 
+When a full-Git checkpoint is moved from Linux to Windows, `just init` normalizes the
+checkout's local Git file-mode setting so Windows does not report unchanged executable
+scripts as modified.
+
 Version tags trigger the release workflow after the repository quality gates pass.
 
 ## Licence

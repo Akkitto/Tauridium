@@ -3,15 +3,28 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def git_status_command(platform_name: str | None = None) -> list[str]:
+  """Build a clean-tree query that respects each platform's file capabilities."""
+  platform = os.name if platform_name is None else platform_name
+  command = ["git"]
+  if platform == "nt":
+    # Full-Git checkpoints created on Unix can carry core.filemode=true into
+    # Git for Windows, whose working tree cannot represent Unix execute bits.
+    command.extend(["-c", "core.filemode=false"])
+  command.extend(["status", "--porcelain", "--untracked-files=all"])
+  return command
+
+
 def main() -> int:
   result = subprocess.run(
-    ["git", "status", "--porcelain", "--untracked-files=all"],
+    git_status_command(),
     cwd=ROOT,
     text=True,
     capture_output=True,

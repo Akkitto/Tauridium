@@ -49,6 +49,16 @@ def version() -> str:
   return json.loads((ROOT / "src-tauri/tauri.conf.json").read_text(encoding="utf-8"))["version"]
 
 
+def git_command(*args: str, platform_name: str | None = None) -> list[str]:
+  """Build a Git command without Unix file-mode false positives on Windows."""
+  platform = os.name if platform_name is None else platform_name
+  command = ["git"]
+  if platform == "nt":
+    command.extend(["-c", "core.filemode=false"])
+  command.extend(args)
+  return command
+
+
 def require_pinned_rustfmt_clean() -> None:
   toolchain = (ROOT / "rust-toolchain.toml").read_text(encoding="utf-8")
   if 'channel = "1.97.1"' not in toolchain or '"rustfmt"' not in toolchain:
@@ -99,7 +109,7 @@ def require_rust_supply_chain_clean() -> None:
 
 def git_repository_root() -> Path | None:
   result = subprocess.run(
-    ["git", "rev-parse", "--show-toplevel"],
+    git_command("rev-parse", "--show-toplevel"),
     cwd=ROOT,
     text=True,
     capture_output=True,
@@ -116,7 +126,7 @@ def git_repository_root() -> Path | None:
 
 def git_output(*args: str) -> str:
   return subprocess.check_output(
-    ["git", *args],
+    git_command(*args),
     cwd=ROOT,
     text=True,
     stderr=subprocess.PIPE,
@@ -182,7 +192,7 @@ def tracked_entries() -> tuple[SourceEntry, ...]:
   way Unix does. Reading the index mode makes source ZIP permissions identical
   whether a release is packaged on Linux, macOS, or Windows.
   """
-  raw = subprocess.check_output(["git", "ls-files", "--stage", "-z"], cwd=ROOT)
+  raw = subprocess.check_output(git_command("ls-files", "--stage", "-z"), cwd=ROOT)
   entries: list[SourceEntry] = []
   for item in raw.split(b"\0"):
     if not item:

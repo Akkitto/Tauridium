@@ -655,6 +655,25 @@ try {
     }
     Write-Host "+ Git: available"
 
+    # Full-Git checkpoints can be created on Linux and resumed on Windows.
+    # Git for Windows cannot represent Unix execute bits in the working tree,
+    # so a copied core.filemode=true setting creates false dirty-file reports.
+    $SavedErrorActionPreference = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = "SilentlyContinue"
+      $GitRepositoryRoot = & git.exe -C $Root rev-parse --show-toplevel 2>$null
+      $GitRepositoryProbeExitCode = $LASTEXITCODE
+    } finally {
+      $ErrorActionPreference = $SavedErrorActionPreference
+    }
+    if ($GitRepositoryProbeExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace(($GitRepositoryRoot | Out-String))) {
+      & git.exe -C $Root config --local core.filemode false
+      if ($LASTEXITCODE -ne 0) {
+        throw "Git could not disable unsupported working-tree file-mode tracking on Windows"
+      }
+      Write-Host "+ Git working-tree file-mode tracking: disabled on Windows"
+    }
+
     # -------------------------------------------------------------------------
     # Rustup + stable-msvc + rustfmt + clippy
     # -------------------------------------------------------------------------
