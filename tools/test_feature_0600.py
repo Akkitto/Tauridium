@@ -16,7 +16,7 @@ JUST = (ROOT / "justfile").read_text(encoding="utf-8")
 
 class Feature0600Tests(unittest.TestCase):
   def test_release_recipe_does_not_duplicate_release_clean_dependency(self) -> None:
-    self.assertIn("release: release-clean ci\n  just release-clean\n  just package", JUST)
+    self.assertIn("release: release-clean ci\n  just release-clean\n  just package-if-tagged", JUST)
     self.assertNotIn("release: release-clean ci release-clean package", JUST)
 
   def test_sidebar_collapsed_state_is_persisted_and_defaults_expanded(self) -> None:

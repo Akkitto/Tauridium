@@ -104,6 +104,7 @@ class PackageReleaseTests(unittest.TestCase):
     subprocess.run(
       ["git", "config", "user.email", "test@example.invalid"], cwd=self.root, check=True
     )
+    subprocess.run(["git", "config", "commit.gpgsign", "false"], cwd=self.root, check=True)
     executable = self.root / "script.ps1"
     executable.write_text("Write-Host 'ok'\n", encoding="utf-8")
     executable.chmod(0o755)
@@ -126,6 +127,32 @@ class PackageReleaseTests(unittest.TestCase):
 
     with self.assertRaisesRegex(SystemExit, "requires HEAD to carry exact tag v0.2.0"):
       PACKAGE.source_context("0.2.0")
+
+  def test_conditional_packaging_skips_an_untagged_git_checkout(self) -> None:
+    self.init_git_repository()
+    subprocess.run(["git", "tag", "-d", "v0.2.0"], cwd=self.root, check=True, capture_output=True)
+
+    with mock.patch("builtins.print") as output:
+      self.assertFalse(PACKAGE.should_package_release(True, "0.2.0"))
+
+    output.assert_called_once()
+    self.assertIn("HEAD is not the exact version tag v0.2.0", output.call_args.args[0])
+
+  def test_conditional_packaging_continues_at_the_exact_version_tag(self) -> None:
+    self.init_git_repository()
+
+    self.assertTrue(PACKAGE.should_package_release(True, "0.2.0"))
+
+  def test_direct_packaging_remains_strictly_enabled_when_untagged(self) -> None:
+    self.init_git_repository()
+    subprocess.run(["git", "tag", "-d", "v0.2.0"], cwd=self.root, check=True, capture_output=True)
+
+    self.assertTrue(PACKAGE.should_package_release(False, "0.2.0"))
+
+  def test_conditional_packaging_validates_extracted_release_sources(self) -> None:
+    self.write_manifest()
+
+    self.assertTrue(PACKAGE.should_package_release(True, "0.2.0"))
 
   def test_manifest_source_requires_exact_release_tag(self) -> None:
     manifest = self.write_manifest()
@@ -272,6 +299,7 @@ class PackageReleaseTests(unittest.TestCase):
     subprocess.run(["git", "init", "-q"], cwd=self.root, check=True)
     subprocess.run(["git", "config", "user.name", "Test"], cwd=self.root, check=True)
     subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=self.root, check=True)
+    subprocess.run(["git", "config", "commit.gpgsign", "false"], cwd=self.root, check=True)
     script = self.root / "script.ps1"
     script.write_text("Write-Host 'ok'\n", encoding="utf-8")
     subprocess.run(["git", "add", "."], cwd=self.root, check=True)

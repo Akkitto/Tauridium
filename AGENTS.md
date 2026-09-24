@@ -83,6 +83,10 @@ Keep `CHANGELOG.md` concise and English, synchronize versions with
 `node tools/sync_version.mjs X.Y.Z`, commit, annotate `vX.Y.Z`, and package only from the
 clean tagged release commit.
 
+`just release` is the canonical local release-candidate command: it runs all quality gates
+and the native production build from any clean commit, and creates release ZIPs only when
+HEAD carries the exact version tag. `just package` is the strict tag-only artifact command.
+
 A complete release normally delivers three artifacts in the same handoff:
 
 - `tauridium-X.Y.Z-src.zip`: tracked source + real `.git` history + generated SHA-256

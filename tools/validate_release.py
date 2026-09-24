@@ -223,7 +223,9 @@ def main() -> int:
 
   for marker in (
     "fmt-check:\n  cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
-    "release: release-clean ci\n  just release-clean\n  just package",
+    "release: release-clean ci\n  just release-clean\n  just package-if-tagged",
+    "python3 tools/package_release.py --if-tagged",
+    "tools/python.ps1 tools/package_release.py --if-tagged",
     "tools/python.ps1 tools/check_clean.py",
     "--all-targets --all-features --locked -- -D warnings",
     "--all-targets --all-features --locked",

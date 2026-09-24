@@ -337,6 +337,28 @@ def source_context(release_version: str) -> SourceContext:
   return load_source_manifest(release_version)
 
 
+def should_package_release(if_tagged: bool, release_version: str) -> bool:
+  """Return whether a conditional packaging invocation should create artifacts.
+
+  Extracted release sources are anchored by their source manifest rather than a
+  live Git tag, so they must continue into the normal manifest validation path.
+  Direct packaging remains strict because only ``--if-tagged`` enables the
+  branch-friendly skip used by the top-level ``just release`` workflow.
+  """
+  if not if_tagged or git_repository_root() is None:
+    return True
+  expected_tag = f"v{release_version}"
+  if exact_release_tag(release_version) == expected_tag:
+    return True
+  print(
+    "Release artifact packaging skipped: "
+    f"HEAD is not the exact version tag {expected_tag}. "
+    "Validation and the production build completed successfully; "
+    "tag the release commit before creating immutable release ZIPs."
+  )
+  return False
+
+
 def tree_entries(root: Path) -> tuple[tuple[tuple[Path, str], ...], tuple[tuple[Path, str], ...]]:
   """Return directory/file entries with traversal-owned relative archive paths.
 
@@ -628,12 +650,19 @@ def main() -> int:
     action="store_true",
     help="package an explicitly source-only run-build-handoff instead of a native runtime",
   )
+  parser.add_argument(
+    "--if-tagged",
+    action="store_true",
+    help="skip artifact packaging successfully when a Git checkout is not at its exact version tag",
+  )
   parser.add_argument("--output-dir", type=Path, default=ROOT / "release")
   args = parser.parse_args()
 
   require_pinned_rustfmt_clean()
   require_rust_supply_chain_clean()
   release_version = version()
+  if not should_package_release(args.if_tagged, release_version):
+    return 0
   context = source_context(release_version)
   output_dir = args.output_dir.resolve()
   output_dir.mkdir(parents=True, exist_ok=True)

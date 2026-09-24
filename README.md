@@ -121,6 +121,12 @@ Temporary service-specific compatibility workarounds are documented in [Compatib
 
 See [`CHANGELOG.md`](CHANGELOG.md) for release history and [GitHub Releases](https://github.com/Akkitto/Tauridium/releases) for packaged releases.
 
+Run `just release` from a clean worktree to execute every quality gate and the native
+production build. On a development or post-release commit it finishes successfully without
+creating release ZIPs. At the exact version tag it also creates the source, runtime, and
+documentation ZIPs. The lower-level `just package` command remains tag-only so immutable
+artifacts cannot accidentally be produced from an untagged commit.
+
 Version tags trigger the release workflow after the repository quality gates pass.
 
 ## Licence

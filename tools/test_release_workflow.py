@@ -50,8 +50,10 @@ class ReleaseWorkflowTests(unittest.TestCase):
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")
     self.assertIn("quality: rust-supply-chain fmt-check lint check test", justfile)
     self.assertIn("ci: quality build", justfile)
-    self.assertIn("release: release-clean ci\n  just release-clean\n  just package", justfile)
+    self.assertIn("release: release-clean ci\n  just release-clean\n  just package-if-tagged", justfile)
     self.assertNotIn("release: release-clean ci release-clean package", justfile)
+    self.assertIn("python3 tools/package_release.py --if-tagged", justfile)
+    self.assertIn("tools/python.ps1 tools/package_release.py --if-tagged", justfile)
     self.assertIn(
       "fmt-check:\n  cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
       justfile,
@@ -289,6 +291,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
       subprocess.run(
         ["git", "config", "user.email", "test@example.invalid"], cwd=root, check=True
       )
+      subprocess.run(["git", "config", "commit.gpgsign", "false"], cwd=root, check=True)
       subprocess.run(["git", "add", "."], cwd=root, check=True)
       subprocess.run(["git", "commit", "-q", "-m", "Proj: Test"], cwd=root, check=True)
 

@@ -129,12 +129,20 @@ package:
   python3 tools/package_release.py
 
 [unix]
+package-if-tagged:
+  python3 tools/package_release.py --if-tagged
+
+[unix]
 package-handoff:
   python3 tools/package_release.py --build-handoff
 
 [windows]
 package:
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/package_release.py
+
+[windows]
+package-if-tagged:
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/package_release.py --if-tagged
 
 [windows]
 package-handoff:
@@ -146,7 +154,7 @@ ci: quality build
 
 release: release-clean ci
   just release-clean
-  just package
+  just package-if-tagged
 
 [unix]
 package-native target:
