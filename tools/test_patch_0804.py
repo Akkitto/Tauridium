@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 import unittest
 from pathlib import Path
 
@@ -25,8 +24,8 @@ class Patch0804Tests(unittest.TestCase):
     for path in (".flatpak-builder/", "build-dir/", "repo/"):
       self.assertIn(path, ignore)
 
-  def test_release_identity_is_0804_everywhere(self) -> None:
-    version = "0.8.4"
+  def test_release_identity_remains_synchronized(self) -> None:
+    version = json.loads(self.read("package.json"))["version"]
     self.assertEqual(json.loads(self.read("package.json"))["version"], version)
     self.assertEqual(json.loads(self.read("src-tauri/tauri.conf.json"))["version"], version)
     self.assertIn(f'version = "{version}"', self.read("src-tauri/Cargo.toml"))
@@ -34,17 +33,12 @@ class Patch0804Tests(unittest.TestCase):
     self.assertIn(f'INIT_VERSION = "{version}"', self.read("tools/init.py"))
     self.assertIn(f'$InitVersion = "{version}"', self.read("tools/init.ps1"))
 
-  def test_patch_release_metadata_is_present(self) -> None:
+  def test_0804_release_metadata_is_preserved(self) -> None:
     self.assertIn("## [0.8.4] - 2026-09-23", self.read("CHANGELOG.md"))
     self.assertIn(
       '<release version="0.8.4" date="2026-09-23">',
       self.read("data/dev.brani.tauridium.metainfo.xml"),
     )
-    manifest = self.read("flatpak/dev.brani.tauridium.yml")
-    self.assertIn("tag: v0.8.4", manifest)
-    pins = re.findall(r"^\s*commit:\s*(\S+)$", manifest, flags=re.MULTILINE)
-    self.assertEqual(len(pins), 1)
-    self.assertRegex(pins[0], r"^(?:__TAURIDIUM_V084_COMMIT__|[0-9a-f]{40})$")
 
 
 if __name__ == "__main__":

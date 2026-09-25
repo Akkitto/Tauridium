@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.5] - 2026-09-25
+
+### Added
+
+- Added persistent per-service page zoom from 50% to 200%, with browser-style Zoom In, Zoom Out, and Reset Zoom keybindings.
+- Added zoom controls to service settings, both service context-menu styles, and the native View menu, with immediate saved-state feedback.
+
+### Release quality
+
+- Kept remote service webviews outside Tauridium IPC permissions by routing zoom shortcuts through the existing nonce-authenticated bridge and applying zoom through the native backend.
+- Added regression coverage for zoom stepping, bounds validation, persistence, restart/preload restoration, duplication, deletion cleanup, menus, shortcuts, and rollback behavior.
+
 ## [0.8.4] - 2026-09-23
 
 ### Changed

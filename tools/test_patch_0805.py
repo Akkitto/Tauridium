@@ -2,6 +2,8 @@
 """Regression coverage for Tauridium 0.8.5 per-service page zoom."""
 
 from pathlib import Path
+import json
+import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,6 +16,30 @@ README = (ROOT / "README.md").read_text(encoding="utf-8")
 
 
 class ServiceZoomPatchTests(unittest.TestCase):
+  def read(self, path: str) -> str:
+    return (ROOT / path).read_text(encoding="utf-8")
+
+  def test_release_identity_is_0805_everywhere(self) -> None:
+    version = "0.8.5"
+    self.assertEqual(json.loads(self.read("package.json"))["version"], version)
+    self.assertEqual(json.loads(self.read("src-tauri/tauri.conf.json"))["version"], version)
+    self.assertIn(f'version = "{version}"', self.read("src-tauri/Cargo.toml"))
+    self.assertIn(f'name = "tauridium"\nversion = "{version}"', self.read("src-tauri/Cargo.lock"))
+    self.assertIn(f'INIT_VERSION = "{version}"', self.read("tools/init.py"))
+    self.assertIn(f'$InitVersion = "{version}"', self.read("tools/init.ps1"))
+
+  def test_patch_release_metadata_is_present(self) -> None:
+    self.assertIn("## [0.8.5] - 2026-09-25", self.read("CHANGELOG.md"))
+    self.assertIn(
+      '<release version="0.8.5" date="2026-09-25">',
+      self.read("data/dev.brani.tauridium.metainfo.xml"),
+    )
+    manifest = self.read("flatpak/dev.brani.tauridium.yml")
+    self.assertIn("tag: v0.8.5", manifest)
+    pins = re.findall(r"^\s*commit:\s*(\S+)$", manifest, flags=re.MULTILINE)
+    self.assertEqual(len(pins), 1)
+    self.assertRegex(pins[0], r"^(?:__TAURIDIUM_V085_COMMIT__|[0-9a-f]{40})$")
+
   def test_zoom_uses_bounded_browser_style_levels_and_shortcuts(self) -> None:
     self.assertIn(
       "SERVICE_ZOOM_LEVELS = [50, 67, 80, 90, 100, 110, 125, 150, 175, 200]",
