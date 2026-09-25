@@ -192,6 +192,10 @@ export function toggleDeveloperTools(): Promise<void> {
   return invoke("toggle_devtools_command");
 }
 
+export function setServiceZoom(serviceId: string, zoomPercent: number): Promise<AppSettings> {
+  return invoke("set_service_zoom", { serviceId, zoomPercent });
+}
+
 // Push service notification/mute/badge settings respected by the Rust poller.
 export function setServiceFlags(s: Service): Promise<void> {
   return invoke("set_service_flags", {
@@ -357,6 +361,7 @@ export interface AppSettings {
   customUrlTemplatesEnabled: boolean;
   serviceCustomUrlTemplates: Record<string, ServiceCustomUrlTemplate>;
   serviceIconInversions: Record<string, boolean>;
+  serviceZoomLevels: Record<string, number>;
   serviceOrder: string[];
   workspaceOrder: string[];
   workspaceQuickSwitchOrder: "custom" | "customReverse" | "alphabetical" | "alphabeticalReverse" | "recent" | "recentReverse";

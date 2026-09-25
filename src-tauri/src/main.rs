@@ -433,6 +433,21 @@ fn build_native_application_menu(
         true,
         shortcut("reloadApp"),
     )?;
+    let zoom_in = MenuItem::with_id(app, "shortcut:zoomIn", "Zoom In", true, shortcut("zoomIn"))?;
+    let zoom_out = MenuItem::with_id(
+        app,
+        "shortcut:zoomOut",
+        "Zoom Out",
+        true,
+        shortcut("zoomOut"),
+    )?;
+    let reset_zoom = MenuItem::with_id(
+        app,
+        "shortcut:resetZoom",
+        "Actual Size",
+        true,
+        shortcut("resetZoom"),
+    )?;
     let toggle_sidebar = MenuItem::with_id(
         app,
         "toggle-sidebar",
@@ -454,6 +469,10 @@ fn build_native_application_menu(
         &[
             &reload_svc,
             &reload_app_item,
+            &PredefinedMenuItem::separator(app)?,
+            &zoom_in,
+            &zoom_out,
+            &reset_zoom,
             &PredefinedMenuItem::separator(app)?,
             &toggle_sidebar,
             &devtools,
@@ -1388,7 +1407,7 @@ fn service_toast_overlay_script(message: &str, duration_ms: u64) -> Result<Strin
     ))
 }
 
-const SHORTCUT_ACTIONS: [&str; 13] = [
+const SHORTCUT_ACTIONS: [&str; 16] = [
     "quickWorkspaceSwitch",
     "quickServiceSwitch",
     "openSettings",
@@ -1401,6 +1420,9 @@ const SHORTCUT_ACTIONS: [&str; 13] = [
     "previousWorkspace",
     "reloadService",
     "reloadApp",
+    "zoomIn",
+    "zoomOut",
+    "resetZoom",
     "toggleDevtools",
 ];
 
@@ -2252,8 +2274,18 @@ async fn create_service_webview(
     if let Some(o) = dark {
         builder = builder.initialization_script(dark_reader_init(o));
     }
-    win.add_child(builder, pos, size)
+    let webview = win
+        .add_child(builder, pos, size)
         .map_err(|e| format!("Failed to create service webview: {e}"))?;
+    let zoom_percent = effective_service_zoom_percent(&state.settings.lock().unwrap(), service_id);
+    if zoom_percent != SERVICE_ZOOM_DEFAULT_PERCENT {
+        if let Err(error) = webview.set_zoom(f64::from(zoom_percent) / 100.0) {
+            let _ = webview.close();
+            return Err(format!(
+                "Unable to apply the saved {zoom_percent}% zoom to service {service_id}: {error}"
+            ));
+        }
+    }
     state.created.lock().unwrap().insert(service_id.to_string());
     Ok(())
 }
@@ -3339,6 +3371,45 @@ fn app_settings_path(app: &AppHandle) -> Option<PathBuf> {
         .map(|d| d.join("app_settings.json"))
 }
 
+const SERVICE_ZOOM_MIN_PERCENT: u16 = 50;
+const SERVICE_ZOOM_DEFAULT_PERCENT: u16 = 100;
+const SERVICE_ZOOM_MAX_PERCENT: u16 = 200;
+
+fn valid_service_setting_id(service_id: &str) -> bool {
+    !service_id.trim().is_empty()
+        && service_id.len() <= 256
+        && !service_id.chars().any(char::is_control)
+}
+
+fn effective_service_zoom_percent(settings: &Value, service_id: &str) -> u16 {
+    settings
+        .get("serviceZoomLevels")
+        .and_then(Value::as_object)
+        .and_then(|levels| levels.get(service_id))
+        .and_then(Value::as_u64)
+        .and_then(|percent| u16::try_from(percent).ok())
+        .filter(|percent| (SERVICE_ZOOM_MIN_PERCENT..=SERVICE_ZOOM_MAX_PERCENT).contains(percent))
+        .unwrap_or(SERVICE_ZOOM_DEFAULT_PERCENT)
+}
+
+fn validate_service_zoom_levels(value: Option<&Value>) -> Result<(), String> {
+    let levels = value
+        .and_then(Value::as_object)
+        .ok_or_else(|| "App setting serviceZoomLevels must be an object".to_string())?;
+    if levels.len() > 10_000
+        || levels.iter().any(|(service_id, percent)| {
+            !valid_service_setting_id(service_id)
+                || !percent.as_u64().is_some_and(|percent| {
+                    (u64::from(SERVICE_ZOOM_MIN_PERCENT)..=u64::from(SERVICE_ZOOM_MAX_PERCENT))
+                        .contains(&percent)
+                })
+        })
+    {
+        return Err("App setting serviceZoomLevels is invalid".into());
+    }
+    Ok(())
+}
+
 fn default_app_settings_value() -> Value {
     // Keep the defaults as direct map inserts rather than one large `json!` invocation.
     // `json!` is recursive for every object entry and eventually exceeds rustc's default
@@ -3394,6 +3465,10 @@ fn default_app_settings_value() -> Value {
         "serviceIconInversions".into(),
         Value::Object(serde_json::Map::new()),
     );
+    settings.insert(
+        "serviceZoomLevels".into(),
+        Value::Object(serde_json::Map::new()),
+    );
     settings.insert("serviceOrder".into(), Value::Array(Vec::new()));
     settings.insert("workspaceOrder".into(), Value::Array(Vec::new()));
     settings.insert("workspaceQuickSwitchOrder".into(), "custom".into());
@@ -3431,6 +3506,9 @@ fn default_app_settings_value() -> Value {
     keybindings.insert("previousWorkspace".into(), "Ctrl+Alt+ArrowUp".into());
     keybindings.insert("reloadService".into(), "Ctrl+R".into());
     keybindings.insert("reloadApp".into(), "Ctrl+Shift+R".into());
+    keybindings.insert("zoomIn".into(), "Ctrl+Shift+=".into());
+    keybindings.insert("zoomOut".into(), "Ctrl+-".into());
+    keybindings.insert("resetZoom".into(), "Ctrl+0".into());
     keybindings.insert("toggleDevtools".into(), "Ctrl+Alt+I".into());
     settings.insert("keybindings".into(), Value::Object(keybindings));
     settings.insert("sandboxes".into(), Value::Array(Vec::new()));
@@ -3863,6 +3941,7 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
     {
         return Err("App setting serviceIconInversions is invalid".into());
     }
+    validate_service_zoom_levels(object.get("serviceZoomLevels"))?;
     validate_keybindings(object.get("keybindings"))?;
     validate_sandboxes(object.get("sandboxes"), object.get("serviceSandboxes"))?;
     let backup_retention = object
@@ -4044,6 +4123,89 @@ fn persist_app_settings(app: &AppHandle, state: &AppState, settings: &Value) -> 
 #[tauri::command]
 fn get_app_settings(app: AppHandle) -> Value {
     effective_app_settings_value(&app)
+}
+
+#[tauri::command]
+fn set_service_zoom(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    service_id: String,
+    zoom_percent: u16,
+) -> Result<Value, String> {
+    if !valid_service_setting_id(&service_id) {
+        return Err("Service id for page zoom is invalid".into());
+    }
+    if !(SERVICE_ZOOM_MIN_PERCENT..=SERVICE_ZOOM_MAX_PERCENT).contains(&zoom_percent) {
+        return Err(format!(
+            "Service page zoom must be between {SERVICE_ZOOM_MIN_PERCENT}% and {SERVICE_ZOOM_MAX_PERCENT}%"
+        ));
+    }
+
+    let _settings_write = state.settings_write.lock().unwrap();
+    let previous = read_app_settings_value(&app);
+    let previous_percent = effective_service_zoom_percent(&previous, &service_id);
+    let operation = (|| -> Result<Value, String> {
+        let mut value = previous.clone();
+        let levels = value
+            .get_mut("serviceZoomLevels")
+            .and_then(Value::as_object_mut)
+            .ok_or_else(|| "Internal service page zoom settings are invalid".to_string())?;
+        if zoom_percent == SERVICE_ZOOM_DEFAULT_PERCENT {
+            levels.remove(&service_id);
+        } else {
+            levels.insert(service_id.clone(), Value::from(zoom_percent));
+        }
+        validate_app_settings_value(&value)?;
+
+        let webview = app.get_webview(&format!("svc-{service_id}"));
+        if let Some(webview) = &webview {
+            webview
+                .set_zoom(f64::from(zoom_percent) / 100.0)
+                .map_err(|error| format!("Unable to apply service page zoom: {error}"))?;
+        }
+        if let Err(error) = persist_app_settings(&app, &state, &value) {
+            if let Some(webview) = &webview {
+                if let Err(rollback_error) = webview.set_zoom(f64::from(previous_percent) / 100.0) {
+                    return Err(format!(
+                        "{error}; additionally unable to restore the previous service page zoom: {rollback_error}"
+                    ));
+                }
+            }
+            return Err(error);
+        }
+        Ok(value)
+    })();
+
+    match operation {
+        Ok(value) => {
+            audit::best_effort(
+                &app,
+                "info",
+                "settings",
+                "service-zoom",
+                "success",
+                format!("Set service page zoom to {zoom_percent}%"),
+                serde_json::json!({
+                    "serviceId": service_id,
+                    "before": previous_percent,
+                    "after": zoom_percent
+                }),
+            );
+            Ok(value)
+        }
+        Err(error) => {
+            audit::best_effort(
+                &app,
+                "error",
+                "settings",
+                "service-zoom",
+                "failure",
+                error.clone(),
+                serde_json::json!({ "serviceId": service_id, "zoomPercent": zoom_percent }),
+            );
+            Err(error)
+        }
+    }
 }
 
 #[tauri::command]
@@ -5355,6 +5517,12 @@ fn main() {
                             let _ = app.emit("shortcut-action", "reloadService".to_string());
                         }
                         "reload-app" => reload_app(app),
+                        "shortcut:zoomIn" | "shortcut:zoomOut" | "shortcut:resetZoom" => {
+                            let _ = app.emit(
+                                "shortcut-action",
+                                id.trim_start_matches("shortcut:").to_string(),
+                            );
+                        }
                         _ => {
                             if let Some(action) = id.strip_prefix("shortcut:") {
                                 let state = app.state::<AppState>();
@@ -5461,6 +5629,7 @@ fn main() {
             reload_active_service_command,
             reload_app_command,
             show_service_toast_overlay,
+            set_service_zoom,
             toggle_devtools_command
         ])
         .build(tauri::generate_context!())
@@ -5795,6 +5964,40 @@ mod tests {
         );
         assert_eq!(merged["sidebarCollapsed"], json!(false));
         assert!(validate_app_settings_value(&merged).is_ok());
+    }
+
+    #[test]
+    fn patch_0805_service_zoom_defaults_persist_and_validate_safely() {
+        let defaults = merge_app_settings_value(&json!({})).unwrap();
+        assert_eq!(defaults["serviceZoomLevels"], json!({}));
+        assert_eq!(
+            effective_service_zoom_percent(&defaults, "service-a"),
+            SERVICE_ZOOM_DEFAULT_PERCENT
+        );
+
+        let mut settings = defaults.clone();
+        settings["serviceZoomLevels"] = json!({
+            "service-a": 50,
+            "service-b": 125,
+            "service-c": 200
+        });
+        assert!(validate_app_settings_value(&settings).is_ok());
+        assert_eq!(effective_service_zoom_percent(&settings, "service-b"), 125);
+
+        for invalid in [
+            json!({ "service-a": 49 }),
+            json!({ "service-a": 201 }),
+            json!({ "service-a": 110.5 }),
+            json!({ "service-a": "125" }),
+            json!({ "": 125 }),
+        ] {
+            settings["serviceZoomLevels"] = invalid;
+            assert!(validate_app_settings_value(&settings).is_err());
+        }
+
+        assert!(!valid_service_setting_id(""));
+        assert!(!valid_service_setting_id("\n"));
+        assert!(valid_service_setting_id("service-a"));
     }
 
     #[test]

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   DEFAULT_KEYBINDINGS,
+  SERVICE_ZOOM_LEVELS,
   accentFg,
   bindingStrokes,
   duplicateServiceName,
@@ -10,6 +11,7 @@ import {
   iconSrc,
   keyStrokeFromEvent,
   normalizeHexColor,
+  normalizeServiceZoomPercent,
   orderWorkspacesForQuickSwitch,
   resolveStartupWorkspaceId,
   resolveStartupSidebarCollapsed,
@@ -19,6 +21,7 @@ import {
   sameDownloadPreference,
   shortcutConflicts,
   snapIconSize,
+  stepServiceZoomPercent,
 } from "./ui";
 
 describe("sameDownloadPreference", () => {
@@ -65,6 +68,9 @@ describe("0.4.0 appearance and navigation helpers", () => {
     expect(DEFAULT_KEYBINDINGS.quickServiceSwitch).toBe("Ctrl+S");
     expect(DEFAULT_KEYBINDINGS.addWorkspace).toBe("Ctrl+Shift+N");
     expect(DEFAULT_KEYBINDINGS.toggleSidebar).toBe("Ctrl+Shift+B");
+    expect(DEFAULT_KEYBINDINGS.zoomIn).toBe("Ctrl+Shift+=");
+    expect(DEFAULT_KEYBINDINGS.zoomOut).toBe("Ctrl+-");
+    expect(DEFAULT_KEYBINDINGS.resetZoom).toBe("Ctrl+0");
     expect(bindingStrokes("Ctrl+K   Ctrl+S")).toEqual(["Ctrl+K", "Ctrl+S"]);
     const conflicts = shortcutConflicts({ a: "Ctrl+K Ctrl+S", b: "Ctrl+K Ctrl+S", c: "Ctrl+D" });
     expect(conflicts.get("Ctrl+K Ctrl+S")).toEqual(["a", "b"]);
@@ -93,9 +99,25 @@ describe("0.4.0 appearance and navigation helpers", () => {
       keyStrokeFromEvent(event("ArrowUp", "ArrowUp", true, true)),
       keyStrokeFromEvent(event("KeyR", "r")),
       keyStrokeFromEvent(event("KeyR", "R", true, false, true)),
+      keyStrokeFromEvent(event("Equal", "+", true, false, true)),
+      keyStrokeFromEvent(event("Minus", "-")),
+      keyStrokeFromEvent(event("Digit0", "0")),
       keyStrokeFromEvent(event("KeyI", "i", true, true)),
     ];
     expect(strokes).toEqual(Object.values(DEFAULT_KEYBINDINGS));
+  });
+
+  it("steps service zoom through bounded browser-style levels", () => {
+    expect(SERVICE_ZOOM_LEVELS).toEqual([50, 67, 80, 90, 100, 110, 125, 150, 175, 200]);
+    expect(normalizeServiceZoomPercent(Number.NaN)).toBe(100);
+    expect(normalizeServiceZoomPercent(20)).toBe(50);
+    expect(normalizeServiceZoomPercent(220)).toBe(200);
+    expect(stepServiceZoomPercent(100, 1)).toBe(110);
+    expect(stepServiceZoomPercent(110, -1)).toBe(100);
+    expect(stepServiceZoomPercent(113, 1)).toBe(125);
+    expect(stepServiceZoomPercent(113, -1)).toBe(110);
+    expect(stepServiceZoomPercent(200, 1)).toBe(200);
+    expect(stepServiceZoomPercent(50, -1)).toBe(50);
   });
 
   it("pages large lists without mutating them", () => {

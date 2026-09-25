@@ -83,10 +83,28 @@ export const DEFAULT_KEYBINDINGS = {
   previousWorkspace: "Ctrl+Alt+ArrowUp",
   reloadService: "Ctrl+R",
   reloadApp: "Ctrl+Shift+R",
+  zoomIn: "Ctrl+Shift+=",
+  zoomOut: "Ctrl+-",
+  resetZoom: "Ctrl+0",
   toggleDevtools: "Ctrl+Alt+I",
 } as const;
 
 export type KeybindingAction = keyof typeof DEFAULT_KEYBINDINGS;
+
+export const SERVICE_ZOOM_LEVELS = [50, 67, 80, 90, 100, 110, 125, 150, 175, 200] as const;
+
+export function normalizeServiceZoomPercent(value: number): number {
+  if (!Number.isFinite(value)) return 100;
+  return Math.max(SERVICE_ZOOM_LEVELS[0], Math.min(SERVICE_ZOOM_LEVELS.at(-1) ?? 200, Math.round(value)));
+}
+
+export function stepServiceZoomPercent(value: number, direction: -1 | 1): number {
+  const current = normalizeServiceZoomPercent(value);
+  if (direction > 0) {
+    return SERVICE_ZOOM_LEVELS.find((level) => level > current) ?? SERVICE_ZOOM_LEVELS.at(-1) ?? 200;
+  }
+  return [...SERVICE_ZOOM_LEVELS].reverse().find((level) => level < current) ?? SERVICE_ZOOM_LEVELS[0];
+}
 
 function canonicalShortcutKey(event: Pick<KeyboardEvent, "key" | "code">): string | null {
   const modifierKeys = new Set(["Control", "Shift", "Alt", "Meta"]);

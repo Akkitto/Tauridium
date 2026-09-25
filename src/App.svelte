@@ -28,14 +28,17 @@
     automaticBackupDue,
     COLLAPSED_SIDEBAR_WIDTH_PX,
     DEFAULT_KEYBINDINGS,
+    SERVICE_ZOOM_LEVELS,
     bindingStrokes,
     hexToHsl,
     hslToHex,
     keyStrokeFromEvent,
     normalizeHexColor,
+    normalizeServiceZoomPercent,
     paged,
     duplicateServiceName,
     shortcutConflicts,
+    stepServiceZoomPercent,
     sameDownloadPreference,
     type KeybindingAction,
   } from "./lib/ui";
@@ -102,6 +105,7 @@
     openExternalUrl,
     reloadTauridium,
     showServiceToastOverlay,
+    setServiceZoom,
     toggleDeveloperTools,
     DEFAULT_SERVER,
     type MeUser,
@@ -312,6 +316,7 @@
     customUrlTemplatesEnabled: false,
     serviceCustomUrlTemplates: {},
     serviceIconInversions: {},
+    serviceZoomLevels: {},
     serviceOrder: [],
     workspaceOrder: [],
     workspaceQuickSwitchOrder: "custom",
@@ -338,6 +343,7 @@
   // Hibernation: suspended services have their webview closed while retaining the session.
   let hibernated = $state<Set<string>>(new Set());
   const hibTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const serviceZoomOperations = new Map<string, Promise<void>>();
   let preloadGeneration = 0; // Invalidates older delayed preload chains without races.
 
   // Add service / local recipe management.
@@ -770,6 +776,59 @@
     return appSettings.serviceIconInversions?.[serviceId] === true;
   }
 
+  function serviceZoomPercent(serviceId: string): number {
+    return normalizeServiceZoomPercent(appSettings.serviceZoomLevels?.[serviceId] ?? 100);
+  }
+
+  function queueServiceZoom(
+    service: Service,
+    resolveNext: (current: number) => number,
+  ): Promise<void> {
+    const preceding = serviceZoomOperations.get(service.id) ?? Promise.resolve();
+    const operation = preceding.then(async () => {
+      const current = serviceZoomPercent(service.id);
+      const next = normalizeServiceZoomPercent(resolveNext(current));
+      if (next === current) {
+        showToast(service.id === activeId ? `Zoom: ${next}%` : `${serviceLabel(service)} zoom: ${next}%`);
+        return;
+      }
+      try {
+        appSettings = await setServiceZoom(service.id, next);
+        showToast(
+          service.id === activeId ? `Zoom: ${next}%` : `${serviceLabel(service)} zoom: ${next}%`,
+          "success",
+        );
+      } catch (err) {
+        error = `Unable to set page zoom for ${serviceLabel(service)}: ${err}`;
+      }
+    });
+    serviceZoomOperations.set(service.id, operation);
+    void operation.finally(() => {
+      if (serviceZoomOperations.get(service.id) === operation) serviceZoomOperations.delete(service.id);
+    });
+    return operation;
+  }
+
+  function increaseServiceZoom(service: Service): Promise<void> {
+    return queueServiceZoom(service, (current) => stepServiceZoomPercent(current, 1));
+  }
+
+  function decreaseServiceZoom(service: Service): Promise<void> {
+    return queueServiceZoom(service, (current) => stepServiceZoomPercent(current, -1));
+  }
+
+  function resetServiceZoom(service: Service): Promise<void> {
+    return queueServiceZoom(service, () => 100);
+  }
+
+  function chooseServiceZoom(service: Service | null, zoomPercent: number): Promise<void> {
+    if (!service) {
+      error = "Unable to set page zoom because the service is no longer available.";
+      return Promise.resolve();
+    }
+    return queueServiceZoom(service, () => zoomPercent);
+  }
+
   async function saveServiceIconInversion(serviceId: string, inverted: boolean) {
     const previous = { ...appSettings.serviceIconInversions };
     const serviceIconInversions = { ...previous };
@@ -1016,10 +1075,16 @@
   }
 
   async function popupNativeServiceContextMenu(service: Service, x: number, y: number) {
+    const zoomPercent = serviceZoomPercent(service.id);
     const menu = await Menu.new({
       items: [
         { id: `settings-${service.id}`, text: "Settings", action: () => openContextServiceSettings(service) },
         { id: `reload-${service.id}`, text: "Reload", enabled: service.isEnabled !== false, action: () => void reloadServiceFromUi(service) },
+        { item: "Separator" },
+        { id: `zoom-in-${service.id}`, text: `Zoom in (${stepServiceZoomPercent(zoomPercent, 1)}%)`, enabled: zoomPercent < 200, action: () => void increaseServiceZoom(service) },
+        { id: `zoom-out-${service.id}`, text: `Zoom out (${stepServiceZoomPercent(zoomPercent, -1)}%)`, enabled: zoomPercent > 50, action: () => void decreaseServiceZoom(service) },
+        { id: `zoom-reset-${service.id}`, text: "Reset zoom (100%)", enabled: zoomPercent !== 100, action: () => void resetServiceZoom(service) },
+        { item: "Separator" },
         { id: `duplicate-${service.id}`, text: "Duplicate", action: () => void duplicateServiceFromUi(service) },
         { id: `toggle-${service.id}`, text: service.isEnabled === false ? "Enable" : "Disable", action: () => void toggleServiceEnabled(service) },
       ],
@@ -1041,7 +1106,7 @@
       return;
     }
     const width = 226;
-    const height = 194;
+    const height = 330;
     serviceContextMenu = {
       serviceId: service.id,
       x: Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)),
@@ -1063,7 +1128,7 @@
     serviceContextMenu = {
       serviceId: service.id,
       x: rect ? Math.min(rect.left + 28, window.innerWidth - 234) : 12,
-      y: rect ? Math.min(rect.bottom, window.innerHeight - 202) : 12,
+      y: rect ? Math.min(rect.bottom, window.innerHeight - 338) : 12,
     };
     requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".service-context-menu button:not(:disabled)")?.focus());
   }
@@ -1828,6 +1893,7 @@
     const previousShortcutOverrides = { ...appSettings.serviceShortcutCaptureOverrides };
     const previousDownloadSettings = { ...appSettings.serviceDownloadSettings };
     const previousIconInversions = { ...appSettings.serviceIconInversions };
+    const previousZoomLevels = { ...appSettings.serviceZoomLevels };
     let copiedAppSettings = false;
     try {
       const result = await createDuplicateService(service, name);
@@ -1857,18 +1923,21 @@
       const serviceShortcutCaptureOverrides = { ...appSettings.serviceShortcutCaptureOverrides };
       const serviceDownloadSettings = { ...appSettings.serviceDownloadSettings };
       const serviceIconInversions = { ...appSettings.serviceIconInversions };
+      const serviceZoomLevels = { ...appSettings.serviceZoomLevels };
       if (serviceCustomUrlTemplates[service.id]) serviceCustomUrlTemplates[newId] = { ...serviceCustomUrlTemplates[service.id] };
       if (serviceSandboxes[service.id]) serviceSandboxes[newId] = serviceSandboxes[service.id];
       if (service.id in serviceShortcutCaptureOverrides) serviceShortcutCaptureOverrides[newId] = serviceShortcutCaptureOverrides[service.id];
       if (serviceDownloadSettings[service.id]) serviceDownloadSettings[newId] = { ...serviceDownloadSettings[service.id] };
       if (serviceIconInversions[service.id] === true) serviceIconInversions[newId] = true;
-      if (serviceCustomUrlTemplates[newId] || serviceSandboxes[newId] || newId in serviceShortcutCaptureOverrides || serviceDownloadSettings[newId] || serviceIconInversions[newId] === true) {
+      if (serviceZoomLevels[service.id]) serviceZoomLevels[newId] = serviceZoomLevels[service.id];
+      if (serviceCustomUrlTemplates[newId] || serviceSandboxes[newId] || newId in serviceShortcutCaptureOverrides || serviceDownloadSettings[newId] || serviceIconInversions[newId] === true || serviceZoomLevels[newId]) {
         appSettings = await setAppSettings({
           serviceCustomUrlTemplates,
           serviceSandboxes,
           serviceShortcutCaptureOverrides,
           serviceDownloadSettings,
           serviceIconInversions,
+          serviceZoomLevels,
         });
         copiedAppSettings = true;
       }
@@ -1896,6 +1965,7 @@
           serviceShortcutCaptureOverrides: previousShortcutOverrides,
           serviceDownloadSettings: previousDownloadSettings,
           serviceIconInversions: previousIconInversions,
+          serviceZoomLevels: previousZoomLevels,
         }).catch(() => appSettings);
       }
       if (newId) await deleteService(newId).catch(() => {});
@@ -1966,24 +2036,28 @@
         appSettings.serviceCustomUrlTemplates[s.id] ||
         s.id in appSettings.serviceShortcutCaptureOverrides ||
         appSettings.serviceDownloadSettings[s.id] ||
-        appSettings.serviceIconInversions[s.id] === true
+        appSettings.serviceIconInversions[s.id] === true ||
+        appSettings.serviceZoomLevels[s.id]
       ) {
         const serviceSandboxes = { ...appSettings.serviceSandboxes };
         const serviceCustomUrlTemplates = { ...appSettings.serviceCustomUrlTemplates };
         const serviceShortcutCaptureOverrides = { ...appSettings.serviceShortcutCaptureOverrides };
         const serviceDownloadSettings = { ...appSettings.serviceDownloadSettings };
         const serviceIconInversions = { ...appSettings.serviceIconInversions };
+        const serviceZoomLevels = { ...appSettings.serviceZoomLevels };
         delete serviceSandboxes[s.id];
         delete serviceCustomUrlTemplates[s.id];
         delete serviceShortcutCaptureOverrides[s.id];
         delete serviceDownloadSettings[s.id];
         delete serviceIconInversions[s.id];
+        delete serviceZoomLevels[s.id];
         appSettings = await setAppSettings({
           serviceSandboxes,
           serviceCustomUrlTemplates,
           serviceShortcutCaptureOverrides,
           serviceDownloadSettings,
           serviceIconInversions,
+          serviceZoomLevels,
         });
       }
       await reconcileSavedOrders();
@@ -3361,6 +3435,9 @@
       case "previousWorkspace": cycleWorkspace(-1); break;
       case "reloadService": if (activeService) void reloadServiceFromUi(activeService); break;
       case "reloadApp": void reloadTauridium(); break;
+      case "zoomIn": if (activeService) void increaseServiceZoom(activeService); break;
+      case "zoomOut": if (activeService) void decreaseServiceZoom(activeService); break;
+      case "resetZoom": if (activeService) void resetServiceZoom(activeService); break;
       case "toggleDevtools": void toggleDeveloperTools(); break;
     }
   }
@@ -3682,6 +3759,7 @@
       {:else if view === "svcSettings" && settingsSvc}
         {@const settingsServiceId = settingsSvc.id}
         {@const settingsServiceDownload = serviceDownloadOverride(settingsServiceId)}
+        {@const settingsServiceZoom = serviceZoomPercent(settingsServiceId)}
         <div class="panel">
           <div class="panel-head">
             <h2>Settings — {serviceLabel(settingsSvc)}</h2>
@@ -3738,6 +3816,19 @@
           {@render toggle("Allow hibernation", "Let this service sleep when inactive to save memory.", "isHibernationEnabled", settingsSvc.isHibernationEnabled === true)}
           {@render toggle("Open links externally", "Open clicked links in your default browser instead of inside the service.", "trapLinkClicks", settingsSvc.trapLinkClicks === true)}
           {@render toggle("Allow wake up", "Wake this service from hibernation on new activity.", "isWakeUpEnabled", settingsSvc.isWakeUpEnabled === true)}
+
+          <div class="set-title">Page zoom</div>
+          <div class="setrow">
+            <label class="block">
+              Zoom level
+              <select class="select" aria-label={`Page zoom for ${serviceLabel(settingsSvc)}`} value={settingsServiceZoom} onchange={(event) => void chooseServiceZoom(settingsSvc, Number(event.currentTarget.value))}>
+                {#each SERVICE_ZOOM_LEVELS as level}
+                  <option value={level}>{level}%</option>
+                {/each}
+              </select>
+            </label>
+            <p class="desc">Scale this service's website without changing Tauridium's interface. Saved immediately and restored whenever the service webview is created.</p>
+          </div>
 
           <div class="set-title">Keyboard shortcuts</div>
           <div class="setrow service-shortcut-policy">
@@ -4848,6 +4939,9 @@
                     ["previousWorkspace", "Previous workspace", "Move to the previous workspace."],
                     ["reloadService", "Reload service", "Reload the active service webview."],
                     ["reloadApp", "Reload Tauridium", "Reload the Tauridium shell."],
+                    ["zoomIn", "Zoom in", "Increase page zoom for the active service."],
+                    ["zoomOut", "Zoom out", "Decrease page zoom for the active service."],
+                    ["resetZoom", "Reset zoom", "Restore the active service to 100% page zoom."],
                     ["toggleDevtools", "Toggle Developer Tools", "Open or close developer tools for the active service."]
                   ] as [action, label, description] (action)}
                     {@const binding = appSettings.keybindings[action] ?? ""}
@@ -5157,6 +5251,11 @@
       <div class="service-context-menu" role="menu" tabindex="-1" aria-label={`${serviceLabel(contextService)} actions`} style={`left:${serviceContextMenu.x}px;top:${serviceContextMenu.y}px`} onkeydown={handleServiceContextMenuKeydown}>
         <button role="menuitem" onclick={() => openContextServiceSettings(contextService)}>Settings</button>
         <button role="menuitem" disabled={contextService.isEnabled === false} onclick={() => runServiceContextAction(contextService, reloadServiceFromUi)}>Reload</button>
+        <div class="service-context-separator" aria-hidden="true"></div>
+        <button role="menuitem" disabled={serviceZoomPercent(contextService.id) >= 200} onclick={() => runServiceContextAction(contextService, increaseServiceZoom)}>Zoom in ({stepServiceZoomPercent(serviceZoomPercent(contextService.id), 1)}%)</button>
+        <button role="menuitem" disabled={serviceZoomPercent(contextService.id) <= 50} onclick={() => runServiceContextAction(contextService, decreaseServiceZoom)}>Zoom out ({stepServiceZoomPercent(serviceZoomPercent(contextService.id), -1)}%)</button>
+        <button role="menuitem" disabled={serviceZoomPercent(contextService.id) === 100} onclick={() => runServiceContextAction(contextService, resetServiceZoom)}>Reset zoom (100%)</button>
+        <div class="service-context-separator" aria-hidden="true"></div>
         <button role="menuitem" onclick={() => runServiceContextAction(contextService, duplicateServiceFromUi)}>Duplicate</button>
         <div class="service-context-separator" aria-hidden="true"></div>
         <button role="menuitem" class:context-danger={contextService.isEnabled !== false} onclick={() => runServiceContextAction(contextService, toggleServiceEnabled)}>{contextService.isEnabled === false ? "Enable" : "Disable"}</button>

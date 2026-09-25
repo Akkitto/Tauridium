@@ -32,7 +32,7 @@ To my knowledge, this is, as of now, the only fully open source, fully free of c
 * Isolated, persistent native WebView sessions per service
 * Workspaces with configurable service organisation, ordering and icons
 * Bundled recipes, custom recipes and arbitrary HTTP(S) websites
-* Per-service behaviour including notifications, badges, hibernation, appearance, proxy, user agent and link handling
+* Per-service behaviour including page zoom, notifications, badges, hibernation, appearance, proxy, user agent and link handling
 * Configurable themes, sidebar, keybindings and service interaction
 * Shared sandboxes for deliberately sharing login/session state between compatible services
 * Native notifications, tray operation, persistent window state and launch-at-login
