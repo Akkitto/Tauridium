@@ -18,6 +18,12 @@ downgrade WebKit or disable its security protections to restore drops. The nativ
 smoke test deliberately fails when files are missing; a successful build does not prove
 file uploads work.
 
+For engine-blocked drops, Tauridium prevents default file navigation and displays a
+dismissible attachment-picker hint. Normal file drops on working engines, links, text,
+and page-generated drags retain their original behavior. The Linux hint introduces no
+file-reading API or synthetic attachments. Verify it with `just test-file-drop-fallback`
+on the affected WebKitGTK engine.
+
 On Windows, run Tauridium with normal user privileges, as you would File Explorer.
 Windows blocks drag-and-drop from ordinary applications into an elevated application.
 

@@ -91,6 +91,10 @@ run:
 test-file-drop:
   python3 tools/service_file_drop_smoke.py
 
+[unix]
+test-file-drop-fallback:
+  python3 tools/service_file_drop_smoke.py --linux-fallback-only
+
 audit: rust-supply-chain-host
   npm audit --audit-level=high
   cargo audit

@@ -29,7 +29,8 @@
         for (const byte of bytes) binary += String.fromCharCode(byte);
         received.push({ name: file.name, size: file.size, type: file.type, data: btoa(binary) });
       }
-      const payload = { service, target, trusted: event.isTrusted, types, uri, events: [...events], files: received };
+      const payload = { service, target, trusted: event.isTrusted, types, uri, events: [...events],
+        helpVisible: !!document.getElementById("__tauridium-file-drop-help"), prevented: event.defaultPrevented, files: received };
       result.textContent = JSON.stringify({ ...payload, files: received.map(({ data, ...file }) => file) }, null, 2);
       if (service !== "manual") {
         const response = await fetch("/result", { method: "POST", body: JSON.stringify(payload) });

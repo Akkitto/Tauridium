@@ -2165,6 +2165,10 @@ async fn create_service_webview(
                 NewWindowResponse::Deny
             },
         );
+    #[cfg(target_os = "linux")]
+    {
+        builder = builder.initialization_script(include_str!("linux_file_drop.js"));
+    }
     // TEMPORARY Proton web-client workaround. Keep this conditional at the
     // service boundary rather than changing generic remote-webview behavior.
     // The initialization script stays attached across authentication navigation.

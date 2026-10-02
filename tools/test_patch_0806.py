@@ -42,6 +42,21 @@ class ServiceFileDropTests(unittest.TestCase):
     self.assertNotIn("new DragEvent", fixture)
     self.assertNotIn("new File(", fixture)
 
+  def test_linux_fallback_keeps_browser_security_and_windows_native_behavior(self) -> None:
+    script = (ROOT / "src-tauri/src/linux_file_drop.js").read_text(encoding="utf-8")
+    self.assertIn("event.isTrusted", script)
+    self.assertIn("transfer.files.length", script)
+    self.assertIn('transfer.getData("text/uri-list").trim()', script)
+    self.assertIn("event.preventDefault()", script)
+    self.assertIn("attachment button", script)
+    self.assertNotIn("dispatchEvent", script)
+    self.assertNotIn("invoke(", script)
+    self.assertNotIn("fetch(", script)
+    self.assertIn(
+      '#[cfg(target_os = "linux")]\n    {\n        builder = builder.initialization_script(include_str!("linux_file_drop.js"));',
+      MAIN,
+    )
+
 
 if __name__ == "__main__":
   unittest.main()

@@ -25,6 +25,8 @@ def main() -> int:
   parser = argparse.ArgumentParser(description=__doc__)
   parser.add_argument("--binary", type=Path, default=ROOT / "src-tauri/target/release/tauridium")
   parser.add_argument("--output", type=Path, default=ROOT / "release/file-drop-smoke.json")
+  parser.add_argument("--input-only", action="store_true", help="diagnose the browser's native file-input drop path")
+  parser.add_argument("--linux-fallback-only", action="store_true", help="verify actionable guidance for engine-blocked file drops")
   args = parser.parse_args()
   if not args.binary.is_file() or not os.environ.get("DISPLAY") or not shutil.which("xdotool"):
     parser.error("requires a built native executable, isolated X11 DISPLAY, and xdotool")
@@ -145,8 +147,10 @@ def main() -> int:
            "customUrl": f"http://127.0.0.1:{server.server_port}/file-drop.html?service={name}"}
           for index, name in enumerate(("drop-one", "drop-two", "drop-three"))
         ]
+        if args.input_only:
+          services = services[:1]
         profile = {"version": 1, "services": services, "workspaces": []}
-        settings = {"preloadServices": True, "fetchMissingServiceIcons": False,
+        settings = {"preloadServices": not args.input_only, "fetchMissingServiceIcons": False,
                     "closeToSystemTray": False, "customTitleTemplatesEnabled": True,
                     "windowTitleTemplate": TITLE, "taskbarTitleTemplate": TITLE,
                     "serviceZoomLevels": {"drop-one": 50, "drop-two": 200, "drop-three": 100}}
@@ -173,7 +177,7 @@ def main() -> int:
           def check(name: str, service: str, filenames: list[str], target: str = "zone"):
             selected[:] = [root / filename for filename in filenames]
             before = len(reports)
-            drag((650, 220 if target == "zone" else 490))
+            drag((650, 610 if args.input_only else (220 if target == "zone" else 490)))
             wait_for(lambda: len(reports) > before, name)
             time.sleep(0.2)
             if len(reports) != before + 1:
@@ -183,6 +187,12 @@ def main() -> int:
               raise RuntimeError(f"{name}: wrong service, target, or untrusted event")
             if target == "zone" and not all(event in report["events"] for event in ("dragenter", "dragover", "drop")):
               raise RuntimeError(f"{name}: incomplete native drag event sequence")
+            if args.linux_fallback_only:
+              if report["files"] or report.get("helpVisible") is not True or report.get("prevented") is not True:
+                raise RuntimeError(f"{name}: Linux blocked-drop guidance was not displayed")
+              cases.append({"case": name, "nativeDrop": True, "filesDelivered": False, "guidanceVisible": True})
+              print(f"PASS {name}", flush=True)
+              return
             expected = {filename: hashlib.sha256(samples[filename]).hexdigest() for filename in filenames}
             actual = {}
             for file in report["files"]:
@@ -201,6 +211,12 @@ def main() -> int:
             xdo("key", "--clearmodifiers", key)
             time.sleep(0.5)
 
+          if args.input_only:
+            check("native file input diagnostic", "drop-one", list(samples), "input")
+            return
+          if args.linux_fallback_only:
+            check("Linux engine-blocked drop guidance", "drop-one", ["attachment.txt"])
+            return
           check("single file at 50% zoom", "drop-one", ["attachment.txt"])
           check("multiple, Unicode, empty and binary files", "drop-one", list(samples))
           check("native file input", "drop-one", ["attachment.txt", "empty.txt"], "input")

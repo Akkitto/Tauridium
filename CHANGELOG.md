@@ -6,6 +6,7 @@
 
 - Restored native file drag-and-drop into service attachment and upload areas, including Proton Mail, by disabling Tauri's file-drop interception on every service webview.
 - Applied the same browser drop handling to active, preloaded, and recreated services without changing session isolation or remote-page permissions.
+- Added Linux guidance for WebKitGTK's upstream empty-file-list regression: blocked drops keep the service page open and direct users to the attachment picker.
 
 ### Release quality
 
