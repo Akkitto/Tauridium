@@ -481,6 +481,23 @@ class PackageReleaseTests(unittest.TestCase):
         archive.namelist(),
       )
 
+  def test_docs_include_file_drop_guidance_current_report_and_fixture(self) -> None:
+    self.write_manifest()
+    context = PACKAGE.source_context("0.2.0")
+    for path in ("docs/file-drops.md", "docs/releases/0.2.0-validation.md", "tools/fixtures/file-drop.html"):
+      target = self.root / path
+      target.parent.mkdir(parents=True, exist_ok=True)
+      target.write_text(f"contents of {path}\n", encoding="utf-8")
+    source_zip = self.root / "src.zip"
+    run_zip = self.root / "run.zip"
+    source_zip.write_bytes(b"source")
+    run_zip.write_bytes(b"runtime")
+    output = self.root / "doc.zip"
+    PACKAGE.build_docs(output, "0.2.0", source_zip, [run_zip], context)
+    with zipfile.ZipFile(output) as archive:
+      for path in ("docs/file-drops.md", "docs/releases/0.2.0-validation.md", "tools/fixtures/file-drop.html"):
+        self.assertEqual(archive.read(f"tauridium-0.2.0-doc/{path}").decode(), f"contents of {path}\n")
+
 
 if __name__ == "__main__":
   unittest.main()

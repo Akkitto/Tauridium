@@ -596,9 +596,11 @@ def build_runtime_handoff(
     "This archive contains the exact release source without Git metadata.\n"
     "It is not a fabricated or cross-platform executable, and no native runtime is claimed.\n\n"
     "Build and validate the native runtime on the target platform with:\n"
-    "  just init ; just check ; just test ; just build ; just package\n\n"
+    "  just init\n"
+    "  just release\n\n"
     "On Windows 11, the same workflow is supported natively through PowerShell/pwsh; "
     "Bash, Nushell, WSL, and Git Bash are not required.\n\n"
+    "For file-drop validation, use the fixture and native-service checklist in docs/file-drops.md.\n\n"
     "Runtime ZIPs are target-qualified from the executable's reported Rust target, for example:\n"
     f"  tauridium-{release_version}-run-win-x64.zip\n"
     f"  tauridium-{release_version}-run-linux-x64.zip\n\n"
@@ -638,6 +640,9 @@ def build_docs(
       add_file(zf, ROOT / name, prefix + name)
     for source, archive_path in (
       (ROOT / "docs" / "installation.md", "docs/installation.md"),
+      (ROOT / "docs" / "file-drops.md", "docs/file-drops.md"),
+      (ROOT / "docs" / "releases" / f"{release_version}-validation.md", f"docs/releases/{release_version}-validation.md"),
+      (ROOT / "tools" / "fixtures" / "file-drop.html", "tools/fixtures/file-drop.html"),
       (ROOT / "docs" / "github-language-statistics.md", "docs/github-language-statistics.md"),
       (ROOT / "packaging" / "scoop" / "README.md", "docs/scoop-packaging.md"),
     ):
