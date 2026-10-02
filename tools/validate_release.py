@@ -1346,6 +1346,15 @@ def main() -> int:
       fail(f"0.4.21 regression coverage is missing: {test_marker}")
 
   patch_0422 = read("tools/test_patch_0422.py")
+  service_creation = main_rs.split("async fn create_service_webview", 1)[1].split(
+    "struct ServiceViewRequest", 1
+  )[0]
+  if ".disable_drag_drop_handler()" not in service_creation:
+    fail("0.8.6 service webviews must preserve native browser file drops")
+  for path in ("tools/test_patch_0806.py", "tools/service_file_drop_smoke.py", "docs/file-drops.md"):
+    if not read(path).strip():
+      fail(f"0.8.6 file-drop regression or test guidance is missing: {path}")
+
   for marker in (
     "if (service.useFavicon !== true) return null;",
     "return preferredWebsiteIcon(service) ?? iconSrc(service);",

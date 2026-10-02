@@ -87,6 +87,10 @@ bundle-target-no-updater target:
 run:
   cargo tauri dev
 
+[unix]
+test-file-drop:
+  python3 tools/service_file_drop_smoke.py
+
 audit: rust-supply-chain-host
   npm audit --audit-level=high
   cargo audit

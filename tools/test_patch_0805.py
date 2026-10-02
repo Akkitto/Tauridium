@@ -19,8 +19,8 @@ class ServiceZoomPatchTests(unittest.TestCase):
   def read(self, path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
-  def test_release_identity_is_0805_everywhere(self) -> None:
-    version = "0.8.5"
+  def test_release_identity_remains_synchronized(self) -> None:
+    version = json.loads(self.read("package.json"))["version"]
     self.assertEqual(json.loads(self.read("package.json"))["version"], version)
     self.assertEqual(json.loads(self.read("src-tauri/tauri.conf.json"))["version"], version)
     self.assertIn(f'version = "{version}"', self.read("src-tauri/Cargo.toml"))
@@ -35,10 +35,11 @@ class ServiceZoomPatchTests(unittest.TestCase):
       self.read("data/dev.brani.tauridium.metainfo.xml"),
     )
     manifest = self.read("flatpak/dev.brani.tauridium.yml")
-    self.assertIn("tag: v0.8.5", manifest)
+    version = json.loads(self.read("package.json"))["version"]
+    self.assertIn(f"tag: v{version}", manifest)
     pins = re.findall(r"^\s*commit:\s*(\S+)$", manifest, flags=re.MULTILINE)
     self.assertEqual(len(pins), 1)
-    self.assertRegex(pins[0], r"^(?:__TAURIDIUM_V085_COMMIT__|[0-9a-f]{40})$")
+    self.assertRegex(pins[0], r"^(?:__TAURIDIUM_V\d{3}_COMMIT__|[0-9a-f]{40})$")
 
   def test_zoom_uses_bounded_browser_style_levels_and_shortcuts(self) -> None:
     self.assertIn(

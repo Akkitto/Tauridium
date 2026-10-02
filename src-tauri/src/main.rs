@@ -2115,6 +2115,10 @@ async fn create_service_webview(
     let new_window_app = win.app_handle().clone();
     let new_window_label = label.clone();
     let mut builder = WebviewBuilder::new(label, WebviewUrl::External(url))
+        // Service pages must receive native HTML5 file drops (including File objects).
+        // Tauri's default handler intercepts them and disables WebView2 external drops;
+        // the main shell's dragDropEnabled setting does not apply to these child views.
+        .disable_drag_drop_handler()
         // Creation never takes focus. The active service is focused only after the latest
         // requested switch wins the desired-active race.
         .focused(false)

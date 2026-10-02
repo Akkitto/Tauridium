@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Tauridium native file-drop test</title>
+<style>
+  body { margin: 0; font: 16px system-ui; background: #19212b; color: white; }
+  #zone { position: fixed; inset: 0 0 50%; display: grid; place-items: center; background: #254e40; }
+  #zone.over { background: #357959; }
+  #picker { position: fixed; top: 65vh; left: 5vw; width: 90vw; height: 10vh; }
+  #result { position: fixed; bottom: 0; padding: 1em; white-space: pre-wrap; }
+</style>
+<div id="zone">Drop one or more files here</div>
+<input id="picker" type="file" multiple aria-label="Native file input drop target">
+<output id="result">No files received.</output>
+<script>
+  const zone = document.getElementById("zone");
+  const picker = document.getElementById("picker");
+  const result = document.getElementById("result");
+  const service = new URL(location.href).searchParams.get("service") || "manual";
+  const events = [];
+  async function report(event, files, target) {
+    try {
+      const received = [];
+      for (const file of files) {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        let binary = "";
+        for (const byte of bytes) binary += String.fromCharCode(byte);
+        received.push({ name: file.name, size: file.size, type: file.type, data: btoa(binary) });
+      }
+      const payload = { service, target, trusted: event.isTrusted, events: [...events], files: received };
+      result.textContent = JSON.stringify({ ...payload, files: received.map(({ data, ...file }) => file) }, null, 2);
+      if (service !== "manual") {
+        const response = await fetch("/result", { method: "POST", body: JSON.stringify(payload) });
+        if (!response.ok) throw new Error(`Report failed: HTTP ${response.status}`);
+      }
+    } catch (error) {
+      result.textContent = String(error);
+    }
+  }
+  zone.addEventListener("dragenter", event => {
+    event.preventDefault(); events.push("dragenter"); zone.classList.add("over");
+  });
+  zone.addEventListener("dragover", event => {
+    event.preventDefault(); event.dataTransfer.dropEffect = "copy";
+    if (events.at(-1) !== "dragover") events.push("dragover");
+  });
+  zone.addEventListener("dragleave", () => { events.push("dragleave"); zone.classList.remove("over"); });
+  zone.addEventListener("drop", event => {
+    event.preventDefault(); events.push("drop"); zone.classList.remove("over");
+    void report(event, event.dataTransfer.files, "zone");
+  });
+  picker.addEventListener("change", event => void report(event, picker.files, "input"));
+  if (service !== "manual") {
+    void fetch(`/ready?service=${encodeURIComponent(service)}`);
+  }
+</script>
+</html>
