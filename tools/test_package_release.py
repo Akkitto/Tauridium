@@ -456,6 +456,9 @@ class PackageReleaseTests(unittest.TestCase):
       handoff = archive.read("tauridium-0.2.0/RUNTIME-HANDOFF.txt").decode()
       self.assertIn("no native runtime is claimed", handoff)
       self.assertIn("PowerShell/pwsh", handoff)
+      self.assertIn("paired tauridium-0.2.0-src.zip", handoff)
+      self.assertIn("Do not run the release workflow directly from this Git-free archive", handoff)
+      self.assertIn("just release", handoff)
 
   def test_docs_use_manifest_git_log_without_git_repository(self) -> None:
     self.write_manifest()
