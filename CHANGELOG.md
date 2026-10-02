@@ -5,6 +5,7 @@
 ### Fixed
 
 - Updated the transitive `devalue` security pin to 5.9.3 and refreshed Flatpak's offline npm sources, resolving the six newly reported advisories without bypassing the initializer's audit gate.
+- Fixed a Windows-only documentation ZIP test failure by checking exact LF and CRLF bytes, and isolated packaging test repositories from inherited Git newline settings.
 
 ## [0.8.6] - 2026-10-02
 

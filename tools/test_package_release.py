@@ -115,6 +115,8 @@ class PackageReleaseTests(unittest.TestCase):
       ["git", "config", "user.email", "test@example.invalid"], cwd=self.root, check=True
     )
     subprocess.run(["git", "config", "commit.gpgsign", "false"], cwd=self.root, check=True)
+    # These disposable repositories must not inherit the developer's newline policy.
+    subprocess.run(["git", "config", "core.autocrlf", "false"], cwd=self.root, check=True)
     executable = self.root / "script.ps1"
     executable.write_text("Write-Host 'ok'\n", encoding="utf-8")
     executable.chmod(0o755)
@@ -129,6 +131,15 @@ class PackageReleaseTests(unittest.TestCase):
       ["git", "commit", "-q", "-m", "Fix: Update test source"], cwd=self.root, check=True
     )
     subprocess.run(["git", "tag", "v0.2.0"], cwd=self.root, check=True)
+
+  def test_git_test_fixture_disables_inherited_newline_conversion(self) -> None:
+    self.init_git_repository()
+    self.assertEqual(
+      subprocess.check_output(
+        ["git", "config", "--local", "--get", "core.autocrlf"], cwd=self.root, text=True
+      ).strip(),
+      "false",
+    )
 
 
   def test_git_source_requires_exact_release_tag(self) -> None:
@@ -487,19 +498,25 @@ class PackageReleaseTests(unittest.TestCase):
   def test_docs_include_file_drop_guidance_current_report_and_fixture(self) -> None:
     self.write_manifest()
     context = PACKAGE.source_context("0.2.0")
-    for path in ("docs/file-drops.md", "docs/releases/0.2.0-validation.md", "tools/fixtures/file-drop.html"):
-      target = self.root / path
-      target.parent.mkdir(parents=True, exist_ok=True)
-      target.write_text(f"contents of {path}\n", encoding="utf-8")
+    paths = ("docs/file-drops.md", "docs/releases/0.2.0-validation.md", "tools/fixtures/file-drop.html")
     source_zip = self.root / "src.zip"
     run_zip = self.root / "run.zip"
     source_zip.write_bytes(b"source")
     run_zip.write_bytes(b"runtime")
     output = self.root / "doc.zip"
-    PACKAGE.build_docs(output, "0.2.0", source_zip, [run_zip], context)
-    with zipfile.ZipFile(output) as archive:
-      for path in ("docs/file-drops.md", "docs/releases/0.2.0-validation.md", "tools/fixtures/file-drop.html"):
-        self.assertEqual(archive.read(f"tauridium-0.2.0-doc/{path}").decode(), f"contents of {path}\n")
+    for newline in (b"\n", b"\r\n"):
+      with self.subTest(newline=newline):
+        for path in paths:
+          target = self.root / path
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_bytes(f"contents of {path}".encode("utf-8") + newline)
+        PACKAGE.build_docs(output, "0.2.0", source_zip, [run_zip], context)
+        with zipfile.ZipFile(output) as archive:
+          for path in paths:
+            self.assertEqual(
+              archive.read(f"tauridium-0.2.0-doc/{path}"),
+              f"contents of {path}".encode("utf-8") + newline,
+            )
 
 
 if __name__ == "__main__":
