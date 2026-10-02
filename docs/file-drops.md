@@ -5,6 +5,19 @@ file input. Tauridium lets the native browser deliver the original files to the 
 including multiple files and filenames with spaces or non-ASCII characters. The service
 controls accepted file types, attachment limits, and whether a particular area accepts drops.
 
+### Linux engine limitation
+
+WebKitGTK currently has an open upstream regression where an operating-system file drop
+arrives with an empty `DataTransfer.files` list. This was reproduced with WebKitGTK 2.52.6
+in the Tauridium production build. Disabling Tauri's interception cannot repair that engine
+behavior. See [WebKit bug 323277](https://bugs.webkit.org/show_bug.cgi?id=323277) and
+[the proposed upstream fix](https://github.com/WebKit/WebKit/pull/73114).
+
+On affected Linux systems, use the service's attachment button and file picker. Do not
+downgrade WebKit or disable its security protections to restore drops. The native-drop
+smoke test deliberately fails when files are missing; a successful build does not prove
+file uploads work.
+
 On Windows, run Tauridium with normal user privileges, as you would File Explorer.
 Windows blocks drag-and-drop from ordinary applications into an elevated application.
 

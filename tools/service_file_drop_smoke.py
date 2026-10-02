@@ -28,6 +28,8 @@ def main() -> int:
   args = parser.parse_args()
   if not args.binary.is_file() or not os.environ.get("DISPLAY") or not shutil.which("xdotool"):
     parser.error("requires a built native executable, isolated X11 DISPLAY, and xdotool")
+  # WSL may also expose a Wayland session; both the source and app must use this X11 display.
+  os.environ["GDK_BACKEND"] = "x11"
   import gi
   gi.require_version("Gtk", "3.0")
   gi.require_version("Gdk", "3.0")
@@ -90,9 +92,12 @@ def main() -> int:
   selected: list[Path] = []
 
   def provide_files(_widget, _context, data, _info, _time):
+    print(f"OS drag provided {len(selected)} file URIs", flush=True)
     data.set_uris([path.as_uri() for path in selected])
 
   button.connect("drag-data-get", provide_files)
+  button.connect("drag-begin", lambda *_: print("OS drag started", flush=True))
+  button.connect("drag-failed", lambda _widget, _context, reason: print(f"OS drag failed: {reason}", flush=True))
   source.show_all()
 
   def xdo(*arguments: str) -> str:
@@ -186,7 +191,7 @@ def main() -> int:
                 raise RuntimeError(f"{name}: incorrect file size")
               actual[file["name"]] = hashlib.sha256(content).hexdigest()
             if actual != expected or len(report["files"]) != len(filenames):
-              raise RuntimeError(f"{name}: filename or content mismatch")
+              raise RuntimeError(f"{name}: filename or content mismatch ({actual!r} != {expected!r}); types={report.get('types')!r}, uri={report.get('uri')!r}")
             cases.append({"case": name, "service": service, "target": target,
                           "trusted": True, "files": actual})
             print(f"PASS {name}", flush=True)
@@ -225,6 +230,12 @@ def main() -> int:
     except Exception as error:
       failures.append(str(error))
       print(f"FAIL {error}", flush=True)
+      def capture_failure():
+        window = Gdk.get_default_root_window()
+        screenshot = Gdk.pixbuf_get_from_window(window, 0, 0, window.get_width(), window.get_height())
+        screenshot.savev(str(args.output.with_suffix(".png")), "png", [], [])
+        return False
+      GLib.idle_add(capture_failure)
     finally:
       if app is not None and app.poll() is None:
         app.terminate()

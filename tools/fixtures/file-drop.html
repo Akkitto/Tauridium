@@ -20,6 +20,8 @@
   const events = [];
   async function report(event, files, target) {
     try {
+      const types = Array.from(event.dataTransfer?.types || []);
+      const uri = event.dataTransfer?.getData("text/uri-list") || "";
       const received = [];
       for (const file of files) {
         const bytes = new Uint8Array(await file.arrayBuffer());
@@ -27,7 +29,7 @@
         for (const byte of bytes) binary += String.fromCharCode(byte);
         received.push({ name: file.name, size: file.size, type: file.type, data: btoa(binary) });
       }
-      const payload = { service, target, trusted: event.isTrusted, events: [...events], files: received };
+      const payload = { service, target, trusted: event.isTrusted, types, uri, events: [...events], files: received };
       result.textContent = JSON.stringify({ ...payload, files: received.map(({ data, ...file }) => file) }, null, 2);
       if (service !== "manual") {
         const response = await fetch("/result", { method: "POST", body: JSON.stringify(payload) });
@@ -47,9 +49,9 @@
   zone.addEventListener("dragleave", () => { events.push("dragleave"); zone.classList.remove("over"); });
   zone.addEventListener("drop", event => {
     event.preventDefault(); events.push("drop"); zone.classList.remove("over");
-    void report(event, event.dataTransfer.files, "zone");
+    void report(event, Array.from(event.dataTransfer.files), "zone");
   });
-  picker.addEventListener("change", event => void report(event, picker.files, "input"));
+  picker.addEventListener("change", event => void report(event, Array.from(picker.files), "input"));
   if (service !== "manual") {
     void fetch(`/ready?service=${encodeURIComponent(service)}`);
   }
