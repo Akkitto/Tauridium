@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.6] - 2026-10-02
+
+### Fixed
+
+- Restored native file drag-and-drop into service attachment and upload areas, including Proton Mail, by disabling Tauri's file-drop interception on every service webview.
+- Applied the same browser drop handling to active, preloaded, and recreated services without changing session isolation or remote-page permissions.
+
+### Release quality
+
+- Added a production-app test that performs real operating-system drags and verifies trusted browser events, filenames, sizes, and file contents across multiple services, zoom levels, reloads, and restarts.
+- Added a reusable file-drop fixture and platform test guidance, and kept service drop handling covered by release invariants.
+
 ## [0.8.5] - 2026-09-25
 
 ### Added
