@@ -30,8 +30,10 @@ class Patch0714Tests(unittest.TestCase):
     self.assertEqual(LOCK["packages"]["node_modules/@vitest/mocker"]["version"], "4.1.11")
 
   def test_devalue_is_pinned_past_reported_advisory_boundary(self) -> None:
-    self.assertEqual(PACKAGE["overrides"]["devalue"], "5.9.2")
-    self.assertEqual(LOCK["packages"]["node_modules/devalue"]["version"], "5.9.2")
+    pinned = PACKAGE["overrides"]["devalue"]
+    self.assertEqual(LOCK["packages"]["node_modules/devalue"]["version"], pinned)
+    # October 2026 advisories extend the affected range through 5.9.2.
+    self.assertGreaterEqual(tuple(int(part) for part in pinned.split(".")), (5, 9, 3))
 
   def test_vitest_4_lock_tree_contains_required_runtime_packages(self) -> None:
     packages = LOCK["packages"]

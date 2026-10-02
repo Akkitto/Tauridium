@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Updated the transitive `devalue` security pin to 5.9.3 and refreshed Flatpak's offline npm sources, resolving the six newly reported advisories without bypassing the initializer's audit gate.
+
 ## [0.8.6] - 2026-10-02
 
 ### Fixed

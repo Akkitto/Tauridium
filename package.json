@@ -39,6 +39,6 @@
     "esbuild@0.25.12": true
   },
   "overrides": {
-    "devalue": "5.9.2"
+    "devalue": "5.9.3"
   }
 }
