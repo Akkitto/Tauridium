@@ -307,7 +307,7 @@ export interface DownloadPreferenceOverride {
 }
 
 export interface DistributionInfo {
-  mode: "native" | "flatpak";
+  mode: "native" | "flatpak" | "nix";
   updaterManagedExternally: boolean;
   portalFileAccess: boolean;
   portalNotifications: boolean;

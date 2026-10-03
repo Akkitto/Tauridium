@@ -1,5 +1,13 @@
 # Installation
 
+## Nix and NixOS
+
+Use the locked source-built package for NixOS `environment.systemPackages`, Home
+Manager `home.packages` or a Nix profile. See [the complete Nix guide](NIX.md) for
+installation, updates, development and migration. The Nix package is supplied by
+this repository's flake; it is not yet advertised as an official nixpkgs package.
+Its self-updater is disabled and updates are managed by Nix.
+
 ## Windows
 
 Tauridium publishes native Windows installers and portable ZIP archives for x64 and ARM64.

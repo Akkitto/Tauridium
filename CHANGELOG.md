@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.9.0] - 2026-10-03
+
+### Added
+
+- Reproducible source-built Nix/NixOS packages for x86_64 and ARM64 Linux, a locked
+  pinned-Rust development shell, installation/development guides, and Nix CI gates.
+- Nix-managed update messaging and safe XDG session autostart using the stable
+  profile launcher; custom and declaratively managed entries are preserved.
+- Production package checks, isolated graphical WebKit smoke tests and a NixOS VM
+  installation test. Native Windows/Linux and Flatpak distribution behavior is retained.
+
 ## [0.8.7] - 2026-10-03
 
 ### Fixed

@@ -247,8 +247,12 @@ def main() -> int:
   for marker in unix_matrix_markers:
     if marker not in justfile:
       fail(f"Unix native/Flatpak release matrix is missing: {marker}")
-  if justfile.count("python3 tools/run_preserving_schemas.py cargo") != 4:
-    fail("every Unix Flatpak Cargo gate must preserve canonical generated schemas")
+  for distribution in ("flatpak", "nix"):
+    for command in ("clippy", "check", "test"):
+      target_flags = " --all-targets" if command != "test" else ""
+      marker = f"python3 tools/run_preserving_schemas.py cargo {command} --manifest-path src-tauri/Cargo.toml{target_flags} --no-default-features --features {distribution} --locked"
+      if marker not in justfile:
+        fail(f"every Unix {distribution} Cargo gate must preserve canonical generated schemas: {command}")
   if "release: fmt lint" in justfile:
     fail("release workflow must not mutate Rust source with cargo fmt")
   for marker in (

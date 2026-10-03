@@ -1,5 +1,7 @@
 # Node / Vite
 node_modules/
+/result
+/result-*
 dist/
 coverage/
 .npm/

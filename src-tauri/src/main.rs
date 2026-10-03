@@ -7,6 +7,13 @@ mod distribution;
 mod flatpak_portal;
 mod icons;
 mod local_profile;
+#[cfg(all(
+    target_os = "linux",
+    feature = "nix",
+    not(feature = "native-distribution"),
+    not(feature = "flatpak")
+))]
+mod nix_autostart;
 mod portable;
 mod proton_compat;
 mod recipes;
@@ -56,7 +63,13 @@ use tauri::{
 };
 #[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
 use tauri_plugin_autostart::ManagerExt;
-#[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
+#[cfg(all(
+    any(
+        feature = "native-distribution",
+        all(target_os = "linux", feature = "nix")
+    ),
+    not(feature = "flatpak")
+))]
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 #[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
 use tauri_plugin_updater::UpdaterExt;
@@ -1701,7 +1714,7 @@ fn open_external(url: &str) -> Result<(), String> {
     }
     #[cfg(all(
         target_os = "linux",
-        feature = "native-distribution",
+        any(feature = "native-distribution", feature = "nix"),
         not(feature = "flatpak")
     ))]
     {
@@ -1748,7 +1761,13 @@ fn show_system_notification(
     // `app` is used by the native notification plugin; Flatpak notifications go directly
     // through the portal and deliberately do not initialize that plugin.
     let _ = app;
-    #[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
+    #[cfg(all(
+        any(
+            feature = "native-distribution",
+            all(target_os = "linux", feature = "nix")
+        ),
+        not(feature = "flatpak")
+    ))]
     {
         let builder = app.notification().builder().title(title);
         let builder = if let Some(body) = body.filter(|body| !body.is_empty()) {
@@ -4064,7 +4083,24 @@ fn effective_app_settings_value(app: &AppHandle) -> Value {
         value
     }
     #[cfg(any(not(feature = "native-distribution"), feature = "flatpak"))]
-    value
+    {
+        #[cfg(all(
+            target_os = "linux",
+            feature = "nix",
+            not(feature = "native-distribution"),
+            not(feature = "flatpak")
+        ))]
+        let value = {
+            let mut value = value;
+            if let Ok(enabled) = nix_autostart::is_enabled() {
+                if let Some(object) = value.as_object_mut() {
+                    object.insert("autostart".into(), Value::Bool(enabled));
+                }
+            }
+            value
+        };
+        value
+    }
 }
 
 #[cfg(any(test, all(feature = "native-distribution", not(feature = "flatpak"))))]
@@ -4077,6 +4113,7 @@ fn apply_autostart_setting(app: &AppHandle, settings: &Value) -> Result<bool, St
     let _ = app;
     #[cfg(any(
         all(feature = "native-distribution", not(feature = "flatpak")),
+        all(target_os = "linux", feature = "nix"),
         all(target_os = "linux", feature = "flatpak")
     ))]
     let enabled = settings
@@ -4104,6 +4141,15 @@ fn apply_autostart_setting(app: &AppHandle, settings: &Value) -> Result<bool, St
     #[cfg(all(target_os = "linux", feature = "flatpak"))]
     {
         flatpak_portal::request_autostart(enabled)
+    }
+    #[cfg(all(
+        target_os = "linux",
+        feature = "nix",
+        not(feature = "native-distribution"),
+        not(feature = "flatpak")
+    ))]
+    {
+        nix_autostart::set_enabled(enabled)
     }
     #[cfg(all(not(target_os = "linux"), feature = "flatpak"))]
     {
@@ -5278,6 +5324,7 @@ fn write_build_info_if_requested() -> Result<bool, String> {
             "version": env!("CARGO_PKG_VERSION"),
             "buildMode": TAURIDIUM_BUILD_MODE,
             "target": TAURIDIUM_TARGET,
+            "distribution": distribution::info(),
         }))
         .map_err(|error| format!("Unable to serialize build information: {error}"))?;
         std::fs::write(PathBuf::from(path), payload)
@@ -5353,6 +5400,13 @@ fn main() {
             None,
         ))
         .plugin(tauri_plugin_updater::Builder::new().build());
+    #[cfg(all(
+        target_os = "linux",
+        feature = "nix",
+        not(feature = "native-distribution"),
+        not(feature = "flatpak")
+    ))]
+    let builder = builder.plugin(tauri_plugin_notification::init());
 
     builder
         .plugin(tauri_plugin_dialog::init())
@@ -5550,7 +5604,7 @@ fn main() {
 
             // Native packages retain Tauri's notification permission flow. Flatpak builds
             // use the XDG Notification portal directly and need no plugin permission request.
-            #[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
+            #[cfg(all(any(feature = "native-distribution", all(target_os = "linux", feature = "nix")), not(feature = "flatpak")))]
             if let Ok(state) = app.notification().permission_state() {
                 if state != PermissionState::Granted {
                     let _ = app.notification().request_permission();

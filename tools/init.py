@@ -22,7 +22,7 @@ from typing import Sequence
 ROOT = Path(__file__).resolve().parents[1]
 OS_RELEASE = Path("/etc/os-release")
 SYSTEM_DEPS_ENV = "TAURIDIUM_INIT_SYSTEM_DEPS"
-INIT_VERSION = "0.8.7"
+INIT_VERSION = "0.9.0"
 
 # Modules that Tauridium's Linux Tauri/WebKitGTK dependency graph needs at build
 # time. Checking modules instead of package names keeps init idempotent across
@@ -320,6 +320,9 @@ def install_linux_system_dependencies() -> None:
     print("Native Tauri prerequisites: already satisfied.", flush=True)
     return
 
+  if os.environ.get("TAURIDIUM_NIX_DEV_SHELL") == "1":
+    raise InitError("Nix shell native prerequisites are missing: " + ", ".join(missing) + "; update/re-enter `nix develop` instead of installing host packages")
+
   print(
     "Native Tauri prerequisites missing: " + ", ".join(missing),
     flush=True,
@@ -382,6 +385,15 @@ def command_succeeds(command: Sequence[str]) -> bool:
 
 def ensure_pinned_rust_toolchain() -> None:
   """Install the repository-pinned Rust toolchain and formatting/lint components."""
+  if os.environ.get("TAURIDIUM_NIX_DEV_SHELL") == "1":
+    for tool in ("rustc", "cargo"):
+      result = subprocess.run([tool, "--version"], check=False, capture_output=True, text=True)
+      if result.returncode or not result.stdout.startswith(f"{tool} 1.97.1 "):
+        raise InitError(f"Nix development shell requires {tool} 1.97.1; re-enter `nix develop`")
+    if not command_succeeds(["cargo", "fmt", "--version"]) or not command_succeeds(["cargo", "clippy", "--version"]):
+      raise InitError("Nix development shell is missing pinned rustfmt or clippy")
+    print("+ Rust toolchain: Nix-managed pinned 1.97.1 with rustfmt and clippy", flush=True)
+    return
   if not shutil.which("rustup"):
     raise InitError(
       "rustup is required to enforce Tauridium's pinned Rust 1.97.1 toolchain; "

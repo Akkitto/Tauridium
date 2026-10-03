@@ -31,7 +31,7 @@ class Patch0701Tests(unittest.TestCase):
 
   def test_public_release_is_created_only_after_all_validation_jobs(self) -> None:
     publish = WORKFLOW.split("  publish:", 1)[1]
-    self.assertIn("needs: [handoff, build, scoop]", publish)
+    self.assertIn("needs: [handoff, build, scoop, nix]", publish)
     self.assertIn("pattern: native-*", publish)
     self.assertIn("merge-multiple: true", publish)
     self.assertIn("just scoop-release-manifest release/published-assets", publish)

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
+  import { managedUpdateText } from "./lib/distribution";
   import tauridiumLogo from "./assets/tauridium.svg";
   import { listen } from "@tauri-apps/api/event";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
@@ -5181,12 +5182,12 @@
               </section>
             {:else if settingsTab === "updates"}
               <section class="settings-section" aria-labelledby="settings-updates-version">
-                <div class="section-heading"><h3 id="settings-updates-version">Updates</h3><p>{distributionInfo.updaterManagedExternally ? "This package is updated by Flatpak/Flathub." : "Keep Tauridium current using signed releases published through the project repository."}</p></div>
+                <div class="section-heading"><h3 id="settings-updates-version">Updates</h3><p>{distributionInfo.updaterManagedExternally ? managedUpdateText(distributionInfo.mode).description : "Keep Tauridium current using signed releases published through the project repository."}</p></div>
                 <div class="settings-list">
                   <div class="setting-card">
                     <div class="setting-copy"><span class="setting-label">Current version</span><span class="setting-description">Tauridium {appVer ? `v${appVer}` : "version information is loading"}.</span></div>
                     {#if distributionInfo.updaterManagedExternally}
-                      <span class="status-badge">Managed by Flatpak</span>
+                      <span class="status-badge">{managedUpdateText(distributionInfo.mode).badge}</span>
                     {:else if updateInfo}
                       <button class="primary" disabled={updInstalling} onclick={doInstall}>{updInstalling ? "Installing…" : `Update to v${updateInfo.version}`}</button>
                     {:else}
@@ -5194,7 +5195,7 @@
                     {/if}
                   </div>
                   {#if distributionInfo.updaterManagedExternally}
-                    <p class="settings-status">Native GitHub update checks and installation are disabled in this Flatpak build.</p>
+                    <p class="settings-status">{managedUpdateText(distributionInfo.mode).status}</p>
                   {:else}
                     {#if updateInfo}<p class="settings-status">Version {updateInfo.version} is available. Tauridium will restart after installation.</p>{/if}
                     {#if updStatus}<p class="settings-status">{updStatus}</p>{/if}

@@ -57,6 +57,10 @@ See [Installation](docs/installation.md) for package details, persistence behavi
 
 ### Linux
 
+For NixOS or Nix profiles, use the source-built flake package rather than an
+AppImage or native ZIP. See [Nix/NixOS installation and development](docs/NIX.md)
+for locked releases, declarative configuration, updates and safe autostart.
+
 Download the appropriate native package from [GitHub Releases](https://github.com/Akkitto/Tauridium/releases/latest):
 
 * DEB for Debian-based distributions
@@ -72,6 +76,11 @@ macOS is currently not maintained.
 ## Development
 
 [`just`](https://github.com/casey/just) is the development entry point.
+
+On Nix/NixOS, `just nix-dev` provides the pinned Rust/Node/GTK toolchain;
+`just nix-build`, `just nix-check`, `just nix-smoke` and `just nix-nixos-test`
+validate packaging. See [the Nix guide](docs/NIX.md). Native Windows commands
+remain independent of Nix and WSL.
 
 ### Windows
 

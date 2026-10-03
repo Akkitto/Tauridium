@@ -1,15 +1,18 @@
 use serde::Serialize;
 
-#[cfg(not(any(feature = "native-distribution", feature = "flatpak")))]
-compile_error!(
-    "Tauridium requires exactly one distribution feature: native-distribution or flatpak"
-);
+#[cfg(not(any(
+    feature = "native-distribution",
+    feature = "flatpak",
+    all(target_os = "linux", feature = "nix")
+)))]
+compile_error!("Tauridium requires native-distribution, flatpak, or Linux nix packaging");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DistributionMode {
     Native,
     Flatpak,
+    Nix,
 }
 
 impl DistributionMode {
@@ -17,6 +20,7 @@ impl DistributionMode {
         match self {
             Self::Native => "native",
             Self::Flatpak => "flatpak",
+            Self::Nix => "nix",
         }
     }
 }
@@ -40,6 +44,12 @@ pub struct DistributionInfo {
 pub const fn mode() -> DistributionMode {
     if cfg!(feature = "flatpak") {
         DistributionMode::Flatpak
+    } else if cfg!(all(
+        target_os = "linux",
+        feature = "nix",
+        not(feature = "native-distribution")
+    )) {
+        DistributionMode::Nix
     } else {
         DistributionMode::Native
     }
@@ -52,12 +62,8 @@ pub fn is_flatpak() -> bool {
 pub fn info() -> DistributionInfo {
     let flatpak = is_flatpak();
     DistributionInfo {
-        mode: if flatpak {
-            DistributionMode::Flatpak
-        } else {
-            DistributionMode::Native
-        },
-        updater_managed_externally: flatpak,
+        mode: mode(),
+        updater_managed_externally: mode() != DistributionMode::Native,
         // Flatpak packaging enables the Linux XDG portal dialog backend. These flags
         // describe distribution policy, not portal availability on native packages.
         portal_file_access: flatpak,
@@ -76,7 +82,10 @@ mod tests {
     fn distribution_info_is_internally_consistent() {
         let info = info();
         let flatpak = info.mode == DistributionMode::Flatpak;
-        assert_eq!(info.updater_managed_externally, flatpak);
+        assert_eq!(
+            info.updater_managed_externally,
+            info.mode != DistributionMode::Native
+        );
         assert_eq!(info.portal_notifications, flatpak);
         assert_eq!(info.portal_autostart, flatpak);
         assert_eq!(info.downloads_require_destination, flatpak);

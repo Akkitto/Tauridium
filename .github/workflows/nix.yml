@@ -1,0 +1,49 @@
+name: Nix package
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Nix ${{ matrix.system }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: x86_64-linux
+            runner: ubuntu-24.04
+          - system: aarch64-linux
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      # cachix/install-nix-action v31, dereferenced immutable commit.
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
+        with:
+          set_as_trusted_user: false
+          enable_kvm: false
+      - name: Check locked source package
+        run: nix --extra-experimental-features 'nix-command flakes' flake check --print-build-logs
+      - name: Check Nix formatting
+        run: nix --extra-experimental-features 'nix-command flakes' fmt -- --check flake.nix packaging/nix/package.nix packaging/nix/smoke.nix packaging/nix/nixos-test.nix
+      - name: Validate pinned development tools without Rustup installation
+        run: |
+          nix --extra-experimental-features 'nix-command flakes' develop --command python3 -c 'import runpy; runpy.run_path("tools/init.py")["ensure_pinned_rust_toolchain"]()'
+      - name: Render real production WebKit UI in isolated profile
+        run: nix --extra-experimental-features 'nix-command flakes' run .#smoke
+      - name: Test declarative NixOS installation in isolated VM
+        if: matrix.system == 'x86_64-linux'
+        run: nix --extra-experimental-features 'nix-command flakes' build .#nixos-test --no-link --print-build-logs
+      - name: Preserve Nix smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: nix-smoke-${{ matrix.system }}
+          if-no-files-found: warn
+          path: release/evidence/nix-smoke

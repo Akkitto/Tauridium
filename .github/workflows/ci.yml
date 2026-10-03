@@ -17,6 +17,9 @@ env:
   NODE_OPTIONS: --no-deprecation
 
 jobs:
+  nix:
+    uses: ./.github/workflows/nix.yml
+
   linux:
     name: Linux full gates
     runs-on: ubuntu-22.04

@@ -16,6 +16,9 @@ env:
   NODE_OPTIONS: --no-deprecation
 
 jobs:
+  nix:
+    uses: ./.github/workflows/nix.yml
+
   gate:
     name: Release gates
     runs-on: ubuntu-22.04
@@ -232,7 +235,7 @@ jobs:
 
   publish:
     name: Finalize release
-    needs: [handoff, build, scoop]
+    needs: [handoff, build, scoop, nix]
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     permissions:

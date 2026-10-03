@@ -161,6 +161,35 @@ class ReleaseIdentityTests(unittest.TestCase):
 
 
 class PinnedRustToolchainTests(unittest.TestCase):
+  @patch.dict(INIT.os.environ, {"TAURIDIUM_NIX_DEV_SHELL": "1"})
+  @patch.object(INIT.platform, "system", return_value="Linux")
+  @patch.object(INIT, "native_prerequisites_missing", return_value=["librsvg-2.0"])
+  @patch.object(INIT, "run_checked")
+  def test_nix_shell_never_installs_host_packages(self, install, _missing, _platform) -> None:
+    with self.assertRaisesRegex(INIT.InitError, "Nix shell native prerequisites"):
+      INIT.install_linux_system_dependencies()
+    install.assert_not_called()
+
+  @patch.dict(INIT.os.environ, {"TAURIDIUM_NIX_DEV_SHELL": "1"})
+  @patch.object(INIT, "command_succeeds", return_value=True)
+  @patch.object(INIT.subprocess, "run")
+  @patch.object(INIT, "run_checked")
+  def test_nix_shell_verifies_tools_without_mutating_rustup(self, install, probe, _succeeds) -> None:
+    probe.side_effect = [
+      type("Result", (), {"returncode": 0, "stdout": "rustc 1.97.1 (hash date)"})(),
+      type("Result", (), {"returncode": 0, "stdout": "cargo 1.97.1 (hash date)"})(),
+    ]
+    INIT.ensure_pinned_rust_toolchain()
+    install.assert_not_called()
+
+  @patch.dict(INIT.os.environ, {"TAURIDIUM_NIX_DEV_SHELL": "1"})
+  @patch.object(INIT.subprocess, "run")
+  def test_nix_shell_rejects_formatter_toolchain_drift(self, probe) -> None:
+    probe.return_value = type("Result", (), {"returncode": 0, "stdout": "rustc 1.98.1 (hash date)"})()
+    with self.assertRaises(INIT.InitError):
+      INIT.ensure_pinned_rust_toolchain()
+
+  @patch.dict(INIT.os.environ, {"TAURIDIUM_NIX_DEV_SHELL": ""})
   @patch.object(INIT, "command_succeeds", return_value=True)
   @patch.object(INIT.shutil, "which", return_value="/home/test/.cargo/bin/rustup")
   @patch.object(INIT, "run_checked")

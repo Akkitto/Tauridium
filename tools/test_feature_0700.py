@@ -139,7 +139,7 @@ class Feature0700Tests(unittest.TestCase):
     self.assertIn("ref: v0.5.3", workflow)
     self.assertIn("os: windows-latest", workflow)
     self.assertIn("os: windows-11-arm", workflow)
-    self.assertIn("needs: [handoff, build, scoop]", workflow)
+    self.assertIn("needs: [handoff, build, scoop, nix]", workflow)
     for marker in (
       "& $ScoopCommand install $AppSpec",
       "& $CheckverCommand -App $AutoupdateManifestPath -Update -ThrowError",

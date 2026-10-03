@@ -1,6 +1,6 @@
 [package]
 name = "tauridium"
-version = "0.8.7"
+version = "0.9.0"
 edition = "2021"
 rust-version = "1.97.1"
 description = "Tauridium — lightweight Tauri client for Ferdium"
@@ -28,6 +28,11 @@ flatpak = [
   "rfd/xdg-portal",
   "rfd/wayland",
   "rfd/tokio",
+]
+nix = [
+  "dep:tauri-plugin-notification",
+  "rfd/gtk3",
+  "tauri-plugin-dialog/gtk3",
 ]
 
 [dependencies]

@@ -39,6 +39,7 @@ fmt-check:
 lint:
   cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
   python3 tools/run_preserving_schemas.py cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --no-default-features --features flatpak --locked -- -D warnings
+  python3 tools/run_preserving_schemas.py cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --no-default-features --features nix --locked -- -D warnings
 
 [windows]
 lint:
@@ -49,6 +50,7 @@ check:
   npm run check
   cargo check --manifest-path src-tauri/Cargo.toml --all-targets --locked
   python3 tools/run_preserving_schemas.py cargo check --manifest-path src-tauri/Cargo.toml --all-targets --no-default-features --features flatpak --locked
+  python3 tools/run_preserving_schemas.py cargo check --manifest-path src-tauri/Cargo.toml --all-targets --no-default-features --features nix --locked
   python3 tools/validate_release.py
   python3 tools/scoop.py validate-template
 
@@ -65,6 +67,7 @@ test:
   npm test
   cargo test --manifest-path src-tauri/Cargo.toml --locked
   python3 tools/run_preserving_schemas.py cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --features flatpak --locked
+  python3 tools/run_preserving_schemas.py cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --features nix --locked
 
 [windows]
 test:
@@ -240,6 +243,27 @@ release-checksums assets_dir="release/published-assets":
 [unix]
 flatpak-sources:
   python3 tools/generate_flatpak_sources.py
+
+# Nix is opt-in and never required by Windows/native initialization.
+[unix]
+nix-build:
+  nix --extra-experimental-features 'nix-command flakes' build --print-build-logs
+
+[unix]
+nix-check:
+  nix --extra-experimental-features 'nix-command flakes' flake check --print-build-logs
+
+[unix]
+nix-dev:
+  nix --extra-experimental-features 'nix-command flakes' develop
+
+[unix]
+nix-smoke:
+  nix --extra-experimental-features 'nix-command flakes' run .#smoke
+
+[unix]
+nix-nixos-test:
+  nix --extra-experimental-features 'nix-command flakes' build .#nixos-test --no-link --print-build-logs
 
 [unix]
 flatpak-build:
