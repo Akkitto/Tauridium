@@ -19,11 +19,16 @@
   <url type="vcs-browser">https://github.com/Akkitto/Tauridium</url>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v0.8.6/data/screenshots/tauridium-0.8.0-main.png</image>
+      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v0.8.7/data/screenshots/tauridium-0.8.0-main.png</image>
       <caption>Tauridium sign-in and local accountless start screen</caption>
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.8.7" date="2026-10-03">
+      <description>
+        <p>Updates the devalue security pin and fixes Windows documentation packaging tests while preserving strict release gates.</p>
+      </description>
+    </release>
     <release version="0.8.6" date="2026-10-02">
       <description>
         <p>Restores native file drag-and-drop into service attachment and upload areas, including preloaded and recreated services.</p>
