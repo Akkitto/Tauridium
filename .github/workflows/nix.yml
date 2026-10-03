@@ -32,9 +32,8 @@ jobs:
         run: nix --extra-experimental-features 'nix-command flakes' flake check --print-build-logs
       - name: Check Nix formatting
         run: nix --extra-experimental-features 'nix-command flakes' fmt -- --check flake.nix packaging/nix/package.nix packaging/nix/smoke.nix packaging/nix/nixos-test.nix
-      - name: Validate pinned development tools without Rustup installation
-        run: |
-          nix --extra-experimental-features 'nix-command flakes' develop --command python3 -c 'import runpy; runpy.run_path("tools/init.py")["ensure_pinned_rust_toolchain"]()'
+      - name: Initialize pinned development environment without host installation
+        run: nix --extra-experimental-features 'nix-command flakes' develop --command just init
       - name: Render real production WebKit UI in isolated profile
         run: nix --extra-experimental-features 'nix-command flakes' run .#smoke
       - name: Test declarative NixOS installation in isolated VM
