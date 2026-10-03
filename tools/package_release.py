@@ -643,6 +643,7 @@ def build_docs(
       add_file(zf, ROOT / name, prefix + name)
     for source, archive_path in (
       (ROOT / "docs" / "installation.md", "docs/installation.md"),
+      (ROOT / "docs" / "NIX.md", "docs/NIX.md"),
       (ROOT / "docs" / "file-drops.md", "docs/file-drops.md"),
       (ROOT / "docs" / "releases" / f"{release_version}-validation.md", f"docs/releases/{release_version}-validation.md"),
       (ROOT / "tools" / "fixtures" / "file-drop.html", "tools/fixtures/file-drop.html"),
