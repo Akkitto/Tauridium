@@ -595,10 +595,12 @@ impl InnerWebView {
 
     let container_type = container.type_().name();
     if container_type == "GtkBox" {
-      container
-        .dynamic_cast_ref::<gtk::Box>()
-        .unwrap()
-        .pack_start(webview, true, true, 0);
+      let box_ = container.dynamic_cast_ref::<gtk::Box>().unwrap();
+      if let Some(fixed) = Self::child_layer(box_) {
+        Self::cleanup_child_layer(webview, &fixed);
+        return Self::add_to_container(webview, &fixed, attributes);
+      }
+      box_.pack_start(webview, true, true, 0);
     } else if container_type == "GtkFixed" {
       let scale_factor = webview.scale_factor() as f64;
       let (width, height) = attributes
@@ -625,6 +627,55 @@ impl InnerWebView {
     }
 
     is_in_fixed_parent
+  }
+
+  // Tauri passes its default GtkBox for both window content and child views.
+  // Keep the first content view filling the box, but layer later views instead
+  // of vertically packing them. Overlay children do not increase the window's
+  // minimum size, so positioned views can also shrink with the window.
+  fn child_layer(box_: &gtk::Box) -> Option<gtk::Fixed> {
+    for child in box_.children() {
+      if let Ok(overlay) = child.clone().dynamic_cast::<gtk::Overlay>() {
+        return Some(Self::attach_child_layer(&overlay));
+      }
+      if child.is::<WebView>() {
+        let overlay = gtk::Overlay::new();
+        box_.remove(&child);
+        overlay.add(&child);
+        let fixed = Self::attach_child_layer(&overlay);
+        box_.pack_start(&overlay, true, true, 0);
+        // Never show_all here: it would reveal hidden service views on restack.
+        overlay.show();
+        return Some(fixed);
+      }
+    }
+    None
+  }
+
+  fn attach_child_layer(overlay: &gtk::Overlay) -> gtk::Fixed {
+    // Each view needs its own GTK overlay layer. Overlapping WebKit widgets in
+    // one GtkFixed can paint over one another independently of child order.
+    let fixed = gtk::Fixed::new();
+    fixed.set_widget_name("tauridium-native-webview-layer");
+    fixed.set_halign(gtk::Align::Fill);
+    fixed.set_valign(gtk::Align::Fill);
+    overlay.add_overlay(&fixed);
+    // Only the WebKit child's native window should receive input. The fill
+    // container must not block services/sidebar outside the child's rectangle.
+    overlay.set_overlay_pass_through(&fixed, true);
+    fixed.show();
+    fixed
+  }
+
+  fn cleanup_child_layer(webview: &WebView, fixed: &gtk::Fixed) {
+    if let Some(overlay) = fixed
+      .parent()
+      .and_then(|parent| parent.dynamic_cast::<gtk::Overlay>().ok())
+    {
+      webview.connect_destroy(glib::clone!(@weak fixed, @weak overlay => move |_| {
+        overlay.remove(&fixed);
+      }));
+    }
   }
 
   fn attach_ipc_handler(webview: WebView, attributes: &mut WebViewAttributes) {
@@ -845,6 +896,17 @@ impl InnerWebView {
     }
 
     let (size, _) = self.webview.allocated_size();
+    if let Some(fixed) = self
+      .webview
+      .parent()
+      .and_then(|parent| parent.dynamic_cast::<gtk::Fixed>().ok())
+    {
+      bounds.position = LogicalPosition::new(
+        fixed.child_property::<i32>(&self.webview, "x"),
+        fixed.child_property::<i32>(&self.webview, "y"),
+      )
+      .into();
+    }
     bounds.size = LogicalSize::new(size.width(), size.height()).into();
 
     Ok(bounds)
@@ -866,6 +928,14 @@ impl InnerWebView {
     }
 
     if self.is_in_fixed_parent {
+      if let Some(fixed) = self
+        .webview
+        .parent()
+        .and_then(|parent| parent.dynamic_cast::<gtk::Fixed>().ok())
+      {
+        self.webview.set_size_request(width, height);
+        fixed.move_(&self.webview, x, y);
+      }
       self
         .webview
         .size_allocate(&gtk::Allocation::new(x, y, width, height));
@@ -1109,19 +1179,31 @@ impl InnerWebView {
   where
     W: gtk::prelude::IsA<gtk::Container>,
   {
+    let was_visible = self.webview.is_visible();
     if let Some(parent) = self
       .webview
       .parent()
       .and_then(|p| p.dynamic_cast::<gtk::Container>().ok())
     {
       parent.remove(&self.webview);
+      if parent.widget_name() == "tauridium-native-webview-layer" {
+        if let Some(overlay) = parent
+          .parent()
+          .and_then(|parent| parent.dynamic_cast::<gtk::Overlay>().ok())
+        {
+          overlay.remove(&parent);
+        }
+      }
 
       let container_type = container.type_().name();
       if container_type == "GtkBox" {
-        container
-          .dynamic_cast_ref::<gtk::Box>()
-          .unwrap()
-          .pack_start(&self.webview, true, true, 0);
+        let box_ = container.dynamic_cast_ref::<gtk::Box>().unwrap();
+        if let Some(fixed) = Self::child_layer(box_) {
+          Self::cleanup_child_layer(&self.webview, &fixed);
+          fixed.put(&self.webview, 0, 0);
+        } else {
+          box_.pack_start(&self.webview, true, true, 0);
+        }
       } else if container_type == "GtkFixed" {
         container
           .dynamic_cast_ref::<gtk::Fixed>()
@@ -1129,6 +1211,12 @@ impl InnerWebView {
           .put(&self.webview, 0, 0);
       } else {
         container.add(&self.webview);
+      }
+      if was_visible {
+        self.webview.show();
+        if let Some(window) = self.webview.window() {
+          window.raise();
+        }
       }
     }
 

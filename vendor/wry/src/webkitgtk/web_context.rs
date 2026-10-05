@@ -312,9 +312,10 @@ impl WebContextExt for super::WebContext {
     let context = &self.os.context;
 
     let download_started_handler = Rc::new(RefCell::new(download_started_handler));
-    let failed = Rc::new(RefCell::new(false));
-
     context.connect_download_started(move |_context, download| {
+      // Failure belongs to this download, never the entire WebContext. Otherwise
+      // one cancelled/failed transfer poisons later and concurrent completions.
+      let failed = Rc::new(RefCell::new(false));
       let download_started_handler = download_started_handler.clone();
       download.connect_decide_destination(move |download, suggested_filename| {
         if let Some(uri) = download.request().and_then(|req| req.uri()) {
@@ -380,7 +381,17 @@ impl WebContextExt for super::WebContext {
               download_completed_handler(
                 uri,
                 (!failed)
-                  .then(|| download.destination().map(PathBuf::from))
+                  .then(|| {
+                    download.destination().and_then(|destination| {
+                      if destination.starts_with("file:") {
+                        glib::filename_from_uri(&destination)
+                          .ok()
+                          .map(|(path, _)| path)
+                      } else {
+                        Some(PathBuf::from(destination))
+                      }
+                    })
+                  })
                   .flatten(),
                 !failed,
               )
