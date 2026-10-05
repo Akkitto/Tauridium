@@ -163,6 +163,10 @@ def main() -> int:
             click(word(rows, "seconds", rightmost=True))
             xdo("key", "End", "Return", "Tab")
             wait_for(lambda: saved("downloadToastDuration", 0), "display-time selector")
+            # Blur the native select before locating another control. WebKit can
+            # scroll a focused select into view when the pointer moves away.
+            xdo("key", "Escape")
+            click((40, height // 2))
             for step in range(8):
               text, rows, _ = capture(window, f"{name}-enabled-controls-{step}")
               if "Show download completion toasts" in text:
