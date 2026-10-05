@@ -172,13 +172,19 @@ def main() -> int:
             click(location)
             xdo("key", "End", "Return", "Tab")
             wait_for(lambda: saved("downloadToastLocation", "partial"), "partial-path selector")
-            text, rows, _ = capture(window, f"{name}-partial-options")
-            partial = control_phrase(rows, "Partial file path")
-            assert partial is not None, "Selected partial-path value is not rendered"
-            click(partial)
-            # Traverse from the select to the newly rendered number input.
-            xdo("key", "--delay", 150, "Escape", "Tab")
-            time.sleep(0.3)
+            xdo("key", "Escape")
+            click((40, height // 2))
+            for step in range(8):
+              text, rows, _ = capture(window, f"{name}-partial-options-{step}")
+              parent = control_phrase(rows, "2")
+              if parent is not None:
+                break
+              xdo("mousemove", "--sync", width - 25, height // 2)
+              xdo("click", "--repeat", 2, "--delay", 30, 5)
+              time.sleep(0.2)
+            else:
+              raise RuntimeError("Parent-folder input is not reachable by scrolling")
+            click(parent)
             xdo("key", "ctrl+a")
             time.sleep(0.15)
             xdo("type", "--clearmodifiers", "3")
