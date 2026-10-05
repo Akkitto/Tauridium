@@ -31,7 +31,9 @@ jobs:
       - name: Check locked source package
         run: nix --extra-experimental-features 'nix-command flakes' flake check --print-build-logs
       - name: Check Nix formatting
-        run: nix --extra-experimental-features 'nix-command flakes' fmt -- --check flake.nix packaging/nix/package.nix packaging/nix/smoke.nix packaging/nix/download-toast-smoke.nix packaging/nix/nixos-test.nix
+        run: nix --extra-experimental-features 'nix-command flakes' fmt -- --check flake.nix packaging/nix/*.nix docs/examples/nix/*.nix tests/nix-integration/flake.nix
+      - name: Evaluate real NixOS and Home Manager consumers without activation
+        run: nix --extra-experimental-features 'nix-command flakes' develop --command just nix-integration
       - name: Initialize pinned development environment without host installation
         run: nix --extra-experimental-features 'nix-command flakes' develop --command just init
       - name: Render real production WebKit UI in isolated profile
@@ -50,3 +52,4 @@ jobs:
           path: |
             release/evidence/nix-smoke
             release/evidence/download-toast-smoke
+            release/evidence/nix-integration

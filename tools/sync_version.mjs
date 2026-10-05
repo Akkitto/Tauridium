@@ -73,4 +73,13 @@ if (updatedReadme !== readme) {
   fs.writeFileSync(readmePath, updatedReadme);
 }
 
+// Keep copyable Nix consumption examples on the same immutable release as the app.
+for (const path of ["docs/NIX.md", "docs/examples/nix/flake.nix"]) {
+  const source = fs.readFileSync(path, "utf8");
+  const updated = source
+    .replace(/github:Akkitto\/Tauridium\/v\d+\.\d+\.\d+/g, `github:Akkitto/Tauridium/v${version}`)
+    .replace(/v\d+\.\d+\.\d+ cannot discover/g, `v${version} cannot discover`);
+  if (updated !== source) fs.writeFileSync(path, updated);
+}
+
 console.log(`Tauridium release identity -> ${version}`);

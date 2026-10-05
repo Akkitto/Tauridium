@@ -256,6 +256,11 @@ nix-build:
 [unix]
 nix-check:
   nix --extra-experimental-features 'nix-command flakes' flake check --print-build-logs
+  just nix-integration
+
+[unix]
+nix-integration:
+  python3 tools/nix_integration.py --output release/evidence/nix-integration/report.json
 
 [unix]
 nix-dev:
