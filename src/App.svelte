@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import { managedUpdateText } from "./lib/distribution";
+  import { downloadToastPreview } from "./lib/downloadToast";
   import tauridiumLogo from "./assets/tauridium.svg";
   import { listen } from "@tauri-apps/api/event";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
@@ -328,6 +329,10 @@
     workspaceIcons: {},
     downloadDirectory: "",
     askEachDownload: false,
+    downloadToasts: false,
+    downloadToastLocation: "none",
+    downloadToastParentLevels: 2,
+    downloadToastDuration: 8,
     serviceDownloadSettings: {},
     workspaceDownloadSettings: {},
     keybindings: { ...DEFAULT_KEYBINDINGS },
@@ -597,7 +602,42 @@
         ? "when you sign in to Windows"
         : "when you log in";
 
+  let downloadToastSettingsBusy = $state(false);
+  let downloadToastHeight = $state(0);
+  let unlistenDownloadToastGeometry: (() => void) | null = null;
+  const downloadToastExample = $derived(downloadToastPreview(appSettings.downloadToastLocation, appSettings.downloadToastParentLevels, osKind === "win"));
+
+  async function saveDownloadToastSetting<K extends "downloadToasts" | "downloadToastLocation" | "downloadToastParentLevels" | "downloadToastDuration">(key: K, value: AppSettings[K]) {
+    if (downloadToastSettingsBusy || appSettings[key] === value) return;
+    const previous = appSettings[key];
+    downloadToastSettingsBusy = true;
+    appSettings = { ...appSettings, [key]: value };
+    try {
+      const persisted = await setAppSettings({ [key]: value });
+      if (persisted[key] !== value) throw new Error("Tauridium could not verify the saved download notification setting");
+      appSettings = persisted;
+      showToast("Saved", "success");
+    } catch (err) {
+      appSettings = { ...appSettings, [key]: previous };
+      error = `Unable to save download notification settings: ${err}`;
+    } finally {
+      downloadToastSettingsBusy = false;
+    }
+  }
+
+  function saveDownloadToastParentLevels(event: Event) {
+    if (!(event.currentTarget instanceof HTMLInputElement)) return;
+    const value = event.currentTarget.valueAsNumber;
+    if (!Number.isInteger(value) || value < 1 || value > 10) {
+      event.currentTarget.value = String(appSettings.downloadToastParentLevels);
+      error = "Choose between 1 and 10 parent folders for the download notification.";
+      return;
+    }
+    void saveDownloadToastSetting("downloadToastParentLevels", value);
+  }
+
   onDestroy(() => {
+    unlistenDownloadToastGeometry?.();
     if (automaticBackupTimer) clearInterval(automaticBackupTimer);
     if (recordingTimer) clearTimeout(recordingTimer);
     if (toastTimer) clearTimeout(toastTimer);
@@ -607,6 +647,9 @@
   });
 
   onMount(async () => {
+    unlistenDownloadToastGeometry = await listen<number>("download-toast-geometry", (event) => {
+      downloadToastHeight = Number.isFinite(event.payload) ? Math.max(0, event.payload) : 0;
+    });
     darkMq?.addEventListener("change", () => {
       if (appSettings.theme === "system") applyTheme();
     });
@@ -5138,6 +5181,32 @@
                     {@render appToggle("Ask where to save each download", "Show a native Save dialog for every download. The dialog starts with the website/server-suggested filename and the effective download directory.", "askEachDownload", appSettings.askEachDownload)}
                     <p class="settings-note">Priority: service override → active workspace override → these global defaults. Directory overrides are device-specific settings and full backups preserve them; portable workspace exports intentionally omit filesystem paths.</p>
                   {/if}
+                  <label class="setting-card setting-card-toggle">
+                    <span class="setting-copy"><span class="setting-label">Show download completion toasts</span><span class="setting-description">Show a non-interrupting notification at the bottom of the window after a website download succeeds. Applies to every service and workspace; off by default.</span></span>
+                    <span class="switch"><input class="switch-input" type="checkbox" checked={appSettings.downloadToasts} disabled={downloadToastSettingsBusy} aria-label="Show download completion toasts" onchange={(event) => saveDownloadToastSetting("downloadToasts", event.currentTarget.checked)} /><span class="switch-track" aria-hidden="true"></span></span>
+                  </label>
+                  <fieldset class="download-toast-options" disabled={!appSettings.downloadToasts || downloadToastSettingsBusy}>
+                    <legend>Download notification details</legend>
+                    <label class="setting-card">
+                      <span class="setting-copy"><span class="setting-label">Saved location</span><span class="setting-description">Filename only keeps local paths private. Folder name shows just the destination folder; full and partial paths include the filename.</span></span>
+                      <select class="setting-control" value={appSettings.downloadToastLocation} aria-label="Download notification saved location" onchange={(event) => { const value = event.currentTarget.value; if (value === "none" || value === "directory" || value === "full" || value === "partial") void saveDownloadToastSetting("downloadToastLocation", value); }}>
+                        <option value="none">Filename only</option><option value="directory">Destination folder name</option><option value="full">Full file path</option><option value="partial">Partial file path</option>
+                      </select>
+                    </label>
+                    {#if appSettings.downloadToastLocation === "partial"}
+                      <label class="setting-card">
+                        <span class="setting-copy"><span class="setting-label">Parent folders to show</span><span class="setting-description">Show the nearest 1–10 parent folders and the filename. Omitted ancestors are marked with an ellipsis; 2 shows, for example, Downloads/Reports/example.pdf.</span></span>
+                        <input class="setting-control" type="number" min="1" max="10" step="1" value={appSettings.downloadToastParentLevels} aria-label="Download notification parent folders" onchange={saveDownloadToastParentLevels} />
+                      </label>
+                    {/if}
+                    <label class="setting-card">
+                      <span class="setting-copy"><span class="setting-label">Display time</span><span class="setting-description">The timer pauses while hovered, keyboard-focused, or Tauridium is in the background. Multiple downloads queue; every toast can be dismissed.</span></span>
+                      <select class="setting-control" value={appSettings.downloadToastDuration} aria-label="Download notification display time" onchange={(event) => { const value = Number(event.currentTarget.value); if (value === 0 || value === 8 || value === 15 || value === 30) void saveDownloadToastSetting("downloadToastDuration", value); }}>
+                        <option value="8">8 seconds</option><option value="15">15 seconds</option><option value="30">30 seconds</option><option value="0">Until dismissed</option>
+                      </select>
+                    </label>
+                    <div class="download-toast-preview"><span>Example: Download complete — example.pdf</span>{#if downloadToastExample}<code>{appSettings.downloadToastLocation === "directory" ? "Folder" : "Saved to"}: {downloadToastExample}</code>{/if}</div>
+                  </fieldset>
                 </div>
               </section>
               <section class="settings-section" aria-labelledby="settings-advanced-browser">
@@ -5266,7 +5335,7 @@
 {/if}
 
 {#if toastMessage}
-  <div class="toast" class:success={toastTone === "success"} role="status" aria-live="polite">{toastMessage}</div>
+  <div class="toast" class:success={toastTone === "success"} style:bottom={`${downloadToastHeight > 0 ? downloadToastHeight + 36 : 24}px`} role="status" aria-live="polite">{toastMessage}</div>
 {/if}
 
 {#if quickSwitcherMode}
@@ -5843,6 +5912,11 @@
   .download-setting-row .desc { margin-left: 0; }
   .download-inherited-copy { margin: 0; padding-top: 4px; }
   .workspace-download-card .download-setting-row { padding: 10px 0 0; }
+  .download-toast-options { display: grid; gap: 10px; min-width: 0; margin: 0; padding: 0; border: 0; }
+  .download-toast-options > legend { padding: 0 0 8px; color: var(--muted); font-size: 12px; }
+  .download-toast-options:disabled { opacity: .6; }
+  .download-toast-preview { display: grid; gap: 5px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; color: var(--muted); }
+  .download-toast-preview code { overflow-wrap: anywhere; white-space: pre-wrap; color: var(--text); }
   .service-workspace-overview { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
   .service-workspace-overview .setting-copy { min-width: 0; }
   .service-workspace-toolbar { display: flex; align-items: stretch; gap: 8px; }

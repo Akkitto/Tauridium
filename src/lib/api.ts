@@ -373,6 +373,10 @@ export interface AppSettings {
   downloadDirectory: string;
   askEachDownload: boolean;
   serviceDownloadSettings: Record<string, DownloadPreferenceOverride>;
+  downloadToasts: boolean;
+  downloadToastLocation: "none" | "directory" | "full" | "partial";
+  downloadToastParentLevels: number;
+  downloadToastDuration: 0 | 8 | 15 | 30;
   workspaceDownloadSettings: Record<string, DownloadPreferenceOverride>;
   keybindings: Record<string, string>;
   sandboxes: SandboxDefinition[];

@@ -19,11 +19,16 @@
   <url type="vcs-browser">https://github.com/Akkitto/Tauridium</url>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v0.9.0/data/screenshots/tauridium-0.8.0-main.png</image>
+      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v0.9.1/data/screenshots/tauridium-0.8.0-main.png</image>
       <caption>Tauridium sign-in and local accountless start screen</caption>
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.9.1" date="2026-10-05">
+      <description>
+        <p>Adds optional privacy-safe download completion toasts with configurable saved-location details and accessible queue and dismissal controls.</p>
+      </description>
+    </release>
     <release version="0.9.0" date="2026-10-03">
       <description>
         <p>Adds reproducible Nix and NixOS packaging, a pinned development environment, externally managed updates, and profile-stable session autostart.</p>

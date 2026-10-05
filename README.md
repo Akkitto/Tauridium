@@ -37,6 +37,7 @@ To my knowledge, this is, as of now, the only fully open source, fully free of c
 * Shared sandboxes for deliberately sharing login/session state between compatible services
 * Native notifications, tray operation, persistent window state and launch-at-login
 * Browser-style downloads with global, workspace and service configuration
+* Optional download completion toasts with configurable, privacy-conscious location details ([settings and checks](docs/download-notifications.md))
 * Native file drag-and-drop into service attachment and upload areas ([checks and platform guidance](docs/file-drops.md))
 * Portable workspace exports, transactional backups and a local structured audit log
 

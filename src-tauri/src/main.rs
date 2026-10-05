@@ -3,6 +3,8 @@
 mod audit;
 mod backup;
 mod distribution;
+mod download_notifications;
+mod download_toast;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 mod flatpak_portal;
 mod icons;
@@ -1356,6 +1358,14 @@ fn service_rect(
     win: &tauri::window::Window<Wry>,
     sidebar_w: f64,
 ) -> Result<(LogicalPosition<f64>, LogicalSize<f64>), String> {
+    #[cfg(target_os = "linux")]
+    let phys = win
+        .app_handle()
+        .get_webview("main")
+        .ok_or("Main webview is unavailable")?
+        .size()
+        .map_err(|e| e.to_string())?;
+    #[cfg(not(target_os = "linux"))]
     let phys = win.inner_size().map_err(|e| e.to_string())?;
     let scale = win.scale_factor().map_err(|e| e.to_string())?;
     let w = phys.width as f64 / scale;
@@ -2271,7 +2281,13 @@ async fn create_service_webview(
                 .map(sanitize_download_filename)
                 .unwrap_or_else(|| sanitize_download_filename(&download_filename(&url)));
             let message = format!("Downloaded \"{filename}\"");
+            startup_diagnostics::log(
+                "primary",
+                "download.finished",
+                "native download engine reported successful completion",
+            );
             let _ = show_system_notification(webview.app_handle(), "Tauridium", Some(&message));
+            download_toast::completed(webview.app_handle(), path.as_deref(), &filename);
             true
         }
         _ => true,
@@ -2314,6 +2330,7 @@ async fn create_service_webview(
         }
     }
     state.created.lock().unwrap().insert(service_id.to_string());
+    download_toast::restack(win.app_handle());
     Ok(())
 }
 
@@ -2359,6 +2376,7 @@ fn activate_service_webview(
     if activated {
         state.preloading.lock().unwrap().remove(service_id);
         *state.active.lock().unwrap() = Some(service_id.to_string());
+        download_toast::restack(app);
     }
     activated
 }
@@ -3279,7 +3297,10 @@ fn logout(app: AppHandle, state: State<'_, AppState>) {
 fn reposition_active(app: &AppHandle) {
     let st = app.state::<AppState>();
     let active = st.active.lock().unwrap().clone();
-    let Some(sid) = active else { return };
+    let Some(sid) = active else {
+        download_toast::reposition(app);
+        return;
+    };
     let sw = *st.sidebar_w.lock().unwrap();
     let Some(win) = app.get_window("main") else {
         return;
@@ -3290,6 +3311,9 @@ fn reposition_active(app: &AppHandle) {
             let _ = wv.set_size(size);
         }
     }
+    // Service bounds can remap native GTK child windows. Raise the toast only
+    // after those service allocations, including late root-content resizing.
+    download_toast::reposition(app);
 }
 
 // Dock-badge poller: read window.__pakeUnread from each service webview,
@@ -3512,6 +3536,10 @@ fn default_app_settings_value() -> Value {
     );
     settings.insert("downloadDirectory".into(), "".into());
     settings.insert("askEachDownload".into(), false.into());
+    settings.insert("downloadToasts".into(), false.into());
+    settings.insert("downloadToastLocation".into(), "none".into());
+    settings.insert("downloadToastParentLevels".into(), 2.into());
+    settings.insert("downloadToastDuration".into(), 8.into());
     settings.insert(
         "serviceDownloadSettings".into(),
         Value::Object(serde_json::Map::new()),
@@ -3677,6 +3705,7 @@ fn validate_download_settings_map(value: Option<&Value>, label: &str) -> Result<
 }
 
 fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
+    download_notifications::validate_settings(settings)?;
     let object = settings
         .as_object()
         .ok_or_else(|| "App settings must be a JSON object".to_string())?;
@@ -4380,6 +4409,7 @@ fn set_app_settings(
 
     match operation {
         Ok(value) => {
+            download_toast::settings_changed(&app, &previous, &value);
             let changes = patch
                 .iter()
                 .map(|(key, after)| {
@@ -5296,10 +5326,23 @@ fn show_service_toast_overlay(
     let Some(webview) = app.get_webview(&format!("svc-{service_id}")) else {
         return Ok(());
     };
-    let script = service_toast_overlay_script(message, 2600)?;
+    let height = download_toast::visible_height(&app);
+    let bottom = if height > 0.0 { height + 36.0 } else { 24.0 };
+    let script = service_toast_overlay_script(message, 2600)?
+        .replace("bottom:24px", &format!("bottom:{bottom}px"));
     webview
         .eval(script)
         .map_err(|error| format!("Unable to show service overlay toast: {error}"))
+}
+
+fn reposition_generic_toast(app: &AppHandle, height: f64) -> Result<(), String> {
+    let active = app.state::<AppState>().active.lock().unwrap().clone();
+    let Some(webview) = active.and_then(|id| app.get_webview(&format!("svc-{id}"))) else {
+        return Ok(());
+    };
+    let bottom = if height > 0.0 { height + 36.0 } else { 24.0 };
+    webview.eval(format!("(function(){{var host=document.getElementById('__tauridium-toast-overlay');if(host)host.style.setProperty('bottom','{bottom}px','important');}})();"))
+        .map_err(|error| format!("Unable to position existing service feedback: {error}"))
 }
 
 #[tauri::command]
@@ -5418,6 +5461,7 @@ fn main() {
                 .build(),
         )
         .manage(AppState::default())
+        .manage(download_toast::DownloadToastState::default())
         .setup(move |app| {
             startup_diagnostics::log("primary", "tauri.setup.begin", "Tauri setup callback entered");
 
@@ -5454,6 +5498,7 @@ fn main() {
             }
 
             let handle = app.handle().clone();
+            download_toast::install_layout_hook(app.handle())?;
             if let Some(win) = app.get_window("main") {
                 startup_diagnostics::log("primary", "window.events", "main window event handler registered");
                 win.on_window_event(move |event| match event {
@@ -5461,7 +5506,12 @@ fn main() {
                     // When focus returns (for example after closing devtools), reapply the
                     // layout because the service webview may have been resized and
                     // overlapped the sidebar.
-                    WindowEvent::Focused(true) => reposition_active(&handle),
+                    WindowEvent::Focused(true) => {
+                        reposition_active(&handle);
+                        download_toast::refresh(&handle);
+                    },
+                    WindowEvent::Focused(false) => download_toast::refresh(&handle),
+                    WindowEvent::ScaleFactorChanged { .. } => reposition_active(&handle),
                     WindowEvent::CloseRequested { api, .. } => {
                         // Persist geometry/state before either hiding to tray or allowing a real close.
                         save_main_window_state(&handle);
@@ -5691,6 +5741,9 @@ fn main() {
             reload_active_service_command,
             reload_app_command,
             show_service_toast_overlay,
+            download_toast::get_download_toast,
+            download_toast::dismiss_download_toast,
+            download_toast::resize_download_toast,
             set_service_zoom,
             toggle_devtools_command
         ])
@@ -5710,6 +5763,43 @@ fn main() {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn patch_0901_download_toast_defaults_migrate_without_enabling_notifications() {
+        let defaults = default_app_settings_value();
+        assert_eq!(defaults["downloadToasts"], false);
+        assert_eq!(defaults["downloadToastLocation"], "none");
+        assert_eq!(defaults["downloadToastParentLevels"], 2);
+        assert_eq!(defaults["downloadToastDuration"], 8);
+        let migrated = merge_app_settings_value(
+            &json!({"downloadDirectory": "/old/downloads", "theme": "light"}),
+        )
+        .unwrap();
+        assert_eq!(migrated["downloadToasts"], false);
+        assert_eq!(migrated["downloadDirectory"], "/old/downloads");
+        assert_eq!(migrated["theme"], "light");
+    }
+
+    #[test]
+    fn patch_0901_download_toast_settings_survive_serialization_and_backup() {
+        let mut settings = default_app_settings_value();
+        settings["downloadToasts"] = true.into();
+        settings["downloadToastLocation"] = "partial".into();
+        settings["downloadToastParentLevels"] = 3.into();
+        settings["downloadToastDuration"] = 0.into();
+        let stored = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+        assert_eq!(merge_app_settings_value(&stored).unwrap(), settings);
+        let backup = backup::BackupDocument::new(
+            env!("CARGO_PKG_VERSION"),
+            settings.clone(),
+            serde_json::to_value(LocalProfile::default()).unwrap(),
+            Vec::new(),
+        );
+        assert_eq!(
+            merge_app_settings_value(&backup.app_settings()).unwrap(),
+            settings
+        );
+    }
 
     fn identity_migration_test_root() -> PathBuf {
         let unique = SystemTime::now()
