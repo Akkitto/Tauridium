@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.9.1] - 2026-10-05
+
+### Added
+
+- Optional global download completion toasts, disabled by default, with filename-only,
+  destination-folder, full-path and configurable partial-path details.
+- Accessible bottom-of-window notifications with queued downloads, dismiss controls,
+  configurable display time and pause-on-hover, focus and background behavior.
+
+### Release quality
+
+- Local paths remain in a separate Tauridium-owned renderer, never in service pages
+  or broadcast events. Existing download destinations and system notifications are preserved.
+- Added path-formatting, settings migration, queue, timer and native-download regressions.
+- Corrected Linux native child-view layering and per-download WebKit failure state;
+  failed transfers no longer suppress later successful completions.
+
 ## [0.9.0] - 2026-10-03
 
 ### Added
