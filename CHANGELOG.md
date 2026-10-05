@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.5] - 2026-10-05
+
+### Fixed
+
+- Fixed the Advanced Settings download-notification switch expanding over the
+  entire window and blocking navigation. Restored its contained track and thumb
+  without changing saved settings or download behavior.
+- Restored theme-aware download option controls and corrected numeric duration
+  options so the current display time is visible rather than blank.
+- Added regression coverage for every switch's positioning contract and a real
+  production Settings navigation/control test across three themes and two sizes.
+
 ## [0.9.4] - 2026-10-05
 
 ### Fixed

@@ -19,11 +19,16 @@
   <url type="vcs-browser">https://github.com/Akkitto/Tauridium</url>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v0.9.4/data/screenshots/tauridium-0.8.0-main.png</image>
+      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v0.9.5/data/screenshots/tauridium-0.8.0-main.png</image>
       <caption>Tauridium sign-in and local accountless start screen</caption>
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.9.5" date="2026-10-05">
+      <description>
+        <p>Fixes the oversized Advanced Settings switch that blocked navigation and adds production Settings interaction regressions.</p>
+      </description>
+    </release>
     <release version="0.9.4" date="2026-10-05">
       <description>
         <p>Fixes Windows release tests by preserving CRLF lockfile line endings in the version generator and adds repeat-run regression coverage.</p>
