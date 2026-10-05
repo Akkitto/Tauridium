@@ -36,13 +36,13 @@ fs.writeFileSync(cargoPath, updatedCargo);
 
 const cargoLockPath = "src-tauri/Cargo.lock";
 const cargoLock = fs.readFileSync(cargoLockPath, "utf8");
-const updatedCargoLock = cargoLock.replace(
-  /(\[\[package\]\]\nname = "tauridium"\nversion = ")[^"]+("\n)/,
-  `$1${version}$2`,
-);
-if (updatedCargoLock === cargoLock && !cargoLock.includes(`name = "tauridium"\nversion = "${version}"`)) {
+// Windows Git checkouts may use CRLF. Match either delimiter and preserve the
+// original bytes outside the version, including on already-synchronized runs.
+const cargoLockVersion = /(\[\[package\]\]\r?\nname = "tauridium"\r?\nversion = ")[^"]+("\r?\n)/;
+if (!cargoLockVersion.test(cargoLock)) {
   throw new Error("unable to update Cargo.lock Tauridium package version");
 }
+const updatedCargoLock = cargoLock.replace(cargoLockVersion, `$1${version}$2`);
 fs.writeFileSync(cargoLockPath, updatedCargoLock);
 
 const initPath = "tools/init.py";

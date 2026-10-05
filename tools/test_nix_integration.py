@@ -98,26 +98,70 @@ class NixIntegrationTests(unittest.TestCase):
     example = (ROOT / "docs/examples/nix/flake.nix").read_text(encoding="utf-8")
     self.assertIn(f'github:Akkitto/Tauridium/v{version}', example)
 
-  @unittest.skipUnless(shutil.which("node"), "Node is required for the release version generator")
-  def test_version_generator_updates_copyable_nix_references(self):
+  def copy_version_fixture(self, root, newline=None):
     paths = (
       "src-tauri/tauri.conf.json", "package.json", "package-lock.json",
       "src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "tools/init.py",
       "tools/init.ps1", "README.md", "docs/NIX.md", "docs/examples/nix/flake.nix",
     )
+    for path in paths:
+      destination = root / path
+      destination.parent.mkdir(parents=True, exist_ok=True)
+      shutil.copyfile(ROOT / path, destination)
+      if newline is not None:
+        source = destination.read_bytes().replace(b"\r\n", b"\n")
+        destination.write_bytes(source.replace(b"\n", newline))
+    return paths
+
+  def run_version_generator(self, root, version="99.98.97"):
+    result = subprocess.run(
+      [shutil.which("node"), str(ROOT / "tools/sync_version.mjs"), version],
+      cwd=root, capture_output=True,
+    )
+    self.assertEqual(result.returncode, 0, (result.stdout + result.stderr).decode("utf-8", errors="replace"))
+
+  @unittest.skipUnless(shutil.which("node"), "Node is required for the release version generator")
+  def test_version_generator_updates_copyable_nix_references(self):
     with tempfile.TemporaryDirectory() as directory:
       root = Path(directory)
-      for path in paths:
-        destination = root / path
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(ROOT / path, destination)
-      subprocess.run([shutil.which("node"), str(ROOT / "tools/sync_version.mjs"), "99.98.97"], cwd=root, check=True, capture_output=True)
+      self.copy_version_fixture(root)
+      self.run_version_generator(root)
       for path in ("docs/NIX.md", "docs/examples/nix/flake.nix"):
         source = (root / path).read_text(encoding="utf-8")
         self.assertIn("github:Akkitto/Tauridium/v99.98.97", source)
         old_version = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["version"]
         self.assertNotIn(f"github:Akkitto/Tauridium/v{old_version}", source)
       self.assertIn("v99.98.97 cannot discover", (root / "docs/NIX.md").read_text(encoding="utf-8"))
+
+  @unittest.skipUnless(shutil.which("node"), "Node is required for the release version generator")
+  def test_version_generator_preserves_lockfile_newlines_and_is_idempotent(self):
+    for newline in (b"\n", b"\r\n"):
+      with self.subTest(newline=newline), tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        paths = self.copy_version_fixture(root, newline)
+        before = (root / "src-tauri/Cargo.lock").read_bytes()
+        old_version = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["version"]
+        old_entry = newline.join((b'[[package]]', b'name = "tauridium"', f'version = "{old_version}"'.encode()))
+        new_entry = newline.join((b'[[package]]', b'name = "tauridium"', b'version = "99.98.97"'))
+        self.assertEqual(before.count(old_entry), 1)
+        self.run_version_generator(root)
+        self.assertEqual((root / "src-tauri/Cargo.lock").read_bytes(), before.replace(old_entry, new_entry))
+        first = {path: (root / path).read_bytes() for path in paths}
+        self.run_version_generator(root)
+        self.assertEqual(first, {path: (root / path).read_bytes() for path in paths})
+
+  @unittest.skipUnless(shutil.which("node"), "Node is required for the release version generator")
+  def test_version_generator_rejects_missing_tauridium_lock_entry(self):
+    for newline in (b"\n", b"\r\n"):
+      with self.subTest(newline=newline), tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        self.copy_version_fixture(root, newline)
+        lock = root / "src-tauri/Cargo.lock"
+        original = lock.read_bytes().replace(b'name = "tauridium"', b'name = "not-tauridium"')
+        lock.write_bytes(original)
+        with self.assertRaisesRegex(AssertionError, "unable to update Cargo.lock Tauridium package version"):
+          self.run_version_generator(root)
+        self.assertEqual(lock.read_bytes(), original)
 
   @unittest.skipUnless(shutil.which("node"), "Node is required for the release version generator")
   def test_version_generator_ignores_cp1252_default_encoding(self):
@@ -142,6 +186,7 @@ class NixIntegrationTests(unittest.TestCase):
       with mock.patch.object(Path, "read_text", locale_read_text):
         self.assertRaises(UnicodeDecodeError, self.test_version_generator_updates_copyable_nix_references)
       self.test_version_generator_updates_copyable_nix_references()
+      self.test_version_generator_preserves_lockfile_newlines_and_is_idempotent()
 
 
 if __name__ == "__main__":
