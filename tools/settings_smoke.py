@@ -47,12 +47,9 @@ def main() -> int:
     png = output / f"{name}.png"
     subprocess.run(["magick", "import", "-window", window, str(png)], check=True, timeout=10)
     rows = []
-    # Active tabs have dark text on a bright accent; OCR needs the opposite
-    # polarity as well. Keep the actual evidence image unmodified.
-    for transform in ([], ["-colorspace", "Gray", "-negate"]):
-      enlarged = subprocess.run(["magick", str(png), "-resize", "200%", *transform, "png:-"], capture_output=True, check=True, timeout=10)
-      ocr = subprocess.run(["tesseract", "stdin", "stdout", "--psm", "11", "tsv"], input=enlarged.stdout, capture_output=True, check=True, timeout=30)
-      rows.extend(csv.DictReader(io.StringIO(ocr.stdout.decode("utf-8")), delimiter="\t"))
+    enlarged = subprocess.run(["magick", str(png), "-resize", "200%", "png:-"], capture_output=True, check=True, timeout=10)
+    ocr = subprocess.run(["tesseract", "stdin", "stdout", "--psm", "11", "tsv"], input=enlarged.stdout, capture_output=True, check=True, timeout=30)
+    rows.extend(csv.DictReader(io.StringIO(ocr.stdout.decode("utf-8")), delimiter="\t"))
     rows = [row for row in rows if row["text"].strip()]
     for row in rows:
       for key in ("left", "top", "width", "height"):
@@ -61,11 +58,11 @@ def main() -> int:
     (output / f"{name}.txt").write_text(text + "\n", encoding="utf-8")
     return text, rows, struct.unpack(">II", png.read_bytes()[16:24])
 
-  def word(rows, label):
+  def word(rows, label, rightmost=False):
     matches = [row for row in rows if row["text"].strip().lower() == label.lower()]
     if not matches:
       raise RuntimeError(f"Rendered UI control not found: {label}")
-    row = min(matches, key=lambda item: item["top"])
+    row = max(matches, key=lambda item: item["left"]) if rightmost else min(matches, key=lambda item: item["top"])
     return row["left"] + row["width"] // 2, row["top"] + row["height"] // 2
 
   def click(point):
@@ -101,6 +98,7 @@ def main() -> int:
 
         with (output / f"{name}.log").open("w", encoding="utf-8") as log:
           process = subprocess.Popen(["dbus-run-session", f"--config-file={args.dbus_config}", "--", str(args.binary.resolve()), "--startup-diagnostics"], env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+          window = None
           try:
             def visible_window():
               if process.poll() is not None:
@@ -139,16 +137,41 @@ def main() -> int:
             assert saved("downloadToasts", False), "Notifications must default to off"
             click(word(rows, "completion"))
             wait_for(lambda: saved("downloadToasts", True), "enabled notification toggle")
-            # Native keyboard focus must reach each newly-enabled form control.
-            xdo("key", "Tab", "End")
+            xdo("mousemove", "--sync", width - 25, height // 2)
+            xdo("click", "--repeat", 3, "--delay", 30, 5)
+            time.sleep(0.3)
+            text, rows, _ = capture(window, f"{name}-enabled-options")
+            click(word(rows, "Filename", rightmost=True))
+            xdo("key", "End", "Return", "Tab")
             wait_for(lambda: saved("downloadToastLocation", "partial"), "partial-path selector")
-            xdo("key", "Tab", "ctrl+a")
+            text, rows, _ = capture(window, f"{name}-partial-options")
+            click(word(rows, "Partial", rightmost=True))
+            # Traverse from the select to the newly rendered number input.
+            xdo("key", "Escape", "Tab", "ctrl+a")
             xdo("type", "--clearmodifiers", "3")
             xdo("key", "Tab")
             wait_for(lambda: saved("downloadToastParentLevels", 3), "parent-folder input")
-            xdo("key", "End")
+            for step in range(8):
+              text, rows, _ = capture(window, f"{name}-parent-options-{step}")
+              if any(row["text"].strip().lower() == "seconds" for row in rows):
+                break
+              xdo("mousemove", "--sync", width - 25, height // 2)
+              xdo("click", "--repeat", 2, "--delay", 30, 5)
+              time.sleep(0.2)
+            else:
+              raise RuntimeError("Display-time selector is not reachable by scrolling")
+            click(word(rows, "seconds", rightmost=True))
+            xdo("key", "End", "Return", "Tab")
             wait_for(lambda: saved("downloadToastDuration", 0), "display-time selector")
-            text, rows, _ = capture(window, f"{name}-enabled-controls")
+            for step in range(8):
+              text, rows, _ = capture(window, f"{name}-enabled-controls-{step}")
+              if "Show download completion toasts" in text:
+                break
+              xdo("mousemove", "--sync", width - 25, height // 2)
+              xdo("click", "--repeat", 2, "--delay", 30, 4)
+              time.sleep(0.2)
+            else:
+              raise RuntimeError("Enabled download notification toggle is not reachable")
             click(word(rows, "completion"))
             wait_for(lambda: saved("downloadToasts", False), "disabled notification toggle")
             top(width, height)
@@ -168,6 +191,14 @@ def main() -> int:
             assert "Service context menu" in text, text
             reports.append({"theme": theme, "size": [width, height], "navigation": True,
                             "closeAndReopen": True, "downloadControlsPersisted": True})
+          except Exception:
+            (output / f"{name}-failure-settings.json").write_text((data / "app_settings.json").read_text(encoding="utf-8"), encoding="utf-8")
+            if window is not None and process.poll() is None:
+              try:
+                capture(window, f"{name}-failure")
+              except (subprocess.SubprocessError, OSError) as diagnostic:
+                print(f"Could not capture failure screenshot: {diagnostic}", flush=True)
+            raise
           finally:
             try:
               os.killpg(process.pid, signal.SIGTERM)
