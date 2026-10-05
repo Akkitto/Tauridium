@@ -60,7 +60,8 @@ See [Installation](docs/installation.md) for package details, persistence behavi
 
 For NixOS or Nix profiles, use the source-built flake package rather than an
 AppImage or native ZIP. See [Nix/NixOS installation and development](docs/NIX.md)
-for locked releases, declarative configuration, updates and safe autostart.
+for locked releases, direct-package and overlay consumption, NixOS `specialArgs`,
+Home Manager `extraSpecialArgs`, updates and safe autostart.
 
 Download the appropriate native package from [GitHub Releases](https://github.com/Akkitto/Tauridium/releases/latest):
 

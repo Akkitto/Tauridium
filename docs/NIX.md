@@ -37,30 +37,240 @@ ELF inside the store. The flake does not change your Nix daemon configuration.
 
 ## Declarative NixOS and Home Manager
 
-Add the input to your configuration flake (and commit its generated flake.lock):
+Choose the smallest integration that fits your existing configuration. Tauridium
+exports `packages`, `apps` and an overlay, **not** a NixOS service module or a
+Home Manager module. You supply your own installation module; no `services.tauridium`
+or `programs.tauridium.enable` option is required or exported.
+
+| Consumption pattern | Installation expression | Input forwarding |
+| --- | --- | --- |
+| Direct package in an inline module | `tauridium.packages.${system}.default` | None when captured from `outputs` |
+| Direct package in an imported NixOS module | Same package in `environment.systemPackages` | `nixosSystem.specialArgs` |
+| Direct package in an imported standalone Home Manager module | Same package in `home.packages` | `homeManagerConfiguration.extraSpecialArgs` |
+| Home Manager embedded in NixOS | Same package in the user's `home.packages` | `home-manager.extraSpecialArgs` |
+| Overlay | `pkgs.tauridium` | Register the overlay on the package set actually used by that module |
+
+Both `.default` and `.tauridium` name the same package. Available systems are
+`x86_64-linux` and `aarch64-linux`; choose your host architecture, not the machine
+editing the configuration. These outputs are native Linux packages, not a
+cross-compilation interface or Windows/macOS packages.
+
+### Shared flake input and dependency policy
+
+Add this input to your existing configuration flake:
 
 ```nix
 inputs.tauridium.url = "github:Akkitto/Tauridium/v0.9.1";
 ```
 
-In a NixOS module where the input is passed through `specialArgs`:
+Bind it in your existing `outputs` function, for example
+`outputs = inputs@{ nixpkgs, tauridium, ... }: ...;`, then update and commit your
+configuration's `flake.lock` after the tag is published. Do not replace unrelated
+inputs or your existing host/user settings.
+
+Keep Tauridium's own tested nixpkgs/compiler lock. Neither direct consumption nor
+the overlay requires `tauridium.inputs.nixpkgs.follows = "nixpkgs"`; adding it
+replaces the tested dependency set and may select a compiler below Tauridium's
+MSRV. The overlay deliberately returns Tauridium's locked package rather than
+rebuilding it with your configuration's `pkgs`. Updating your system nixpkgs alone
+therefore does not update Tauridium's dependencies. Review changes to both locks.
+
+### Direct package: capture the input inline
+
+Inside `outputs`, the input is already in lexical scope. This is the simplest
+pattern when you do not need a separate installation module:
+
+```nix
+nixosConfigurations.desktop = nixpkgs.lib.nixosSystem {
+  system = "x86_64-linux"; # Or aarch64-linux.
+  modules = [
+    ./configuration.nix # Your existing complete host configuration.
+    ({ pkgs, ... }: {
+      environment.systemPackages = [
+        tauridium.packages.${pkgs.stdenv.hostPlatform.system}.default
+      ];
+    })
+  ];
+};
+```
+
+For a Home Manager inline module, replace `environment.systemPackages` with
+`home.packages`. Do not add `tauridium` to that inline function's argument list:
+doing so shadows the captured input and asks the module system to supply it.
+
+### Imported NixOS module: `specialArgs`
+
+In your configuration flake's `outputs`:
+
+```nix
+nixosConfigurations.desktop = nixpkgs.lib.nixosSystem {
+  system = "x86_64-linux";
+  specialArgs = { inherit tauridium; };
+  modules = [ ./configuration.nix ./tauridium-system.nix ];
+};
+```
+
+`tauridium-system.nix`:
 
 ```nix
 { pkgs, tauridium, ... }:
 {
-  environment.systemPackages = [ tauridium.packages.${pkgs.stdenv.hostPlatform.system}.default ];
+  environment.systemPackages = [
+    tauridium.packages.${pkgs.stdenv.hostPlatform.system}.default
+  ];
 }
 ```
 
-Pass it from your configuration's `outputs = { nixpkgs, tauridium, ... }: ...`:
-`specialArgs = { inherit tauridium; };`. For Home Manager, use the same package
-expression in `home.packages` and pass `tauridium` through `extraSpecialArgs`.
-An overlay is also available: `nixpkgs.overlays = [ tauridium.overlays.default ];`
-then `environment.systemPackages = [ pkgs.tauridium ];` (or `home.packages`). Do
-not assume stock nixpkgs already contains this package. The overlay retains the
-flake's tested dependency/compiler lock rather than picking an older channel's
-compiler below Tauridium's MSRV. It does not require following your system's
-nixpkgs input. Keep the Tauridium lockfile when updating the configuration.
+### Standalone Home Manager: `extraSpecialArgs`
+
+Use the Home Manager branch matching your configuration's nixpkgs channel. For
+an unstable configuration, these inputs can accompany the Tauridium input:
+
+```nix
+inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+inputs.home-manager = {
+  url = "github:nix-community/home-manager";
+  inputs.nixpkgs.follows = "nixpkgs";
+};
+```
+
+Bind `home-manager` as well as `nixpkgs` and `tauridium` in `outputs`. Then:
+
+```nix
+homeConfigurations.demo = home-manager.lib.homeManagerConfiguration {
+  pkgs = import nixpkgs { system = "x86_64-linux"; };
+  extraSpecialArgs = { inherit tauridium; };
+  modules = [ ./home.nix ./tauridium-home.nix ];
+};
+```
+
+`tauridium-home.nix`:
+
+```nix
+{ pkgs, tauridium, ... }:
+{
+  home.packages = [
+    tauridium.packages.${pkgs.stdenv.hostPlatform.system}.default
+  ];
+}
+```
+
+Keep your real username, home directory and existing `home.stateVersion` in
+`home.nix`. **Do not bump stateVersion merely to install or update Tauridium.**
+An input declared in a flake is not automatically a Home Manager module argument;
+forward it explicitly as above. See the
+[Home Manager standalone manual](https://home-manager.dev/manual/unstable/nix-flakes/standalone.html).
+
+### Home Manager as a NixOS module: a separate argument boundary
+
+Inside your flake's `outputs`, using the same `tauridium-home.nix`:
+
+```nix
+nixosConfigurations.desktop = nixpkgs.lib.nixosSystem {
+  system = "x86_64-linux";
+  modules = [
+    ./configuration.nix
+    home-manager.nixosModules.home-manager
+    {
+      home-manager.useGlobalPkgs = true;
+      home-manager.useUserPackages = true;
+      home-manager.extraSpecialArgs = { inherit tauridium; };
+      home-manager.users.demo.imports = [ ./home.nix ./tauridium-home.nix ];
+    }
+  ];
+};
+```
+
+Replace `demo` with an existing normal NixOS user. Keep existing Home Manager
+options rather than changing package/profile ownership just for Tauridium.
+**NixOS `specialArgs` alone does not forward the value into Home Manager.** If
+both module layers need it, set both `specialArgs` and
+`home-manager.extraSpecialArgs`. See the
+[Home Manager NixOS-module manual](https://home-manager.dev/manual/unstable/nix-flakes/nixos.html).
+
+### Overlay: install through the module's `pkgs`
+
+For NixOS, capture the overlay in `outputs` and register it once:
+
+```nix
+modules = [
+  ./configuration.nix
+  { nixpkgs.overlays = [ tauridium.overlays.default ]; }
+  ({ pkgs, ... }: { environment.systemPackages = [ pkgs.tauridium ]; })
+];
+```
+
+For standalone Home Manager, supply an overlaid package set:
+
+```nix
+homeConfigurations.demo = home-manager.lib.homeManagerConfiguration {
+  pkgs = import nixpkgs {
+    system = "x86_64-linux";
+    overlays = [ tauridium.overlays.default ];
+  };
+  modules = [
+    ./home.nix
+    ({ pkgs, ... }: { home.packages = [ pkgs.tauridium ]; })
+  ];
+};
+```
+
+With `home-manager.useGlobalPkgs = true`, embedded Home Manager uses NixOS's
+package set: register the overlay on **NixOS** `nixpkgs.overlays`, not a separate
+Home Manager package set. If you keep `useGlobalPkgs = false`, apply the overlay
+to Home Manager's own package set instead. Direct package consumption needs no
+overlay. Do not install twice via both `home.packages` and
+`environment.systemPackages` unless that ownership is intentional.
+
+### Troubleshooting missing arguments
+
+An error mentioning `attribute 'tauridium' missing`, `args.${name}` or
+`config._module.args`, often inside nixpkgs/Home Manager's module evaluator,
+usually means `{ tauridium, ... }:` requested an argument that was not forwarded.
+This does **not** indicate that the Tauridium derivation or installer is broken.
+
+1. Check which module system evaluates the failing file, then use the forwarding
+   field in the table above. Adding NixOS `specialArgs` is not a standalone
+   Home Manager fix.
+2. Match argument names exactly. `extraSpecialArgs = { inherit tauridium; };`
+   matches `{ tauridium, ... }:`. Alternatively,
+   `extraSpecialArgs = { inherit inputs; };` matches `{ inputs, ... }:` and
+   `inputs.tauridium.packages.${pkgs.stdenv.hostPlatform.system}.default`.
+   These styles are not interchangeable.
+3. If using lexical capture, remove `tauridium` from the inline module's arguments.
+   For an overlay error mentioning `pkgs.tauridium`, check the actual package set
+   used by the failing module, not merely an unrelated `import nixpkgs`.
+4. Evaluate before activation, for example `nix eval --show-trace
+   '.#homeConfigurations.demo.activationPackage.drvPath'`. Then use
+   `home-manager build --flake .#demo` or `nixos-rebuild build --flake .#desktop`
+   for your complete configuration before choosing to switch.
+
+Merge additional arguments into your existing argument set; do not replace
+other consumers' values or override reserved `lib`, `config`, `options` or `pkgs`
+arguments. Prefer explicit forwarding over ad-hoc `_module.args` tricks for
+values originating outside the module graph. The
+[NixOS system-configuration guide](https://wiki.nixos.org/wiki/NixOS_system_configuration#Accessing_flake_inputs)
+documents NixOS `specialArgs`.
+
+### Executable examples and evaluation coverage
+
+[Consumer examples](examples/nix/flake.nix) contain the direct, overlay and
+argument-forwarding patterns in [consumer.nix](examples/nix/consumer.nix), plus
+imported [NixOS](examples/nix/nixos.nix) and [Home Manager](examples/nix/home.nix)
+modules. They are **evaluation examples, not a replacement host configuration**:
+merge a chosen pattern into your existing files. The sample user is `demo` and
+the sample Home Manager state version is for a new configuration only. After
+the chosen tag is published, a copied example flake can generate its own consumer lock.
+
+From this repository, run `just nix-integration` to evaluate the actual examples
+against locked NixOS and Home Manager on both supported architecture outputs.
+It also confirms three expected missing-argument failures per architecture,
+including the embedded Home Manager boundary. Evidence goes to
+`release/evidence/nix-integration/report.json`. This evaluates package membership,
+Home Manager assertions and activation derivations; it does **not** activate a
+system/user configuration, run ARM binaries on x86, or replace the VM/runtime gates.
+Home Manager is locked only in the test fixture, not added to Tauridium's normal
+flake inputs. The fixture requires Nix 2.35 or later for its relative flake input.
 
 Use your normal desktop/session configuration, D-Bus, audio and graphics drivers.
 No system service or root GUI is necessary. If screen sharing/file dialogs need
@@ -105,6 +315,7 @@ Nix generations provide package rollback; keep backups of application data too.
 ```sh
 just nix-build
 just nix-check
+just nix-integration
 just nix-smoke
 just nix-nixos-test
 just nix-dev
