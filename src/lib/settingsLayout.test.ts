@@ -15,9 +15,11 @@ function classes(node: AST.RegularElement): string[] {
 }
 
 const switches: { input: AST.RegularElement; parent: AST.RegularElement | undefined }[] = [];
+const elements: AST.RegularElement[] = [];
 function visit(value: unknown, parent?: AST.RegularElement): void {
   if (value === null || typeof value !== "object") return;
   if (element(value)) {
+    elements.push(value);
     if (value.name === "input" && classes(value).includes("switch-input")) switches.push({ input: value, parent });
     parent = value;
   }
@@ -47,5 +49,33 @@ describe("Settings switch layout contract", () => {
       expect(track).toBeDefined();
       expect(track && element(track) && track.fragment.nodes.some((node) => element(node) && classes(node).includes("switch-thumb"))).toBe(true);
     }
+  });
+});
+
+function downloadControl(label: string): AST.RegularElement {
+  const control = elements.find((node) => node.attributes.some((attribute) =>
+    attribute.type === "Attribute" && attribute.name === "aria-label" &&
+    Array.isArray(attribute.value) && attribute.value.some((value) => value.type === "Text" && value.data === label)));
+  if (!control) throw new Error(`Missing download control: ${label}`);
+  return control;
+}
+
+describe("Download notification form controls", () => {
+  it("uses the shared theme-aware select and number styles", () => {
+    for (const label of ["Download notification saved location", "Download notification display time"]) {
+      expect(classes(downloadControl(label))).toContain("select");
+    }
+    expect(classes(downloadControl("Download notification parent folders"))).toContain("num");
+  });
+
+  it("matches duration options to numeric persisted settings", () => {
+    const select = downloadControl("Download notification display time");
+    const values = select.fragment.nodes.filter(element).filter((node) => node.name === "option").map((node) => {
+      const attribute = node.attributes.find((item) => item.type === "Attribute" && item.name === "value");
+      if (attribute?.type !== "Attribute" || attribute.value === true) return undefined;
+      const value = Array.isArray(attribute.value) ? attribute.value[0] : attribute.value;
+      return value?.type === "ExpressionTag" && value.expression.type === "Literal" ? value.expression.value : undefined;
+    });
+    expect(values).toEqual([8, 15, 30, 0]);
   });
 });

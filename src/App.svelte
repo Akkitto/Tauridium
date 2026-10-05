@@ -5189,20 +5189,20 @@
                     <legend>Download notification details</legend>
                     <label class="setting-card">
                       <span class="setting-copy"><span class="setting-label">Saved location</span><span class="setting-description">Filename only keeps local paths private. Folder name shows just the destination folder; full and partial paths include the filename.</span></span>
-                      <select class="setting-control" value={appSettings.downloadToastLocation} aria-label="Download notification saved location" onchange={(event) => { const value = event.currentTarget.value; if (value === "none" || value === "directory" || value === "full" || value === "partial") void saveDownloadToastSetting("downloadToastLocation", value); }}>
+                      <select class="select setting-control" value={appSettings.downloadToastLocation} aria-label="Download notification saved location" onchange={(event) => { const value = event.currentTarget.value; if (value === "none" || value === "directory" || value === "full" || value === "partial") void saveDownloadToastSetting("downloadToastLocation", value); }}>
                         <option value="none">Filename only</option><option value="directory">Destination folder name</option><option value="full">Full file path</option><option value="partial">Partial file path</option>
                       </select>
                     </label>
                     {#if appSettings.downloadToastLocation === "partial"}
                       <label class="setting-card">
                         <span class="setting-copy"><span class="setting-label">Parent folders to show</span><span class="setting-description">Show the nearest 1–10 parent folders and the filename. Omitted ancestors are marked with an ellipsis; 2 shows, for example, Downloads/Reports/example.pdf.</span></span>
-                        <input class="setting-control" type="number" min="1" max="10" step="1" value={appSettings.downloadToastParentLevels} aria-label="Download notification parent folders" onchange={saveDownloadToastParentLevels} />
+                        <input class="num setting-control" type="number" min="1" max="10" step="1" value={appSettings.downloadToastParentLevels} aria-label="Download notification parent folders" onchange={saveDownloadToastParentLevels} />
                       </label>
                     {/if}
                     <label class="setting-card">
                       <span class="setting-copy"><span class="setting-label">Display time</span><span class="setting-description">The timer pauses while hovered, keyboard-focused, or Tauridium is in the background. Multiple downloads queue; every toast can be dismissed.</span></span>
-                      <select class="setting-control" value={appSettings.downloadToastDuration} aria-label="Download notification display time" onchange={(event) => { const value = Number(event.currentTarget.value); if (value === 0 || value === 8 || value === 15 || value === 30) void saveDownloadToastSetting("downloadToastDuration", value); }}>
-                        <option value="8">8 seconds</option><option value="15">15 seconds</option><option value="30">30 seconds</option><option value="0">Until dismissed</option>
+                      <select class="select setting-control" value={appSettings.downloadToastDuration} aria-label="Download notification display time" onchange={(event) => { const value = Number(event.currentTarget.value); if (value === 0 || value === 8 || value === 15 || value === 30) void saveDownloadToastSetting("downloadToastDuration", value); }}>
+                        <option value={8}>8 seconds</option><option value={15}>15 seconds</option><option value={30}>30 seconds</option><option value={0}>Until dismissed</option>
                       </select>
                     </label>
                     <div class="download-toast-preview"><span>Example: Download complete — example.pdf</span>{#if downloadToastExample}<code>{appSettings.downloadToastLocation === "directory" ? "Folder" : "Saved to"}: {downloadToastExample}</code>{/if}</div>
