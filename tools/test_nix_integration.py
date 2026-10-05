@@ -75,9 +75,9 @@ class NixIntegrationTests(unittest.TestCase):
     self.assertEqual(kwargs["cwd"], ROOT)
 
   def test_home_manager_dependency_is_test_only_and_immutable(self):
-    package_lock = json.loads((ROOT / "flake.lock").read_text())
+    package_lock = json.loads((ROOT / "flake.lock").read_text(encoding="utf-8"))
     self.assertNotIn("home-manager", package_lock["nodes"]["root"]["inputs"])
-    lock = json.loads((ROOT / "tests/nix-integration/flake.lock").read_text())
+    lock = json.loads((ROOT / "tests/nix-integration/flake.lock").read_text(encoding="utf-8"))
     home = lock["nodes"]["home-manager"]
     self.assertEqual(len(home["locked"]["rev"]), 40)
     self.assertTrue(home["locked"]["narHash"].startswith("sha256-"))
@@ -87,15 +87,15 @@ class NixIntegrationTests(unittest.TestCase):
       self.assertEqual(lock["nodes"][name]["locked"], package_lock["nodes"][name]["locked"])
 
   def test_ci_and_nix_check_require_consumer_evaluations(self):
-    workflow = (ROOT / ".github/workflows/nix.yml").read_text()
-    recipes = (ROOT / "justfile").read_text()
+    workflow = (ROOT / ".github/workflows/nix.yml").read_text(encoding="utf-8")
+    recipes = (ROOT / "justfile").read_text(encoding="utf-8")
     self.assertIn("--command just nix-integration", workflow)
     self.assertIn("release/evidence/nix-integration", workflow)
     self.assertIn("just nix-integration", recipes.split("nix-check:\n", 1)[1].split("[unix]", 1)[0])
 
   def test_documented_release_input_matches_package_version(self):
-    version = json.loads((ROOT / "package.json").read_text())["version"]
-    example = (ROOT / "docs/examples/nix/flake.nix").read_text()
+    version = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["version"]
+    example = (ROOT / "docs/examples/nix/flake.nix").read_text(encoding="utf-8")
     self.assertIn(f'github:Akkitto/Tauridium/v{version}', example)
 
   @unittest.skipUnless(shutil.which("node"), "Node is required for the release version generator")
@@ -113,11 +113,35 @@ class NixIntegrationTests(unittest.TestCase):
         shutil.copyfile(ROOT / path, destination)
       subprocess.run([shutil.which("node"), str(ROOT / "tools/sync_version.mjs"), "99.98.97"], cwd=root, check=True, capture_output=True)
       for path in ("docs/NIX.md", "docs/examples/nix/flake.nix"):
-        source = (root / path).read_text()
+        source = (root / path).read_text(encoding="utf-8")
         self.assertIn("github:Akkitto/Tauridium/v99.98.97", source)
-        old_version = json.loads((ROOT / "package.json").read_text())["version"]
+        old_version = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["version"]
         self.assertNotIn(f"github:Akkitto/Tauridium/v{old_version}", source)
-      self.assertIn("v99.98.97 cannot discover", (root / "docs/NIX.md").read_text())
+      self.assertIn("v99.98.97 cannot discover", (root / "docs/NIX.md").read_text(encoding="utf-8"))
+
+  @unittest.skipUnless(shutil.which("node"), "Node is required for the release version generator")
+  def test_version_generator_ignores_cp1252_default_encoding(self):
+    original_open = Path.open
+    original_read_text = Path.read_text
+
+    def cp1252_open(path, mode="r", buffering=-1, encoding=None, errors=None, newline=None):
+      if "b" not in mode and encoding in (None, "locale"):
+        encoding = "cp1252"
+      return original_open(path, mode, buffering, encoding, errors, newline)
+
+    # Reproduce Windows' locale default without changing the real host locale,
+    # Python UTF-8 mode, source files or the Node generator's UTF-8 behavior.
+    self.assertRaises(UnicodeDecodeError, "”".encode("utf-8").decode, "cp1252")
+    with mock.patch.object(Path, "open", cp1252_open):
+      # Negative control: omitting the encoding reproduces the reported failure
+      # on the actual generated documentation, even on a UTF-8-default host.
+      def locale_read_text(path, *args, **kwargs):
+        kwargs.pop("encoding", None)
+        return original_read_text(path, *args, **kwargs)
+
+      with mock.patch.object(Path, "read_text", locale_read_text):
+        self.assertRaises(UnicodeDecodeError, self.test_version_generator_updates_copyable_nix_references)
+      self.test_version_generator_updates_copyable_nix_references()
 
 
 if __name__ == "__main__":
