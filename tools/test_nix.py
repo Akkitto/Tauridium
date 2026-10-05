@@ -1,8 +1,10 @@
 """Nix release regression coverage; executed package/VM gates live in the flake."""
 import importlib.util
 import json
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("nix_smoke", ROOT / "tools/nix_smoke.py")
@@ -12,6 +14,18 @@ SPEC.loader.exec_module(SMOKE)
 
 
 class NixTests(unittest.TestCase):
+  def test_smoke_isolates_host_service_discovery_and_all_profile_paths(self):
+    inherited = {"XDG_DATA_DIRS": "/usr/share:/host/share", "XDG_DATA_HOME": "/host/data"}
+    with tempfile.TemporaryDirectory() as directory, mock.patch.dict(SMOKE.os.environ, inherited):
+      root = Path(directory)
+      env = SMOKE.isolated_environment(root)
+      self.assertEqual(env["XDG_DATA_DIRS"], str(root / "data"))
+      for variable in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "XDG_RUNTIME_DIR"):
+        path = Path(env[variable])
+        self.assertEqual(path.parent, root)
+        self.assertTrue(path.is_dir())
+      self.assertEqual(SMOKE.os.environ["XDG_DATA_DIRS"], inherited["XDG_DATA_DIRS"])
+
   def test_graphical_smoke_requires_rendered_frontend_not_just_native_title(self):
     self.assertFalse(SMOKE.sign_in_screen_rendered("Tauridium Edit View"))
     self.assertFalse(SMOKE.sign_in_screen_rendered("Tauridium Email Password"))

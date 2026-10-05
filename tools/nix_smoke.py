@@ -34,6 +34,23 @@ def sign_in_screen_rendered(text: str) -> bool:
   return all(label in text for label in ("Tauridium", "Email", "Password", "without an account"))
 
 
+def isolated_environment(profile: Path) -> dict[str, str]:
+  env = dict(os.environ)
+  for variable, directory in (
+    ("XDG_CONFIG_HOME", "config"), ("XDG_DATA_HOME", "data"),
+    ("XDG_CACHE_HOME", "cache"), ("XDG_STATE_HOME", "state"),
+    ("XDG_RUNTIME_DIR", "runtime"),
+  ):
+    path = profile / directory
+    path.mkdir(mode=0o700)
+    env[variable] = str(path)
+  # The private bus must not discover host desktop portal services. Otherwise
+  # their FUSE mounts can outlive the test process and break profile cleanup.
+  # The installed package still supplies its own GTK/WebKit data directories.
+  env["XDG_DATA_DIRS"] = env["XDG_DATA_HOME"]
+  return env
+
+
 def main() -> int:
   parser = argparse.ArgumentParser(description=__doc__)
   parser.add_argument("executable", type=Path)
@@ -48,15 +65,7 @@ def main() -> int:
     raise RuntimeError("Remove the WebKit sandbox override before running this smoke test")
   with tempfile.TemporaryDirectory(prefix="tauridium-nix-smoke-") as temporary:
     profile = Path(temporary)
-    env = dict(os.environ)
-    for variable, directory in (
-      ("XDG_CONFIG_HOME", "config"), ("XDG_DATA_HOME", "data"),
-      ("XDG_CACHE_HOME", "cache"), ("XDG_STATE_HOME", "state"),
-      ("XDG_RUNTIME_DIR", "runtime"),
-    ):
-      path = profile / directory
-      path.mkdir(mode=0o700)
-      env[variable] = str(path)
+    env = isolated_environment(profile)
     # Only the test selects Xvfb/software rendering; the installed app does not.
     env["GDK_BACKEND"] = "x11"
     env["LIBGL_ALWAYS_SOFTWARE"] = "1"
