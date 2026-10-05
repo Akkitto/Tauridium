@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.9.3] - 2026-10-05
+
+### Fixed
+
+- Fixed the Windows release-test failure caused by reading UTF-8 Nix documentation
+  with the default CP1252 encoding. All file reads in the Nix integration test
+  module now explicitly use UTF-8, without changing global Python settings.
+- Added a regression that reproduces the original decoding failure under a
+  simulated CP1252 default and verifies the version generator with the corrected reads.
+
 ## [0.9.2] - 2026-10-05
 
 ### Improved

@@ -19,11 +19,16 @@
   <url type="vcs-browser">https://github.com/Akkitto/Tauridium</url>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v0.9.2/data/screenshots/tauridium-0.8.0-main.png</image>
+      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v0.9.3/data/screenshots/tauridium-0.8.0-main.png</image>
       <caption>Tauridium sign-in and local accountless start screen</caption>
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.9.3" date="2026-10-05">
+      <description>
+        <p>Fixes Windows release tests by reading Nix documentation explicitly as UTF-8 and adds CP1252 regression coverage.</p>
+      </description>
+    </release>
     <release version="0.9.2" date="2026-10-05">
       <description>
         <p>Improves NixOS and Home Manager integration documentation with evaluated direct-package, overlay and explicit argument-forwarding examples.</p>
