@@ -510,7 +510,7 @@ class PackageReleaseTests(unittest.TestCase):
   def test_docs_include_file_drop_guidance_current_report_and_fixture(self) -> None:
     self.write_manifest()
     context = PACKAGE.source_context("0.2.0")
-    paths = ("docs/NIX.md", "docs/file-drops.md", "docs/download-notifications.md", "docs/releases/0.2.0-validation.md", "tools/fixtures/file-drop.html")
+    paths = ("docs/NIX.md", "docs/examples/nix/flake.nix", "docs/examples/nix/consumer.nix", "docs/examples/nix/home.nix", "docs/examples/nix/nixos.nix", "docs/file-drops.md", "docs/download-notifications.md", "docs/releases/0.2.0-validation.md", "tools/fixtures/file-drop.html")
     source_zip = self.root / "src.zip"
     run_zip = self.root / "run.zip"
     source_zip.write_bytes(b"source")

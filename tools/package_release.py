@@ -666,6 +666,11 @@ def build_docs(
     add_bytes(zf, checksums, prefix + "SHA256SUMS")
     add_bytes(zf, (manifest_git_log(context) + "\n").encode(), prefix + "GIT-LOG.txt")
     add_bytes(zf, context.manifest_bytes, prefix + SOURCE_MANIFEST_NAME)
+    examples = ROOT / "docs" / "examples" / "nix"
+    if examples.is_dir():
+      _directories, files = tree_entries(examples)
+      for source, archive_path in files:
+        add_file(zf, source, prefix + "docs/examples/nix/" + archive_path)
     if evidence.is_dir():
       _evidence_directories, evidence_files = tree_entries(evidence)
       for source, archive_path in evidence_files:
