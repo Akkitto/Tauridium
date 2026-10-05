@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.9.4] - 2026-10-05
+
+### Fixed
+
+- Fixed the Windows CI release-test failure caused by CRLF line endings in
+  `Cargo.lock`. The version generator now accepts LF and CRLF while preserving
+  unrelated lockfile bytes and supporting already-synchronized repeat runs.
+- Added LF/CRLF and CP1252 regression coverage, missing-package rejection checks,
+  and visible Node diagnostics when a version-generator test fails.
+
 ## [0.9.3] - 2026-10-05
 
 ### Fixed
