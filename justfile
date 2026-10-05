@@ -98,6 +98,10 @@ test-file-drop:
 test-file-drop-fallback:
   python3 tools/service_file_drop_smoke.py --linux-fallback-only
 
+[unix]
+test-download-toast:
+  python3 tools/download_toast_smoke.py
+
 audit: rust-supply-chain-host
   npm audit --audit-level=high
   cargo audit
