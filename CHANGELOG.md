@@ -9,6 +9,8 @@
   unrelated lockfile bytes and supporting already-synchronized repeat runs.
 - Added LF/CRLF and CP1252 regression coverage, missing-package rejection checks,
   and visible Node diagnostics when a version-generator test fails.
+- Isolated the graphical Nix smoke test from host desktop portal activation,
+  preventing leftover portal mounts from breaking temporary-profile cleanup.
 
 ## [0.9.3] - 2026-10-05
 
