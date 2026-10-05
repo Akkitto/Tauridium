@@ -17,6 +17,26 @@ import time
 from nix_smoke import isolated_environment
 
 
+def control_phrase(rows: list[dict], label: str) -> tuple[int, int] | None:
+  """Locate a complete rendered value, never its description or a clipped value."""
+  lines: dict[tuple, list[dict]] = {}
+  for row in rows:
+    key = tuple(row[field] for field in ("page_num", "block_num", "par_num", "line_num"))
+    lines.setdefault(key, []).append(row)
+  for words in lines.values():
+    words.sort(key=lambda row: row["left"])
+    # Ignore only the native dropdown indicator, not extra description words.
+    if words[-1]["text"].strip() in ("v", "V", "⌄"):
+      words = words[:-1]
+    if " ".join(row["text"].strip() for row in words).casefold() != label.casefold():
+      continue
+    left, top = min(row["left"] for row in words), min(row["top"] for row in words)
+    right = max(row["left"] + row["width"] for row in words)
+    bottom = max(row["top"] + row["height"] for row in words)
+    return (left + right) // 2, (top + bottom) // 2
+  return None
+
+
 def main() -> int:
   parser = argparse.ArgumentParser(description=__doc__)
   parser.add_argument("--binary", type=Path, required=True)
@@ -115,7 +135,8 @@ def main() -> int:
             time.sleep(0.5)
             xdo("key", "ctrl+comma")
             time.sleep(0.5)
-            text, rows, _ = capture(window, f"{name}-general")
+            text, rows, size = capture(window, f"{name}-general")
+            assert size == (width, height), f"Requested window size was not rendered: {size}"
             assert "Startup" in text, text
             advanced = word(rows, "Advanced")
             click(advanced)
@@ -138,30 +159,43 @@ def main() -> int:
             assert saved("downloadToasts", False), "Notifications must default to off"
             click(word(rows, "completion"))
             wait_for(lambda: saved("downloadToasts", True), "enabled notification toggle")
-            xdo("mousemove", "--sync", width - 25, height // 2)
-            xdo("click", "--repeat", 3, "--delay", 30, 5)
-            time.sleep(0.3)
-            text, rows, _ = capture(window, f"{name}-enabled-options")
-            click(word(rows, "Filename", rightmost=True))
+            for step in range(8):
+              text, rows, _ = capture(window, f"{name}-enabled-options-{step}")
+              location = control_phrase(rows, "Filename only")
+              if location is not None:
+                break
+              xdo("mousemove", "--sync", width - 25, height // 2)
+              xdo("click", "--repeat", 2, "--delay", 30, 5)
+              time.sleep(0.2)
+            else:
+              raise RuntimeError("Saved-location selector is not reachable by scrolling")
+            click(location)
             xdo("key", "End", "Return", "Tab")
             wait_for(lambda: saved("downloadToastLocation", "partial"), "partial-path selector")
             text, rows, _ = capture(window, f"{name}-partial-options")
-            click(word(rows, "Partial", rightmost=True))
+            partial = control_phrase(rows, "Partial file path")
+            assert partial is not None, "Selected partial-path value is not rendered"
+            click(partial)
             # Traverse from the select to the newly rendered number input.
-            xdo("key", "Escape", "Tab", "ctrl+a")
+            xdo("key", "--delay", 150, "Escape", "Tab")
+            time.sleep(0.3)
+            xdo("key", "ctrl+a")
+            time.sleep(0.15)
             xdo("type", "--clearmodifiers", "3")
+            time.sleep(0.15)
             xdo("key", "Tab")
             wait_for(lambda: saved("downloadToastParentLevels", 3), "parent-folder input")
             for step in range(8):
               text, rows, _ = capture(window, f"{name}-parent-options-{step}")
-              if any(row["text"].strip().lower() == "seconds" for row in rows):
+              duration = control_phrase(rows, "8 seconds")
+              if duration is not None:
                 break
               xdo("mousemove", "--sync", width - 25, height // 2)
               xdo("click", "--repeat", 2, "--delay", 30, 5)
               time.sleep(0.2)
             else:
               raise RuntimeError("Display-time selector is not reachable by scrolling")
-            click(word(rows, "seconds", rightmost=True))
+            click(duration)
             xdo("key", "End", "Return", "Tab")
             wait_for(lambda: saved("downloadToastDuration", 0), "display-time selector")
             # Blur the native select before locating another control. WebKit can
