@@ -78,6 +78,7 @@ def main() -> int:
   for theme in args.theme or ("dark", "light", "oled"):
     for width, height in ((1100, 900), (760, 600)):
       name = f"{theme}-{width}"
+      title = f"Tauridium UI Regression {name}"
       print(f"Production Settings case: {name}", flush=True)
       with tempfile.TemporaryDirectory(prefix="tauridium-settings-smoke-") as temporary:
         root = Path(temporary)
@@ -86,8 +87,8 @@ def main() -> int:
         data = root / "data/dev.brani.tauridium"
         data.mkdir()
         settings = {"theme": theme, "closeToSystemTray": False, "fetchMissingServiceIcons": False,
-                    "customTitleTemplatesEnabled": True, "windowTitleTemplate": "Tauridium UI Regression",
-                    "taskbarTitleTemplate": "Tauridium UI Regression", "downloadToasts": False}
+                    "customTitleTemplatesEnabled": True, "windowTitleTemplate": title,
+                    "taskbarTitleTemplate": title, "downloadToasts": False}
         for filename, value in (("session.json", {"mode": "local", "version": 1}),
                                 ("local_profile.json", {"version": 1, "services": [], "workspaces": []}),
                                 ("app_settings.json", settings)):
@@ -103,11 +104,11 @@ def main() -> int:
             def visible_window():
               if process.poll() is not None:
                 raise RuntimeError(f"Production app exited: {process.returncode}; see {name}.log")
-              result = subprocess.run(["xdotool", "search", "--onlyvisible", "--name", "^Tauridium UI Regression$"], capture_output=True, text=True, check=False, timeout=5)
+              result = subprocess.run(["xdotool", "search", "--onlyvisible", "--name", f"^{title}$"], capture_output=True, text=True, check=False, timeout=5)
               return result.returncode == 0 and bool(result.stdout.strip())
 
             wait_for(visible_window, "production window")
-            window = xdo("search", "--onlyvisible", "--name", "^Tauridium UI Regression$").splitlines()[0]
+            window = xdo("search", "--onlyvisible", "--name", f"^{title}$").splitlines()[0]
             xdo("windowmove", window, 0, 0)
             xdo("windowsize", window, width, height)
             xdo("windowfocus", "--sync", window)
