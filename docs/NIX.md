@@ -317,6 +317,7 @@ just nix-build
 just nix-check
 just nix-integration
 just nix-smoke
+just test-settings-ui
 just nix-nixos-test
 just nix-dev
 # Inside the shell:
@@ -342,6 +343,10 @@ disabling workaround is installed.
 `nix-smoke` launches the actual wrapped application in private D-Bus/Xvfb and XDG
 directories, retaining a screenshot, OCR text and build information under ignored
 `release/evidence/nix-smoke`. It does not use your accounts or app profile.
+`test-settings-ui` exercises real Settings navigation, closing/reopening and
+download-notification control persistence in three themes at desktop and compact
+window sizes. Screenshots and results are retained in
+`release/evidence/settings-smoke`; it uses isolated profiles, not your settings.
 `nix-nixos-test` installs the package declaratively in an isolated NixOS VM and
 runs that graphical smoke as an ordinary user. It permits software emulation
 without KVM, which is slower; it never activates a host NixOS configuration.

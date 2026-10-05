@@ -271,6 +271,10 @@ nix-smoke:
   nix --extra-experimental-features 'nix-command flakes' run .#smoke
 
 [unix]
+test-settings-ui:
+  nix --extra-experimental-features 'nix-command flakes' run .#settings-smoke
+
+[unix]
 nix-nixos-test:
   nix --extra-experimental-features 'nix-command flakes' build .#nixos-test --no-link --print-build-logs
 

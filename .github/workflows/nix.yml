@@ -40,6 +40,8 @@ jobs:
         run: nix --extra-experimental-features 'nix-command flakes' run .#smoke
       - name: Exercise real downloads and private completion notifications
         run: nix --extra-experimental-features 'nix-command flakes' run .#download-toast-smoke
+      - name: Exercise production Settings navigation and download controls
+        run: nix --extra-experimental-features 'nix-command flakes' run .#settings-smoke
       - name: Test declarative NixOS installation in isolated VM
         if: matrix.system == 'x86_64-linux'
         run: nix --extra-experimental-features 'nix-command flakes' build .#nixos-test --no-link --print-build-logs
@@ -52,4 +54,5 @@ jobs:
           path: |
             release/evidence/nix-smoke
             release/evidence/download-toast-smoke
+            release/evidence/settings-smoke
             release/evidence/nix-integration

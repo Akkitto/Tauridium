@@ -49,6 +49,10 @@
             inherit pkgs;
             package = self.packages.${system}.tauridium;
           };
+          settings-smoke = import ./packaging/nix/settings-smoke.nix {
+            inherit pkgs;
+            package = self.packages.${system}.tauridium;
+          };
           nixos-test = import ./packaging/nix/nixos-test.nix {
             inherit pkgs;
             package = self.packages.${system}.tauridium;
@@ -71,6 +75,11 @@
           type = "app";
           program = "${self.packages.${system}.download-toast-smoke}/bin/tauridium-download-toast-smoke";
           meta.description = "Isolated production download and notification UI tests";
+        };
+        settings-smoke = {
+          type = "app";
+          program = "${self.packages.${system}.settings-smoke}/bin/tauridium-settings-smoke";
+          meta.description = "Isolated production Settings navigation and control tests";
         };
       });
       formatter = forAllSystems (system: (pkgsFor system).nixfmt);
