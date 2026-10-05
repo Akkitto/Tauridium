@@ -176,15 +176,16 @@ def main() -> int:
             click((40, height // 2))
             for step in range(8):
               text, rows, _ = capture(window, f"{name}-partial-options-{step}")
-              parent = control_phrase(rows, "2")
-              if parent is not None:
+              if "Parent folders to show" in text:
                 break
               xdo("mousemove", "--sync", width - 25, height // 2)
               xdo("click", "--repeat", 2, "--delay", 30, 5)
               time.sleep(0.2)
             else:
               raise RuntimeError("Parent-folder input is not reachable by scrolling")
-            click(parent)
+            # The implicit label focuses the number input even when its small
+            # value/spin buttons cannot be recognized reliably by OCR.
+            click(word(rows, "Parent"))
             xdo("key", "ctrl+a")
             time.sleep(0.15)
             xdo("type", "--clearmodifiers", "3")
