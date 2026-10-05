@@ -45,6 +45,10 @@
             inherit pkgs;
             package = self.packages.${system}.tauridium;
           };
+          download-toast-smoke = import ./packaging/nix/download-toast-smoke.nix {
+            inherit pkgs;
+            package = self.packages.${system}.tauridium;
+          };
           nixos-test = import ./packaging/nix/nixos-test.nix {
             inherit pkgs;
             package = self.packages.${system}.tauridium;
@@ -62,6 +66,11 @@
           type = "app";
           program = "${self.packages.${system}.smoke}/bin/tauridium-nix-smoke";
           meta.description = "Isolated production Nix/WebKit graphical smoke test";
+        };
+        download-toast-smoke = {
+          type = "app";
+          program = "${self.packages.${system}.download-toast-smoke}/bin/tauridium-download-toast-smoke";
+          meta.description = "Isolated production download and notification UI tests";
         };
       });
       formatter = forAllSystems (system: (pkgsFor system).nixfmt);
@@ -96,6 +105,10 @@
               librsvg
               libayatana-appindicator
               xdotool
+              gst_all_1.gst-plugins-base
+              gst_all_1.gst-plugins-good
+              gst_all_1.gst-plugins-bad
+              gst_all_1.gst-libav
             ];
             TAURIDIUM_NIX_DEV_SHELL = "1";
             LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [ pkgs.libayatana-appindicator ];

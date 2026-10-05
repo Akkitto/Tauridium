@@ -31,11 +31,13 @@ jobs:
       - name: Check locked source package
         run: nix --extra-experimental-features 'nix-command flakes' flake check --print-build-logs
       - name: Check Nix formatting
-        run: nix --extra-experimental-features 'nix-command flakes' fmt -- --check flake.nix packaging/nix/package.nix packaging/nix/smoke.nix packaging/nix/nixos-test.nix
+        run: nix --extra-experimental-features 'nix-command flakes' fmt -- --check flake.nix packaging/nix/package.nix packaging/nix/smoke.nix packaging/nix/download-toast-smoke.nix packaging/nix/nixos-test.nix
       - name: Initialize pinned development environment without host installation
         run: nix --extra-experimental-features 'nix-command flakes' develop --command just init
       - name: Render real production WebKit UI in isolated profile
         run: nix --extra-experimental-features 'nix-command flakes' run .#smoke
+      - name: Exercise real downloads and private completion notifications
+        run: nix --extra-experimental-features 'nix-command flakes' run .#download-toast-smoke
       - name: Test declarative NixOS installation in isolated VM
         if: matrix.system == 'x86_64-linux'
         run: nix --extra-experimental-features 'nix-command flakes' build .#nixos-test --no-link --print-build-logs
@@ -45,4 +47,6 @@ jobs:
         with:
           name: nix-smoke-${{ matrix.system }}
           if-no-files-found: warn
-          path: release/evidence/nix-smoke
+          path: |
+            release/evidence/nix-smoke
+            release/evidence/download-toast-smoke
