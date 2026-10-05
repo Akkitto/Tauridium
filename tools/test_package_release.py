@@ -431,6 +431,18 @@ class PackageReleaseTests(unittest.TestCase):
         archive.read("tauridium-0.2.0/README.txt").decode(),
       )
 
+  def test_linux_runtime_readme_explains_native_and_nix_requirements(self) -> None:
+    runtime = self.root / "tauridium"
+    runtime.write_bytes(b"native runtime fixture")
+    artifact = PACKAGE.RuntimeArtifact(runtime, "x86_64-unknown-linux-gnu", "linux-x64")
+    PACKAGE.build_runtime(self.root / "run.zip", "0.2.0", [artifact])
+    with zipfile.ZipFile(self.root / "run.zip") as archive:
+      readme = archive.read("tauridium-0.2.0/README.txt").decode()
+      self.assertIn("compatible GTK/WebKit libraries", readme)
+      self.assertIn("not a standalone Nix closure", readme)
+      self.assertIn("develop --command /path/to/tauridium", readme)
+      self.assertIn("run .#tauridium", readme)
+
   def test_runtime_probe_rejects_development_binary(self) -> None:
     runtime = self.root / "tauridium.exe"
     runtime.write_bytes(b"MZ")
@@ -498,7 +510,7 @@ class PackageReleaseTests(unittest.TestCase):
   def test_docs_include_file_drop_guidance_current_report_and_fixture(self) -> None:
     self.write_manifest()
     context = PACKAGE.source_context("0.2.0")
-    paths = ("docs/NIX.md", "docs/file-drops.md", "docs/releases/0.2.0-validation.md", "tools/fixtures/file-drop.html")
+    paths = ("docs/NIX.md", "docs/file-drops.md", "docs/download-notifications.md", "docs/releases/0.2.0-validation.md", "tools/fixtures/file-drop.html")
     source_zip = self.root / "src.zip"
     run_zip = self.root / "run.zip"
     source_zip.write_bytes(b"source")

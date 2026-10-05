@@ -579,6 +579,16 @@ def build_runtime(
       f"Rust target: {targets}\n"
       "Native runtime artifacts produced from the matching release source.\n"
       "Install or execute the artifact appropriate for its platform/package format.\n"
+      + (
+        "\nLinux executables are dynamically linked and require the build's compatible GTK/WebKit libraries.\n"
+        "A runtime built in the locked Nix development shell also requires its Nix store dependencies;\n"
+        "this ZIP is not a standalone Nix closure or a portable AppImage.\n"
+        "From the paired full-Git source archive, use the locked environment to launch that runtime:\n"
+        "  nix --extra-experimental-features 'nix-command flakes' develop --command /path/to/tauridium\n"
+        "For Nix/NixOS installation, prefer the wrapped source-built package described in docs/NIX.md:\n"
+        "  nix --extra-experimental-features 'nix-command flakes' run .#tauridium\n"
+        if any("linux" in runtime.target for runtime in runtimes) else ""
+      )
     ).encode()
     add_bytes(zf, readme, f"tauridium-{release_version}/README.txt")
     add_file(zf, ROOT / "LICENSE", f"tauridium-{release_version}/LICENSE")
@@ -645,6 +655,7 @@ def build_docs(
       (ROOT / "docs" / "installation.md", "docs/installation.md"),
       (ROOT / "docs" / "NIX.md", "docs/NIX.md"),
       (ROOT / "docs" / "file-drops.md", "docs/file-drops.md"),
+      (ROOT / "docs" / "download-notifications.md", "docs/download-notifications.md"),
       (ROOT / "docs" / "releases" / f"{release_version}-validation.md", f"docs/releases/{release_version}-validation.md"),
       (ROOT / "tools" / "fixtures" / "file-drop.html", "tools/fixtures/file-drop.html"),
       (ROOT / "docs" / "github-language-statistics.md", "docs/github-language-statistics.md"),
