@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.2] - 2026-10-05
+
+### Improved
+
+- Expanded Nix integration guidance with direct-package and overlay patterns,
+  NixOS argument forwarding, standalone and embedded Home Manager examples,
+  dependency-lock policy and missing-module-argument troubleshooting.
+- Added locked, real NixOS/Home Manager evaluation gates for both supported
+  architectures, including missing-argument regressions, without host activation
+  or adding Home Manager to the normal package flake's dependencies.
+- Included the executable consumer examples in documentation release archives.
+
 ## [0.9.1] - 2026-10-05
 
 ### Added

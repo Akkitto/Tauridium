@@ -59,8 +59,8 @@ modules:
     sources:
       - type: git
         url: https://github.com/Akkitto/Tauridium.git
-        tag: v0.9.1
-        commit: ecb41c9e0d7f2ce7b5c65b74890f5e0845e74fd2
+        tag: v0.9.2
+        commit: __TAURIDIUM_V092_COMMIT__
         dest: source
         x-checker-data:
           type: git
