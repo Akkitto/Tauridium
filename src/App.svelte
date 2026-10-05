@@ -5446,12 +5446,14 @@
 
 <style>
   :global(:root) {
+    color-scheme: dark;
     --bg: #1f2230; --sidebar: #1b1d28; --card: #282b3a; --panel: #232633;
     --input: #1f2230; --border: #2f3445; --border2: #3a3f55;
     --text: #e8e8ef; --text2: #d6d9e6; --muted: #9aa0b5; --muted2: #6b7193;
     --hover: #262a3a; --accent: #ffc131; --accent-fg: #1f2230; --accent-soft: #b9b2ff; --link: #7a82a8;
   }
   :global(body.light) {
+    color-scheme: light;
     --bg: #f3f4f8; --sidebar: #e9ebf1; --card: #ffffff; --panel: #ffffff;
     --input: #ffffff; --border: #d6dae6; --border2: #c8cddc;
     --text: #1c2030; --text2: #2a2f40; --muted: #5b6280; --muted2: #818aa6;
@@ -5915,6 +5917,12 @@
   .download-toast-options { display: grid; gap: 10px; min-width: 0; margin: 0; padding: 0; border: 0; }
   .download-toast-options > legend { padding: 0 0 8px; color: var(--muted); font-size: 12px; }
   .download-toast-options:disabled { opacity: .6; }
+  .download-toast-options .select {
+    appearance: none; padding-right: 30px;
+    background-image: linear-gradient(45deg, transparent 50%, var(--text) 50%), linear-gradient(135deg, var(--text) 50%, transparent 50%);
+    background-position: calc(100% - 14px) 50%, calc(100% - 10px) 50%;
+    background-size: 4px 4px; background-repeat: no-repeat;
+  }
   .download-toast-preview { display: grid; gap: 5px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; color: var(--muted); }
   .download-toast-preview code { overflow-wrap: anywhere; white-space: pre-wrap; color: var(--text); }
   .service-workspace-overview { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }

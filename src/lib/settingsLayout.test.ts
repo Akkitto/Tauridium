@@ -66,6 +66,7 @@ describe("Download notification form controls", () => {
       expect(classes(downloadControl(label))).toContain("select");
     }
     expect(classes(downloadControl("Download notification parent folders"))).toContain("num");
+    expect(source.match(/\.download-toast-options\s+\.select\s*\{([^}]+)\}/)?.[1]).toMatch(/appearance:\s*none\s*;/);
   });
 
   it("matches duration options to numeric persisted settings", () => {
