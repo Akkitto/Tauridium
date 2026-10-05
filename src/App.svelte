@@ -5183,7 +5183,7 @@
                   {/if}
                   <label class="setting-card setting-card-toggle">
                     <span class="setting-copy"><span class="setting-label">Show download completion toasts</span><span class="setting-description">Show a non-interrupting notification at the bottom of the window after a website download succeeds. Applies to every service and workspace; off by default.</span></span>
-                    <span class="switch"><input class="switch-input" type="checkbox" checked={appSettings.downloadToasts} disabled={downloadToastSettingsBusy} aria-label="Show download completion toasts" onchange={(event) => saveDownloadToastSetting("downloadToasts", event.currentTarget.checked)} /><span class="switch-track" aria-hidden="true"></span></span>
+                    <span class="switch-control"><input class="switch-input" type="checkbox" checked={appSettings.downloadToasts} disabled={downloadToastSettingsBusy} aria-label="Show download completion toasts" onchange={(event) => saveDownloadToastSetting("downloadToasts", event.currentTarget.checked)} /><span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span></span>
                   </label>
                   <fieldset class="download-toast-options" disabled={!appSettings.downloadToasts || downloadToastSettingsBusy}>
                     <legend>Download notification details</legend>
