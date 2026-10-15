@@ -18,6 +18,7 @@ mod local_profile;
 ))]
 mod nix_autostart;
 mod portable;
+mod privacy;
 mod proton_compat;
 mod recipes;
 mod service_export;

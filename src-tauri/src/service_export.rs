@@ -225,38 +225,7 @@ fn staging_path(path: &Path) -> Result<PathBuf, String> {
 }
 
 fn sanitize_service(value: &Value) -> Value {
-    fn sanitize(value: &Value) -> Value {
-        match value {
-            Value::Object(map) => Value::Object(
-                map.iter()
-                    .map(|(key, value)| {
-                        let normalized = key.to_ascii_lowercase();
-                        let sensitive = [
-                            "password",
-                            "passwd",
-                            "token",
-                            "secret",
-                            "cookie",
-                            "authorization",
-                        ]
-                        .iter()
-                        .any(|needle| normalized.contains(needle));
-                        (
-                            key.clone(),
-                            if sensitive {
-                                Value::String("[redacted]".into())
-                            } else {
-                                sanitize(value)
-                            },
-                        )
-                    })
-                    .collect(),
-            ),
-            Value::Array(values) => Value::Array(values.iter().map(sanitize).collect()),
-            _ => value.clone(),
-        }
-    }
-    sanitize(value)
+    crate::privacy::redact(value)
 }
 
 fn service_for_manifest(service: &Value, icon_embedded_as_asset: bool) -> Value {
@@ -391,6 +360,8 @@ fn custom_website_recipe_id(service: &Value) -> Result<String, String> {
 }
 
 fn custom_website_recipe_package(service: &Value, id: &str) -> Result<Vec<u8>, String> {
+    let sanitized = sanitize_service(service);
+    let service = &sanitized;
     let name = service
         .get("name")
         .and_then(Value::as_str)
@@ -653,7 +624,10 @@ pub(crate) fn save(
         services: exported_services,
         portable_recipes: exported_recipes,
         security: json!({
-            "secretsRedacted": true,
+            "knownCredentialFieldsRedacted": true,
+            "sensitiveUrlValuesRedacted": true,
+            "requiresPrivacyReview": true,
+            "executableScriptsIncluded": entries.iter().any(|entry| entry.path.ends_with("/webview.js")),
             "browserSessionDataIncluded": false,
             "remoteIconsFetchedDuringExport": false
         }),
@@ -718,6 +692,18 @@ pub(crate) fn save(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generated_website_recipe_and_service_metadata_redact_url_credentials() {
+        let mut service = custom_website("website-1", "https://user:SYNTHETIC_USERINFO@example.test/path?api_key=SYNTHETIC_QUERY&team=visible");
+        service["apiKey"] = json!("SYNTHETIC_API_KEY");
+        let sanitized = sanitize_service(&service);
+        assert!(!sanitized.to_string().contains("SYNTHETIC_"));
+        let package = custom_website_recipe_package(&service, "fixture").unwrap();
+        let package = String::from_utf8(package).unwrap();
+        assert!(!package.contains("SYNTHETIC_"));
+        assert!(package.contains("team=visible"));
+    }
 
     fn service(id: &str, recipe_id: &str) -> Value {
         json!({

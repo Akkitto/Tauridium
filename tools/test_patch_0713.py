@@ -12,6 +12,7 @@ API = (ROOT / "src" / "lib" / "api.ts").read_text(encoding="utf-8")
 MAIN = (ROOT / "src-tauri" / "src" / "main.rs").read_text(encoding="utf-8")
 EXPORT = (ROOT / "src-tauri" / "src" / "service_export.rs").read_text(encoding="utf-8")
 ICONS = (ROOT / "src-tauri" / "src" / "icons.rs").read_text(encoding="utf-8")
+PRIVACY = (ROOT / "src-tauri" / "src" / "privacy.rs").read_text(encoding="utf-8")
 
 
 class Patch0713Tests(unittest.TestCase):
@@ -63,11 +64,13 @@ class Patch0713Tests(unittest.TestCase):
       '"secret"',
       '"cookie"',
       '"authorization"',
-      '"secretsRedacted": true',
+      '"knownCredentialFieldsRedacted": true',
+      '"sensitiveUrlValuesRedacted": true',
+      '"requiresPrivacyReview": true',
       '"browserSessionDataIncluded": false',
       '"remoteIconsFetchedDuringExport": false',
     ):
-      self.assertIn(marker, EXPORT)
+      self.assertIn(marker, EXPORT + PRIVACY)
     self.assertNotIn('reqwest', EXPORT)
 
   def test_export_command_is_typed_registered_and_audited(self) -> None:

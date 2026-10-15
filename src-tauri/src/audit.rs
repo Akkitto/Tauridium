@@ -119,7 +119,11 @@ fn parse_audit_line(line: &[u8]) -> Option<AuditEntry> {
         return None;
     }
     Some(match serde_json::from_slice::<AuditEntry>(line) {
-        Ok(entry) => entry,
+        Ok(mut entry) => {
+            entry.message = crate::privacy::text(&entry.message);
+            entry.details = redact(&entry.details);
+            entry
+        }
         Err(error) => malformed_entry(error),
     })
 }
@@ -410,17 +414,7 @@ fn rotate_if_needed(path: &Path) -> Result<(), String> {
 }
 
 fn sensitive_key(key: &str) -> bool {
-    let normalized = key.to_ascii_lowercase();
-    [
-        "password",
-        "token",
-        "secret",
-        "credential",
-        "authorization",
-        "cookie",
-    ]
-    .iter()
-    .any(|needle| normalized.contains(needle))
+    crate::privacy::sensitive_key(key)
 }
 
 pub(crate) fn redact(value: &Value) -> Value {
@@ -441,6 +435,7 @@ pub(crate) fn redact(value: &Value) -> Value {
                 .collect(),
         ),
         Value::Array(values) => Value::Array(values.iter().map(redact).collect()),
+        Value::String(value) => Value::String(crate::privacy::text(value)),
         _ => value.clone(),
     }
 }
@@ -473,7 +468,7 @@ pub(crate) fn record(
         category: category.to_string(),
         action: action.to_string(),
         outcome: outcome.to_string(),
-        message: message.into(),
+        message: crate::privacy::text(&message.into()),
         details: redact(&details),
     };
     let mut file = fs::OpenOptions::new()
@@ -516,9 +511,8 @@ fn read_all_entries(app: &AppHandle) -> Result<Vec<AuditEntry>, String> {
             continue;
         };
         for line in text.lines().filter(|line| !line.trim().is_empty()) {
-            match serde_json::from_str::<AuditEntry>(line) {
-                Ok(entry) => entries.push(entry),
-                Err(error) => entries.push(malformed_entry(error)),
+            if let Some(entry) = parse_audit_line(line.as_bytes()) {
+                entries.push(entry);
             }
         }
     }
@@ -582,6 +576,19 @@ pub(crate) fn clear(app: &AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_audit_records_are_redacted_before_display_and_export() {
+        let mut entry = test_entry(1);
+        entry.message =
+            "Request failed: https://user:SYNTHETIC_USERINFO@example.test/?api_key=SYNTHETIC_QUERY"
+                .into();
+        entry.details = json!({"customUrl":"https://example.test/#token=SYNTHETIC_FRAGMENT", "apiKey":"SYNTHETIC_KEY"});
+        let parsed = parse_audit_line(&serde_json::to_vec(&entry).unwrap()).unwrap();
+        let encoded = serde_json::to_string(&parsed).unwrap();
+        assert!(!encoded.contains("SYNTHETIC_"));
+        assert!(encoded.contains("redacted"));
+    }
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static TEST_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
