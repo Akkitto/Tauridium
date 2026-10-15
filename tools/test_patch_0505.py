@@ -89,7 +89,7 @@ class Patch0505Tests(unittest.TestCase):
 
   def test_updater_plugin_supports_installer_specific_manifest_keys(self) -> None:
     lock = (ROOT / "src-tauri/Cargo.lock").read_text(encoding="utf-8")
-    self.assertIn('name = "tauri-plugin-updater"\nversion = "2.10.1"', lock)
+    self.assertIn('name = "tauri-plugin-updater"\nversion = "2.14.0"', lock)
 
   @unittest.skipUnless(updater_signature.find_minisign(), "Real Minisign required; run just init or nix develop")
   def test_updater_manifest_emits_generic_and_installer_specific_keys(self) -> None:

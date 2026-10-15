@@ -79,9 +79,9 @@ class Patch0705Tests(unittest.TestCase):
     self.assertNotIn("configurable: true", internals.group("body"))
 
   def test_tauri_patch_is_exactly_pinned_and_documented_as_temporary(self) -> None:
-    self.assertIn('tauri = { version = "=2.11.3"', CARGO)
+    self.assertIn('tauri = { version = "=2.12.4"', CARGO)
     self.assertIn('tauri = { path = "../vendor/tauri" }', CARGO)
-    self.assertIn("TEMPORARY patched Tauri 2.11.3", CARGO)
+    self.assertIn("TEMPORARY patched Tauri 2.12.4", CARGO)
     self.assertIn("Temporary patch", PATCH_DOC)
     self.assertIn("## Removal", PATCH_DOC)
     self.assertIn("Do not expand this patch into a general hosted-site compatibility layer.", PATCH_DOC)

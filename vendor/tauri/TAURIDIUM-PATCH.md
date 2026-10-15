@@ -1,6 +1,6 @@
-# Tauridium patch to Tauri 2.11.3
+# Tauridium patch to Tauri 2.12.4
 
-This directory is the upstream `tauri` crate version 2.11.3 with one intentionally
+This directory is the upstream `tauri` crate version 2.12.4 with one intentionally
 small temporary patch for Tauridium.
 
 ## Temporary patch

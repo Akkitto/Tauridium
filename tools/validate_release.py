@@ -2119,9 +2119,9 @@ def main() -> int:
 
   cargo_manifest = read("src-tauri/Cargo.toml")
   for invariant in (
-    'tauri = { version = "=2.11.3"',
+    'tauri = { version = "=2.12.4"',
     'tauri = { path = "../vendor/tauri" }',
-    "TEMPORARY patched Tauri 2.11.3",
+    "TEMPORARY patched Tauri 2.12.4",
   ):
     if invariant not in cargo_manifest:
       fail(f"0.7.5 temporary Tauri patch invariant is missing: {invariant}")

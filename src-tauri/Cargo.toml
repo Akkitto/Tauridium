@@ -38,10 +38,10 @@ nix = [
 [dependencies]
 # `devtools` keeps open/close/is_devtools_open available in release builds too.
 # Without it, the Toggle Developer Tools menu is inert outside development builds.
-tauri = { version = "=2.11.3", features = ["unstable", "tray-icon", "devtools"] }
+tauri = { version = "=2.12.4", features = ["unstable", "tray-icon", "devtools"] }
 # Direct access to Wry's low-level API (macOS remove_data_store) to purge the
 # WKWebsiteDataStore of a removed service. Patched to ../vendor/wry.
-wry = "0.55"
+wry = "=0.57.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 regex = "=1.12.4"
@@ -58,7 +58,7 @@ flate2 = { version = "=1.1.9", default-features = false, features = ["rust_backe
 zip = { version = "=4.6.1", default-features = false, features = ["deflate-flate2"] }
 tauri-plugin-notification = { version = "2", optional = true }
 tauri-plugin-autostart = { version = "2", optional = true }
-tauri-plugin-updater = { version = "2", optional = true }
+tauri-plugin-updater = { version = "=2.14.0", optional = true }
 zbus = { version = "5.16.0", optional = true }
 tauri-plugin-window-state = "=2.4.1"
 
@@ -101,10 +101,11 @@ path = "src/main.rs"
 # Patched Wry: mutable window.ipc allows injection of the Electron IPC shim (for example Synology Chat).
 # See vendor/wry/src/wkwebview/mod.rs. Reapply the patch when upgrading Wry.
 #
-# TEMPORARY patched Tauri 2.11.3: makes only the generic `window.isTauri` marker configurable
+# TEMPORARY patched Tauri 2.12.4: makes only the generic `window.isTauri` marker configurable
 # so Tauridium can hide it in selected Proton web-client service webviews. The marker remains
 # true everywhere else and no IPC/ACL behavior is changed. Remove this path patch with
 # src/proton_compat.rs once Proton fixes its upstream environment detection.
 [patch.crates-io]
+glib = { path = "../vendor/glib" }
 tauri = { path = "../vendor/tauri" }
 wry = { path = "../vendor/wry" }

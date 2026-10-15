@@ -8,6 +8,7 @@ mod download_notifications;
 mod download_toast;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 mod flatpak_portal;
+mod gtk_security;
 mod http_security;
 mod icons;
 mod ipc_security;
