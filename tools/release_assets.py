@@ -17,6 +17,7 @@ from urllib.parse import quote
 from package_release import RuntimeArtifact, build_runtime, inspect_runtime, runtime_zip_name, version
 from scoop import package_portable
 from updater_signature import require_regular, verify as verify_updater_signature
+import release_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY = "Akkitto/Tauridium"
@@ -108,7 +109,7 @@ def copy_with_signature(
   return written
 
 
-def collect_native(target: str, output_dir: Path, require_signatures: bool) -> list[Path]:
+def _collect_native_into(target: str, output_dir: Path, require_signatures: bool) -> list[Path]:
   if target not in TARGETS:
     raise SystemExit(f"error: unsupported release target: {target}")
   platform, arch, _ = TARGETS[target]
@@ -148,6 +149,22 @@ def collect_native(target: str, output_dir: Path, require_signatures: bool) -> l
     )
 
   return written
+
+
+def collect_native(target: str, output_dir: Path, require_signatures: bool) -> list[Path]:
+  if output_dir.exists() or output_dir.is_symlink():
+    raise SystemExit("error: native collection requires a fresh output directory; preserve/move the previous collection first")
+  output_dir.parent.mkdir(parents=True, exist_ok=True)
+  with tempfile.TemporaryDirectory(prefix=".tauridium-collection-", dir=output_dir.parent) as temporary:
+    staged = Path(temporary)
+    written = _collect_native_into(target, staged, require_signatures)
+    if target in release_policy.TARGETS:
+      signatures = any(path.name.endswith(".sig") for path in written)
+      release_policy.validate_directory(staged, release_policy.target_names(version(), target, signatures))
+    # The entire verified directory is promoted once, not artifact/signature pairs
+    # one at a time. Existing collections are never overwritten or deleted.
+    os.rename(staged, output_dir)
+    return [output_dir / path.name for path in written]
 
 
 def changelog_notes(release_version: str) -> str:
@@ -296,10 +313,12 @@ def write_checksums(assets_dir: Path, output: Path) -> None:
   excluded = {output.resolve()}
   files = sorted(
     path for path in assets_dir.iterdir()
-    if path.is_file() and path.resolve() not in excluded and path.name != "latest.json"
+    if path.is_file() and path.resolve() not in excluded and path.name != "release-notes.md"
   )
   if not files:
     raise SystemExit(f"error: no release assets found in {assets_dir}")
+  for path in assets_dir.iterdir():
+    release_policy.regular(path)
   lines = [f"{sha256(path)}  {path.name}" for path in files]
   output.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
