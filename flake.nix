@@ -39,7 +39,9 @@
           pkgs = pkgsFor system;
         in
         {
-          tauridium = pkgs.callPackage ./packaging/nix/package.nix { };
+          tauridium = pkgs.callPackage ./packaging/nix/package.nix {
+            cargo-tauri = pkgs.callPackage ./packaging/nix/tauri-cli.nix { };
+          };
           default = self.packages.${system}.tauridium;
           smoke = import ./packaging/nix/smoke.nix {
             inherit pkgs;
@@ -91,12 +93,13 @@
         let
           pkgs = pkgsFor system;
           toolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+          pinnedTauriCli = pkgs.callPackage ./packaging/nix/tauri-cli.nix { };
         in
         {
           default = pkgs.mkShell {
             packages = with pkgs; [
               toolchain
-              cargo-tauri
+              pinnedTauriCli
               nodejs_24
               python3
               just

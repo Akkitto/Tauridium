@@ -24,6 +24,8 @@ modules:
 
   - name: tauri-cli
     buildsystem: simple
+    cleanup:
+      - /bin/cargo-tauri
     build-options:
       env:
         CARGO_HOME: /run/build/tauri-cli/cargo
@@ -34,8 +36,8 @@ modules:
     sources:
       - type: archive
         archive-type: tar-gzip
-        url: https://static.crates.io/crates/tauri-cli/tauri-cli-2.11.3.crate
-        sha256: efa0d07c7dc71b7c8ae5ba1b536080c379230934dcfe54d784772a5f3bd8c61b
+        url: https://static.crates.io/crates/tauri-cli/tauri-cli-2.12.3.crate
+        sha256: 9a6f47e865c7c526880d9e3a0c4bb84255d6e3f45fac2684adf82458ee565a18
         strip-components: 1
         dest: tauri-cli
       - tauri-cli-cargo-sources.json

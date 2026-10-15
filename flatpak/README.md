@@ -17,8 +17,8 @@ Cargo vendor layout and npm cacache layout used by the current Flatpak builder t
 and `--check` fails when either committed source manifest is stale.
 
 `tauri-cli-cargo-sources.json` is the pinned offline source set for
-`tauri-cli 2.11.3`; regenerate it with the current `flatpak-cargo-generator.py`
-against the `Cargo.lock` shipped in the `tauri-cli 2.11.3` crate before a
+`tauri-cli 2.12.3`; regenerate it with `tools/generate_flatpak_sources.py`
+against the verified `flatpak/tauri-cli.Cargo.lock` shipped in that exact crate before a
 dependency/toolchain change. The exact flatpak-builder-tools revision used for a
 Flathub submission should be recorded in the human-authored submission PR.
 

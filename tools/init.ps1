@@ -764,30 +764,33 @@ try {
     # -------------------------------------------------------------------------
     # cargo-tauri
     # -------------------------------------------------------------------------
+    $BuildToolchain = Get-Content -LiteralPath (Join-Path $Root "data\build-toolchain.json") -Raw | ConvertFrom-Json
+    $TauriCliVersion = [string]$BuildToolchain.tauriCli
+    if ($TauriCliVersion -notmatch '^2\.\d+\.\d+$') { throw "Invalid pinned Tauri CLI version" }
     $SavedErrorActionPreference = $ErrorActionPreference
     try {
       $ErrorActionPreference = "SilentlyContinue"
-      & cargo.exe tauri --version *> $null
+      $CargoTauriVersion = (& cargo.exe tauri --version 2>$null | Out-String).Trim()
       $CargoTauriProbeExitCode = $LASTEXITCODE
     } finally {
       $ErrorActionPreference = $SavedErrorActionPreference
     }
-    if ($CargoTauriProbeExitCode -ne 0) {
-      Write-Host "+ cargo.exe install tauri-cli --locked --version ^2"
-      & cargo.exe install tauri-cli --locked --version "^2"
+    if ($CargoTauriProbeExitCode -ne 0 -or $CargoTauriVersion -ne "tauri-cli $TauriCliVersion") {
+      Write-Host "+ cargo.exe install tauri-cli --locked --version $TauriCliVersion --force"
+      & cargo.exe install tauri-cli --locked --version $TauriCliVersion --force
       if ($LASTEXITCODE -ne 0) {
         throw ("cargo.exe install tauri-cli failed with exit code {0}" -f $LASTEXITCODE)
       }
       $SavedErrorActionPreference = $ErrorActionPreference
       try {
         $ErrorActionPreference = "SilentlyContinue"
-        & cargo.exe tauri --version *> $null
+        $CargoTauriVersion = (& cargo.exe tauri --version 2>$null | Out-String).Trim()
         $CargoTauriProbeExitCode = $LASTEXITCODE
       } finally {
         $ErrorActionPreference = $SavedErrorActionPreference
       }
-      if ($CargoTauriProbeExitCode -ne 0) {
-        throw "cargo tauri is still unavailable after installing tauri-cli"
+      if ($CargoTauriProbeExitCode -ne 0 -or $CargoTauriVersion -ne "tauri-cli $TauriCliVersion") {
+        throw "cargo tauri does not match the pinned CLI after installation"
       }
     }
 

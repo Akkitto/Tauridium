@@ -199,7 +199,7 @@ def main() -> int:
   for marker in (
     "def ensure_tauri_cli() -> None:",
     '["cargo", "tauri", "--version"]',
-    '["cargo", "install", "tauri-cli", "--locked", "--version", "^2"]',
+    '["cargo", "install", "tauri-cli", "--locked", "--version", version, "--force"]',
     "ensure_pinned_rust_toolchain()\n      ensure_tauri_cli()\n      install_javascript_dependencies()",
   ):
     if marker not in init_py:
@@ -291,7 +291,7 @@ def main() -> int:
     "OpenJS.NodeJS.LTS",
     "Python.Python.3.13",
     "rustup.exe toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy",
-    'cargo.exe install tauri-cli --locked --version "^2"',
+    'cargo.exe install tauri-cli --locked --version $TauriCliVersion --force',
     "System.Management.Automation.Language.Parser",
     "[switch]$SelfTest",
     "VBSCRIPT",

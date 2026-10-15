@@ -204,22 +204,39 @@ class PinnedRustToolchainTests(unittest.TestCase):
 
 
 class TauriCliTests(unittest.TestCase):
-  @patch.object(INIT, "command_succeeds", return_value=True)
+  @patch.object(INIT.subprocess, "run")
+  def test_tauri_cli_rejects_version_drift_even_when_command_succeeds(self, probe):
+    probe.return_value = type("Result", (), {"returncode": 0, "stdout": "tauri-cli 2.11.4\n"})()
+    self.assertFalse(INIT.tauri_cli_matches("2.12.3"))
+    probe.return_value.stdout = "tauri-cli 2.12.3\n"
+    self.assertTrue(INIT.tauri_cli_matches("2.12.3"))
+
+  @patch.dict(INIT.os.environ, {"TAURIDIUM_NIX_DEV_SHELL": "1"})
+  @patch.object(INIT, "tauri_cli_matches", return_value=False)
+  @patch.object(INIT.shutil, "which", return_value="/nix/store/tool/bin/cargo")
+  @patch.object(INIT, "run_checked")
+  def test_nix_cli_drift_never_installs_into_user_cargo(self, install, _which, _probe):
+    with self.assertRaisesRegex(INIT.InitError, "re-enter the updated"):
+      INIT.ensure_tauri_cli()
+    install.assert_not_called()
+
+  @patch.object(INIT, "tauri_cli_matches", return_value=True)
   @patch.object(INIT.shutil, "which", return_value="/home/test/.cargo/bin/cargo")
   @patch.object(INIT, "run_checked")
   def test_existing_tauri_cli_is_reused(self, run_checked, _which, _succeeds) -> None:
     INIT.ensure_tauri_cli()
     run_checked.assert_not_called()
 
-  @patch.object(INIT, "command_succeeds", side_effect=[False, True])
+  @patch.object(INIT, "tauri_cli_matches", side_effect=[False, True])
   @patch.object(INIT.shutil, "which", return_value="/home/test/.cargo/bin/cargo")
   @patch.object(INIT, "run_checked")
+  @patch.dict(INIT.os.environ, {"TAURIDIUM_NIX_DEV_SHELL": ""})
   def test_missing_tauri_cli_is_installed_and_reprobed(
     self, run_checked, _which, succeeds
   ) -> None:
     INIT.ensure_tauri_cli()
     run_checked.assert_called_once_with(
-      ["cargo", "install", "tauri-cli", "--locked", "--version", "^2"]
+      ["cargo", "install", "tauri-cli", "--locked", "--version", "2.12.3", "--force"]
     )
     self.assertEqual(succeeds.call_count, 2)
 

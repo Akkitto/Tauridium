@@ -24,6 +24,8 @@ NODE_LOCK = ROOT / "package-lock.json"
 CARGO_OUTPUT = FLATPAK_DIR / "cargo-sources.json"
 NODE_OUTPUT = FLATPAK_DIR / "node-sources.json"
 TAURI_CLI_OUTPUT = FLATPAK_DIR / "tauri-cli-cargo-sources.json"
+TAURI_CLI_LOCK = FLATPAK_DIR / "tauri-cli.Cargo.lock"
+BUILD_POLICY = ROOT / "data/build-toolchain.json"
 
 CARGO_CONFIG = (
   '[source.vendored-sources]\n'
@@ -173,30 +175,15 @@ def _check_file(path: Path, generated: list[dict[str, Any]]) -> bool:
   return False
 
 
+def _tauri_cli_sources() -> list[dict[str, Any]]:
+  policy = json.loads(BUILD_POLICY.read_text(encoding="utf-8"))
+  if hashlib.sha256(TAURI_CLI_LOCK.read_bytes()).hexdigest() != policy["tauriCliLockSha256"]:
+    raise ValueError("Tauri CLI lock does not match the verified published crate")
+  return generate_cargo_sources(TAURI_CLI_LOCK)
+
+
 def _validate_tauri_cli_sources() -> bool:
-  if not TAURI_CLI_OUTPUT.exists():
-    print(f"MISSING: {TAURI_CLI_OUTPUT.relative_to(ROOT)}", file=sys.stderr)
-    return False
-  try:
-    sources = json.loads(TAURI_CLI_OUTPUT.read_text(encoding="utf-8"))
-  except json.JSONDecodeError as error:
-    print(f"INVALID: {TAURI_CLI_OUTPUT.relative_to(ROOT)}: {error}", file=sys.stderr)
-    return False
-  if not isinstance(sources, list) or len(sources) < 500:
-    print(f"INVALID: {TAURI_CLI_OUTPUT.relative_to(ROOT)} has too few sources", file=sys.stderr)
-    return False
-  final = sources[-1] if sources else {}
-  expected_final = {
-    "type": "inline",
-    "contents": CARGO_CONFIG,
-    "dest": "cargo",
-    "dest-filename": "config.toml",
-  }
-  if final != expected_final:
-    print(f"INVALID: {TAURI_CLI_OUTPUT.relative_to(ROOT)} lacks Cargo offline config", file=sys.stderr)
-    return False
-  print(f"OK: {TAURI_CLI_OUTPUT.relative_to(ROOT)} (pinned tauri-cli 2.11.3 source set)")
-  return True
+  return _check_file(TAURI_CLI_OUTPUT, _tauri_cli_sources())
 
 
 def main() -> int:
@@ -220,6 +207,7 @@ def main() -> int:
   FLATPAK_DIR.mkdir(parents=True, exist_ok=True)
   CARGO_OUTPUT.write_text(_pretty_json(cargo_sources), encoding="utf-8", newline="\n")
   NODE_OUTPUT.write_text(_pretty_json(node_sources), encoding="utf-8", newline="\n")
+  TAURI_CLI_OUTPUT.write_text(_pretty_json(_tauri_cli_sources()), encoding="utf-8", newline="\n")
   if not _validate_tauri_cli_sources():
     return 1
   print(f"Wrote {CARGO_OUTPUT.relative_to(ROOT)} ({len(cargo_sources)} sources)")

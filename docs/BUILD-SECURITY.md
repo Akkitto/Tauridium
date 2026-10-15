@@ -26,3 +26,19 @@ The real npm regression has a harmless, authored positive control proving a hook
 would run when enabled, then verifies that both the explicit bootstrap flag and
 the project default prevent execution. It does not execute untrusted third-party
 code to perform the security scan.
+
+## Pinned native tooling
+
+data/build-toolchain.json identifies supported Tauri CLI 2.12.3 and the SHA-256
+digests of its published crate and Cargo.lock. Native initialization reuses only
+that exact CLI; a different installed version is replaced with a locked install.
+Nix builds the same checksum-pinned published crate and dependency bundle, retains
+the nixpkgs Tauri hook, and never installs tools into the user's Cargo directory.
+Flatpak builds from the same crate/lock and removes cargo-tauri during final
+cleanup; the build-only executable is not a runtime dependency.
+
+tools/generate_flatpak_sources.py regenerates and exactly checks the CLI's offline
+source manifest as well as the application's Cargo/npm sources. A source-count or
+nonempty-file check is not sufficient. Tool updates must review the new published
+lock, advisories, checksums and all three producer paths together. Prerelease Tauri
+3 tooling is not an acceptable substitute for the supported Tauri 2 builder.

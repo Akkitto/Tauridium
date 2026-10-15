@@ -415,26 +415,27 @@ def ensure_pinned_rust_toolchain() -> None:
   print("+ Rust toolchain: pinned 1.97.1 with rustfmt and clippy", flush=True)
 
 
+def tauri_cli_matches(version: str) -> bool:
+  result = subprocess.run(["cargo", "tauri", "--version"], cwd=ROOT, check=False,
+                          capture_output=True, text=True, errors="replace")
+  return result.returncode == 0 and result.stdout.strip() == f"tauri-cli {version}"
+
+
 def ensure_tauri_cli() -> None:
-  """Ensure the Cargo-installed Tauri v2 CLI is available on Unix hosts."""
+  """Reuse only the exact reviewed CLI version, never a floating major."""
   if not shutil.which("cargo"):
-    raise InitError(
-      "Rust/Cargo is required but cargo was not found in PATH; install the stable Rust "
-      "toolchain, then rerun `just init`"
-    )
-
-  probe = ["cargo", "tauri", "--version"]
-  if command_succeeds(probe):
-    print("+ Tauri CLI: available", flush=True)
+    raise InitError("Rust/Cargo is required but cargo was not found in PATH")
+  policy = json.loads((ROOT / "data/build-toolchain.json").read_text(encoding="utf-8"))
+  version = policy["tauriCli"]
+  if tauri_cli_matches(version):
+    print(f"+ Tauri CLI: pinned {version}", flush=True)
     return
-
-  run_checked(["cargo", "install", "tauri-cli", "--locked", "--version", "^2"])
-  if not command_succeeds(probe):
-    raise InitError(
-      "cargo install tauri-cli completed but `cargo tauri` is still unavailable; "
-      "ensure Cargo's bin directory is present in PATH"
-    )
-  print("+ Tauri CLI: installed", flush=True)
+  if os.environ.get("TAURIDIUM_NIX_DEV_SHELL") == "1":
+    raise InitError(f"Nix development shell requires Tauri CLI {version}; re-enter the updated nix develop environment")
+  run_checked(["cargo", "install", "tauri-cli", "--locked", "--version", version, "--force"])
+  if not tauri_cli_matches(version):
+    raise InitError(f"Installed Tauri CLI does not match {version}; check Cargo's bin directory in PATH")
+  print(f"+ Tauri CLI: installed pinned {version}", flush=True)
 
 
 def install_javascript_dependencies() -> None:
