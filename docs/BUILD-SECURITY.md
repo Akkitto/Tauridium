@@ -45,6 +45,20 @@ lock, advisories, checksums and all three producer paths together. Prerelease Ta
 
 ## Updater signature verification
 
+Canonical native `just build`, `just bundle` and `just bundle-target` commands
+invoke the pinned CLI through `tools/tauri_build.py`. Bundles are always produced
+without automatic updater signing. A nonempty signing-credential environment is
+rejected before build code starts; unset it and use the separate isolated
+`tools/sign_release.py` custody step. No owner signing key belongs in a build
+shell, dotenv file, Cargo/npm hook, generic CI environment or checkout. Direct
+raw `cargo tauri build` is not the supported release-signing workflow.
+
+The helper preserves existing Cargo flags and remaps repository/home paths in
+compiler output using whitespace-safe encoded flags. This reduces accidental
+local-path disclosure; it is not a claim that a local workstation is an OS-level
+security boundary against malicious code running as its owner. CI compilation
+and protected signing must use different fresh jobs/runners.
+
 Signature presence or nonempty text is never proof of signing. The native
 collector verifies the exact staged artifact bytes before replacement. Signed
 updater-set classification and manifest creation reverify every required pair

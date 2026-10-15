@@ -233,7 +233,7 @@ def main() -> int:
     "--all-targets --all-features --locked -- -D warnings",
     "--all-targets --all-features --locked",
     "--all-features --locked",
-    "cargo tauri build --no-bundle --ci",
+    "python3 tools/tauri_build.py --no-bundle --ci",
     "quality: rust-supply-chain fmt-check lint check test",
     "tools/check_rust_supply_chain.py --cache",
   ):
@@ -428,7 +428,7 @@ def main() -> int:
       fail(f"initializer is missing robust libxdo detection: {xdo_probe_marker}")
 
   build_rs = read("src-tauri/build.rs")
-  if "build:\n  cargo tauri build --no-bundle --ci" not in justfile:
+  if "build:\n  python3 tools/tauri_build.py --no-bundle --ci" not in justfile:
     fail("production runtime build does not use the Tauri CLI")
   if 'std::env::var("PROFILE")' not in build_rs or "tauri_build::is_dev()" not in build_rs:
     fail("build script does not reject development-mode release binaries")
@@ -1622,7 +1622,7 @@ def main() -> int:
     "python3 -m unittest discover -s tools -p 'test_*.py'",
     "npm run check",
     "npm test",
-    "cargo tauri build --no-bundle --ci",
+    "python3 tools/tauri_build.py --no-bundle --ci",
   ):
     if marker not in justfile:
       fail(f"canonical just quality gate is missing: {marker}")
@@ -1681,10 +1681,7 @@ def main() -> int:
   if no_updater_config != {"bundle": {"createUpdaterArtifacts": False}}:
     fail("unsigned native bundle config must disable only updater artifact creation")
   justfile = read("justfile")
-  expected_unsigned_bundle = (
-    "cargo tauri build --ci --target {{target}} "
-    "--config src-tauri/tauri.no-updater.conf.json"
-  )
+  expected_unsigned_bundle = "bundle-target-no-updater target:\n  just bundle-target {{target}}"
   if expected_unsigned_bundle not in justfile:
     fail("unsigned native bundle recipe must use the cross-shell-safe updater config file")
   if "--config '{" in justfile or '--config "{' in justfile:

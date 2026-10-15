@@ -76,7 +76,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
       "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings",
       "cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked",
       "cargo test --manifest-path src-tauri/Cargo.toml --all-features --locked",
-      "cargo tauri build --no-bundle --ci",
+      "python3 tools/tauri_build.py --no-bundle --ci",
     ):
       self.assertIn(marker, justfile)
 
@@ -102,7 +102,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
   def test_production_runtime_uses_tauri_cli_and_raw_release_is_guarded(self) -> None:
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")
     build_rs = (ROOT / "src-tauri/build.rs").read_text(encoding="utf-8")
-    self.assertIn("build:\n  cargo tauri build --no-bundle --ci", justfile)
+    self.assertIn("build:\n  python3 tools/tauri_build.py --no-bundle --ci", justfile)
     main_rs = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
     package_release = (ROOT / "tools/package_release.py").read_text(encoding="utf-8")
     self.assertIn('std::env::var("PROFILE")', build_rs)

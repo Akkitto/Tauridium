@@ -75,17 +75,32 @@ test:
   npm test
   cargo test --manifest-path src-tauri/Cargo.toml --all-features --locked
 
+[unix]
 build:
-  cargo tauri build --no-bundle --ci
+  python3 tools/tauri_build.py --no-bundle --ci
 
+[windows]
+build:
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/tauri_build.py --no-bundle --ci
+
+[unix]
 bundle:
-  cargo tauri build --ci
+  python3 tools/tauri_build.py --ci
 
+[windows]
+bundle:
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/tauri_build.py --ci
+
+[unix]
 bundle-target target:
-  cargo tauri build --ci --target {{target}}
+  python3 tools/tauri_build.py --ci --target {{target}}
+
+[windows]
+bundle-target target:
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/tauri_build.py --ci --target {{target}}
 
 bundle-target-no-updater target:
-  cargo tauri build --ci --target {{target}} --config src-tauri/tauri.no-updater.conf.json
+  just bundle-target {{target}}
 
 run:
   cargo tauri dev
