@@ -16,6 +16,51 @@ pub(crate) fn write(path: &Path, contents: &[u8]) -> io::Result<()> {
     write_verified(path, contents, |_| Ok(()))
 }
 
+pub(crate) fn append(path: &Path) -> io::Result<File> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return create(path),
+        Err(error) => return Err(error),
+    };
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "Private append requires a regular file",
+        ));
+    }
+    let mut options = fs::OpenOptions::new();
+    options.append(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.custom_flags(windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let file = options.open(path)?;
+    let opened = file.metadata()?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        if opened.dev() != metadata.dev() || opened.ino() != metadata.ino() {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "Private append file changed during opening",
+            ));
+        }
+        file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if opened.file_attributes() & 0x400 != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "Private append rejects reparse points",
+            ));
+        }
+    }
+    Ok(file)
+}
+
 pub(crate) fn write_verified(
     path: &Path,
     contents: &[u8],

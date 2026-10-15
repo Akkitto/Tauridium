@@ -2,10 +2,11 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 
@@ -31,6 +32,55 @@ const _: () = {
 };
 
 static AUDIT_LOCK: Mutex<()> = Mutex::new(());
+static MIGRATED_LOGS: LazyLock<Mutex<HashSet<PathBuf>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+fn migrate_retained_files(path: &Path) -> Result<(), String> {
+    let mut migrated = MIGRATED_LOGS
+        .lock()
+        .map_err(|_| "Audit privacy migration lock unavailable")?;
+    if migrated.contains(path) {
+        return Ok(());
+    }
+    for candidate in std::iter::once(path.to_path_buf())
+        .chain((1..=AUDIT_ROTATIONS).map(|generation| rotated_path(path, generation)))
+    {
+        let metadata = match fs::symlink_metadata(&candidate) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(format!("Unable to inspect legacy audit log: {error}")),
+        };
+        #[cfg(windows)]
+        let reparse = {
+            use std::os::windows::fs::MetadataExt;
+            metadata.file_attributes() & 0x400 != 0
+        };
+        #[cfg(not(windows))]
+        let reparse = false;
+        if !metadata.is_file() || metadata.file_type().is_symlink() || reparse {
+            return Err("Audit privacy migration rejects links and non-regular files".into());
+        }
+        if metadata.len() > 64 * 1024 * 1024 {
+            return Err("Legacy audit log exceeds the privacy migration limit; move it to private storage before continuing".into());
+        }
+        let text = fs::read_to_string(&candidate)
+            .map_err(|error| format!("Unable to read legacy audit log: {error}"))?;
+        let mut redacted = String::new();
+        for line in text.lines() {
+            if let Some(entry) = parse_audit_line(line.as_bytes()) {
+                redacted
+                    .push_str(&serde_json::to_string(&entry).map_err(|error| error.to_string())?);
+            } else {
+                redacted.push_str(&crate::privacy::text(line));
+            }
+            redacted.push('\n');
+        }
+        crate::private_file::write(&candidate, redacted.as_bytes())
+            .map_err(|error| format!("Unable to migrate private audit log: {error}"))?;
+    }
+    migrated.insert(path.to_path_buf());
+    Ok(())
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -461,6 +511,7 @@ pub(crate) fn record(
         fs::create_dir_all(parent)
             .map_err(|error| format!("Unable to create audit log directory: {error}"))?;
     }
+    migrate_retained_files(&path)?;
     rotate_if_needed(&path)?;
     let entry = AuditEntry {
         timestamp_unix_ms: now_ms(),
@@ -471,10 +522,7 @@ pub(crate) fn record(
         message: crate::privacy::text(&message.into()),
         details: redact(&details),
     };
-    let mut file = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
+    let mut file = crate::private_file::append(&path)
         .map_err(|error| format!("Unable to open audit log: {error}"))?;
     serde_json::to_writer(&mut file, &entry)
         .map_err(|error| format!("Unable to serialize audit event: {error}"))?;
@@ -500,6 +548,7 @@ pub(crate) fn best_effort(
 
 fn read_all_entries(app: &AppHandle) -> Result<Vec<AuditEntry>, String> {
     let path = audit_path(app)?;
+    migrate_retained_files(&path)?;
     let mut entries = Vec::new();
     let mut paths = (1..=AUDIT_ROTATIONS)
         .rev()
@@ -537,6 +586,7 @@ pub(crate) fn read_page(
 ) -> Result<AuditLogPage, String> {
     let _guard = audit_guard()?;
     let path = audit_path(app)?;
+    migrate_retained_files(&path)?;
     read_page_from_path(&path, cursor, limit)
 }
 
@@ -555,7 +605,8 @@ pub(crate) fn export(app: &AppHandle, destination: &Path) -> Result<usize, Strin
         text.push_str(&line);
         text.push('\n');
     }
-    fs::write(destination, text).map_err(|error| format!("Unable to export audit log: {error}"))?;
+    crate::private_file::write(destination, text.as_bytes())
+        .map_err(|error| format!("Unable to export audit log: {error}"))?;
     Ok(entries.len())
 }
 
@@ -576,6 +627,46 @@ pub(crate) fn clear(app: &AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn historical_audit_files_are_redacted_and_private_on_disk() {
+        let root = std::env::temp_dir().join(format!(
+            "tauridium-audit-migration-{}-{}",
+            std::process::id(),
+            now_ms()
+        ));
+        fs::create_dir(&root).unwrap();
+        let path = root.join(AUDIT_FILE);
+        let mut entry = test_entry(1);
+        entry.message = "Authorization: Bearer SYNTHETIC_LEGACY_SECRET".into();
+        entry.details = json!({"customUrl":"https://user:SYNTHETIC_PASSWORD@example.test/#access_token=SYNTHETIC_TOKEN"});
+        for candidate in [path.clone(), rotated_path(&path, 1)] {
+            fs::write(
+                candidate,
+                format!("{}\n", serde_json::to_string(&entry).unwrap()),
+            )
+            .unwrap();
+        }
+        migrate_retained_files(&path).unwrap();
+        for candidate in [path.clone(), rotated_path(&path, 1)] {
+            let text = fs::read_to_string(&candidate).unwrap();
+            assert!(!text.contains("SYNTHETIC_"));
+            assert!(text.contains("redacted"));
+            assert!(parse_audit_line(text.trim().as_bytes()).is_some());
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                assert_eq!(
+                    fs::metadata(candidate).unwrap().permissions().mode() & 0o777,
+                    0o600
+                );
+            }
+        }
+        let mut file = crate::private_file::append(&path).unwrap();
+        file.write_all(b"\n").unwrap();
+        drop(file);
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn legacy_audit_records_are_redacted_before_display_and_export() {
