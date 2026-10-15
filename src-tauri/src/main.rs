@@ -20,6 +20,7 @@ mod local_profile;
     not(feature = "flatpak")
 ))]
 mod nix_autostart;
+mod notification_security;
 mod portable;
 mod privacy;
 mod private_file;
@@ -311,7 +312,8 @@ struct AppState {
     active: Mutex<Option<String>>,          // service ID currently displayed
     unread: Mutex<HashMap<String, i64>>,    // unread count per service (for the dock badge)
     flags: Mutex<HashMap<String, ServiceFlags>>, // per-service settings (notification/mute/badge)
-    settings: Mutex<Value>,                 // app settings cache (read by the poller, etc.)
+    notification_budget: Mutex<notification_security::Budget>,
+    settings: Mutex<Value>,    // app settings cache (read by the poller, etc.)
     settings_write: Mutex<()>, // serializes app-settings read/modify/write transactions
     sidebar_w: Mutex<f64>,     // sidebar width (initialized during setup, default 240)
     desired_active: Mutex<Option<String>>, // last requested service (prevents focus stealing during switches)
@@ -1638,10 +1640,13 @@ const IPC_SHIM_JS: &str = r#"(function(){
     window.__pakeNotifQueue = window.__pakeNotifQueue || [];
     function N(title, options){
       options = options || {};
-      try { window.__pakeNotifQueue.push({
-        title: String(title == null ? '' : title),
-        body: String(options.body == null ? '' : options.body)
-      }); } catch(e){}
+      try {
+        if (window.__pakeNotifQueue.length >= 8) window.__pakeNotifQueue.shift();
+        window.__pakeNotifQueue.push({
+          title: String(title == null ? '' : title).slice(0, 160),
+          body: String(options.body == null ? '' : options.body).slice(0, 1024)
+        });
+      } catch(e){}
       this.title = title; this.body = options.body;
       this.onclick = this.onclose = this.onerror = this.onshow = null;
     }
@@ -3426,17 +3431,25 @@ fn start_badge_poller(app: AppHandle) {
                 continue;
             };
             let app2 = app.clone();
+            let source_host = wv
+                .url()
+                .ok()
+                .and_then(|url| url.host_str().map(str::to_string))
+                .unwrap_or_else(|| "Service".into());
             let _ = wv.eval_with_callback(
-                "(function(){return {u: Math.max(0, parseInt(window.__pakeUnread)||0), n: (window.__pakeNotifQueue||[]).splice(0)};})()",
+                "(function(){var q=window.__pakeNotifQueue;window.__pakeNotifQueue=[];return {u: Math.max(0, parseInt(window.__pakeUnread)||0), n: Array.isArray(q)?q.slice(0,8).map(function(v){return {title:String(v.title||'').slice(0,160),body:String(v.body||'').slice(0,1024)};}):[]};})()",
                 move |res| {
+                    if res.len() > 64 * 1024 {
+                        return;
+                    }
                     let v: serde_json::Value =
                         serde_json::from_str(&res).unwrap_or(serde_json::Value::Null);
-                    let unread = v.get("u").and_then(|x| x.as_i64()).unwrap_or(0);
+                    let unread = v.get("u").and_then(|x| x.as_i64()).unwrap_or(0).clamp(0, 1_000_000);
                     let st = app2.state::<AppState>();
                     let flags = st.flags.lock().unwrap().get(&sid).copied().unwrap_or_default();
 
                     // Notifications: honor mute and disabled-notification settings.
-                    if flags.notif && !flags.muted {
+                    if flags.notif && !flags.muted && st.created.lock().unwrap().contains(&sid) {
                         let private = st
                             .settings
                             .lock()
@@ -3445,24 +3458,25 @@ fn start_badge_poller(app: AppHandle) {
                             .and_then(Value::as_bool)
                             .unwrap_or(false);
                         if let Some(arr) = v.get("n").and_then(|x| x.as_array()) {
-                            for notif in arr {
-                                let title = notif
+                            for notif in arr.iter().take(8) {
+                                let title = notification_security::text(notif
                                     .get("title")
                                     .and_then(|x| x.as_str())
                                     .unwrap_or("")
-                                    .trim();
-                                let body = notif.get("body").and_then(|x| x.as_str()).unwrap_or("");
+                                    , 160);
+                                let body = notification_security::text(notif.get("body").and_then(|x| x.as_str()).unwrap_or(""), 1024);
                                 if title.is_empty() && body.is_empty() {
                                     continue;
+                                }
+                                if !st.notification_budget.lock().unwrap().allow(&sid, std::time::Instant::now()) {
+                                    break;
                                 }
                                 let _ = if private {
                                     show_system_notification(&app2, "New message", None)
                                 } else {
-                                    show_system_notification(
-                                        &app2,
-                                        if title.is_empty() { "Message" } else { title },
-                                        Some(body),
-                                    )
+                                    let source = format!("Tauridium • {}", notification_security::text(&source_host, 120));
+                                    let content = if title.is_empty() { body } else if body.is_empty() { title } else { format!("{title}\n{body}") };
+                                    show_system_notification(&app2, &source, Some(&content))
                                 };
                             }
                         }
