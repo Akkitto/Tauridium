@@ -6,7 +6,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::{read_persistent, replace_file};
+use crate::{read_persistent, write_atomic};
 
 const PROFILE_VERSION: u32 = 1;
 static ID_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -126,16 +126,7 @@ impl LocalProfile {
         }
         let text = serde_json::to_string_pretty(self)
             .map_err(|error| format!("Unable to serialize local profile: {error}"))?;
-        let tmp = path.with_extension("tmp");
-        fs::write(&tmp, format!("{text}\n"))
-            .map_err(|error| format!("Unable to write local profile: {error}"))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600))
-                .map_err(|error| format!("Unable to set local profile permissions: {error}"))?;
-        }
-        replace_file(&tmp, path)
+        write_atomic(path, &format!("{text}\n"))
             .map_err(|error| format!("Unable to finalize local profile: {error}"))?;
         Ok(())
     }

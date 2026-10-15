@@ -781,7 +781,7 @@ def main() -> int:
     fail("local session restore path is missing")
   if "local_profile.json" not in main_rs:
     fail("local profile path is missing")
-  if "replace_file(&tmp, path)" not in local_profile:
+  if 'write_atomic(path, &format!("{text}\\n"))' not in local_profile:
     fail("local profile does not use durable replacement")
   if "validate_recipe_id" not in local_profile:
     fail("local recipe identifiers are not validated")
@@ -832,9 +832,8 @@ def main() -> int:
     '"remoteRecipeCache"',
     '"windowMonitorGeometry"',
     'Backup integrity check failed; the file is corrupted or was modified',
-    'replace_file(&staging, path)',
-    'file.sync_all()',
-    'let verified =\n            load(&staging)',
+    'private_file::write_verified(path,',
+    'load(staging).map_err(std::io::Error::other)?',
     'MAX_BACKUP_BYTES',
     'with_recovery_backup_path',
   ):
@@ -1014,7 +1013,7 @@ def main() -> int:
   for marker in (
     'const PORTABLE_FORMAT: &str = "tauridium-portable-collection";',
     'payload_sha256',
-    'replace_file(&staging, path)',
+    'private_file::write_verified(path,',
     'select_custom_recipes',
   ):
     if marker not in portable_rs:

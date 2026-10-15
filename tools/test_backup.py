@@ -14,6 +14,7 @@ class BackupWorkflowTests(unittest.TestCase):
   def setUpClass(cls) -> None:
     cls.main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
     cls.backup = (ROOT / "src-tauri/src/backup.rs").read_text(encoding="utf-8")
+    cls.private_file = (ROOT / "src-tauri/src/private_file.rs").read_text(encoding="utf-8")
     cls.recipes = (ROOT / "src-tauri/src/recipes.rs").read_text(encoding="utf-8")
     cls.profile = (ROOT / "src-tauri/src/local_profile.rs").read_text(encoding="utf-8")
     cls.api = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
@@ -134,20 +135,19 @@ class BackupWorkflowTests(unittest.TestCase):
       self.assertIn(marker, self.profile)
 
   def test_backup_writes_atomically_is_size_limited_and_private_on_unix(self) -> None:
-    self.assertIn("replace_file(&staging, path)", self.backup)
+    self.assertIn("private_file::write_verified(path,", self.backup)
     self.assertIn("MAX_BACKUP_BYTES", self.backup)
-    self.assertIn("Permissions::from_mode(0o600)", self.backup)
+    self.assertIn(".mode(0o600)", self.private_file)
     self.assertIn("Backup destination path is empty", self.backup)
 
   def test_export_is_fsync_verified_before_replacing_existing_backup(self) -> None:
     save = self.backup.split("pub(crate) fn save", 1)[1].split("pub(crate) fn load", 1)[0]
-    self.assertIn(".create_new(true)", save)
-    self.assertIn("file.sync_all()", save)
-    self.assertIn("let verified =\n            load(&staging)", save)
+    self.assertIn(".create_new(true)", self.private_file)
+    self.assertIn("file.sync_all()", self.private_file)
+    self.assertIn("load(staging)", save)
     self.assertIn("verified.payload_digest() != document.payload_digest()", save)
-    self.assertIn("replace_file(&staging, path)", save)
-    self.assertLess(save.index("let verified =\n            load(&staging)"), save.index("replace_file(&staging, path)"))
-    self.assertIn("let _ = fs::remove_file(&staging);", save)
+    self.assertLess(self.private_file.index("verify(&staging.0)?"), self.private_file.index("replace(&staging.0, path)?"))
+    self.assertIn("let _ = fs::remove_file(&self.0);", self.private_file)
 
   def test_interrupted_recipe_transaction_has_startup_recovery(self) -> None:
     self.assertIn("fn recover_interrupted_recipe_restore", self.recipes)

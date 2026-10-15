@@ -20,6 +20,7 @@ mod local_profile;
 mod nix_autostart;
 mod portable;
 mod privacy;
+mod private_file;
 mod proton_compat;
 mod recipes;
 mod service_export;
@@ -662,45 +663,9 @@ fn normalize_server(server: &str) -> String {
     server.trim().trim_end_matches('/').to_string()
 }
 
-// Replace a file written to a temporary path. Unix can replace the target directly;
-// Windows requires an intermediate step when the target already exists. The backup can restore the
-// last version if the second rename fails.
-pub(crate) fn replace_file(tmp: &Path, path: &Path) -> std::io::Result<()> {
-    #[cfg(not(windows))]
-    {
-        std::fs::rename(tmp, path)
-    }
-
-    #[cfg(windows)]
-    {
-        if !path.exists() {
-            return std::fs::rename(tmp, path);
-        }
-
-        let backup = path.with_extension("bak");
-        if backup.exists() {
-            std::fs::remove_file(&backup)?;
-        }
-        std::fs::rename(path, &backup)?;
-        match std::fs::rename(tmp, path) {
-            Ok(()) => {
-                let _ = std::fs::remove_file(backup);
-                Ok(())
-            }
-            Err(error) => {
-                let _ = std::fs::rename(&backup, path);
-                Err(error)
-            }
-        }
-    }
-}
-
-// Atomic write: write .tmp, then replace. Prevents a truncated file if the app crashes
-// during the write (otherwise session.json / app_settings.json could become unreadable).
+// All persistent writes use creation-time privacy and exclusive, verified staging.
 pub(crate) fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, contents)?;
-    replace_file(&tmp, path)
+    private_file::write(path, contents.as_bytes())
 }
 
 // Read a persistent file and restore a Windows backup left by an interruption

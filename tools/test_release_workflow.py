@@ -186,7 +186,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
     backup = (ROOT / "src-tauri/src/backup.rs").read_text(encoding="utf-8")
     local_profile = (ROOT / "src-tauri/src/local_profile.rs").read_text(encoding="utf-8")
     self.assertIn(
-      '        let verified =\n            load(&staging).map_err(|error| format!("Backup write verification failed: {error}"))?;',
+      '        let verified = load(staging).map_err(std::io::Error::other)?;',
       backup,
     )
     self.assertIn(

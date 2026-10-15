@@ -45,6 +45,7 @@ wry = "0.55"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 regex = "=1.12.4"
+getrandom = "=0.4.3"
 tokio = { version = "=1.52.3", default-features = false, features = ["sync"] }
 dirs = "6"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
@@ -77,6 +78,7 @@ rfd = { version = "0.16", default-features = false, features = ["common-controls
 windows-sys = { version = ">=0.59, <=0.61", features = [
   "Win32_Foundation",
   "Win32_Security",
+  "Win32_Security_Authorization",
   "Win32_Storage_FileSystem",
   "Win32_System_IO",
   "Win32_System_Console",

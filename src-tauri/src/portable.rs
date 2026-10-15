@@ -3,12 +3,13 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fs;
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::private_file;
 use crate::recipes::CustomRecipeBackup;
-use crate::replace_file;
 
 const PORTABLE_FORMAT: &str = "tauridium-portable-collection";
 const PORTABLE_SCHEMA: u32 = 1;
@@ -209,6 +210,7 @@ fn validate_payload(payload: &PortablePayload) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
 fn staging_path(path: &Path) -> Result<PathBuf, String> {
     let name = path
         .file_name()
@@ -254,38 +256,19 @@ pub(crate) fn save(
     if text.len() as u64 > MAX_PORTABLE_BYTES {
         return Err("Portable Tauridium export is too large".into());
     }
-    let staging = staging_path(path)?;
-    if staging.exists() {
-        fs::remove_file(&staging).map_err(|error| {
-            format!("Unable to clear stale portable export staging file: {error}")
-        })?;
-    }
-    let staged = (|| -> Result<(), String> {
-        let mut file = fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&staging)
-            .map_err(|error| format!("Unable to create portable export staging file: {error}"))?;
-        file.write_all(format!("{text}\n").as_bytes())
-            .map_err(|error| format!("Unable to write portable export staging file: {error}"))?;
-        file.sync_all()
-            .map_err(|error| format!("Unable to flush portable export staging file: {error}"))?;
-        let reread = fs::read_to_string(&staging)
-            .map_err(|error| format!("Unable to reread portable export: {error}"))?;
-        let verified: PortableDocument = serde_json::from_str(&reread)
-            .map_err(|error| format!("Unable to parse staged portable export: {error}"))?;
-        verified.validate()?;
+    private_file::write_verified(path, format!("{text}\n").as_bytes(), |staging| {
+        let reread = fs::read_to_string(staging)?;
+        let verified: PortableDocument =
+            serde_json::from_str(&reread).map_err(std::io::Error::other)?;
+        verified.validate().map_err(std::io::Error::other)?;
         if verified.integrity.payload_sha256 != document.integrity.payload_sha256 {
-            return Err("Portable export verification produced different content".into());
+            return Err(std::io::Error::other(
+                "Portable export verification produced different content",
+            ));
         }
         Ok(())
-    })();
-    if let Err(error) = staged {
-        let _ = fs::remove_file(&staging);
-        return Err(error);
-    }
-    replace_file(&staging, path)
-        .map_err(|error| format!("Unable to finalize portable Tauridium export: {error}"))?;
+    })
+    .map_err(|error| format!("Unable to finalize portable Tauridium export: {error}"))?;
     Ok(document.summary(path))
 }
 
@@ -421,7 +404,7 @@ mod tests {
     }
 
     #[test]
-    fn portable_export_clears_stale_staging_and_replaces_existing_file() {
+    fn portable_export_ignores_predictable_staging_and_replaces_existing_file() {
         let root = std::env::temp_dir().join(format!(
             "tauridium-portable-replace-{}-{}",
             std::process::id(),
@@ -437,7 +420,7 @@ mod tests {
         fs::write(&staging, "stale").unwrap();
         let summary = save(&path, "9.9.9", "workspace", payload(), &recipes()).unwrap();
         assert!(summary.integrity_verified);
-        assert!(!staging.exists());
+        assert_eq!(fs::read_to_string(&staging).unwrap(), "stale");
         let document: PortableDocument =
             serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         document.validate().unwrap();

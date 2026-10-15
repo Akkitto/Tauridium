@@ -38,8 +38,7 @@ class Patch0713Tests(unittest.TestCase):
       'ZipWriter::new(cursor)',
       'CompressionMethod::Deflated',
       'verify_zip(&archive, &entries)?;',
-      'file.sync_all()',
-      'replace_file(&staging, path)',
+      'private_file::write_verified(path, &archive,',
       'archive_sha256',
     ):
       self.assertIn(marker, APP + EXPORT)

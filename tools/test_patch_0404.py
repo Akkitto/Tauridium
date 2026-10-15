@@ -110,7 +110,7 @@ class Patch0404Tests(unittest.TestCase):
   def test_backup_module_has_expanded_corruption_and_atomicity_tests(self) -> None:
     for marker in (
       "backup_save_replaces_existing_valid_target_with_verified_content",
-      "backup_save_clears_stale_staging_file_before_verified_write",
+      "backup_save_ignores_predictable_staging_file_during_verified_write",
       "backup_load_rejects_truncated_json_and_integrity_tampering",
       "backup_summary_accumulates_nonfatal_warnings",
       "count_retention_is_deterministic_when_timestamps_match",
@@ -186,11 +186,10 @@ class Patch0404Tests(unittest.TestCase):
       'const PORTABLE_FORMAT: &str = "tauridium-portable-collection";',
       'payload_sha256',
       'Sha256::digest',
-      "file.sync_all()",
-      "verified.validate()?",
-      "replace_file(&staging, path)",
+      "private_file::write_verified(path,",
+      "verified.validate().map_err(std::io::Error::other)?",
       "portable_export_detects_payload_tampering",
-      "portable_export_clears_stale_staging_and_replaces_existing_file",
+      "portable_export_ignores_predictable_staging_and_replaces_existing_file",
       "portable_export_rejects_dangling_workspace_service_references",
       "portable_export_rejects_dangling_sandbox_assignments",
     ):

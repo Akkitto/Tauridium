@@ -5,15 +5,15 @@ use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{Cursor, Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Url};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, DateTime, ZipArchive, ZipWriter};
 
 use crate::icons;
+use crate::private_file;
 use crate::recipes::CustomRecipeBackup;
-use crate::replace_file;
 
 const EXPORT_FORMAT: &str = "tauridium-service-export";
 const EXPORT_SCHEMA: u32 = 2;
@@ -214,14 +214,6 @@ fn verify_zip(bytes: &[u8], expected: &[ZipEntry]) -> Result<(), String> {
         return Err("Service export ZIP verification did not observe every expected entry".into());
     }
     Ok(())
-}
-
-fn staging_path(path: &Path) -> Result<PathBuf, String> {
-    let name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| "Service export filename is invalid".to_string())?;
-    Ok(path.with_file_name(format!(".{name}.tauridium-tmp-{}", std::process::id())))
 }
 
 fn sanitize_service(value: &Value) -> Value {
@@ -648,35 +640,16 @@ pub(crate) fn save(
         fs::create_dir_all(parent)
             .map_err(|error| format!("Unable to create service export directory: {error}"))?;
     }
-    let staging = staging_path(path)?;
-    if staging.exists() {
-        fs::remove_file(&staging).map_err(|error| {
-            format!("Unable to clear stale service export staging file: {error}")
-        })?;
-    }
-    let staged = (|| -> Result<(), String> {
-        let mut file = fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&staging)
-            .map_err(|error| format!("Unable to create service export staging file: {error}"))?;
-        file.write_all(&archive)
-            .map_err(|error| format!("Unable to write service export: {error}"))?;
-        file.sync_all()
-            .map_err(|error| format!("Unable to flush service export: {error}"))?;
-        let reread = fs::read(&staging)
-            .map_err(|error| format!("Unable to reread staged service export: {error}"))?;
+    private_file::write_verified(path, &archive, |staging| {
+        let reread = fs::read(staging)?;
         if sha256_hex(&reread) != archive_sha256 {
-            return Err("Service export verification produced different archive bytes".into());
+            return Err(std::io::Error::other(
+                "Service export verification produced different archive bytes",
+            ));
         }
-        verify_zip(&reread, &entries)
-    })();
-    if let Err(error) = staged {
-        let _ = fs::remove_file(&staging);
-        return Err(error);
-    }
-    replace_file(&staging, path)
-        .map_err(|error| format!("Unable to finalize Tauridium service export: {error}"))?;
+        verify_zip(&reread, &entries).map_err(std::io::Error::other)
+    })
+    .map_err(|error| format!("Unable to finalize Tauridium service export: {error}"))?;
 
     Ok(ServiceExportSummary {
         path: path.to_string_lossy().into_owned(),

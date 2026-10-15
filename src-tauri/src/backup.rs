@@ -3,12 +3,11 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::private_file;
 use crate::recipes::CustomRecipeBackup;
-use crate::replace_file;
 
 const BACKUP_FORMAT: &str = "tauridium-backup";
 const BACKUP_SCHEMA_CURRENT: u32 = 2;
@@ -417,57 +416,24 @@ pub(crate) fn save(path: &Path, document: &BackupDocument) -> Result<BackupSumma
     }
     let text = serde_json::to_string_pretty(document)
         .map_err(|error| format!("Unable to serialize Tauridium backup: {error}"))?;
-    let staging = backup_staging_path(path)?;
-    if staging.exists() {
-        fs::remove_file(&staging)
-            .map_err(|error| format!("Unable to clear stale backup staging file: {error}"))?;
-    }
-
-    // Never replace an existing trusted backup until the newly written bytes have been
-    // flushed to disk, parsed again, and passed the same schema + SHA-256 validation used
-    // during restore. A failed staging write/verification therefore leaves the old backup intact.
-    let staged = (|| -> Result<(), String> {
-        let mut file = fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&staging)
-            .map_err(|error| format!("Unable to create backup staging file: {error}"))?;
-        file.write_all(format!("{text}\n").as_bytes())
-            .map_err(|error| format!("Unable to write backup staging file: {error}"))?;
-        file.sync_all()
-            .map_err(|error| format!("Unable to flush backup staging file: {error}"))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&staging, fs::Permissions::from_mode(0o600))
-                .map_err(|error| format!("Unable to protect backup staging file: {error}"))?;
-        }
-
-        let verified =
-            load(&staging).map_err(|error| format!("Backup write verification failed: {error}"))?;
+    // The shared writer keeps private staging exclusive, flushes it and runs this
+    // independent schema/digest verification before replacing any trusted backup.
+    private_file::write_verified(path, format!("{text}\n").as_bytes(), |staging| {
+        let verified = load(staging).map_err(std::io::Error::other)?;
         if verified.source_schema != BACKUP_SCHEMA_CURRENT
             || verified.payload_digest() != document.payload_digest()
         {
-            return Err("Backup write verification produced different validated content".into());
+            return Err(std::io::Error::other(
+                "Backup write verification produced different validated content",
+            ));
         }
         Ok(())
-    })();
-    if let Err(error) = staged {
-        let _ = fs::remove_file(&staging);
-        return Err(error);
-    }
-
-    replace_file(&staging, path)
-        .map_err(|error| format!("Unable to finalize Tauridium backup: {error}"))?;
-    #[cfg(unix)]
-    if let Some(parent) = path.parent() {
-        if let Ok(directory) = fs::File::open(parent) {
-            let _ = directory.sync_all();
-        }
-    }
+    })
+    .map_err(|error| format!("Unable to finalize Tauridium backup: {error}"))?;
     Ok(document.summary(path))
 }
 
+#[cfg(test)]
 fn backup_staging_path(path: &Path) -> Result<PathBuf, String> {
     let name = path
         .file_name()
@@ -775,7 +741,7 @@ mod tests {
     }
 
     #[test]
-    fn backup_save_clears_stale_staging_file_before_verified_write() {
+    fn backup_save_ignores_predictable_staging_file_during_verified_write() {
         let root = std::env::temp_dir().join(format!(
             "tauridium-backup-stale-{}-{}",
             std::process::id(),
@@ -789,7 +755,7 @@ mod tests {
         let staging = backup_staging_path(&path).unwrap();
         fs::write(&staging, "incomplete backup").unwrap();
         save(&path, &sample()).unwrap();
-        assert!(!staging.exists());
+        assert_eq!(fs::read_to_string(&staging).unwrap(), "incomplete backup");
         load(&path).unwrap();
         let _ = fs::remove_dir_all(root);
     }
