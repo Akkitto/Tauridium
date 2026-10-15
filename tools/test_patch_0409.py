@@ -74,9 +74,9 @@ class Patch0409Tests(unittest.TestCase):
     for privileged in ("plugin:fs", "plugin:process", "plugin:shell", "plugin:window"):
       self.assertNotIn(privileged, shim)
     self.assertIn(".initialization_script(REMOTE_TAURI_COMPAT_JS)", self.main)
-    self.assertEqual(self.capability.get("windows"), ["main"])
+    self.assertEqual(self.capability.get("webviews"), ["main"])
+    self.assertNotIn("windows", self.capability)
     self.assertNotIn("remote", self.capability)
-    self.assertNotIn("webviews", self.capability)
 
 
 if __name__ == "__main__":

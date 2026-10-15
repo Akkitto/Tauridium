@@ -12,5 +12,10 @@ fn main() {
         );
     }
 
-    tauri_build::build();
+    // Load our explicit application-command permissions. Unlike the implicit
+    // all-local default, only the named app-owned webviews receive commands.
+    tauri_build::try_build(
+        tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new()),
+    )
+    .expect("Tauridium application permissions must be valid");
 }

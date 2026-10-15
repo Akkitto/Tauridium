@@ -8,6 +8,7 @@ mod download_toast;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 mod flatpak_portal;
 mod icons;
+mod ipc_security;
 mod local_profile;
 #[cfg(all(
     target_os = "linux",
@@ -2088,6 +2089,13 @@ async fn create_service_webview(
         service_custom_url_template_values(&state.settings.lock().unwrap(), service_id);
     let url_str = resolve_url(&cfg, custom_url, team, &template_values)?;
     let url = Url::parse(&url_str).map_err(|e| format!("Invalid URL {url_str}: {e}"))?;
+    if !matches!(url.scheme(), "http" | "https") || !ipc_security::service_navigation_allowed(&url)
+    {
+        return Err(
+            "Service URLs must use an HTTP(S) origin outside the application protocols".into(),
+        );
+    }
+    let recipe_origin = url.origin().ascii_serialization();
     let host = url.host_str().unwrap_or("").to_ascii_lowercase();
     // Recipe runtime (DOM unread-count scraping -> __pakeUnread), best effort.
     let runtime = recipe_webview_js(win.app_handle(), app_data, recipe_id)
@@ -2153,7 +2161,7 @@ async fn create_service_webview(
         .focused(false)
         .on_navigation(move |url| {
             if url.scheme() != "tauridium-shortcut" {
-                return true;
+                return ipc_security::service_navigation_allowed(url);
             }
             if let Some(action) =
                 service_shortcut_action_from_url(url, &shortcut_nonce_for_navigation)
@@ -2173,7 +2181,10 @@ async fn create_service_webview(
         // external protocol because an embedded service webview cannot handle it usefully.
         .on_new_window(
             move |url: Url, features: NewWindowFeatures| -> NewWindowResponse<Wry> {
-                if features.size().is_some() {
+                if url.scheme() != "mailto" && !ipc_security::service_navigation_allowed(&url) {
+                    return NewWindowResponse::Deny;
+                }
+                if features.size().is_some() && url.scheme() != "mailto" {
                     return NewWindowResponse::Allow;
                 }
                 if url.scheme() == "mailto"
@@ -2311,7 +2322,8 @@ async fn create_service_webview(
         builder = builder.initialization_script(GOOGLE_AUTH_COMPAT_JS);
     }
     if let Some(rt) = runtime {
-        builder = builder.initialization_script(rt);
+        builder =
+            builder.initialization_script(ipc_security::bind_recipe_script(&rt, &recipe_origin));
     }
     // Per-service dark mode: inject and enable Dark Reader (best effort).
     if let Some(o) = dark {
@@ -5684,7 +5696,15 @@ fn main() {
             startup_diagnostics::log("primary", "tauri.setup.completed", "Tauri setup completed successfully");
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(|invoke| {
+            if !ipc_security::command_allowed(
+                invoke.message.webview_ref().label(),
+                invoke.message.command(),
+            ) {
+                invoke.resolver.reject("This renderer is not authorized to invoke application commands");
+                return true;
+            }
+            let handler: fn(tauri::ipc::Invoke<Wry>) -> bool = tauri::generate_handler![
             login,
             start_local_session,
             restore_session,
@@ -5746,7 +5766,9 @@ fn main() {
             download_toast::resize_download_toast,
             set_service_zoom,
             toggle_devtools_command
-        ])
+            ];
+            handler(invoke)
+        })
         .build(tauri::generate_context!())
         .expect("failed to launch the Tauri application")
         .run(|_app, _event| {
