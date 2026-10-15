@@ -17,6 +17,8 @@ class RuntimeSecurityUpgradeTests(unittest.TestCase):
       self.assertFalse(updater.get(key, False), key)
     manifest = tomllib.loads((ROOT / "src-tauri/Cargo.toml").read_text(encoding="utf-8"))
     self.assertEqual(manifest["dependencies"]["tauri-plugin-updater"]["version"], "=2.14.0")
+    package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+    self.assertEqual(package["dependencies"]["@tauri-apps/api"], "2.12.4")
 
   def test_channel_fetch_is_bound_to_actual_caller_and_upstream_regressions_remain(self):
     source = (ROOT / "vendor/tauri/src/ipc/channel.rs").read_text(encoding="utf-8")

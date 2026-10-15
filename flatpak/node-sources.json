@@ -794,16 +794,16 @@
   },
   {
     "type": "file",
-    "url": "https://registry.npmjs.org/@tauri-apps/api/-/api-2.11.1.tgz",
-    "sha512": "33614fb98343da6fb087985f5bd66949dc4c3dd109a2f3c15b0a07266c14a72b1360d1da3a4545378d7d9bf2b42c88236ffeca536bc182c51ea495ae8100af00",
-    "dest": "flatpak-node/npm-cache/_cacache/content-v2/sha512/33/61",
-    "dest-filename": "4fb98343da6fb087985f5bd66949dc4c3dd109a2f3c15b0a07266c14a72b1360d1da3a4545378d7d9bf2b42c88236ffeca536bc182c51ea495ae8100af00"
+    "url": "https://registry.npmjs.org/@tauri-apps/api/-/api-2.12.4.tgz",
+    "sha512": "a5599f8acfb8cd3f07d10869df13d9c7d26eee4a73bc0eabaff3d224fcaec1fbee71343cb15b7ad4d614f4a3242bbd3750595869d1668ca0381e1c9b3ad37482",
+    "dest": "flatpak-node/npm-cache/_cacache/content-v2/sha512/a5/59",
+    "dest-filename": "9f8acfb8cd3f07d10869df13d9c7d26eee4a73bc0eabaff3d224fcaec1fbee71343cb15b7ad4d614f4a3242bbd3750595869d1668ca0381e1c9b3ad37482"
   },
   {
     "type": "inline",
-    "contents": "4c22f717df1317bee7256c642612291a2c7e983f\t{\"key\":\"make-fetch-happen:request-cache:https://registry.npmjs.org/@tauri-apps/api/-/api-2.11.1.tgz\",\"integrity\":\"sha512-M2FPuYND2m+wh5hfW9ZpSdxMPdEJovPBWwoHJmwUpysTYNHaOkVFN419m/K0LIgjb/7KU2vBgsUepJWugQCvAA==\",\"time\":0,\"metadata\":{\"url\":\"https://registry.npmjs.org/@tauri-apps/api/-/api-2.11.1.tgz\",\"reqHeaders\":{},\"resHeaders\":{}}}",
-    "dest": "flatpak-node/npm-cache/_cacache/index-v5/20/af",
-    "dest-filename": "eac0487d1bad8eb709e7ed72596a3c51344947d5996d3c6dcc9ca8e0d2cc"
+    "contents": "4ca4a0c9f712d35c421e98158bd6d00a0170cf77\t{\"key\":\"make-fetch-happen:request-cache:https://registry.npmjs.org/@tauri-apps/api/-/api-2.12.4.tgz\",\"integrity\":\"sha512-pVmfis+4zT8H0Qhp3xPZx9Ju7kpzvA6rr/PSJPyuwfvucTQ8sVt61NYU9KMkK703UFlYadFmjKA4HhybOtN0gg==\",\"time\":0,\"metadata\":{\"url\":\"https://registry.npmjs.org/@tauri-apps/api/-/api-2.12.4.tgz\",\"reqHeaders\":{},\"resHeaders\":{}}}",
+    "dest": "flatpak-node/npm-cache/_cacache/index-v5/fd/e9",
+    "dest-filename": "e14bdc9ac4b521ea93edceedd841ecd33aa11dbc659d8e5e78cf85d448df"
   },
   {
     "type": "file",
