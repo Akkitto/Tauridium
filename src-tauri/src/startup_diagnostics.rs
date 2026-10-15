@@ -1,5 +1,7 @@
 use std::ffi::OsStr;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
+#[cfg(windows)]
+use std::fs::OpenOptions;
 #[cfg(windows)]
 use std::io::Read;
 use std::io::Write;
@@ -9,6 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(crate) const STARTUP_DIAGNOSTICS_FLAG: &str = "--startup-diagnostics";
 const MAX_DIAGNOSTIC_MESSAGE_CHARS: usize = 4096;
+const MAX_DIAGNOSTIC_BYTES: u64 = 8 * 1024 * 1024;
 
 struct StartupDiagnostics {
     path: PathBuf,
@@ -67,6 +70,7 @@ fn write_console_file(console: &Mutex<Option<File>>, text: &str) {
 }
 
 fn sanitize_message(message: &str) -> String {
+    let message = crate::privacy::text(message);
     let mut sanitized = String::with_capacity(message.len().min(MAX_DIAGNOSTIC_MESSAGE_CHARS));
     for character in message.chars().take(MAX_DIAGNOSTIC_MESSAGE_CHARS) {
         match character {
@@ -95,7 +99,12 @@ fn format_line(role: &str, event: &str, message: &str) -> String {
 }
 
 fn append_line(path: &Path, line: &str) -> std::io::Result<()> {
-    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+    let mut file = crate::private_file::append(path)?;
+    if file.metadata()?.len().saturating_add(line.len() as u64) > MAX_DIAGNOSTIC_BYTES {
+        return Err(std::io::Error::other(
+            "Tauridium diagnostics log reached its private size budget",
+        ));
+    }
     file.write_all(line.as_bytes())?;
     file.flush()
 }
@@ -136,7 +145,7 @@ pub(crate) fn initialize_from_args() -> Result<bool, String> {
         unix_millis(),
         std::process::id()
     ));
-    File::create(&path)
+    crate::private_file::create(&path)
         .map_err(|error| format!("Unable to create Tauridium startup diagnostics log: {error}"))?;
 
     let diagnostics = StartupDiagnostics {
@@ -227,16 +236,29 @@ pub(crate) fn replay_forwarded_primary_lines_to_console() {
     };
     let mut contents = String::new();
     if File::open(&diagnostics.path)
-        .and_then(|mut file| file.read_to_string(&mut contents))
+        .and_then(|file| {
+            file.take(MAX_DIAGNOSTIC_BYTES + 1)
+                .read_to_string(&mut contents)
+        })
         .is_err()
     {
+        return;
+    }
+    if contents.len() as u64 > MAX_DIAGNOSTIC_BYTES {
+        write_console_file(
+            &diagnostics.console,
+            "Tauridium diagnostic replay skipped: log exceeds its size budget.\n",
+        );
         return;
     }
     for line in contents
         .lines()
         .filter(|line| line.contains(" role=primary "))
     {
-        write_console_file(&diagnostics.console, &format!("{line}\n"));
+        write_console_file(
+            &diagnostics.console,
+            &format!("{}\n", crate::privacy::text(line)),
+        );
     }
 }
 
@@ -272,5 +294,44 @@ mod tests {
             sanitize_message(&"x".repeat(MAX_DIAGNOSTIC_MESSAGE_CHARS + 20))
                 .ends_with("…[truncated]")
         );
+    }
+
+    #[test]
+    fn diagnostics_redact_credentials_before_formatting_and_use_private_bounded_files() {
+        let rendered = format_line(
+            "primary",
+            "request",
+            "https://user:SYNTHETIC_PASSWORD@example.test/?access_token=SYNTHETIC_TOKEN",
+        );
+        assert!(!rendered.contains("SYNTHETIC_PASSWORD"));
+        assert!(!rendered.contains("SYNTHETIC_TOKEN"));
+        let root = std::env::temp_dir().join(format!(
+            "tauridium-diagnostics-test-{}-{}",
+            std::process::id(),
+            unix_millis()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let path = root.join("private.log");
+        append_line(&path, &rendered).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_len(MAX_DIAGNOSTIC_BYTES)
+            .unwrap();
+        assert!(append_line(&path, "extra").is_err());
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().len(),
+            MAX_DIAGNOSTIC_BYTES
+        );
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
