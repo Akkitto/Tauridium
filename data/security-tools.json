@@ -1,0 +1,14 @@
+{
+  "gitleaks": {
+    "version": "8.30.1",
+    "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz",
+    "sha256": "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb",
+    "member": "gitleaks"
+  },
+  "7zz": {
+    "version": "26.04",
+    "url": "https://github.com/ip7z/7zip/releases/download/26.04/7z2604-linux-x64.tar.xz",
+    "sha256": "fc0327ba27e89bd086cf426dff17d77de582953cdbbc10a6576540a06853ffcd",
+    "member": "7zz"
+  }
+}

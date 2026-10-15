@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "scope": "Exact normalized public GnuTLS crypto self-test PEM constants only, only inside decoded libgnutls payloads or their source crypto-selftests-pk.c; never arbitrary private keys or paths",
+  "sources": [
+    {
+      "url": "https://raw.githubusercontent.com/gnutls/gnutls/f213ec01faa8fd7e7478f85a76352be875f53e4b/lib/crypto-selftests-pk.c",
+      "sha256": "c3d79122e072177f55dc30a98f68b949c0f36f6159a363aae9512a22a9280ed0"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/gnutls/gnutls/4e84948a5e89689edbab2c5920db7fc32f31a985/lib/crypto-selftests-pk.c",
+      "sha256": "81765f415dd7a711bee4ce15ad114e99f8feb30d9f647f546dfc35f287000736"
+    }
+  ],
+  "normalizedSha256": [
+    "003cc63927b31514f9365c3d8d8b279d2fa287617eccdf5eb7f499521c95cc67",
+    "05d6b9b8355fb9d7e8d6f4f49fa5aab89b23b63e9442f15da8be7894fac07f4b",
+    "46dfb8df0207abbca73ab4004699598e4c64976a68c88fa370ca0d5ae0930ec7",
+    "658923d8598c8132876655da19424dfd2913ea7e3ee25007b9f6cb7a75581ecd",
+    "66aefba13ce815a6ff26663773b4fdce1faff87be51daa28930b31a63645de8c",
+    "72e6297423244d0c9a5fcf1c4a9dd398e9945290533bf1417c345168fb22da64",
+    "74c79569745d26e138fc54508cc9f4e032824dd4ba86c88e46769d035a6d9394",
+    "7d1af1e9fa2e1dc983e22c66894ef86c21e3e2ce4f8f7660401da96ef3596fcf",
+    "c3459defde59823bfe13d6edb7f2d776775dc0489de98ca9c4322f948e278730",
+    "ea71262809fc57fca49da9608b04e834c1fefb1741262d382aa996b43da86853"
+  ]
+}
