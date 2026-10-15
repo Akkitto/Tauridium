@@ -66,7 +66,8 @@ class Patch0612Tests(unittest.TestCase):
       for name in release_assets.expected_updater_artifact_names(release_version):
         (assets / name).write_bytes(b"artifact")
         (assets / f"{name}.sig").write_text("signature\n", encoding="utf-8")
-      self.assertEqual(release_assets.signed_updater_state(assets, release_version), "signed")
+      with self.assertRaisesRegex(SystemExit, "updater signature rejected"):
+        release_assets.signed_updater_state(assets, release_version)
 
 
 if __name__ == "__main__":

@@ -100,6 +100,7 @@
             packages = with pkgs; [
               toolchain
               pinnedTauriCli
+              minisign
               nodejs_24
               python3
               just

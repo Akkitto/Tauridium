@@ -47,6 +47,8 @@ class WindowsBootstrapTests(unittest.TestCase):
       'toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy',
       'cargo.exe install tauri-cli --locked --version $TauriCliVersion --force',
       'cargo.exe install cargo-audit --locked',
+      '& scoop install minisign',
+      '--id jedisct1.minisign',
       'VBSCRIPT',
       '& npm.cmd ci',
       '& npm.cmd audit --audit-level=high',

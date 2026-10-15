@@ -42,3 +42,26 @@ source manifest as well as the application's Cargo/npm sources. A source-count o
 nonempty-file check is not sufficient. Tool updates must review the new published
 lock, advisories, checksums and all three producer paths together. Prerelease Tauri
 3 tooling is not an acceptable substitute for the supported Tauri 2 builder.
+
+## Updater signature verification
+
+Signature presence or nonempty text is never proof of signing. The native
+collector verifies the exact staged artifact bytes before replacement. Signed
+updater-set classification and manifest creation reverify every required pair
+against the public key in the checked-in Tauri configuration, including the
+global signature over the trusted comment. The trusted version must exactly
+match the release; an older signed binary cannot be relabeled as a newer update.
+Prehashed Minisign envelopes are required. An arbitrary public-key sidecar is
+never a trust anchor, and missing verification tools fail closed.
+
+Native initialization supplies Minisign through the Linux package manager or,
+on Windows, Scoop with the verified WinGet package as fallback. Nix supplies it
+in the development environment. On macOS install it with brew install minisign.
+The verifier also finds normal Windows package-manager links when the parent
+terminal has not yet refreshed PATH. It never executes downloaded application
+artifacts to verify them.
+
+Regression tests generate only ephemeral synthetic keys outside the repository.
+They cover real Tauri CLI output, independent Minisign verification, wrong keys,
+tampered bytes, altered signed-version comments, dummy/oversized signatures,
+complete-set classification and preservation of existing output on rejection.

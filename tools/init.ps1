@@ -827,6 +827,25 @@ try {
     # -------------------------------------------------------------------------
     # JavaScript dependency policy + installation
     # -------------------------------------------------------------------------
+    $MinisignCommand = Get-Command -Name "minisign.exe" -ErrorAction SilentlyContinue
+    if ($null -eq $MinisignCommand) {
+      if ($NoSystemChanges) { throw "Minisign is missing and -NoSystemChanges was requested" }
+      if ($ScoopAvailable) {
+        & scoop install minisign
+        if ($LASTEXITCODE -ne 0) { Write-Host "Scoop Minisign installation failed; checking WinGet fallback." }
+      }
+      $MinisignCommand = Get-Command -Name "minisign.exe" -ErrorAction SilentlyContinue
+      if ($null -eq $MinisignCommand -and $WingetAvailable) {
+        & winget.exe install -e --id jedisct1.minisign --source winget --accept-source-agreements --accept-package-agreements
+        if ($LASTEXITCODE -ne 0) { throw "WinGet Minisign installation failed" }
+        $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User") + ";" + $env:Path
+        $MinisignCommand = Get-Command -Name "minisign.exe" -ErrorAction SilentlyContinue
+      }
+      if ($null -eq $MinisignCommand) { throw "Minisign is required; install it with Scoop or WinGet, then rerun just init" }
+    }
+    & $MinisignCommand.Source -v
+    if ($LASTEXITCODE -ne 0) { throw "Minisign validation failed" }
+
     Write-Host "+ Validate the shared script-free npm installation policy"
     & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $PythonRunnerPath tools/npm_policy.py
     if ($LASTEXITCODE -ne 0) { throw "npm lifecycle policy validation failed" }

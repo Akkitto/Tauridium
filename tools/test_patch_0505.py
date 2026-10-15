@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import importlib.util
+import base64
 import json
 import sys
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,6 +22,7 @@ if SPEC is None or SPEC.loader is None:
   raise RuntimeError("unable to load release_assets.py")
 release_assets = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(release_assets)
+import updater_signature
 
 
 class Patch0505Tests(unittest.TestCase):
@@ -88,9 +91,16 @@ class Patch0505Tests(unittest.TestCase):
     lock = (ROOT / "src-tauri/Cargo.lock").read_text(encoding="utf-8")
     self.assertIn('name = "tauri-plugin-updater"\nversion = "2.10.1"', lock)
 
+  @unittest.skipUnless(updater_signature.find_minisign(), "Real Minisign required; run just init or nix develop")
   def test_updater_manifest_emits_generic_and_installer_specific_keys(self) -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
-      assets = Path(temp_dir)
+      root = Path(temp_dir)
+      assets = root / "assets"
+      assets.mkdir()
+      key, public = root / "test.key", root / "test.pub"
+      minisign = updater_signature.find_minisign()
+      subprocess.run([minisign, "-G", "-W", "-s", str(key), "-p", str(public)], check=True, capture_output=True)
+      public_key = base64.b64encode(public.read_bytes()).decode("ascii")
       release_version = "0.5.5"
       for filename in (
         f"tauridium-{release_version}-windows-x64-setup.exe",
@@ -101,10 +111,14 @@ class Patch0505Tests(unittest.TestCase):
         f"tauridium-{release_version}-linux-arm64.AppImage",
       ):
         (assets / filename).write_bytes(b"artifact")
-        (assets / f"{filename}.sig").write_text(f"sig-{filename}\n", encoding="utf-8")
+        raw = root / "test.minisig"
+        subprocess.run([minisign, "-S", "-W", "-s", str(key), "-m", str(assets / filename),
+                        "-x", str(raw), "-t", f"timestamp:0\tversion:{release_version}"], check=True, capture_output=True)
+        (assets / f"{filename}.sig").write_bytes(base64.b64encode(raw.read_bytes()))
 
       output = assets / "latest.json"
       with (
+        patch.object(updater_signature, "configured_public_key", return_value=public_key),
         patch.object(release_assets, "version", return_value=release_version),
         patch.object(release_assets, "changelog_notes", return_value="notes"),
         patch.object(release_assets, "release_timestamp", return_value="2026-08-22T12:00:00Z"),

@@ -8,12 +8,15 @@ import hashlib
 import json
 import shutil
 import subprocess
+import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
 from package_release import RuntimeArtifact, build_runtime, inspect_runtime, runtime_zip_name, version
 from scoop import package_portable
+from updater_signature import require_regular, verify as verify_updater_signature
 
 ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY = "Akkitto/Tauridium"
@@ -79,15 +82,29 @@ def copy_with_signature(
   require_signature: bool,
 ) -> list[Path]:
   destination.parent.mkdir(parents=True, exist_ok=True)
-  shutil.copy2(source, destination)
-  written = [destination]
+  require_regular(source)
   signature = source.with_name(source.name + ".sig")
-  if signature.is_file():
-    signature_destination = destination.with_name(destination.name + ".sig")
-    shutil.copy2(signature, signature_destination)
-    written.append(signature_destination)
-  elif require_signature:
+  has_signature = signature.exists() or signature.is_symlink()
+  signature_destination = destination.with_name(destination.name + ".sig")
+  if not has_signature and (signature_destination.exists() or signature_destination.is_symlink()):
+    raise SystemExit("error: unsigned collection found an obsolete signature; use a fresh output directory")
+  if not has_signature and require_signature:
     raise SystemExit(f"error: updater signature is missing for {source}")
+  # Verify the exact staged copy, then replace destinations. Invalid or forged
+  # input cannot overwrite an existing trusted artifact.
+  with tempfile.TemporaryDirectory(prefix=".tauridium-native-", dir=destination.parent) as directory:
+    staged = Path(directory) / destination.name
+    shutil.copy2(source, staged)
+    if has_signature:
+      require_regular(signature)
+      staged_signature = staged.with_name(staged.name + ".sig")
+      shutil.copy2(signature, staged_signature)
+      verify_updater_signature(staged, staged_signature, version())
+    os.replace(staged, destination)
+    written = [destination]
+    if has_signature:
+      os.replace(staged_signature, signature_destination)
+      written.append(signature_destination)
   return written
 
 
@@ -176,9 +193,7 @@ def signed_entry(assets_dir: Path, filename: str, release_version: str) -> dict[
   signature = assets_dir / f"{filename}.sig"
   if not artifact.is_file() or not signature.is_file():
     return None
-  value = signature.read_text(encoding="utf-8").strip()
-  if not value:
-    raise SystemExit(f"error: updater signature is empty: {signature}")
+  value = verify_updater_signature(artifact, signature, release_version)
   return {
     "signature": value,
     "url": release_url(release_version, filename),
@@ -213,6 +228,8 @@ def signed_updater_state(assets_dir: Path, release_version: str) -> str:
       "error: signed updater release is incomplete; missing artifact/signature pairs: "
       + ", ".join(missing)
     )
+  for filename in expected:
+    verify_updater_signature(assets_dir / filename, assets_dir / f"{filename}.sig", release_version)
   return "signed"
 
 

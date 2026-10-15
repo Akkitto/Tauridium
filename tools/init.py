@@ -45,6 +45,7 @@ LINUX_PKG_CONFIG_ALTERNATIVES = (
   ("ayatana-appindicator3-0.1", "appindicator3-0.1"),
 )
 LINUX_REQUIRED_TOOLS = (
+  "minisign",
   "cc",
   "curl",
   "file",
@@ -65,6 +66,7 @@ APT_NETWORK_OPTIONS = (
 # Tauri v2 Linux prerequisites, with pkg-config/pkgconf made explicit because
 # the Rust -sys crates use it to locate the native libraries.
 APT_PACKAGES = (
+  "minisign",
   "pkg-config",
   "libwebkit2gtk-4.1-dev",
   "build-essential",
@@ -79,6 +81,7 @@ APT_PACKAGES = (
   "rpm",
 )
 DNF_PACKAGES = (
+  "minisign",
   "pkgconf-pkg-config",
   "webkit2gtk4.1-devel",
   "openssl-devel",
@@ -92,6 +95,7 @@ DNF_PACKAGES = (
   "rpm-build",
 )
 PACMAN_PACKAGES = (
+  "minisign",
   "pkgconf",
   "webkit2gtk-4.1",
   "base-devel",
@@ -107,6 +111,7 @@ PACMAN_PACKAGES = (
   "rpm-tools",
 )
 APK_PACKAGES = (
+  "minisign",
   "pkgconf",
   "build-base",
   "webkit2gtk-4.1-dev",
@@ -120,6 +125,7 @@ APK_PACKAGES = (
   "rpm",
 )
 ZYPPER_PACKAGES = (
+  "minisign",
   "pkg-config",
   "webkit2gtk3-devel",
   "libopenssl-devel",
