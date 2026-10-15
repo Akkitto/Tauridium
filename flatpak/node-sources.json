@@ -1431,16 +1431,16 @@
   },
   {
     "type": "file",
-    "url": "https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.1.tgz",
-    "sha512": "51758c2a12cec1529bef6f0852d40f5f17d853ebac7726ed52b2bff2e184f0240cbeb84ea70bf30c1c23d108522fb31073bbc8b084811bc550f3e203431a5f40",
-    "dest": "flatpak-node/npm-cache/_cacache/content-v2/sha512/51/75",
-    "dest-filename": "8c2a12cec1529bef6f0852d40f5f17d853ebac7726ed52b2bff2e184f0240cbeb84ea70bf30c1c23d108522fb31073bbc8b084811bc550f3e203431a5f40"
+    "url": "https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.2.tgz",
+    "sha512": "2868fff18e37c77e5a6550edb7e27898ad61a0b18750b3187d290e0c93508cd0c2de85b53ea3e8c4cc28d292d4b1633f5041b338dfcdc5e1f2c047cd5cd3f757",
+    "dest": "flatpak-node/npm-cache/_cacache/content-v2/sha512/28/68",
+    "dest-filename": "fff18e37c77e5a6550edb7e27898ad61a0b18750b3187d290e0c93508cd0c2de85b53ea3e8c4cc28d292d4b1633f5041b338dfcdc5e1f2c047cd5cd3f757"
   },
   {
     "type": "inline",
-    "contents": "f26317e72f1a224899e58022ac0b83c17408df03\t{\"key\":\"make-fetch-happen:request-cache:https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.1.tgz\",\"integrity\":\"sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==\",\"time\":0,\"metadata\":{\"url\":\"https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.1.tgz\",\"reqHeaders\":{},\"resHeaders\":{}}}",
-    "dest": "flatpak-node/npm-cache/_cacache/index-v5/69/e3",
-    "dest-filename": "1018bd2617c9bf8a0c2742b8d6db95d9995670b0e195cb06cfea9d61c009"
+    "contents": "999002219a95e68614445817f9351e08142709c7\t{\"key\":\"make-fetch-happen:request-cache:https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.2.tgz\",\"integrity\":\"sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==\",\"time\":0,\"metadata\":{\"url\":\"https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.2.tgz\",\"reqHeaders\":{},\"resHeaders\":{}}}",
+    "dest": "flatpak-node/npm-cache/_cacache/index-v5/bd/f5",
+    "dest-filename": "7462e8144ef39f6322deba8717f0def02b5f7234eb74a63a9d803b256ea7"
   },
   {
     "type": "file",

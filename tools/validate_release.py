@@ -136,6 +136,7 @@ def main() -> int:
       fail(f"pinned Rust formatter toolchain invariant is missing: {marker}")
 
   expected_frontend_fixes = {
+    "node_modules/source-map-js": "1.2.2",
     "node_modules/esbuild": "0.25.12",
     "node_modules/nanoid": "3.3.18",
     "node_modules/postcss": "8.5.25",
