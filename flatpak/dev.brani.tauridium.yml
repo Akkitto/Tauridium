@@ -49,7 +49,7 @@ modules:
         npm_config_cache: /run/build/tauridium/flatpak-node/npm-cache
         npm_config_offline: 'true'
     build-commands:
-      - cd source && npm ci --offline --ignore-scripts=false --cache=/run/build/tauridium/flatpak-node/npm-cache
+      - cd source && npm ci --offline --ignore-scripts --cache=/run/build/tauridium/flatpak-node/npm-cache
       - cd source && npm run build
       - chmod +x source/flatpak/cargo-flatpak-runner.sh
       - cd source && cargo tauri build --runner ../flatpak/cargo-flatpak-runner.sh --no-bundle --ci

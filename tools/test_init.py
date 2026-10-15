@@ -243,9 +243,10 @@ class TauriCliTests(unittest.TestCase):
 
 
 class NpmPolicyTests(unittest.TestCase):
-  def test_release_policy_approves_only_pinned_esbuild(self) -> None:
+  def test_release_policy_disables_all_lifecycle_hooks(self) -> None:
     package = json.loads((INIT.ROOT / "package.json").read_text(encoding="utf-8"))
-    self.assertEqual(package.get("allowScripts"), {"esbuild@0.25.12": True})
+    self.assertNotIn("allowScripts", package)
+    INIT.validate_npm_policy()
 
   @patch.object(INIT, "validate_npm_policy")
   @patch.object(INIT, "run_checked")
@@ -259,7 +260,7 @@ class NpmPolicyTests(unittest.TestCase):
     INIT.install_javascript_dependencies()
 
     commands = [call.args[0] for call in run_checked.call_args_list]
-    self.assertEqual(commands[0], ["npm", "ci"])
+    self.assertEqual(commands[0], ["npm", "ci", "--ignore-scripts"])
     self.assertEqual(commands[1], ["npm", "audit", "--audit-level=high"])
     self.assertEqual(
       commands[2],

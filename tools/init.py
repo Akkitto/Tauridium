@@ -18,6 +18,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Sequence
+from npm_policy import validate as validate_script_free_npm
 
 ROOT = Path(__file__).resolve().parents[1]
 OS_RELEASE = Path("/etc/os-release")
@@ -362,13 +363,11 @@ def validate_release_identity() -> None:
 
 
 def validate_npm_policy() -> None:
-  """Require the exact reviewed install-script approval committed for this release."""
-  package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
-  allow_scripts = package.get("allowScripts")
-  if allow_scripts != {"esbuild@0.25.12": True}:
-    raise InitError(
-      "package.json must approve exactly the reviewed esbuild@0.25.12 install script"
-    )
+  """Enforce a policy that npm 10 and newer actually honor."""
+  try:
+    validate_script_free_npm(ROOT)
+  except (OSError, ValueError, TypeError, KeyError) as error:
+    raise InitError("npm lifecycle policy validation failed; run tools/npm_policy.py") from error
 
 
 def command_succeeds(command: Sequence[str]) -> bool:
@@ -445,7 +444,7 @@ def install_javascript_dependencies() -> None:
     raise InitError("npm is required but was not found in PATH")
 
   validate_npm_policy()
-  run_checked(["npm", "ci"])
+  run_checked(["npm", "ci", "--ignore-scripts"])
   run_checked(["npm", "audit", "--audit-level=high"])
 
   # Verify the approved dependency is actually runnable. esbuild's install

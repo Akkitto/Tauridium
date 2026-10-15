@@ -35,9 +35,6 @@
     "vite": "^6",
     "vitest": "4.1.11"
   },
-  "allowScripts": {
-    "esbuild@0.25.12": true
-  },
   "overrides": {
     "devalue": "5.9.3"
   }

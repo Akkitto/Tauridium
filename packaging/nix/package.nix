@@ -32,6 +32,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
     fileset = lib.fileset.unions [
       ../../package.json
       ../../package-lock.json
+      ../../.npmrc
       ../../index.html
       ../../vite.config.ts
       ../../svelte.config.js
@@ -62,6 +63,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
     hash = "sha256-z6sEtu2iqZW8eD33YFj919eagv37ecbibvDRfSUTivo=";
   };
   npmRoot = ".";
+  env.npm_config_ignore_scripts = "true";
   nativeBuildInputs = [
     cargo-tauri.hook
     nodejs_24

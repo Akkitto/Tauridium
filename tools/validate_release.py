@@ -127,9 +127,11 @@ def main() -> int:
   if not tauridium_lock or tauridium_lock.group(1) != version:
     fail("Cargo.lock Tauridium version differs from tauri.conf.json")
 
-  allow_scripts = package.get("allowScripts")
-  if allow_scripts != {"esbuild@0.25.12": True}:
-    fail("package.json must approve exactly esbuild@0.25.12 install scripts")
+  from npm_policy import validate as validate_npm_policy
+  try:
+    validate_npm_policy(ROOT)
+  except (OSError, ValueError, TypeError, KeyError):
+    fail("npm lifecycle hooks must remain disabled by an enforceable installation policy")
 
   for marker in ('channel = "1.97.1"', 'profile = "minimal"', 'components = ["rustfmt", "clippy"]'):
     if marker not in rust_toolchain:

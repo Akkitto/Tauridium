@@ -824,18 +824,12 @@ try {
     # -------------------------------------------------------------------------
     # JavaScript dependency policy + installation
     # -------------------------------------------------------------------------
-    $Package = Get-Content -LiteralPath $PackagePath -Raw | ConvertFrom-Json
-    $AllowScriptProperties = @($Package.allowScripts.PSObject.Properties)
-    if (
-      $AllowScriptProperties.Count -ne 1 -or
-      $AllowScriptProperties[0].Name -ne "esbuild@0.25.12" -or
-      $AllowScriptProperties[0].Value -ne $true
-    ) {
-      throw "package.json must approve exactly the reviewed esbuild@0.25.12 install script"
-    }
+    Write-Host "+ Validate the shared script-free npm installation policy"
+    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $PythonRunnerPath tools/npm_policy.py
+    if ($LASTEXITCODE -ne 0) { throw "npm lifecycle policy validation failed" }
 
-    Write-Host "+ npm.cmd ci"
-    & npm.cmd ci
+    Write-Host "+ npm.cmd ci --ignore-scripts"
+    & npm.cmd ci --ignore-scripts
     if ($LASTEXITCODE -ne 0) {
       throw ("npm.cmd ci failed with exit code {0}" -f $LASTEXITCODE)
     }
