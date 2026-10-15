@@ -1628,9 +1628,9 @@ def main() -> int:
       fail(f"canonical just quality gate is missing: {marker}")
   if "dtolnay/rust-toolchain@stable" in ci + release_workflow:
     fail("CI/release workflows must not float Rust stable; use pinned Rust 1.97.1")
-  if ci.count("dtolnay/rust-toolchain@1.97.1") < 2:
+  if ci.count("toolchain: 1.97.1") < 2:
     fail("CI does not pin every Rust job to Rust 1.97.1")
-  if release_workflow.count("dtolnay/rust-toolchain@1.97.1") < 4:
+  if release_workflow.count("toolchain: 1.97.1") < 4:
     fail("tagged release workflow does not pin Rust 1.97.1 in all Rust jobs")
   if "run: just ci" not in ci or "run: just ci" not in release_workflow:
     fail("CI and release workflow must execute the canonical just ci gate")
@@ -1644,17 +1644,17 @@ def main() -> int:
     if command not in ci:
       fail(f"Windows CI is missing native workflow gate: {command}")
   for marker in (
-    "actions/checkout@v7.0.1",
-    "actions/setup-node@v7.0.0",
-    "actions/setup-python@v7.0.0",
-    "Swatinem/rust-cache@v2.9.2",
+    "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+    "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+    "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
+    "Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6",
     "just package-handoff",
     "just bundle-target ${{ matrix.target }}",
     "just package-native-signed ${{ matrix.target }}",
     "just updater-manifest-if-signed release/published-assets",
     "just release-checksums release/published-assets",
-    "actions/upload-artifact@v7.0.1",
-    "actions/download-artifact@v8.0.1",
+    "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+    "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
     'gh release create "$GITHUB_REF_NAME" "${files[@]}"',
     "windows-11-arm",
     "ubuntu-22.04-arm",
@@ -1953,7 +1953,7 @@ def main() -> int:
     ('just scoop-verify-collected ${{ matrix.target }}', release_workflow),
     ('Scoop clean-machine ${{ matrix.label }}', release_workflow),
     ('repository: ScoopInstaller/Scoop', release_workflow),
-    ('ref: v0.5.3', release_workflow),
+    ('ref: b588a06e41d920d2123ec70aee682bae14935939', release_workflow),
     ('os: windows-11-arm', release_workflow),
     ('just scoop-release-manifest release/published-assets', release_workflow),
     ('just scoop-validate-manifest', release_workflow),
@@ -1993,8 +1993,8 @@ def main() -> int:
 
   patch_0701 = read("tools/test_patch_0701.py")
   for invariant in (
-    "actions/upload-artifact@v7.0.1",
-    "actions/download-artifact@v8.0.1",
+    "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+    "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
     "name: release-handoff",
     "name: native-${{ matrix.target }}",
     "pattern: native-*",

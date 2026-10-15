@@ -136,7 +136,7 @@ class Feature0700Tests(unittest.TestCase):
 
     self.assertIn("Scoop clean-machine ${{ matrix.label }}", workflow)
     self.assertIn("repository: ScoopInstaller/Scoop", workflow)
-    self.assertIn("ref: v0.5.3", workflow)
+    self.assertIn("ref: b588a06e41d920d2123ec70aee682bae14935939", workflow)
     self.assertIn("os: windows-latest", workflow)
     self.assertIn("os: windows-11-arm", workflow)
     self.assertIn("needs: [handoff, build, scoop, nix]", workflow)

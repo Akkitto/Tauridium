@@ -148,7 +148,7 @@ class WindowsCiTests(unittest.TestCase):
     self.assertNotIn("shell: bash", build)
     self.assertIn("just bundle-target ${{ matrix.target }}", build)
     self.assertIn("just package-native-signed ${{ matrix.target }}", build)
-    self.assertIn("uses: actions/upload-artifact@v7.0.1", build)
+    self.assertIn("uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a", build)
     self.assertNotIn("Sync app version to the tag", release)
 
 
