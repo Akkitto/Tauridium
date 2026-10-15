@@ -50,7 +50,7 @@
     renderTitleTemplate,
   } from "./lib/title-template";
   import { appVersion, checkForUpdate, installUpdate, type Update } from "./lib/updater";
-  import { ask, open, save as saveDialog } from "@tauri-apps/plugin-dialog";
+  import { ask, message as showMessage, open, save as saveDialog } from "@tauri-apps/plugin-dialog";
 
   // window.confirm() does not work in WKWebView (wry does not implement the JavaScript panel).
   // Use the native dialog provided by the dialog plugin instead.
@@ -131,6 +131,8 @@
   let email = $state("");
   let password = $state("");
   let showServer = $state(false);
+  let rememberSession = $state(true);
+  let allowInsecureServer = $state(false);
 
   let booting = $state(true);
   let loading = $state(false);
@@ -140,7 +142,7 @@
   const RECONNECT_SECS = 30;
   let reconnecting = $state(false);
   let reconnectIn = $state(RECONNECT_SECS);
-  let pendingCreds = $state<{ server: string; email: string; password: string } | null>(
+  let pendingCreds = $state<{ server: string; email: string; password: string; rememberSession: boolean; allowInsecureServer: boolean } | null>(
     null,
   );
   let reconnectAttempt: (() => Promise<boolean>) | null = null;
@@ -1361,8 +1363,10 @@
     try {
       me = await restoreSession();
       await loadAfterAuth();
+      await showSessionWarning();
       return true;
     } catch (e) {
+      if (!String(e).startsWith("transient:") && String(e) !== "No saved session") error = String(e);
       return !String(e).startsWith("transient:");
     }
   }
@@ -1371,11 +1375,12 @@
   async function attemptLogin(): Promise<boolean> {
     if (!pendingCreds) return true;
     try {
-      me = await login(pendingCreds.server, pendingCreds.email, pendingCreds.password);
+      me = await login(pendingCreds.server, pendingCreds.email, pendingCreds.password, pendingCreds.rememberSession, pendingCreds.allowInsecureServer);
       pendingCreds = null;
       password = "";
       error = null;
       await loadAfterAuth();
+      await showSessionWarning();
       return true;
     } catch (e) {
       if (String(e).startsWith("transient:")) return false;
@@ -1389,7 +1394,7 @@
     e.preventDefault();
     loading = true;
     error = null;
-    pendingCreds = { server, email, password };
+    pendingCreds = { server, email, password, rememberSession, allowInsecureServer };
     const done = await attemptLogin();
     loading = false;
     if (!done) startReconnect(attemptLogin); // Server unreachable: reconnect automatically.
@@ -1404,11 +1409,18 @@
       me = await startLocalSession();
       password = "";
       await loadAfterAuth();
+      await showSessionWarning();
     } catch (e) {
       error = String(e);
       me = null;
     } finally {
       loading = false;
+    }
+  }
+
+  async function showSessionWarning() {
+    if (typeof me?.sessionSecurityWarning === "string") {
+      await showMessage(me.sessionSecurityWarning, { title: "Tauridium — session security", kind: "warning" });
     }
   }
 
@@ -3674,7 +3686,8 @@
     hibernated = new Set();
     stopReconnect();
     await closeServices();
-    await logout();
+    let cleanupError: string | null = null;
+    try { await logout(); } catch (e) { cleanupError = String(e); }
     me = null;
     services = [];
     workspaces = [];
@@ -3682,7 +3695,7 @@
     allRecipes = [];
     activeId = null;
     view = "service";
-    error = null;
+    error = cleanupError;
   }
 </script>
 
@@ -3728,7 +3741,16 @@
           Server URL
           <input type="url" bind:value={server} placeholder={DEFAULT_SERVER} />
         </label>
+        <label class="login-option">
+          <input type="checkbox" bind:checked={allowInsecureServer} />
+          Allow non-loopback HTTP on a trusted development network (exposes account credentials).
+        </label>
       {/if}
+      <label class="login-option">
+        <input type="checkbox" bind:checked={rememberSession} />
+        Remember using OS credential store
+      </label>
+      <p class="local-note">Unchecked: account token stays in memory for this run only. No plaintext fallback is used if the OS store is unavailable.</p>
       {#if error}<p class="error">{error}</p>{/if}
       <button class="primary" type="submit" disabled={loading}>
         {loading ? "Signing in…" : "Sign in"}
@@ -5473,6 +5495,8 @@
   }
   button, input, select, textarea { font-family: inherit; }
   .login { display: grid; place-items: center; height: 100vh; }
+  .login-option { display: flex; align-items: flex-start; gap: 0.5rem; }
+  .login-option input[type="checkbox"] { width: auto; margin: 0.2rem 0 0; flex: none; }
   .card {
     background: var(--card); padding: 28px; border-radius: 14px; width: 320px;
     display: flex; flex-direction: column; gap: 12px;

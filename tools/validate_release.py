@@ -775,9 +775,10 @@ def main() -> int:
       fail(f"native external-browser path is incomplete: {marker}")
   if not (ROOT / "src/assets/tauridium.svg").is_file():
     fail("About page is missing its bundled Tauridium icon")
-  if 'serde_json::json!({ "mode": "local", "version": 1 })' not in main_rs:
+  credentials_rs = (ROOT / "src-tauri/src/credentials.rs").read_text(encoding="utf-8")
+  if '"local"' not in credentials_rs or "credentials::save(" not in main_rs:
     fail("local session marker is missing")
-  if 'v.get("mode").and_then(Value::as_str) == Some("local")' not in main_rs:
+  if 'credentials::SavedSession::Local { warning }' not in main_rs:
     fail("local session restore path is missing")
   if "local_profile.json" not in main_rs:
     fail("local profile path is missing")

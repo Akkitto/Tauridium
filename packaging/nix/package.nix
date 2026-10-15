@@ -48,6 +48,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
       ../../src-tauri/assets
       ../../src-tauri/icons
       ../../src-tauri/capabilities
+      ../../src-tauri/permissions
       ../../src-tauri/bundled-recipes
     ];
   };
@@ -55,7 +56,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
   cargoRoot = "src-tauri";
   buildAndTestSubdir = finalAttrs.cargoRoot;
   cargoDepsName = finalAttrs.pname;
-  cargoHash = "sha256-17HpdpvSXSDg7Wn41FwVCEqDU0fqRDc2PMjtdxKMOmE=";
+  cargoHash = "sha256-flcpD7nBTbOVyQVpCs6Y0rNHaqnp1On83HLAbikCTSM=";
   npmDeps = fetchNpmDeps {
     inherit (finalAttrs) src;
     hash = "sha256-ioaKAG7ZeUzgXmYqCq9T4RpmyaOKLQawFQMGKGdSLJM=";

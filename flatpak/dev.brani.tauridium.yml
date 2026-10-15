@@ -14,6 +14,8 @@ finish-args:
   - --device=dri
   - --socket=pulseaudio
   - --talk-name=org.kde.StatusNotifierWatcher
+  # Only the standard OS credential vault; no unrestricted session-bus access.
+  - --talk-name=org.freedesktop.secrets
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node24/bin
 modules:

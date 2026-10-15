@@ -87,8 +87,10 @@ export function login(
   server: string,
   email: string,
   password: string,
+  rememberSession = true,
+  allowInsecureServer = false,
 ): Promise<MeUser> {
-  return invoke("login", { server, email, password });
+  return invoke("login", { server, email, password, rememberSession, allowInsecureServer });
 }
 
 export function startLocalSession(): Promise<MeUser> {

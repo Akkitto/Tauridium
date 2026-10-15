@@ -2,6 +2,7 @@
 
 mod audit;
 mod backup;
+mod credentials;
 mod distribution;
 mod download_notifications;
 mod download_toast;
@@ -704,23 +705,19 @@ async fn api_get(base: &str, token: &str, path: &str) -> Result<Value, String> {
         .map_err(|e| format!("Unable to parse response from {path}: {e}"))
 }
 
-// Persist the session in app_data_dir/session.json (permissions 600).
-// macOS Keychain hardening is planned for the signed build (Phase 4).
-fn save_session(app: &AppHandle, server: &str, token: &str) {
-    let Ok(dir) = app.path().app_data_dir() else {
-        return;
-    };
-    let _ = std::fs::create_dir_all(&dir);
-    let path = dir.join("session.json");
-    let data =
-        serde_json::json!({ "mode": "server", "server": server, "token": token }).to_string();
-    if write_atomic(&path, &data).is_ok() {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
-        }
-    }
+fn session_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Session directory unavailable: {error}"))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|error| format!("Unable to create session directory: {error}"))?;
+    Ok(dir.join("session.json"))
+}
+
+fn session_warning(mut user: Value, warning: Option<String>) -> Value {
+    user["sessionSecurityWarning"] = warning.map_or(Value::Null, Value::String);
+    user
 }
 
 fn local_profile_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -738,22 +735,15 @@ fn save_local_profile(app: &AppHandle, profile: &LocalProfile) -> Result<(), Str
     profile.save(&local_profile_path(app)?)
 }
 
-fn save_local_session(app: &AppHandle) -> Result<(), String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|error| error.to_string())?;
-    std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-    let path = dir.join("session.json");
-    let data = serde_json::json!({ "mode": "local", "version": 1 }).to_string();
-    write_atomic(&path, &data).map_err(|error| error.to_string())?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
-            .map_err(|error| error.to_string())?;
-    }
-    Ok(())
+fn save_local_session(app: &AppHandle) -> Result<Option<String>, String> {
+    credentials::save(
+        &session_path(app)?,
+        None,
+        None,
+        false,
+        false,
+        &credentials::NativeVault,
+    )
 }
 
 fn local_user() -> Value {
@@ -770,13 +760,8 @@ fn is_local_mode(state: &State<'_, AppState>) -> bool {
     *state.local_mode.lock().unwrap()
 }
 
-fn clear_session(app: &AppHandle) {
-    if let Ok(dir) = app.path().app_data_dir() {
-        let session = dir.join("session.json");
-        let _ = std::fs::remove_file(&session);
-        let _ = std::fs::remove_file(session.with_extension("bak"));
-        let _ = std::fs::remove_file(session.with_extension("tmp"));
-    }
+fn clear_session(app: &AppHandle) -> Result<(), String> {
+    credentials::clear(&session_path(app)?, &credentials::NativeVault)
 }
 
 #[tauri::command]
@@ -786,8 +771,11 @@ async fn login(
     server: String,
     email: String,
     password: String,
+    remember_session: Option<bool>,
+    allow_insecure_server: Option<bool>,
 ) -> Result<Value, String> {
-    let base = normalize_server(&server);
+    let allow_insecure = allow_insecure_server.unwrap_or(false);
+    let base = credentials::validate_server(&normalize_server(&server), allow_insecure)?;
     let password_hash = ferdium_password_hash(&password);
 
     let res = HTTP
@@ -821,56 +809,64 @@ async fn login(
         .ok_or("Login response did not contain a token")?
         .to_string();
 
+    let me = api_get(&base, &token, "/v1/me").await?;
+    if !me.is_object() {
+        return Err("Account response is invalid".into());
+    }
+    let local_profile = load_local_profile(&app)?;
+    let warning = credentials::save(
+        &session_path(&app)?,
+        Some(&base),
+        Some(&token),
+        remember_session.unwrap_or(true),
+        allow_insecure,
+        &credentials::NativeVault,
+    )?;
     {
-        let local_profile = load_local_profile(&app)?;
+        state.known_services.lock().unwrap().clear();
         *state.server.lock().unwrap() = Some(base.clone());
         *state.token.lock().unwrap() = Some(token.clone());
         *state.local_mode.lock().unwrap() = false;
         *state.local_profile.lock().unwrap() = local_profile;
     }
-    save_session(&app, &base, &token);
-    api_get(&base, &token, "/v1/me").await
+    Ok(session_warning(me, warning))
 }
 
 #[tauri::command]
-fn start_local_session(app: AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
+async fn start_local_session(app: AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
     let profile = load_local_profile(&app)?;
-    save_local_session(&app)?;
+    let warning = save_local_session(&app)?;
     {
+        state.known_services.lock().unwrap().clear();
         *state.server.lock().unwrap() = None;
         *state.token.lock().unwrap() = None;
         *state.local_mode.lock().unwrap() = true;
         *state.local_profile.lock().unwrap() = profile;
     }
-    Ok(local_user())
+    Ok(session_warning(local_user(), warning))
 }
 
 // Restore a saved session at startup. Local mode does not contact any server;
 // server mode always validates its token through /v1/me.
 #[tauri::command]
 async fn restore_session(app: AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let path = dir.join("session.json");
-    let text = read_persistent(&path).map_err(|_| "No saved session".to_string())?;
-    let v: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-    if v.get("mode").and_then(Value::as_str) == Some("local") {
-        let profile = load_local_profile(&app)?;
-        *state.server.lock().unwrap() = None;
-        *state.token.lock().unwrap() = None;
-        *state.local_mode.lock().unwrap() = true;
-        *state.local_profile.lock().unwrap() = profile;
-        return Ok(local_user());
-    }
-    let server = v
-        .get("server")
-        .and_then(Value::as_str)
-        .ok_or("Invalid session")?
-        .to_string();
-    let token = v
-        .get("token")
-        .and_then(Value::as_str)
-        .ok_or("Invalid session")?
-        .to_string();
+    let path = session_path(&app)?;
+    let (server, token, warning) = match credentials::load(&path, &credentials::NativeVault)? {
+        credentials::SavedSession::Local { warning } => {
+            let profile = load_local_profile(&app)?;
+            state.known_services.lock().unwrap().clear();
+            *state.server.lock().unwrap() = None;
+            *state.token.lock().unwrap() = None;
+            *state.local_mode.lock().unwrap() = true;
+            *state.local_profile.lock().unwrap() = profile;
+            return Ok(session_warning(local_user(), warning));
+        }
+        credentials::SavedSession::Server {
+            server,
+            token,
+            warning,
+        } => (server, token, warning),
+    };
 
     // Validate the token, but delete the session ONLY if the server rejects it
     // only genuine authentication failures (401/403) invalidate it. A transient network/server error (5xx, reload blip)
@@ -888,15 +884,21 @@ async fn restore_session(app: AppHandle, state: State<'_, AppState>) -> Result<V
                 .await
                 .map_err(|e| format!("Unable to parse /v1/me response: {e}"))?;
             let local_profile = load_local_profile(&app)?;
+            if !me.is_object() {
+                return Err("Account response is invalid".into());
+            }
+            state.known_services.lock().unwrap().clear();
             *state.server.lock().unwrap() = Some(server);
             *state.token.lock().unwrap() = Some(token);
             *state.local_mode.lock().unwrap() = false;
             *state.local_profile.lock().unwrap() = local_profile;
-            Ok(me)
+            Ok(session_warning(me, warning))
         }
         Ok(r) if r.status().as_u16() == 401 || r.status().as_u16() == 403 => {
             // Genuinely invalid or expired token: clear the session.
-            let _ = std::fs::remove_file(&path);
+            credentials::clear(&path, &credentials::NativeVault).map_err(|error| {
+                format!("expired: session rejected; credential cleanup needs attention: {error}")
+            })?;
             Err("expired: session rejected by server".into())
         }
         Ok(r) => {
@@ -3365,13 +3367,13 @@ async fn delete_workspace(
 }
 
 #[tauri::command]
-fn logout(app: AppHandle, state: State<'_, AppState>) {
+async fn logout(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     state.known_services.lock().unwrap().clear();
     *state.server.lock().unwrap() = None;
     *state.token.lock().unwrap() = None;
     *state.local_mode.lock().unwrap() = false;
     *state.local_profile.lock().unwrap() = LocalProfile::default();
-    clear_session(&app);
+    clear_session(&app)
 }
 
 // Reposition the active webview over the service area (called on resize).
