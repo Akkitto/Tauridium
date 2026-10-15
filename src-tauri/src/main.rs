@@ -7,6 +7,7 @@ mod download_notifications;
 mod download_toast;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 mod flatpak_portal;
+mod http_security;
 mod icons;
 mod ipc_security;
 mod local_profile;
@@ -86,8 +87,9 @@ static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(20))
+        .redirect(http_security::redirect_policy())
         .build()
-        .unwrap_or_default()
+        .expect("Unable to initialize the HTTP client without weakening its security policy")
 });
 
 // User agent for Ferdium server API calls and recipe retrieval.
@@ -732,7 +734,7 @@ async fn api_get(base: &str, token: &str, path: &str) -> Result<Value, String> {
     if !res.status().is_success() {
         return Err(format!("{path} : HTTP {}", res.status()));
     }
-    res.json()
+    http_security::json(res)
         .await
         .map_err(|e| format!("Unable to parse response from {path}: {e}"))
 }
@@ -838,14 +840,14 @@ async fn login(
         // 401/403 means credentials were genuinely rejected (do not retry); everything else (5xx, server
         // malfunction, etc.) is transient and the UI will retry.
         if status.as_u16() == 401 || status.as_u16() == 403 {
-            let body = res.text().await.unwrap_or_default();
-            return Err(format!("Credentials rejected. {body}"));
+            return Err(format!(
+                "Credentials rejected. Server returned HTTP {status}."
+            ));
         }
         return Err(format!("transient: server error (HTTP {status})"));
     }
 
-    let body: Value = res
-        .json()
+    let body: Value = http_security::json(res)
         .await
         .map_err(|e| format!("Unable to parse login response: {e}"))?;
     let token = body
@@ -917,8 +919,7 @@ async fn restore_session(app: AppHandle, state: State<'_, AppState>) -> Result<V
         .await;
     match res {
         Ok(r) if r.status().is_success() => {
-            let me: Value = r
-                .json()
+            let me: Value = http_security::json(r)
                 .await
                 .map_err(|e| format!("Unable to parse /v1/me response: {e}"))?;
             let local_profile = load_local_profile(&app)?;
@@ -1089,8 +1090,7 @@ async fn recipe_config(app: &AppHandle, app_data: &Path, recipe_id: &str) -> Res
             res.status()
         ));
     }
-    let text = res
-        .text()
+    let text = http_security::text(res, http_security::MAX_RECIPE_BYTES)
         .await
         .map_err(|e| format!("Unable to parse recipe {recipe_id}: {e}"))?;
     let _ = write_atomic(&cache, &text);
@@ -1321,7 +1321,9 @@ async fn recipe_webview_js(app: &AppHandle, app_data: &Path, recipe_id: &str) ->
     if !res.status().is_success() {
         return None;
     }
-    let text = res.text().await.ok()?;
+    let text = http_security::text(res, http_security::MAX_RECIPE_BYTES)
+        .await
+        .ok()?;
     let _ = write_atomic(&cache, &text);
     Some(text)
 }
@@ -2935,7 +2937,7 @@ async fn update_service(
         if !res.status().is_success() {
             return Err(format!("Service update failed: HTTP {}", res.status()));
         }
-        res.json().await.map_err(|error| error.to_string())
+        http_security::json(res).await
     }
     .await;
     finish_service_update(&app, &service_id, &patch, operation)
@@ -2990,7 +2992,7 @@ async fn create_service(
     if !res.status().is_success() {
         return Err(format!("Service creation failed: HTTP {}", res.status()));
     }
-    let service: Value = res.json().await.map_err(|error| error.to_string())?;
+    let service: Value = http_security::json(res).await?;
     let id = service
         .get("id")
         .and_then(Value::as_str)
@@ -3333,7 +3335,7 @@ async fn create_workspace(
     if !res.status().is_success() {
         return Err(format!("Workspace creation failed: HTTP {}", res.status()));
     }
-    res.json().await.map_err(|e| e.to_string())
+    http_security::json(res).await
 }
 
 #[tauri::command]
@@ -3365,7 +3367,7 @@ async fn update_workspace(
     if !res.status().is_success() {
         return Err(format!("Workspace update failed: HTTP {}", res.status()));
     }
-    res.json().await.map_err(|e| e.to_string())
+    http_security::json(res).await
 }
 
 #[tauri::command]

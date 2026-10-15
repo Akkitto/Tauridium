@@ -4221,6 +4221,7 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
+ "tokio",
  "windows-sys 0.60.2",
  "wry",
  "zbus",

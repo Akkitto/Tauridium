@@ -136,8 +136,7 @@ async fn fetch_image(client: &reqwest::Client, url: &Url) -> Result<String, Stri
     }
     let mime = content_type_mime(&response, url)
         .ok_or_else(|| "Website icon response is not an image".to_string())?;
-    let bytes = response
-        .bytes()
+    let bytes = crate::http_security::bytes(response, MAX_ICON_BYTES)
         .await
         .map_err(|error| format!("Unable to read website icon: {error}"))?;
     if bytes.is_empty() || bytes.len() > MAX_ICON_BYTES {
@@ -294,7 +293,7 @@ async fn discover_icon(client: &reqwest::Client, page_url: &Url) -> Result<Strin
             .content_length()
             .is_some_and(|size| size > MAX_HTML_BYTES as u64)
     {
-        if let Ok(bytes) = response.bytes().await {
+        if let Ok(bytes) = crate::http_security::bytes(response, MAX_HTML_BYTES).await {
             if bytes.len() <= MAX_HTML_BYTES {
                 if let Ok(html) = std::str::from_utf8(&bytes) {
                     if let Some(href) = icon_href_from_html(html) {
