@@ -53,16 +53,17 @@ impl LocalProfile {
 
     fn validate_backup_integrity(&self) -> Result<(), String> {
         let mut service_ids = std::collections::HashSet::new();
+        let mut storage_ids = std::collections::HashSet::new();
         for service in &self.services {
             let id = service
                 .get("id")
                 .and_then(Value::as_str)
-                .map(str::trim)
                 .filter(|id| !id.is_empty())
                 .ok_or_else(|| "Backup local service is missing a valid id".to_string())?;
-            if !service_ids.insert(id.to_string()) {
+            if !service_ids.insert(id.to_string()) || !storage_ids.insert(id.to_ascii_lowercase()) {
                 return Err(format!("Backup contains duplicate local service id: {id}"));
             }
+            crate::storage_security::validate_service_id(id)?;
         }
 
         let mut workspace_ids = std::collections::HashSet::new();
@@ -113,7 +114,9 @@ impl LocalProfile {
         };
         let profile: Self = serde_json::from_str(&text)
             .map_err(|error| format!("Unable to parse local profile: {error}"))?;
-        Self::validate_version(profile)
+        let profile = Self::validate_version(profile)?;
+        profile.validate_backup_integrity()?;
+        Ok(profile)
     }
 
     pub(crate) fn save(&self, path: &Path) -> Result<(), String> {

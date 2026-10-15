@@ -23,6 +23,7 @@ mod recipes;
 mod service_export;
 mod single_instance;
 mod startup_diagnostics;
+mod storage_security;
 
 // Tauridium — lightweight Ferdium client (Tauri v2).
 //
@@ -299,12 +300,13 @@ struct AppState {
     local_mode: Mutex<bool>,
     local_profile: Mutex<LocalProfile>,
     created: Mutex<HashSet<String>>, // service IDs for webviews already created
-    active: Mutex<Option<String>>,   // service ID currently displayed
-    unread: Mutex<HashMap<String, i64>>, // unread count per service (for the dock badge)
+    known_services: Mutex<HashSet<String>>, // validated server/local identities, not renderer claims
+    active: Mutex<Option<String>>,          // service ID currently displayed
+    unread: Mutex<HashMap<String, i64>>,    // unread count per service (for the dock badge)
     flags: Mutex<HashMap<String, ServiceFlags>>, // per-service settings (notification/mute/badge)
-    settings: Mutex<Value>,          // app settings cache (read by the poller, etc.)
-    settings_write: Mutex<()>,       // serializes app-settings read/modify/write transactions
-    sidebar_w: Mutex<f64>,           // sidebar width (initialized during setup, default 240)
+    settings: Mutex<Value>,                 // app settings cache (read by the poller, etc.)
+    settings_write: Mutex<()>, // serializes app-settings read/modify/write transactions
+    sidebar_w: Mutex<f64>,     // sidebar width (initialized during setup, default 240)
     desired_active: Mutex<Option<String>>, // last requested service (prevents focus stealing during switches)
     inflight: Mutex<HashSet<String>>,      // webviews being created (prevents duplicate add_child)
     preloading: Mutex<HashSet<String>>, // off-screen webviews that must stay visible until initial load finishes
@@ -983,10 +985,53 @@ fn merge_server_and_local_services(server: Value, local: Value) -> Value {
     Value::Array(server_services)
 }
 
+fn remember_services(state: &AppState, services: &Value) -> Result<(), String> {
+    let services = services
+        .as_array()
+        .ok_or("Service response must be an array")?;
+    let mut ids = HashSet::new();
+    let mut storage_ids = HashSet::new();
+    for service in services {
+        let id = service
+            .get("id")
+            .and_then(Value::as_str)
+            .ok_or("Service response has no string id")?;
+        storage_security::validate_service_id(id)?;
+        if !ids.insert(id.to_string()) || !storage_ids.insert(id.to_ascii_lowercase()) {
+            return Err("Service response contains duplicate identifiers".into());
+        }
+    }
+    state.known_services.lock().unwrap().extend(ids);
+    Ok(())
+}
+
+fn require_known_service(state: &AppState, id: &str) -> Result<(), String> {
+    storage_security::validate_service_id(id)?;
+    if state.known_services.lock().unwrap().contains(id)
+        || state
+            .local_profile
+            .lock()
+            .unwrap()
+            .services_value()
+            .as_array()
+            .is_some_and(|services| {
+                services
+                    .iter()
+                    .any(|service| service.get("id").and_then(Value::as_str) == Some(id))
+            })
+    {
+        Ok(())
+    } else {
+        Err("Service is not registered in this session".into())
+    }
+}
+
 #[tauri::command]
 async fn get_services(state: State<'_, AppState>) -> Result<Value, String> {
     if is_local_mode(&state) {
-        return Ok(state.local_profile.lock().unwrap().services_value());
+        let services = state.local_profile.lock().unwrap().services_value();
+        remember_services(&state, &services)?;
+        return Ok(services);
     }
     let local = state
         .local_profile
@@ -995,6 +1040,7 @@ async fn get_services(state: State<'_, AppState>) -> Result<Value, String> {
         .local_recipe_services_value();
     let (base, token) = current(&state)?;
     let server = api_get(&base, &token, "/v1/me/services").await?;
+    remember_services(&state, &server)?;
     Ok(merge_server_and_local_services(server, local))
 }
 
@@ -1327,31 +1373,54 @@ fn storage_identifier(service_id: &str, sandbox_id: Option<&str>) -> Option<[u8;
     }
 }
 
-fn storage_directory(app_data: &Path, service_id: &str, sandbox_id: Option<&str>) -> PathBuf {
+fn storage_directory(
+    app_data: &Path,
+    service_id: &str,
+    sandbox_id: Option<&str>,
+) -> Result<PathBuf, String> {
+    storage_security::validate_service_id(service_id)?;
     let name = sandbox_id
         .map(sandbox_storage_name)
         .unwrap_or_else(|| service_id.to_string());
-    app_data.join("sessions").join(name)
+    storage_security::session_path(app_data, &name)
 }
 
 // Purge a service's persistent storage (cookies, localStorage, session). Call this
 // AFTER closing its webview. macOS: delete the WKWebsiteDataStore by identifier
 // (wry API, main thread required); elsewhere delete the data_directory folder.
 #[cfg(target_os = "macos")]
-fn purge_service_storage(app: &AppHandle, service_id: &str, sandbox_id: Option<&str>) {
+fn purge_service_storage(
+    app: &AppHandle,
+    service_id: &str,
+    sandbox_id: Option<&str>,
+) -> Result<(), String> {
+    storage_security::validate_service_id(service_id)?;
     use wry::WebViewExtDarwin;
     if let Some(uuid) = storage_identifier(service_id, sandbox_id) {
-        let _ = app.run_on_main_thread(move || {
+        app.run_on_main_thread(move || {
             <wry::WebView as WebViewExtDarwin>::remove_data_store(&uuid, |_| {});
-        });
+        })
+        .map_err(|error| format!("Unable to clear service data store: {error}"))?;
     }
+    Ok(())
 }
 
 #[cfg(not(target_os = "macos"))]
-fn purge_service_storage(app: &AppHandle, service_id: &str, sandbox_id: Option<&str>) {
-    if let Ok(dir) = app.path().app_data_dir() {
-        let _ = std::fs::remove_dir_all(storage_directory(&dir, service_id, sandbox_id));
-    }
+fn purge_service_storage(
+    app: &AppHandle,
+    service_id: &str,
+    sandbox_id: Option<&str>,
+) -> Result<(), String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    let path = storage_directory(&dir, service_id, sandbox_id)?;
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or("Invalid session storage name")?;
+    storage_security::purge(&dir, name)
 }
 
 // Logical rectangle for the service area: everything to the right of the sidebar.
@@ -2313,8 +2382,12 @@ async fn create_service_webview(
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let dir = storage_directory(app_data, service_id, sandbox_id);
-        let _ = std::fs::create_dir_all(&dir);
+        let target = storage_directory(app_data, service_id, sandbox_id)?;
+        let name = target
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or("Invalid session storage name")?;
+        let dir = storage_security::prepare(app_data, name)?;
         builder = builder.data_directory(dir);
     }
     // Google compatibility (userAgentData / window.chrome, etc.) for generic Google services.
@@ -2897,6 +2970,10 @@ async fn create_service(
         }
         save_local_profile(&app, &next)?;
         *profile = next;
+        if let Some(id) = service.get("id").and_then(Value::as_str) {
+            storage_security::validate_service_id(id)?;
+            state.known_services.lock().unwrap().insert(id.to_string());
+        }
         return Ok(service);
     }
     let (base, token) = current(&state)?;
@@ -2912,7 +2989,23 @@ async fn create_service(
     if !res.status().is_success() {
         return Err(format!("Service creation failed: HTTP {}", res.status()));
     }
-    res.json().await.map_err(|e| e.to_string())
+    let service: Value = res.json().await.map_err(|error| error.to_string())?;
+    let id = service
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or("Created service has no string id")?;
+    storage_security::validate_service_id(id)?;
+    if state
+        .known_services
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|known| known != id && known.eq_ignore_ascii_case(id))
+    {
+        return Err("Created service id aliases an existing session directory".into());
+    }
+    state.known_services.lock().unwrap().insert(id.to_string());
+    Ok(service)
 }
 
 #[tauri::command]
@@ -2961,6 +3054,7 @@ async fn delete_service(
     state: State<'_, AppState>,
     service_id: String,
 ) -> Result<(), String> {
+    require_known_service(&state, &service_id)?;
     let sandbox_id = sandbox_for_service(&state.settings.lock().unwrap(), &service_id);
     let local_service = state
         .local_profile
@@ -2997,15 +3091,21 @@ async fn delete_service(
     // Isolated services own their storage and can be purged safely. Shared sandbox data
     // belongs to the sandbox, so deleting one member must not sign out the remaining members.
     if sandbox_id.is_none() {
-        purge_service_storage(&app, &service_id, None);
+        purge_service_storage(&app, &service_id, None)?;
     }
+    state.known_services.lock().unwrap().remove(&service_id);
     Ok(())
 }
 
 // Clear a service cache/session WITHOUT deleting it from the server: close its webview
 // and purge its storage. The service will reopen cleanly and signed out on next access.
 #[tauri::command]
-fn clear_service_cache(app: AppHandle, state: State<'_, AppState>, service_id: String) {
+fn clear_service_cache(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    service_id: String,
+) -> Result<(), String> {
+    require_known_service(&state, &service_id)?;
     let sandbox_id = sandbox_for_service(&state.settings.lock().unwrap(), &service_id);
     let service_ids = if let Some(ref sandbox_id) = sandbox_id {
         services_in_sandbox(&state.settings.lock().unwrap(), sandbox_id)
@@ -3013,7 +3113,7 @@ fn clear_service_cache(app: AppHandle, state: State<'_, AppState>, service_id: S
         vec![service_id.clone()]
     };
     close_service_ids(&app, &state, &service_ids);
-    purge_service_storage(&app, &service_id, sandbox_id.as_deref());
+    purge_service_storage(&app, &service_id, sandbox_id.as_deref())
 }
 
 fn services_in_sandbox(settings: &Value, sandbox_id: &str) -> Vec<String> {
@@ -3083,7 +3183,7 @@ fn clear_sandbox(
     }
     let service_ids = services_in_sandbox(&settings, sandbox_id);
     close_service_ids(&app, &state, &service_ids);
-    purge_service_storage(&app, "sandbox", Some(sandbox_id));
+    purge_service_storage(&app, "sandbox", Some(sandbox_id))?;
     Ok(())
 }
 
@@ -3298,6 +3398,7 @@ async fn delete_workspace(
 
 #[tauri::command]
 fn logout(app: AppHandle, state: State<'_, AppState>) {
+    state.known_services.lock().unwrap().clear();
     *state.server.lock().unwrap() = None;
     *state.token.lock().unwrap() = None;
     *state.local_mode.lock().unwrap() = false;
@@ -5787,6 +5888,25 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn unsafe_and_unknown_services_cannot_reach_cache_deletion() {
+        let state = AppState::default();
+        assert!(require_known_service(&state, "service-a").is_err());
+        assert!(remember_services(&state, &json!([{ "id": "/tmp/canary" }])).is_err());
+        assert!(remember_services(
+            &state,
+            &json!([{ "id": "service-a" }, { "id": "service-a" }])
+        )
+        .is_err());
+        assert!(state.known_services.lock().unwrap().is_empty());
+        remember_services(&state, &json!([{ "id": "service-a" }])).unwrap();
+        assert!(require_known_service(&state, "service-a").is_ok());
+        assert!(require_known_service(&state, "../service-a").is_err());
+        let profile =
+            json!({ "version": 1, "services": [{ "id": "/tmp/canary" }], "workspaces": [] });
+        assert!(LocalProfile::from_value(profile).is_err());
+    }
+
+    #[test]
     fn patch_0901_download_toast_defaults_migrate_without_enabling_notifications() {
         let defaults = default_app_settings_value();
         assert_eq!(defaults["downloadToasts"], false);
@@ -6295,10 +6415,10 @@ mod tests {
     #[test]
     fn shared_sandbox_storage_is_stable_and_distinct_from_isolated_storage() {
         let root = Path::new("/tmp/tauridium-test");
-        let isolated = storage_directory(root, "service-a", None);
-        let shared_a = storage_directory(root, "service-a", Some("proton"));
-        let shared_b = storage_directory(root, "service-b", Some("proton"));
-        let other = storage_directory(root, "service-a", Some("other"));
+        let isolated = storage_directory(root, "service-a", None).unwrap();
+        let shared_a = storage_directory(root, "service-a", Some("proton")).unwrap();
+        let shared_b = storage_directory(root, "service-b", Some("proton")).unwrap();
+        let other = storage_directory(root, "service-a", Some("other")).unwrap();
         assert_eq!(isolated, root.join("sessions").join("service-a"));
         assert_eq!(shared_a, shared_b);
         assert_ne!(shared_a, isolated);
