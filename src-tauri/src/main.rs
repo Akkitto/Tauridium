@@ -3269,7 +3269,16 @@ fn save_custom_recipe(app: AppHandle, draft: RecipeDraft) -> Result<Value, Strin
 }
 
 #[tauri::command]
-fn import_custom_recipe(app: AppHandle, path: String) -> Result<Value, String> {
+fn import_custom_recipe(
+    app: AppHandle,
+    path: String,
+    trusted_code: Option<bool>,
+) -> Result<Value, String> {
+    if trusted_code != Some(true) {
+        return Err(
+            "Review and explicitly trust the recipe's executable code before importing".into(),
+        );
+    }
     recipes::import_custom_recipe(&app, Path::new(&path))
 }
 

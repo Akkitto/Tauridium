@@ -30,6 +30,8 @@ pub(crate) struct ServiceExportRequest {
     pub services: Vec<Value>,
     #[serde(default)]
     pub include_all_personal_recipes: bool,
+    #[serde(default)]
+    pub include_sensitive_recipe_scripts: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -326,6 +328,14 @@ fn recipe_package(recipe: &CustomRecipeBackup) -> Result<Vec<u8>, String> {
         .as_object_mut()
         .ok_or_else(|| format!("Personal recipe {} package must be an object", recipe.id))?;
     object.remove("tauridium");
+    // Portable recipe metadata, not an arbitrary package/lifecycle-script dump.
+    object.retain(|key, _| {
+        matches!(
+            key.as_str(),
+            "id" | "name" | "version" | "description" | "config" | "author" | "license"
+        )
+    });
+    object.insert("main".into(), Value::String("index.js".into()));
     if !object.contains_key("license") {
         object.insert("license".into(), Value::String("MIT".into()));
     }
@@ -343,6 +353,46 @@ fn is_custom_website_service(service: &Value) -> bool {
         .and_then(Value::as_bool)
         .unwrap_or(false)
         && recipe_id(service) == Some("custom-website")
+}
+
+fn personal_recipe_entries(
+    recipe: &CustomRecipeBackup,
+    include_scripts: bool,
+) -> Result<Vec<ZipEntry>, String> {
+    let base = format!("recipes/{}/", recipe.id);
+    let name = recipe
+        .package
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or(&recipe.id);
+    let icon = if recipe.icon_svg.trim().is_empty() {
+        generic_recipe_icon(name)
+    } else {
+        recipe.icon_svg.clone()
+    };
+    let mut entries = vec![
+        ZipEntry {
+            path: format!("{base}package.json"),
+            bytes: recipe_package(recipe)?,
+        },
+        ZipEntry {
+            path: format!("{base}index.js"),
+            bytes: b"module.exports = Ferdium => Ferdium;\n".to_vec(),
+        },
+        ZipEntry {
+            path: format!("{base}icon.svg"),
+            bytes: icon.into_bytes(),
+        },
+    ];
+    // Code cannot be reliably redacted without changing its behavior. Never export
+    // personal executable literals unless the caller explicitly opts in.
+    if include_scripts && !recipe.webview_js.trim().is_empty() {
+        entries.push(ZipEntry {
+            path: format!("{base}webview.js"),
+            bytes: recipe.webview_js.as_bytes().to_vec(),
+        });
+    }
+    Ok(entries)
 }
 
 fn custom_website_recipe_id(service: &Value) -> Result<String, String> {
@@ -434,7 +484,7 @@ fn asset(path: String, media_type: &str, bytes: &[u8]) -> ExportedAsset {
 }
 
 fn readme() -> Vec<u8> {
-    b"# Tauridium service export\n\nThis ZIP is a portable, reviewable export of selected Tauridium services. `manifest.json` contains service settings and SHA-256 metadata for included assets. Secret-like fields (passwords, tokens, cookies, authorization values, and secrets) are deliberately redacted. Website session storage, cookies, authentication state, and other browser profile data are never exported.\n\nRecipe terminology:\n- **Ferdium recipes** come from the upstream Ferdium catalog. They are referenced by recipe id and are not copied into the ZIP.\n- **Tauridium built-in recipes** ship with Tauridium. They are also referenced by recipe id and are not bulk-exported as personal recipes.\n- **Personal recipes** are recipes the user created or imported on this device. Referenced personal recipes are included automatically, and the export option can include all of them.\n- **Custom websites** are one-off services created with Tauridium's built-in Custom Website template. When exported, Tauridium generates a standalone Ferdium-compatible recipe for each included custom website.\n\n`icons/services/` contains locally available service icons. `recipes/<id>/` contains exported personal recipes and generated Custom Website recipes in the upstream Ferdium recipe layout: `package.json`, `index.js`, `icon.svg`, and optional `webview.js`. Recipe folders can be reviewed before copying into the `recipes/` directory of the Ferdium recipes repository.\n\nTauridium does not fetch remote icon URLs during export; the bundle only captures icon bytes already present locally.\n".to_vec()
+    b"# Tauridium service export\n\nThis ZIP is a portable, reviewable export of selected Tauridium services. `manifest.json` contains service settings and SHA-256 metadata for included assets. Known credential fields and sensitive URL values are redacted. This is best-effort filtering, not a guarantee that arbitrary private content is absent; inspect the complete archive before sharing. Website session storage, cookies, authentication state, and other browser profile data are never exported.\n\nPersonal webview.js code is excluded by default. Explicitly opted-in scripts are copied unchanged and can contain credentials or other private literals; review every line. Generated index.js stubs contain no personal script. Package lifecycle scripts and unrelated package metadata are not exported.\n\nRecipe terminology:\n- **Ferdium recipes** come from the upstream Ferdium catalog. They are referenced by recipe id and are not copied into the ZIP.\n- **Tauridium built-in recipes** ship with Tauridium. They are also referenced by recipe id and are not bulk-exported as personal recipes.\n- **Personal recipes** are recipes the user created or imported on this device. Referenced personal recipes are included automatically, and the export option can include all of them.\n- **Custom websites** are one-off services created with Tauridium's built-in Custom Website template. When exported, Tauridium generates a standalone Ferdium-compatible recipe for each included custom website.\n\n`icons/services/` contains locally available service icons. `recipes/<id>/` contains exported personal recipes and generated Custom Website recipes in the upstream Ferdium recipe layout: `package.json`, `index.js`, `icon.svg`, and optional `webview.js`. Recipe folders can be reviewed before copying into the `recipes/` directory of the Ferdium recipes repository.\n\nTauridium does not fetch remote icon URLs during export; the bundle only captures icon bytes already present locally.\n".to_vec()
 }
 
 pub(crate) fn save(
@@ -525,39 +575,25 @@ pub(crate) fn save(
 
     let mut exported_recipes = Vec::with_capacity(recipes.len());
     for recipe in &recipes {
-        let base = format!("recipes/{}/", recipe.id);
-        let package = recipe_package(recipe)?;
-        let index = b"module.exports = Ferdium => Ferdium;\n".to_vec();
-        let name = recipe
-            .package
-            .get("name")
-            .and_then(Value::as_str)
-            .unwrap_or(&recipe.id);
-        let icon = if recipe.icon_svg.trim().is_empty() {
-            generic_recipe_icon(name)
-        } else {
-            recipe.icon_svg.clone()
-        }
-        .into_bytes();
-        let mut files = Vec::new();
-        for (filename, media_type, bytes) in [
-            ("package.json", "application/json", package),
-            ("index.js", "text/javascript", index),
-            ("icon.svg", "image/svg+xml", icon),
-        ] {
-            let path = format!("{base}{filename}");
-            files.push(asset(path.clone(), media_type, &bytes));
-            entries.push(ZipEntry { path, bytes });
-        }
-        if !recipe.webview_js.trim().is_empty() {
-            let bytes = recipe.webview_js.as_bytes().to_vec();
-            let path = format!("{base}webview.js");
-            files.push(asset(path.clone(), "text/javascript", &bytes));
-            entries.push(ZipEntry { path, bytes });
-        }
+        let recipe_entries =
+            personal_recipe_entries(recipe, request.include_sensitive_recipe_scripts)?;
+        let files = recipe_entries
+            .iter()
+            .map(|entry| {
+                let media_type = if entry.path.ends_with(".json") {
+                    "application/json"
+                } else if entry.path.ends_with(".svg") {
+                    "image/svg+xml"
+                } else {
+                    "text/javascript"
+                };
+                asset(entry.path.clone(), media_type, &entry.bytes)
+            })
+            .collect();
+        entries.extend(recipe_entries);
         exported_recipes.push(ExportedRecipe {
             id: recipe.id.clone(),
-            path: base,
+            path: format!("recipes/{}/", recipe.id),
             files,
         });
     }
@@ -619,7 +655,9 @@ pub(crate) fn save(
             "knownCredentialFieldsRedacted": true,
             "sensitiveUrlValuesRedacted": true,
             "requiresPrivacyReview": true,
-            "executableScriptsIncluded": entries.iter().any(|entry| entry.path.ends_with("/webview.js")),
+            "personalRecipeScriptsIncluded": entries.iter().any(|entry| entry.path.ends_with("/webview.js")),
+            "personalRecipeScriptsOptIn": request.include_sensitive_recipe_scripts,
+            "generatedRecipeStubsIncluded": entries.iter().any(|entry| entry.path.ends_with("/index.js")),
             "browserSessionDataIncluded": false,
             "remoteIconsFetchedDuringExport": false
         }),
@@ -665,6 +703,29 @@ pub(crate) fn save(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn personal_executable_code_is_excluded_by_default_and_requires_explicit_opt_in() {
+        let mut recipe = recipes().remove(0);
+        recipe.webview_js = "const privateValue = 'SYNTHETIC_PRIVATE_SCRIPT_LITERAL';".into();
+        recipe.package["scripts"] = json!({"postinstall":"SYNTHETIC_PRIVATE_LIFECYCLE"});
+        let request: ServiceExportRequest = serde_json::from_value(json!({"services":[]})).unwrap();
+        assert!(!request.include_sensitive_recipe_scripts);
+        let entries =
+            personal_recipe_entries(&recipe, request.include_sensitive_recipe_scripts).unwrap();
+        assert!(!entries
+            .iter()
+            .any(|entry| entry.path.ends_with("webview.js")));
+        assert!(!entries
+            .iter()
+            .any(|entry| String::from_utf8_lossy(&entry.bytes).contains("SYNTHETIC_PRIVATE")));
+        let opted_in = personal_recipe_entries(&recipe, true).unwrap();
+        assert!(opted_in
+            .iter()
+            .any(|entry| entry.path.ends_with("webview.js")
+                && String::from_utf8_lossy(&entry.bytes)
+                    .contains("SYNTHETIC_PRIVATE_SCRIPT_LITERAL")));
+    }
 
     #[test]
     fn generated_website_recipe_and_service_metadata_redact_url_credentials() {

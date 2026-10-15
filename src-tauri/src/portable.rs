@@ -39,9 +39,15 @@ struct PortableDocument {
     app_version: String,
     exported_at_unix: u64,
     kind: String,
+    #[serde(default = "contains_sensitive_data")]
+    contains_sensitive_data: bool,
     payload: PortablePayload,
     custom_recipes: Vec<CustomRecipeBackup>,
     integrity: PortableIntegrity,
+}
+
+fn contains_sensitive_data() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -74,6 +80,7 @@ impl PortableDocument {
                 .unwrap_or_default()
                 .as_secs(),
             kind: kind.into(),
+            contains_sensitive_data: true,
             payload,
             custom_recipes,
             integrity: PortableIntegrity {
@@ -103,6 +110,9 @@ impl PortableDocument {
     }
 
     fn validate(&self) -> Result<(), String> {
+        if !self.contains_sensitive_data {
+            return Err("Portable exports must be treated as sensitive private data".into());
+        }
         if self.format != PORTABLE_FORMAT || self.schema != PORTABLE_SCHEMA {
             return Err("Portable Tauridium export format is invalid".into());
         }
@@ -276,6 +286,24 @@ pub(crate) fn save(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn portable_exports_are_labeled_sensitive_without_breaking_legacy_integrity() {
+        let document = PortableDocument::new("9.9.9", "workspace", payload(), recipes()).unwrap();
+        let mut value = serde_json::to_value(document).unwrap();
+        assert_eq!(value["containsSensitiveData"], true);
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("containsSensitiveData");
+        let legacy: PortableDocument = serde_json::from_value(value.clone()).unwrap();
+        legacy.validate().unwrap();
+        value["containsSensitiveData"] = json!(false);
+        assert!(serde_json::from_value::<PortableDocument>(value)
+            .unwrap()
+            .validate()
+            .is_err());
+    }
 
     fn payload() -> PortablePayload {
         PortablePayload {

@@ -277,8 +277,8 @@ export function saveCustomRecipe(draft: RecipeDraft): Promise<unknown> {
   return invoke("save_custom_recipe", { draft });
 }
 
-export function importCustomRecipe(path: string): Promise<RecipePreview> {
-  return invoke("import_custom_recipe", { path });
+export function importCustomRecipe(path: string, trustedCode = false): Promise<RecipePreview> {
+  return invoke("import_custom_recipe", { path, trustedCode });
 }
 
 export function createWorkspace(name: string): Promise<Workspace> {
@@ -488,6 +488,7 @@ export function exportPortableBundle(
 export interface ServiceExportRequest {
   services: Service[];
   includeAllPersonalRecipes: boolean;
+  includeSensitiveRecipeScripts: boolean;
 }
 
 export interface ServiceExportSummary {

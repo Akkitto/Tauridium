@@ -145,6 +145,16 @@ describe("local recipe commands", () => {
     await importCustomRecipe("C:\\Recipes\\my-ai\\package.json");
     expect(mocks.invoke).toHaveBeenCalledWith("import_custom_recipe", {
       path: "C:\\Recipes\\my-ai\\package.json",
+      trustedCode: false,
+    });
+  });
+
+  it("forwards explicitly confirmed recipe trust", async () => {
+    const { importCustomRecipe } = await import("./api");
+    await importCustomRecipe("reviewed/package.json", true);
+    expect(mocks.invoke).toHaveBeenCalledWith("import_custom_recipe", {
+      path: "reviewed/package.json",
+      trustedCode: true,
     });
   });
 });
@@ -239,12 +249,14 @@ describe("service export commands", () => {
     await exportServiceBundle("/tmp/services.zip", {
       services: [service],
       includeAllPersonalRecipes: true,
+      includeSensitiveRecipeScripts: false,
     });
     expect(mocks.invoke).toHaveBeenCalledWith("export_service_bundle", {
       path: "/tmp/services.zip",
       request: {
         services: [service],
         includeAllPersonalRecipes: true,
+        includeSensitiveRecipeScripts: false,
       },
     });
   });

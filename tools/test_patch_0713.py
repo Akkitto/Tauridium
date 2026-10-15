@@ -49,7 +49,7 @@ class Patch0713Tests(unittest.TestCase):
       'icons/services/{id}',
       '("package.json", "application/json", package)',
       '("index.js", "text/javascript", index)',
-      '("icon.svg", "image/svg+xml", icon)',
+      'bytes: icon.into_bytes()',
       'webview.js',
       'module.exports = Ferdium => Ferdium;',
       'object.remove("tauridium")',

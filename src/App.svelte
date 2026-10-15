@@ -198,6 +198,7 @@
   let managedServicePage = $state(0);
   let serviceExportSelection = $state<Set<string>>(new Set());
   let serviceExportIncludeAllPersonalRecipes = $state(false);
+  let serviceExportIncludeSensitiveRecipeScripts = $state(false);
   let serviceExportBusy = $state(false);
   let serviceExportStatus = $state("");
   let managedWorkspaceQuery = $state("");
@@ -2629,7 +2630,8 @@
       const path = Array.isArray(selected) ? selected[0] : selected;
       if (!path) return;
       error = null;
-      const imported = await importCustomRecipe(path);
+      if (!(await confirmAsk("Import this recipe only if you trust its author and have reviewed its webview.js code. Recipe scripts can read or change pages and access your signed-in service data. Continue?"))) return;
+      const imported = await importCustomRecipe(path, true);
       await refreshRecipes();
       addMode = "catalog";
       recipeQuery = imported.id;
@@ -2814,6 +2816,7 @@
     portableExportStatus = "";
     error = null;
     try {
+      if (!(await confirmAsk("This portable export contains private service configuration, possibly proxy credentials, personal URLs and executable recipe scripts. Store it privately and review every file before sharing. Continue?"))) return;
       const path = await saveDialog({
         title: `Export Tauridium ${label}`,
         defaultPath: `tauridium-${portableSlug(label)}-${backupTimestamp()}.json`,
@@ -2966,6 +2969,7 @@
     backupStatus = "";
     error = null;
     try {
+      if (!(await confirmAsk("This backup contains private service configuration, possibly proxy credentials, personal URLs and executable recipe scripts. Keep it private; it is a recovery backup, not a public sharing bundle. Continue?"))) return;
       const path = await saveDialog({
         title: "Export Tauridium backup",
         defaultPath: backupFileName(),
@@ -3012,7 +3016,7 @@
       const path = Array.isArray(selected) ? selected[0] : selected;
       if (!path) return;
       const confirmed = await confirmAsk(
-        "Restore this Tauridium backup? Local app settings and local services/workspaces will be replaced. Custom recipes with matching ids will be overwritten; other custom recipes are retained. Backups can contain sensitive local service configuration such as proxy credentials.",
+        "Restore this Tauridium backup? Local app settings and local services/workspaces will be replaced. Custom recipes with matching ids will be overwritten; other custom recipes are retained. Backups can contain sensitive local service configuration such as proxy credentials. Only restore a trusted backup: included recipe scripts can read or change signed-in service pages.",
       );
       if (!confirmed) return;
       backupBusy = true;
@@ -3204,6 +3208,7 @@
     serviceExportStatus = "";
     error = null;
     try {
+      if (serviceExportIncludeSensitiveRecipeScripts && !(await confirmAsk("Include personal executable recipe scripts? They are copied unchanged and may contain credentials or other private literals. Inspect every included script before sharing. Continue?"))) return;
       const path = await saveDialog({
         title: "Export Tauridium services",
         defaultPath: `tauridium-services-${backupTimestamp()}.zip`,
@@ -3213,6 +3218,7 @@
       const summary = await exportServiceBundle(path, {
         services: selectedServices,
         includeAllPersonalRecipes: serviceExportIncludeAllPersonalRecipes,
+        includeSensitiveRecipeScripts: serviceExportIncludeSensitiveRecipeScripts,
       });
       serviceExportStatus = `Exported ${summary.serviceCount} service(s), ${summary.serviceIconCount} locally available service icon(s), and ${summary.portableRecipeCount} portable recipe(s) to a verified ZIP bundle.`;
     } catch (err) {
@@ -4387,7 +4393,7 @@
                   <div class="service-export-summary">
                     <div class="setting-copy">
                       <span class="setting-label">Portable service export</span>
-                      <span class="setting-description">Select any subset below, then export one self-contained ZIP. Locally stored icon bytes are included as files; secret-like service fields and browser session data are excluded.</span>
+                      <span class="setting-description">Select any subset below, then export one ZIP. Known credential fields and sensitive URL values are redacted; browser sessions are excluded. Personal scripts are off by default. Review the complete bundle before sharing: arbitrary private content cannot be guaranteed safe automatically.</span>
                     </div>
                     <div class="setting-actions service-export-actions">
                       <span class="status-badge service-export-selected-count">{selectedServiceExports.length} selected</span>
@@ -4405,6 +4411,10 @@
                       <input class="switch-input" type="checkbox" bind:checked={serviceExportIncludeAllPersonalRecipes} disabled={serviceExportBusy} aria-label="Include all personal recipes and custom websites in service export" />
                       <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
                     </span>
+                  </label>
+                  <label class="setting-card setting-card-toggle service-export-recipe-toggle">
+                    <span class="setting-copy"><span class="setting-label">Include personal executable recipe scripts</span><span class="setting-description">Off by default. Scripts are copied unchanged and may contain private literals. Enable only for a reviewed, trusted export. Generated recipe stubs remain included without personal code.</span></span>
+                    <span class="switch-control"><input class="switch-input" type="checkbox" bind:checked={serviceExportIncludeSensitiveRecipeScripts} disabled={serviceExportBusy} aria-label="Include personal executable recipe scripts" /><span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span></span>
                   </label>
                 </div>
                 {#if serviceExportStatus}<p class="settings-status">{serviceExportStatus}</p>{/if}
