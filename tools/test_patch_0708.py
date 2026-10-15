@@ -15,7 +15,7 @@ API = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
 
 class Patch0708Tests(unittest.TestCase):
   def test_named_mutex_is_owned_atomically_and_crash_takeover_is_supported(self) -> None:
-    self.assertIn("CreateMutexW(std::ptr::null(), 1", SINGLE)
+    self.assertIn("CreateMutexW(private_security.get(), 1", SINGLE)
     self.assertIn("WAIT_ABANDONED", SINGLE)
     self.assertIn("WAIT_OBJECT_0 | WAIT_ABANDONED", SINGLE)
     self.assertIn("ReleaseMutex(self.mutex)", SINGLE)

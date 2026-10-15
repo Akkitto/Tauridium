@@ -29,7 +29,7 @@ mod windows {
             WAIT_OBJECT_0, WAIT_TIMEOUT,
         },
         Storage::FileSystem::{
-            CreateFileW, FlushFileBuffers, ReadFile, WriteFile, OPEN_EXISTING, PIPE_ACCESS_DUPLEX,
+            CreateFileW, ReadFile, WriteFile, OPEN_EXISTING, PIPE_ACCESS_DUPLEX,
         },
         System::{
             Pipes::{
@@ -57,10 +57,13 @@ mod windows {
     const PIPE_BUFFER_BYTES: u32 = 64 * 1024;
     const ACTIVATION_NACK: u8 = 0;
     const ACTIVATION_ACK: u8 = 1;
+    const ACK_RECEIPT_WINDOW: Duration = Duration::from_millis(500);
+    const MAX_PENDING_ACTIVATIONS: usize = 16;
 
     struct PendingActivation {
         request: InstanceActivationRequest,
         completion: mpsc::SyncSender<Result<(), String>>,
+        deadline: Instant,
     }
 
     #[derive(Default)]
@@ -98,6 +101,12 @@ mod windows {
                 if let Some(app) = state.app.clone() {
                     Some(app)
                 } else {
+                    state
+                        .pending
+                        .retain(|pending| pending.deadline > Instant::now());
+                    if state.pending.len() >= MAX_PENDING_ACTIVATIONS {
+                        return Err("Tauridium startup activation queue is full".into());
+                    }
                     startup_diagnostics::log_for_path(
                         diagnostics_log.as_deref(),
                         "primary",
@@ -107,6 +116,7 @@ mod windows {
                     state.pending.push(PendingActivation {
                         request: request.clone(),
                         completion: completion_tx.clone(),
+                        deadline: Instant::now() + ACTIVATION_UI_TIMEOUT,
                     });
                     None
                 }
@@ -145,6 +155,12 @@ mod windows {
                 ),
             );
             for pending_activation in pending {
+                if pending_activation.deadline <= Instant::now() {
+                    let _ = pending_activation
+                        .completion
+                        .send(Err("Startup activation expired".into()));
+                    continue;
+                }
                 let result = activate_existing_window(&app, pending_activation.request);
                 let _ = pending_activation.completion.send(result);
             }
@@ -387,11 +403,13 @@ mod windows {
         );
         let pipe_name = pipe_name()?;
         let mutex_name = mutex_name();
+        let private_security = crate::windows_security::PrivateAttributes::kernel_object()
+            .map_err(|error| format!("Unable to initialize private instance security: {error}"))?;
         unsafe {
             // Initial ownership is essential: the mutex is the atomic durable-primary
             // lease, not merely a process-presence marker.
             SetLastError(0);
-            let mutex = CreateMutexW(std::ptr::null(), 1, mutex_name.as_ptr());
+            let mutex = CreateMutexW(private_security.get(), 1, mutex_name.as_ptr());
             if mutex.is_null() {
                 return Err(format!(
                     "Unable to initialize Tauridium instance coordination mutex: {}",
@@ -615,13 +633,18 @@ mod windows {
                 ));
             }
             if available > 0 {
-                read_exact(pipe, &mut ack)?;
+                read_exact(pipe, &mut ack, deadline)?;
                 break;
             }
             if Instant::now() >= deadline {
                 return Err("Timed out awaiting Tauridium activation acknowledgement".into());
             }
             std::thread::sleep(Duration::from_millis(10));
+        }
+        // Receipt is an optional transport extension: an older primary may close
+        // after its original FlushFileBuffers completed. Its valid ACK still wins.
+        if let Err(error) = write_all(pipe, &[ACTIVATION_ACK]) {
+            startup_diagnostics::log("secondary", "activation.receipt.compatibility", &error);
         }
         if ack[0] != ACTIVATION_ACK {
             return Err("The existing Tauridium instance rejected activation".into());
@@ -635,6 +658,18 @@ mod windows {
     }
 
     fn activation_server_loop(pipe_name: Vec<u16>, target: Arc<WindowsActivationTarget>) {
+        let private_security = match crate::windows_security::PrivateAttributes::kernel_object() {
+            Ok(security) => security,
+            Err(error) => {
+                startup_diagnostics::log(
+                    "primary",
+                    "activation.security.error",
+                    &error.to_string(),
+                );
+                eprintln!("Unable to establish private Tauridium activation security: {error}");
+                return;
+            }
+        };
         loop {
             unsafe {
                 let pipe = CreateNamedPipeW(
@@ -645,7 +680,7 @@ mod windows {
                     PIPE_BUFFER_BYTES,
                     PIPE_BUFFER_BYTES,
                     0,
-                    std::ptr::null(),
+                    private_security.get(),
                 );
                 if pipe == INVALID_HANDLE_VALUE {
                     let error = format!(
@@ -676,14 +711,15 @@ mod windows {
         pipe: HANDLE,
         target: &WindowsActivationTarget,
     ) -> Result<(), String> {
+        let read_deadline = Instant::now() + ACTIVATION_RETRY_WINDOW;
         let mut length_bytes = [0_u8; 4];
-        read_exact(pipe, &mut length_bytes)?;
+        read_exact(pipe, &mut length_bytes, read_deadline)?;
         let length = u32::from_le_bytes(length_bytes) as usize;
         if length == 0 || length > MAX_ACTIVATION_PAYLOAD_BYTES {
             return Err("Tauridium activation request has an invalid payload length".into());
         }
         let mut payload = vec![0_u8; length];
-        read_exact(pipe, &mut payload)?;
+        read_exact(pipe, &mut payload, read_deadline)?;
         let request: InstanceActivationRequest = serde_json::from_slice(&payload)
             .map_err(|error| format!("Invalid Tauridium activation request: {error}"))?;
         let diagnostics_log = request.diagnostics_log.clone();
@@ -704,7 +740,7 @@ mod windows {
                 &error,
             );
             write_all(pipe, &[ACTIVATION_NACK])?;
-            let _ = FlushFileBuffers(pipe);
+            await_ack_receipt(pipe);
             return Err(error);
         }
         write_all(pipe, &[ACTIVATION_ACK])?;
@@ -714,34 +750,66 @@ mod windows {
             "activation.ack.sent",
             "acknowledgement sent after completed and verified UI activation",
         );
-        let _ = FlushFileBuffers(pipe);
+        await_ack_receipt(pipe);
         Ok(())
     }
 
-    unsafe fn read_exact(pipe: HANDLE, buffer: &mut [u8]) -> Result<(), String> {
-        let mut offset = 0_usize;
-        while offset < buffer.len() {
-            let remaining = u32::try_from(buffer.len() - offset).unwrap_or(u32::MAX);
-            let mut read = 0_u32;
-            if ReadFile(
-                pipe,
-                buffer[offset..].as_mut_ptr(),
-                remaining,
-                &mut read,
-                std::ptr::null_mut(),
-            ) == 0
-            {
-                return Err(format!(
-                    "Unable to read Tauridium activation pipe: {}",
-                    std::io::Error::last_os_error()
-                ));
-            }
-            if read == 0 {
-                return Err("Tauridium activation pipe closed before the message completed".into());
-            }
-            offset += read as usize;
+    unsafe fn await_ack_receipt(pipe: HANDLE) {
+        // FlushFileBuffers has no timeout and can hang forever when a client does
+        // not read. A bounded receipt preserves new-peer delivery; old clients
+        // simply close after reading, which also ends this wait immediately.
+        let mut receipt = [0_u8; 1];
+        if let Err(error) = read_exact(pipe, &mut receipt, Instant::now() + ACK_RECEIPT_WINDOW) {
+            startup_diagnostics::log(
+                "primary",
+                "activation.receipt.completed_or_timed_out",
+                &error,
+            );
         }
-        Ok(())
+    }
+
+    unsafe fn read_exact(pipe: HANDLE, buffer: &mut [u8], deadline: Instant) -> Result<(), String> {
+        crate::pipe_security::read_exact_until(
+            buffer,
+            deadline,
+            || {
+                let mut available = 0_u32;
+                if PeekNamedPipe(
+                    pipe,
+                    std::ptr::null_mut(),
+                    0,
+                    std::ptr::null_mut(),
+                    &mut available,
+                    std::ptr::null_mut(),
+                ) == 0
+                {
+                    Err(format!(
+                        "Unable to inspect Tauridium activation pipe: {}",
+                        std::io::Error::last_os_error()
+                    ))
+                } else {
+                    Ok(available as usize)
+                }
+            },
+            |destination| {
+                let mut received = 0_u32;
+                if ReadFile(
+                    pipe,
+                    destination.as_mut_ptr(),
+                    destination.len() as u32,
+                    &mut received,
+                    std::ptr::null_mut(),
+                ) == 0
+                {
+                    Err(format!(
+                        "Unable to read Tauridium activation pipe: {}",
+                        std::io::Error::last_os_error()
+                    ))
+                } else {
+                    Ok(received as usize)
+                }
+            },
+        )
     }
 
     unsafe fn write_all(pipe: HANDLE, buffer: &[u8]) -> Result<(), String> {
@@ -768,6 +836,93 @@ mod windows {
             offset += written as usize;
         }
         Ok(())
+    }
+    #[cfg(test)]
+    mod native_security_tests {
+        use super::*;
+
+        struct OwnedHandle(HANDLE);
+        impl Drop for OwnedHandle {
+            fn drop(&mut self) {
+                unsafe {
+                    CloseHandle(self.0);
+                }
+            }
+        }
+
+        #[test]
+        fn connected_silent_and_partial_peers_cannot_block_the_native_pipe_forever() {
+            let mut random = [0_u8; 16];
+            getrandom::fill(&mut random).unwrap();
+            let nonce: String = random.iter().map(|byte| format!("{byte:02x}")).collect();
+            let name: Vec<u16> = format!(
+                r"\\.\pipe\tauridium-security-{}-{nonce}",
+                std::process::id()
+            )
+            .encode_utf16()
+            .chain(Some(0))
+            .collect();
+            let security = crate::windows_security::PrivateAttributes::kernel_object().unwrap();
+            unsafe {
+                let pipe = CreateNamedPipeW(
+                    name.as_ptr(),
+                    PIPE_ACCESS_DUPLEX,
+                    PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
+                    1,
+                    4096,
+                    4096,
+                    0,
+                    security.get(),
+                );
+                assert_ne!(
+                    pipe,
+                    INVALID_HANDLE_VALUE,
+                    "{}",
+                    std::io::Error::last_os_error()
+                );
+                let server = OwnedHandle(pipe);
+                let client = CreateFileW(
+                    name.as_ptr(),
+                    GENERIC_READ | GENERIC_WRITE,
+                    0,
+                    std::ptr::null(),
+                    OPEN_EXISTING,
+                    0,
+                    std::ptr::null_mut(),
+                );
+                assert_ne!(
+                    client,
+                    INVALID_HANDLE_VALUE,
+                    "{}",
+                    std::io::Error::last_os_error()
+                );
+                let client = OwnedHandle(client);
+                assert!(
+                    ConnectNamedPipe(server.0, std::ptr::null_mut()) != 0
+                        || GetLastError() == ERROR_PIPE_CONNECTED
+                );
+                let started = Instant::now();
+                assert!(
+                    read_exact(server.0, &mut [0; 4], started + Duration::from_millis(25))
+                        .unwrap_err()
+                        .contains("deadline")
+                );
+                assert!(started.elapsed() < Duration::from_secs(3));
+                write_all(client.0, &[42]).unwrap();
+                let mut partial = [0_u8; 4];
+                assert!(read_exact(
+                    server.0,
+                    &mut partial,
+                    Instant::now() + Duration::from_millis(25)
+                )
+                .is_err());
+                assert_eq!(partial[0], 42);
+                write_all(server.0, &[ACTIVATION_ACK]).unwrap();
+                let started = Instant::now();
+                await_ack_receipt(server.0);
+                assert!(started.elapsed() < Duration::from_secs(3));
+            }
+        }
     }
 }
 

@@ -116,37 +116,11 @@ mod windows {
     use std::os::windows::ffi::OsStrExt;
     use std::os::windows::io::{AsRawHandle, FromRawHandle};
     use std::ptr::null_mut;
-    use windows_sys::Win32::Foundation::{
-        CloseHandle, LocalFree, GENERIC_READ, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE,
-    };
-    use windows_sys::Win32::Security::Authorization::{
-        ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
-    };
-    use windows_sys::Win32::Security::{
-        GetTokenInformation, TokenUser, SECURITY_ATTRIBUTES, TOKEN_QUERY, TOKEN_USER,
-    };
+    use windows_sys::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::Storage::FileSystem::{
         CreateFileW, GetVolumeInformationByHandleW, MoveFileExW, CREATE_NEW, FILE_ATTRIBUTE_NORMAL,
         FILE_FLAG_OPEN_REPARSE_POINT, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
     };
-    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
-
-    struct Token(HANDLE);
-    impl Drop for Token {
-        fn drop(&mut self) {
-            unsafe {
-                CloseHandle(self.0);
-            }
-        }
-    }
-    struct Local(*mut core::ffi::c_void);
-    impl Drop for Local {
-        fn drop(&mut self) {
-            unsafe {
-                LocalFree(self.0);
-            }
-        }
-    }
 
     fn wide(path: &Path) -> io::Result<Vec<u16>> {
         let mut value: Vec<_> = path.as_os_str().encode_wide().collect();
@@ -161,74 +135,14 @@ mod windows {
     }
 
     pub(crate) fn create(path: &Path) -> io::Result<File> {
-        // Build the protected DACL with the actual process-user SID, not the possibly
-        // administrative default owner. All allocations/handles remain live through CreateFileW.
-        let mut token = null_mut();
-        if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0 {
-            return Err(io::Error::last_os_error());
-        }
-        let token = Token(token);
-        let mut needed = 0;
-        unsafe {
-            GetTokenInformation(token.0, TokenUser, null_mut(), 0, &mut needed);
-        }
-        if needed == 0 {
-            return Err(io::Error::last_os_error());
-        }
-        // usize storage gives TOKEN_USER its required pointer alignment.
-        let mut storage = vec![0_usize; (needed as usize).div_ceil(size_of::<usize>())];
-        if unsafe {
-            GetTokenInformation(
-                token.0,
-                TokenUser,
-                storage.as_mut_ptr().cast(),
-                needed,
-                &mut needed,
-            )
-        } == 0
-        {
-            return Err(io::Error::last_os_error());
-        }
-        let user = unsafe { &*storage.as_ptr().cast::<TOKEN_USER>() };
-        let mut sid_text = null_mut();
-        if unsafe { ConvertSidToStringSidW(user.User.Sid, &mut sid_text) } == 0 {
-            return Err(io::Error::last_os_error());
-        }
-        let sid_allocation = Local(sid_text.cast());
-        let mut length = 0;
-        while unsafe { *sid_text.add(length) } != 0 {
-            length += 1;
-        }
-        let sid = String::from_utf16(unsafe { std::slice::from_raw_parts(sid_text, length) })
-            .map_err(io::Error::other)?;
-        let descriptor_text: Vec<u16> = format!("D:P(A;;FA;;;SY)(A;;FA;;;{sid})\0")
-            .encode_utf16()
-            .collect();
-        let mut descriptor = null_mut();
-        if unsafe {
-            ConvertStringSecurityDescriptorToSecurityDescriptorW(
-                descriptor_text.as_ptr(),
-                1,
-                &mut descriptor,
-                null_mut(),
-            )
-        } == 0
-        {
-            return Err(io::Error::last_os_error());
-        }
-        let descriptor_allocation = Local(descriptor);
-        let attributes = SECURITY_ATTRIBUTES {
-            nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
-            lpSecurityDescriptor: descriptor,
-            bInheritHandle: 0,
-        };
+        let security = crate::windows_security::PrivateAttributes::file()?;
         let path_wide = wide(path)?;
         let handle = unsafe {
             CreateFileW(
                 path_wide.as_ptr(),
                 GENERIC_READ | GENERIC_WRITE,
                 0,
-                &attributes,
+                security.get(),
                 CREATE_NEW,
                 FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT,
                 null_mut(),
@@ -238,8 +152,6 @@ mod windows {
             return Err(io::Error::last_os_error());
         }
         let file = unsafe { File::from_raw_handle(handle) };
-        drop(descriptor_allocation);
-        drop(sid_allocation);
         let mut flags = 0;
         let result = unsafe {
             GetVolumeInformationByHandleW(

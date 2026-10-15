@@ -21,6 +21,8 @@ mod local_profile;
 ))]
 mod nix_autostart;
 mod notification_security;
+#[cfg(any(windows, test))]
+mod pipe_security;
 mod portable;
 mod privacy;
 mod private_file;
@@ -31,6 +33,8 @@ mod service_export;
 mod single_instance;
 mod startup_diagnostics;
 mod storage_security;
+#[cfg(windows)]
+mod windows_security;
 
 // Tauridium — lightweight Ferdium client (Tauri v2).
 //

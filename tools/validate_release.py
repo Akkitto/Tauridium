@@ -2188,7 +2188,7 @@ def main() -> int:
 
   patch_0708 = read("tools/test_patch_0708.py")
   for invariant in (
-    "CreateMutexW(std::ptr::null(), 1",
+    "CreateMutexW(private_security.get(), 1",
     "CreateNamedPipeW",
     "GetNamedPipeServerProcessId",
     "AllowSetForegroundWindow(primary_pid)",
