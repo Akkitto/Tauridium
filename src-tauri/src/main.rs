@@ -23,6 +23,7 @@ mod portable;
 mod privacy;
 mod private_file;
 mod proton_compat;
+mod recipe_source;
 mod recipes;
 mod service_export;
 mod single_instance;
@@ -1031,19 +1032,17 @@ async fn recipe_config(app: &AppHandle, app_data: &Path, recipe_id: &str) -> Res
         return Ok(local);
     }
 
-    let dir = app_data.join("recipes");
+    let dir = recipe_source::cache_directory(app_data);
     let _ = std::fs::create_dir_all(&dir);
     let cache = dir.join(format!("{recipe_id}.json"));
 
-    if let Ok(text) = std::fs::read_to_string(&cache) {
+    if let Some(text) = recipe_source::read_cache(&cache, http_security::MAX_RECIPE_BYTES) {
         if let Ok(v) = serde_json::from_str::<Value>(&text) {
             return Ok(v);
         }
     }
 
-    let url = format!(
-        "https://raw.githubusercontent.com/ferdium/ferdium-recipes/main/recipes/{recipe_id}/package.json"
-    );
+    let url = recipe_source::asset_url(recipe_id, "package.json");
     let res = HTTP
         .clone()
         .get(&url)
@@ -1269,15 +1268,13 @@ async fn recipe_webview_js(app: &AppHandle, app_data: &Path, recipe_id: &str) ->
     {
         return None;
     }
-    let dir = app_data.join("recipes");
+    let dir = recipe_source::cache_directory(app_data);
     let _ = std::fs::create_dir_all(&dir);
     let cache = dir.join(format!("{recipe_id}.webview.js"));
-    if let Ok(s) = std::fs::read_to_string(&cache) {
+    if let Some(s) = recipe_source::read_cache(&cache, http_security::MAX_RECIPE_BYTES) {
         return Some(s);
     }
-    let url = format!(
-        "https://raw.githubusercontent.com/ferdium/ferdium-recipes/main/recipes/{recipe_id}/webview.js"
-    );
+    let url = recipe_source::asset_url(recipe_id, "webview.js");
     let res = HTTP
         .clone()
         .get(&url)
@@ -3160,13 +3157,13 @@ fn clear_sandbox(
 fn recipe_catalog_cache_path(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_data_dir()
-        .map(|dir| dir.join("recipe_catalog.json"))
+        .map(|dir| recipe_source::cache_directory(&dir).join("catalog.json"))
         .map_err(|error| format!("Recipe cache directory unavailable: {error}"))
 }
 
 fn cached_recipe_catalog(app: &AppHandle) -> Option<Value> {
     let path = recipe_catalog_cache_path(app).ok()?;
-    let text = std::fs::read_to_string(path).ok()?;
+    let text = recipe_source::read_cache(&path, http_security::MAX_API_BYTES)?;
     let value = serde_json::from_str::<Value>(&text).ok()?;
     value.as_array().filter(|recipes| !recipes.is_empty())?;
     Some(value)
@@ -3191,44 +3188,44 @@ async fn local_recipe_catalog(app: &AppHandle) -> Result<Value, String> {
     // Remote discovery is best-effort. Bundled and custom recipes remain available offline.
     let remote = match HTTP
         .clone()
-        .get("https://api.github.com/repos/ferdium/ferdium-recipes/contents/recipes?ref=main")
+        .get(recipe_source::catalog_url())
         .header(reqwest::header::USER_AGENT, API_UA)
         .header(reqwest::header::ACCEPT, "application/vnd.github+json")
         .send()
         .await
     {
-        Ok(response) if response.status().is_success() => match response.json::<Value>().await {
-            Ok(listing) => {
-                let recipes = listing
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter(|entry| entry.get("type").and_then(Value::as_str) == Some("dir"))
-                    .filter_map(|entry| entry.get("name").and_then(Value::as_str))
-                    .filter(|recipe_id| validate_recipe_id(recipe_id).is_ok())
-                    .map(|recipe_id| {
-                        serde_json::json!({
-                            "id": recipe_id,
-                            "name": recipe_display_name(recipe_id),
-                            "icons": {
-                                "svg": format!(
-                                    "https://raw.githubusercontent.com/ferdium/ferdium-recipes/main/recipes/{recipe_id}/icon.svg"
-                                )
-                            }
+        Ok(response) if response.status().is_success() => {
+            match http_security::json::<Value>(response).await {
+                Ok(listing) => {
+                    let recipes = listing
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter(|entry| entry.get("type").and_then(Value::as_str) == Some("dir"))
+                        .filter_map(|entry| entry.get("name").and_then(Value::as_str))
+                        .filter(|recipe_id| validate_recipe_id(recipe_id).is_ok())
+                        .map(|recipe_id| {
+                            serde_json::json!({
+                                "id": recipe_id,
+                                "name": recipe_display_name(recipe_id),
+                                "icons": {
+                                    "svg": recipe_source::asset_url(recipe_id, "icon.svg")
+                                }
+                            })
                         })
-                    })
-                    .collect::<Vec<_>>();
-                let catalog = Value::Array(recipes);
-                if let Ok(path) = recipe_catalog_cache_path(app) {
-                    if let Some(parent) = path.parent() {
-                        let _ = std::fs::create_dir_all(parent);
+                        .collect::<Vec<_>>();
+                    let catalog = Value::Array(recipes);
+                    if let Ok(path) = recipe_catalog_cache_path(app) {
+                        if let Some(parent) = path.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        let _ = write_atomic(&path, &catalog.to_string());
                     }
-                    let _ = write_atomic(&path, &catalog.to_string());
+                    Some(catalog)
                 }
-                Some(catalog)
+                Err(_) => cached_recipe_catalog(app),
             }
-            Err(_) => cached_recipe_catalog(app),
-        },
+        }
         _ => cached_recipe_catalog(app),
     };
 
@@ -3250,7 +3247,9 @@ async fn list_recipes(app: AppHandle, state: State<'_, AppState>) -> Result<Valu
             .send()
             .await
         {
-            Ok(response) if response.status().is_success() => response.json::<Value>().await.ok(),
+            Ok(response) if response.status().is_success() => {
+                http_security::json::<Value>(response).await.ok()
+            }
             _ => None,
         },
         Err(_) => None,

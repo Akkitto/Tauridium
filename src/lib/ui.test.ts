@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import recipeSource from "../../data/recipe-source.json";
 import {
   DEFAULT_KEYBINDINGS,
   SERVICE_ZOOM_LEVELS,
@@ -199,8 +200,12 @@ describe("resolveStartupSidebarCollapsed", () => {
 describe("recipeIcon / iconSrc", () => {
   it("builds the ferdium-recipes icon URL", () => {
     expect(recipeIcon("whatsapp")).toBe(
-      "https://raw.githubusercontent.com/ferdium/ferdium-recipes/main/recipes/whatsapp/icon.svg",
+      `https://raw.githubusercontent.com/ferdium/ferdium-recipes/${recipeSource.revision}/recipes/whatsapp/icon.svg`,
     );
+  });
+  it("rejects unsafe recipe identifiers before producing an icon URL", () => {
+    expect(recipeIcon("../../private")).toBe("");
+    expect(recipeSource.revision).toMatch(/^[a-f0-9]{40}$/);
   });
   it("prefers the server custom icon when present", () => {
     expect(iconSrc({ iconUrl: "https://srv/icon/42", recipeId: "slack" })).toBe(

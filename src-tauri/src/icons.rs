@@ -1,6 +1,7 @@
 use base64::Engine;
 use reqwest::header::CONTENT_TYPE;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager, Url};
 
@@ -45,7 +46,22 @@ fn cache_path(app: &AppHandle, service_id: &str) -> Result<PathBuf, String> {
 }
 
 fn read_cache(path: &Path) -> Option<Option<String>> {
-    let value = fs::read_to_string(path).ok()?;
+    let metadata = fs::symlink_metadata(path).ok()?;
+    if !metadata.is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.len() > (MAX_ICON_BYTES * 2) as u64
+    {
+        return None;
+    }
+    let mut value = String::new();
+    fs::File::open(path)
+        .ok()?
+        .take((MAX_ICON_BYTES * 2 + 1) as u64)
+        .read_to_string(&mut value)
+        .ok()?;
+    if value.len() > MAX_ICON_BYTES * 2 {
+        return None;
+    }
     let value = value.trim();
     if value == MISSING_SENTINEL {
         return Some(None);
@@ -370,11 +386,9 @@ pub(crate) fn copy_cached(
     if !source.is_file() {
         return Ok(());
     }
-    let value = fs::read_to_string(&source)
-        .map_err(|error| format!("Unable to read source service icon cache: {error}"))?;
-    if read_cache(&source).is_none() {
-        return Err("Source service icon cache is invalid".into());
-    }
+    let value = read_cache(&source)
+        .ok_or("Source service icon cache is invalid")?
+        .unwrap_or_else(|| MISSING_SENTINEL.into());
     let target = cache_path(app, target_service_id)?;
     write_atomic(&target, &value)
         .map_err(|error| format!("Unable to copy service icon cache: {error}"))
@@ -389,6 +403,17 @@ pub(crate) fn remove_cached(app: &AppHandle, service_id: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn oversized_icon_cache_is_rejected_before_reading() {
+        let path =
+            std::env::temp_dir().join(format!("tauridium-icon-budget-{}", std::process::id()));
+        fs::write(&path, vec![b'x'; MAX_ICON_BYTES * 2 + 1]).unwrap();
+        assert!(read_cache(&path).is_none());
+        fs::write(&path, MISSING_SENTINEL).unwrap();
+        assert_eq!(read_cache(&path), Some(None));
+        fs::remove_file(path).unwrap();
+    }
 
     #[test]
     fn html_icon_discovery_accepts_standard_rel_forms_and_quotes() {

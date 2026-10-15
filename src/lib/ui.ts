@@ -1,4 +1,5 @@
 // Pure UI helpers kept here for isolated Vitest coverage.
+import recipeSource from "../../data/recipe-source.json";
 
 // Choose black or white according to WCAG relative-luminance contrast.
 export function accentFg(hex: string): string {
@@ -219,7 +220,8 @@ export function resolveStartupSidebarCollapsed(
 
 // Recipe icon URL from the ferdium-recipes repository.
 export function recipeIcon(recipeId: string): string {
-  return `https://raw.githubusercontent.com/ferdium/ferdium-recipes/main/recipes/${recipeId}/icon.svg`;
+  if (!/^[a-zA-Z0-9_-]+$/.test(recipeId)) return "";
+  return `https://raw.githubusercontent.com/ferdium/ferdium-recipes/${recipeSource.revision}/recipes/${recipeId}/icon.svg`;
 }
 
 // Service icon: use the server-provided custom icon, otherwise the recipe icon.

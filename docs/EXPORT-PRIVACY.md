@@ -27,3 +27,12 @@ archives and are not intended for public release. Never upload them as build evi
 Private full-Git development checkpoints are also not public source releases.
 Public source ZIPs contain only the approved release tree and sanitized Git ancestry;
 public documentation evidence is separately allowlisted and reviewed.
+
+Remote Ferdium recipe metadata, executable scripts and default recipe icons use
+the full immutable commit in data/recipe-source.json, shared by Rust and the UI.
+Upstream updates require an explicit source change and review of the upstream
+diff; they are not automatically accepted from a mutable branch. This is a
+provenance pin, not a claim that every upstream recipe has been independently
+audited. Downloads remain on demand. Their bounded caches are separated by the
+revision; old unversioned caches are not executed. Existing personal recipes,
+built-in recipes and user-selected service icons remain independent.

@@ -170,11 +170,8 @@ impl LocalProfile {
             .unwrap_or(-1)
             + 1;
         let id = new_id();
-        let icon_url = icon_url.unwrap_or_else(|| {
-            format!(
-                "https://raw.githubusercontent.com/ferdium/ferdium-recipes/main/recipes/{recipe_id}/icon.svg"
-            )
-        });
+        let icon_url =
+            icon_url.unwrap_or_else(|| crate::recipe_source::asset_url(&recipe_id, "icon.svg"));
         let service = json!({
             "id": id,
             "name": name,
