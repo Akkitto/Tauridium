@@ -96,7 +96,10 @@ A complete release normally delivers three artifacts in the same handoff:
   source. Full local Git recovery checkpoints remain private and separate.
 - `tauridium-X.Y.Z-run-<target>.zip`: verified native runtime for the actual Rust target;
   otherwise use the explicit `run-build-handoff` archive.
-- `tauridium-X.Y.Z-doc.zip`: release documentation, checksums, manifest, and evidence.
+- `tauridium-X.Y.Z-doc.zip`: exact tagged documentation, checksums and manifest.
+  Public evidence is optional, explicitly requested, and restricted to a reviewed
+  version-specific hash manifest and staging directory. Never publish raw ignored
+  `release/evidence/`, screenshots, logs or OCR by recursive directory sweeping.
 
 Packaging must be deterministic and ZIP-integrity-checked. Native release packaging and
 updater metadata must stay callable through `just`; GitHub Actions should orchestrate the

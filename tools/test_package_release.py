@@ -299,16 +299,68 @@ class PackageReleaseTests(unittest.TestCase):
     runtime_zip = self.root / "run.zip"
     source_zip.write_bytes(b"source")
     runtime_zip.write_bytes(b"runtime")
-    evidence_file = self.root / "release" / "evidence" / "windows" / "ci.txt"
+    evidence_file = self.root / "release" / "public-evidence" / "windows" / "ci.txt"
     evidence_file.parent.mkdir(parents=True)
     evidence_file.write_text("ok\n", encoding="utf-8")
+    (self.root / "release" / "public-evidence.json").write_text(json.dumps({
+      "schema": 1, "version": "0.2.0", "files": [
+        {"path": "windows/ci.txt", "sha256": PACKAGE.sha256(evidence_file)}
+      ]
+    }), encoding="utf-8")
     output = self.root / "docs.zip"
 
     with mock.patch.object(Path, "relative_to", side_effect=AssertionError("relative_to used")):
-      PACKAGE.build_docs(output, "0.2.0", source_zip, [runtime_zip], context)
+      PACKAGE.build_docs(output, "0.2.0", source_zip, [runtime_zip], context, public_evidence=True)
 
     with zipfile.ZipFile(output) as archive:
       self.assertIn("tauridium-0.2.0-doc/evidence/windows/ci.txt", archive.namelist())
+
+  def test_docs_never_publish_ignored_raw_evidence_or_later_document_edits(self) -> None:
+    self.init_git_repository()
+    context = PACKAGE.source_context("0.2.0")
+    evidence = self.root / "release" / "evidence"
+    evidence.mkdir(parents=True)
+    (evidence / ".env").write_text("PRIVATE RAW DIAGNOSTICS", encoding="utf-8")
+    (self.root / "README.md").write_text("Private later edit", encoding="utf-8")
+    source = self.root / "source.zip"
+    source.write_bytes(b"synthetic source")
+    output = self.root / "docs.zip"
+    PACKAGE.build_docs(output, "0.2.0", source, [], context)
+    with zipfile.ZipFile(output) as archive:
+      self.assertFalse(any("/evidence/" in name for name in archive.namelist()))
+      self.assertEqual(archive.read("tauridium-0.2.0-doc/README.md"), b"README\n")
+
+  def test_recursive_artifact_input_rejects_outside_root_symlinks(self) -> None:
+    import os
+    if os.name == "nt":
+      self.skipTest("Native Windows reparse-point coverage requires a junction-capable runner")
+    outside = self.root / "private-outside.txt"
+    outside.write_text("PRIVATE OUTSIDE", encoding="utf-8")
+    stage = self.root / "stage"
+    stage.mkdir()
+    (stage / "linked.txt").symlink_to(outside)
+    with self.assertRaisesRegex(SystemExit, "symlink or reparse"):
+      PACKAGE.tree_entries(stage)
+    with self.assertRaisesRegex(SystemExit, "symlink or reparse"):
+      with PACKAGE.release_zip(self.root / "linked.zip") as archive:
+        PACKAGE.add_file(archive, stage / "linked.txt", "linked.txt")
+
+  def test_atomic_zip_failure_preserves_existing_artifact_and_removes_staging(self) -> None:
+    output = self.root / "existing.zip"
+    output.write_bytes(b"KEEP EXISTING")
+    with self.assertRaisesRegex(SystemExit, "unsafe member"):
+      with PACKAGE.release_zip(output) as archive:
+        PACKAGE.add_bytes(archive, b"synthetic", "../outside.txt")
+    self.assertEqual(output.read_bytes(), b"KEEP EXISTING")
+    self.assertEqual(list(self.root.glob(".existing.zip-*.tmp")), [])
+
+  def test_public_evidence_rejects_unknown_staged_files(self) -> None:
+    stage = self.root / "release" / "public-evidence"
+    stage.mkdir(parents=True)
+    (stage / ".env").write_text("PRIVATE", encoding="utf-8")
+    (self.root / "release" / "public-evidence.json").write_text(json.dumps({"schema":1,"version":"0.2.0","files":[]}), encoding="utf-8")
+    with self.assertRaisesRegex(SystemExit, "differs from its approved manifest"):
+      PACKAGE.public_evidence_files("0.2.0")
 
   def test_source_zip_requires_git_history(self) -> None:
     self.write_manifest()
@@ -562,8 +614,6 @@ class PackageReleaseTests(unittest.TestCase):
       )
 
   def test_docs_include_file_drop_guidance_current_report_and_fixture(self) -> None:
-    self.write_manifest()
-    context = PACKAGE.source_context("0.2.0")
     paths = ("docs/NIX.md", "docs/examples/nix/flake.nix", "docs/examples/nix/consumer.nix", "docs/examples/nix/home.nix", "docs/examples/nix/nixos.nix", "docs/file-drops.md", "docs/download-notifications.md", "docs/releases/0.2.0-validation.md", "tools/fixtures/file-drop.html")
     source_zip = self.root / "src.zip"
     run_zip = self.root / "run.zip"
@@ -576,6 +626,10 @@ class PackageReleaseTests(unittest.TestCase):
           target = self.root / path
           target.parent.mkdir(parents=True, exist_ok=True)
           target.write_bytes(f"contents of {path}".encode("utf-8") + newline)
+        manifest = self.write_manifest()
+        manifest["files"].extend({"path": path, "sha256": PACKAGE.sha256(self.root / path), "mode": 0o644} for path in paths)
+        (self.root / PACKAGE.SOURCE_MANIFEST_NAME).write_bytes(PACKAGE.manifest_bytes(manifest))
+        context = PACKAGE.source_context("0.2.0")
         PACKAGE.build_docs(output, "0.2.0", source_zip, [run_zip], context)
         with zipfile.ZipFile(output) as archive:
           for path in paths:

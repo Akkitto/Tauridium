@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -153,10 +155,40 @@ def add_file(
   archive_name: str,
   mode: int | None = None,
 ) -> None:
+  reject_link(source)
   info = zipfile.ZipInfo(archive_name, ZIP_TIME)
   info.compress_type = zipfile.ZIP_DEFLATED
   info.external_attr = (mode if mode is not None else file_mode(source)) << 16
   zf.writestr(info, source.read_bytes())
+
+
+def reject_link(path: Path) -> None:
+  metadata = path.lstat()
+  if stat.S_ISLNK(metadata.st_mode) or getattr(metadata, "st_file_attributes", 0) & 0x400:
+    raise SystemExit("error: public artifact input must not be a symlink or reparse point: " + str(path))
+
+
+@contextmanager
+def release_zip(output: Path):
+  """Never replace an existing artifact until a complete new ZIP validates."""
+  with tempfile.NamedTemporaryFile(prefix="." + output.name + "-", suffix=".tmp", dir=output.parent, delete=False) as handle:
+    temporary = Path(handle.name)
+  try:
+    with zipfile.ZipFile(temporary, "w") as archive:
+      yield archive
+    with zipfile.ZipFile(temporary) as archive:
+      if archive.testzip() is not None:
+        raise SystemExit("error: generated ZIP failed its integrity check")
+      names = archive.namelist()
+      if len(set(names)) != len(names):
+        raise SystemExit("error: generated ZIP contains duplicate members")
+      for name in names:
+        path = PurePosixPath(name.rstrip("/"))
+        if path.is_absolute() or ".." in path.parts or "\\" in name or ":" in name or path.as_posix() != name.rstrip("/"):
+          raise SystemExit("error: generated ZIP contains an unsafe member")
+    os.replace(temporary, output)
+  finally:
+    temporary.unlink(missing_ok=True)
 
 
 def add_bytes(zf: zipfile.ZipFile, data: bytes, archive_name: str, executable: bool = False) -> None:
@@ -341,7 +373,9 @@ def load_source_manifest(release_version: str) -> SourceContext:
         f"error: source-manifest file is missing: {archive_path}; "
         "extract the release into a new empty directory"
       )
-    actual_sha = sha256(source)
+    reject_link(source)
+    data = source.read_bytes()
+    actual_sha = hashlib.sha256(data).hexdigest()
     if actual_sha != expected_sha:
       raise SystemExit(
         f"error: source-manifest checksum mismatch: {archive_path}; "
@@ -353,6 +387,7 @@ def load_source_manifest(release_version: str) -> SourceContext:
         archive_path=archive_path,
         sha256=expected_sha,
         mode=mode,
+        data=data,
       )
     )
 
@@ -400,12 +435,14 @@ def tree_entries(root: Path) -> tuple[tuple[tuple[Path, str], ...], tuple[tuple[
   parent comparisons unreliable even when both paths identify the same directory.
   """
   directories: list[tuple[Path, str]] = []
+  reject_link(root)
   files: list[tuple[Path, str]] = []
   pending: list[tuple[Path, str]] = [(root, "")]
   while pending:
     current, relative_root = pending.pop()
     child_directories: list[tuple[Path, str]] = []
     for child in sorted(current.iterdir(), key=lambda path: path.name):
+      reject_link(child)
       archive_path = f"{relative_root}/{child.name}" if relative_root else child.name
       if child.is_dir():
         directories.append((child, archive_path))
@@ -482,7 +519,7 @@ def build_source(output: Path, release_version: str, context: SourceContext) -> 
   if not context.git_files:
     raise SystemExit("error: source ZIP requires a real Git checkout and sanitized approved history")
   prefix = f"tauridium-{release_version}/"
-  with zipfile.ZipFile(output, "w") as zf:
+  with release_zip(output) as zf:
     for entry in context.entries:
       add_source_entry(zf, entry, prefix)
     add_bytes(zf, context.manifest_bytes, prefix + SOURCE_MANIFEST_NAME)
@@ -612,7 +649,7 @@ def build_runtime(
   runtimes: list[RuntimeArtifact],
 ) -> None:
   names: set[str] = set()
-  with zipfile.ZipFile(output, "w") as zf:
+  with release_zip(output) as zf:
     for runtime in sorted(runtimes, key=lambda item: item.path.name.lower()):
       if not runtime.path.is_file():
         raise SystemExit(f"error: runtime artifact not found: {runtime.path}")
@@ -667,7 +704,7 @@ def build_runtime_handoff(
     "Rust formatting is pinned by rust-toolchain.toml to 1.97.1 and release packaging "
     "refuses to proceed unless cargo fmt -- --check succeeds.\n"
   ).encode()
-  with zipfile.ZipFile(output, "w") as zf:
+  with release_zip(output) as zf:
     for entry in context.entries:
       add_source_entry(zf, entry, prefix)
     add_bytes(zf, context.manifest_bytes, prefix + SOURCE_MANIFEST_NAME)
@@ -689,15 +726,17 @@ def build_docs(
   source_zip: Path,
   run_zips: list[Path],
   context: SourceContext,
+  *,
+  public_evidence: bool = False,
 ) -> None:
   prefix = f"tauridium-{release_version}-doc/"
-  evidence = ROOT / "release" / "evidence"
+  entries = {entry.archive_path: entry for entry in context.entries}
   checksum_lines = [f"{sha256(source_zip)}  {source_zip.name}"]
   checksum_lines.extend(f"{sha256(run_zip)}  {run_zip.name}" for run_zip in run_zips)
   checksums = ("\n".join(checksum_lines) + "\n").encode()
-  with zipfile.ZipFile(output, "w") as zf:
+  with release_zip(output) as zf:
     for name in ("README.md", "CHANGELOG.md", "AGENTS.md", "LICENSE"):
-      add_file(zf, ROOT / name, prefix + name)
+      add_source_entry(zf, entries[name], prefix)
     for source, archive_path in (
       (ROOT / "docs" / "installation.md", "docs/installation.md"),
       (ROOT / "docs" / "NIX.md", "docs/NIX.md"),
@@ -708,20 +747,62 @@ def build_docs(
       (ROOT / "docs" / "github-language-statistics.md", "docs/github-language-statistics.md"),
       (ROOT / "packaging" / "scoop" / "README.md", "docs/scoop-packaging.md"),
     ):
-      if source.is_file():
-        add_file(zf, source, prefix + archive_path)
+      source_name = source.as_posix().removeprefix(ROOT.as_posix() + "/")
+      if source_name in entries:
+        entry = entries[source_name]
+        add_bytes(zf, entry.data if entry.data is not None else entry.path.read_bytes(), prefix + archive_path)
     add_bytes(zf, checksums, prefix + "SHA256SUMS")
     add_bytes(zf, (manifest_git_log(context) + "\n").encode(), prefix + "GIT-LOG.txt")
     add_bytes(zf, context.manifest_bytes, prefix + SOURCE_MANIFEST_NAME)
-    examples = ROOT / "docs" / "examples" / "nix"
-    if examples.is_dir():
-      _directories, files = tree_entries(examples)
-      for source, archive_path in files:
-        add_file(zf, source, prefix + "docs/examples/nix/" + archive_path)
-    if evidence.is_dir():
-      _evidence_directories, evidence_files = tree_entries(evidence)
-      for source, archive_path in evidence_files:
-        add_file(zf, source, prefix + "evidence/" + archive_path)
+    for name, entry in entries.items():
+      if name.startswith("docs/examples/nix/"):
+        add_source_entry(zf, entry, prefix)
+    if public_evidence:
+      for archive_path, data in public_evidence_files(release_version):
+        add_bytes(zf, data, prefix + "evidence/" + archive_path)
+
+
+def public_evidence_files(release_version: str) -> tuple[tuple[str, bytes], ...]:
+  """Explicit reviewed staging only; never recursively publish raw evidence."""
+  manifest_path = ROOT / "release" / "public-evidence.json"
+  try:
+    reject_link(manifest_path)
+    if manifest_path.stat().st_size > 1024 * 1024:
+      raise SystemExit("error: public evidence manifest exceeds 1 MiB")
+    document = json.loads(manifest_path.read_text(encoding="utf-8"))
+  except (OSError, ValueError) as error:
+    raise SystemExit(f"error: unable to load public evidence manifest: {error}") from error
+  if not isinstance(document, dict) or document.get("schema") != 1 or document.get("version") != release_version:
+    raise SystemExit("error: public evidence manifest is not for this release")
+  records = document.get("files")
+  if not isinstance(records, list) or len(records) > 100:
+    raise SystemExit("error: public evidence must have at most 100 approved files")
+  stage = ROOT / "release" / "public-evidence"
+  if not stage.is_dir():
+    raise SystemExit("error: public evidence staging directory is missing")
+  _directories, actual_files = tree_entries(stage)
+  actual = {name for _path, name in actual_files}
+  approved: dict[str, str] = {}
+  for record in records:
+    if not isinstance(record, dict) or not isinstance(record.get("path"), str) or not isinstance(record.get("sha256"), str) or not re.fullmatch(r"[0-9a-f]{64}", record["sha256"]):
+      raise SystemExit("error: malformed public evidence entry or SHA-256")
+    name = safe_manifest_path(record["path"])
+    if name in approved or Path(name).suffix.lower() not in {".png", ".json", ".md", ".txt", ".log"} or any(part.startswith(".") for part in PurePosixPath(name).parts):
+      raise SystemExit("error: unexpected or duplicate public evidence member")
+    approved[name] = record["sha256"]
+  if actual != set(approved):
+    raise SystemExit("error: public evidence staging differs from its approved manifest")
+  result = []
+  total = 0
+  for path, name in actual_files:
+    if path.stat().st_size > 10 * 1024 * 1024:
+      raise SystemExit("error: public evidence file exceeds 10 MiB")
+    data = path.read_bytes()
+    total += len(data)
+    if total > 50 * 1024 * 1024 or hashlib.sha256(data).hexdigest() != approved[name]:
+      raise SystemExit("error: public evidence size or checksum validation failed")
+    result.append((name, data))
+  return tuple(result)
 
 
 def main() -> int:
@@ -738,6 +819,7 @@ def main() -> int:
     help="skip artifact packaging successfully when a Git checkout is not at its exact version tag",
   )
   parser.add_argument("--output-dir", type=Path, default=ROOT / "release")
+  parser.add_argument("--public-evidence", action="store_true", help="include only independently reviewed release/public-evidence.json staged files; raw release/evidence is never public")
   args = parser.parse_args()
 
   require_pinned_rustfmt_clean()
@@ -766,7 +848,7 @@ def main() -> int:
       run = output_dir / runtime_zip_name(release_version, suffix)
       build_runtime(run, release_version, target_runtimes)
       run_zips.append(run)
-  build_docs(doc, release_version, src, run_zips, context)
+  build_docs(doc, release_version, src, run_zips, context, public_evidence=args.public_evidence)
   print(src)
   for run in run_zips:
     print(run)
