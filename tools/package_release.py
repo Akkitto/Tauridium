@@ -29,6 +29,7 @@ class SourceEntry:
   archive_path: str
   sha256: str
   mode: int
+  data: bytes | None = None
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,7 @@ class SourceContext:
   entries: tuple[SourceEntry, ...]
   manifest: dict[str, Any]
   manifest_bytes: bytes
+  git_files: tuple[tuple[str, bytes], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -174,7 +176,11 @@ def add_directory(zf: zipfile.ZipFile, archive_name: str) -> None:
 
 def safe_manifest_path(value: str) -> str:
   path = PurePosixPath(value)
-  if path.is_absolute() or not value or ".." in path.parts or path.as_posix() != value:
+  if (
+    path.is_absolute() or not value or not path.parts or ".." in path.parts
+    or path.as_posix() != value or "\\" in value or ":" in value
+    or any(part.rstrip(" .") != part or part.casefold() == ".git" for part in path.parts)
+  ):
     raise SystemExit(f"error: invalid source-manifest path: {value!r}")
   if value == SOURCE_MANIFEST_NAME:
     raise SystemExit(f"error: source manifest must not list itself: {value}")
@@ -185,14 +191,15 @@ def manifest_bytes(manifest: dict[str, Any]) -> bytes:
   return (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
 
 
-def tracked_entries() -> tuple[SourceEntry, ...]:
+def tracked_entries(tree: str | None = None) -> tuple[SourceEntry, ...]:
   """Return tracked files using Git-index modes for cross-platform determinism.
 
   Windows does not expose Unix executable bits through ``Path.stat()`` the same
   way Unix does. Reading the index mode makes source ZIP permissions identical
   whether a release is packaged on Linux, macOS, or Windows.
   """
-  raw = subprocess.check_output(git_command("ls-files", "--stage", "-z"), cwd=ROOT)
+  command = git_command("ls-tree", "-r", "-z", tree) if tree else git_command("ls-files", "--stage", "-z")
+  raw = subprocess.check_output(command, cwd=ROOT)
   entries: list[SourceEntry] = []
   for item in raw.split(b"\0"):
     if not item:
@@ -209,13 +216,19 @@ def tracked_entries() -> tuple[SourceEntry, ...]:
         f"error: unsupported Git index mode {git_mode.decode()} for {archive_path}"
       )
     archive_path = raw_path.decode()
+    safe_manifest_path(archive_path)
     source = ROOT / archive_path
+    # Index objects are immutable and preserve Git's canonical line endings;
+    # never dereference a tracked working-tree path when exporting source.
+    blob = metadata.split()[2 if tree else 1].decode("ascii")
+    data = subprocess.check_output(git_command("cat-file", "blob", blob), cwd=ROOT)
     entries.append(
       SourceEntry(
         path=source,
         archive_path=archive_path,
-        sha256=sha256(source),
+        sha256=hashlib.sha256(data).hexdigest(),
         mode=mode,
+        data=data,
       )
     )
   return tuple(sorted(entries, key=lambda entry: entry.archive_path))
@@ -240,17 +253,22 @@ def git_source_context(release_version: str) -> SourceContext:
       "error: release packaging requires a clean Git worktree; changed paths:\n"
       + details
     )
+  flags = subprocess.check_output(git_command("ls-files", "-v", "-z"), cwd=ROOT)
+  if any(item and not item.startswith(b"H ") for item in flags.split(b"\0")):
+    raise SystemExit("error: release rejects assume-unchanged, skip-worktree or other hidden index flags")
 
-  entries = tracked_entries()
+  git_files = sanitized_git_files(release_version)
+  commit = dict(git_files)["refs/heads/master"].decode("ascii").strip()
+  entries = tracked_entries(commit)
   manifest: dict[str, Any] = {
     "schema": SOURCE_MANIFEST_SCHEMA,
     "project": "Tauridium",
     "version": release_version,
     "git": {
-      "commit": git_output("rev-parse", "HEAD"),
-      "tree": git_output("rev-parse", "HEAD^{tree}"),
+      "commit": commit,
+      "tree": git_output("rev-parse", commit + "^{tree}"),
       "tag": exact_release_tag(release_version),
-      "log": git_output("log", "--oneline", "--decorate", "-20"),
+      "log": git_output("log", "--oneline", "--no-decorate", "-20", commit),
     },
     "files": [
       {
@@ -260,8 +278,12 @@ def git_source_context(release_version: str) -> SourceContext:
       }
       for entry in entries
     ],
+    "gitFiles": [
+      {"path": ".git/" + name, "sha256": hashlib.sha256(data).hexdigest()}
+      for name, data in git_files
+    ],
   }
-  return SourceContext(entries=entries, manifest=manifest, manifest_bytes=manifest_bytes(manifest))
+  return SourceContext(entries=entries, manifest=manifest, manifest_bytes=manifest_bytes(manifest), git_files=git_files)
 
 
 def load_source_manifest(release_version: str) -> SourceContext:
@@ -397,56 +419,81 @@ def tree_entries(root: Path) -> tuple[tuple[tuple[Path, str], ...], tuple[tuple[
   )
 
 
-def git_metadata_directories() -> tuple[tuple[Path, str], ...]:
-  repository_root = git_repository_root()
-  if repository_root is None:
-    raise SystemExit(
-      "error: source ZIP packaging requires a real Git checkout so the complete .git "
-      "history can be included"
-    )
-  git_dir = repository_root / ".git"
-  if not git_dir.is_dir():
-    raise SystemExit("error: source ZIP packaging requires a .git directory")
-  directories, _ = tree_entries(git_dir)
-  return directories
 
 
-def git_metadata_files() -> tuple[tuple[Path, str], ...]:
-  repository_root = git_repository_root()
-  if repository_root is None:
-    raise SystemExit(
-      "error: source ZIP packaging requires a real Git checkout so the complete .git "
-      "history can be included"
+def sanitized_git_files(release_version: str) -> tuple[tuple[str, bytes], ...]:
+  """Export approved tag ancestry into a NEW repository, never local Git state.
+
+  Preserve private full-Git recovery checkpoints separately. Fetching one
+  immutable tag object transfers its reachable history, not dangling objects,
+  local refs, config, hooks, reflogs, helpers or a producer's index.
+  """
+  if git_repository_root() is None:
+    raise SystemExit("error: source ZIP requires a real Git checkout")
+  tag = f"v{release_version}"
+  tag_object = git_output("rev-parse", f"refs/tags/{tag}")
+  commit = git_output("rev-parse", f"refs/tags/{tag}^{{commit}}")
+  if commit != git_output("rev-parse", "HEAD"):
+    raise SystemExit("error: source export tag and HEAD disagree")
+  env = dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull,
+             GIT_TERMINAL_PROMPT="0", GIT_CONFIG_COUNT="0")
+  # Caller-injected Git routing/config variables cannot redirect the clean
+  # export. Identity and real publisher credentials are neither read nor copied.
+  for key in tuple(env):
+    if key.startswith("GIT_") and key not in {"GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_GLOBAL", "GIT_TERMINAL_PROMPT", "GIT_CONFIG_COUNT"}:
+      env.pop(key)
+  with tempfile.TemporaryDirectory(prefix="tauridium-public-git-") as temporary:
+    clean = Path(temporary) / "repo"
+    template = Path(temporary) / "empty-template"
+    template.mkdir()
+    def run(*args: str) -> None:
+      subprocess.run(["git", "-c", "core.hooksPath=" + str(template),
+                      "-c", "core.fsmonitor=false", "-c", "fetch.writeCommitGraph=false",
+                      *args], cwd=clean if clean.exists() else temporary,
+                     env=env, check=True, capture_output=True)
+    run("init", "--quiet", "--template=" + str(template), str(clean))
+    run("config", "core.logAllRefUpdates", "false")
+    run("-c", "protocol.file.allow=always", "fetch", "--quiet", "--no-tags",
+        "--no-write-fetch-head", str(ROOT), f"{tag_object}:refs/tags/{tag}")
+    run("update-ref", "refs/heads/master", commit)
+    run("symbolic-ref", "HEAD", "refs/heads/master")
+    run("read-tree", commit)
+    git_dir = clean / ".git"
+    # Fixed, inert public configuration; never copy producer configuration.
+    (git_dir / "config").write_text(
+      "[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n\tbare = false\n\tlogallrefupdates = false\n",
+      encoding="utf-8",
     )
-  git_dir = repository_root / ".git"
-  if not git_dir.is_dir():
-    raise SystemExit("error: source ZIP packaging requires a .git directory")
-  _, files = tree_entries(git_dir)
-  if not files:
-    raise SystemExit("error: .git directory contains no files")
-  return files
+    (git_dir / "info").mkdir(exist_ok=True)
+    (git_dir / "info" / "exclude").write_text(SOURCE_MANIFEST_NAME + "\n", encoding="utf-8")
+    allowed = re.compile(r"(?:HEAD|config|index|info/exclude|refs/heads/master|refs/tags/" + re.escape(tag) + r"|objects/[0-9a-f]{2}/[0-9a-f]{38}|objects/pack/pack-[0-9a-f]{40}\.(?:pack|idx))")
+    _directories, files = tree_entries(git_dir)
+    return tuple((name, source.read_bytes()) for source, name in files if allowed.fullmatch(name))
+
+
+def add_source_entry(zf: zipfile.ZipFile, entry: SourceEntry, prefix: str) -> None:
+  if entry.data is not None:
+    add_bytes(zf, entry.data, prefix + entry.archive_path, executable=entry.mode == 0o755)
+  else:
+    add_file(zf, entry.path, prefix + entry.archive_path, mode=entry.mode)
 
 
 def build_source(output: Path, release_version: str, context: SourceContext) -> None:
+  if not context.git_files:
+    raise SystemExit("error: source ZIP requires a real Git checkout and sanitized approved history")
   prefix = f"tauridium-{release_version}/"
   with zipfile.ZipFile(output, "w") as zf:
     for entry in context.entries:
-      add_file(zf, entry.path, prefix + entry.archive_path, mode=entry.mode)
+      add_source_entry(zf, entry, prefix)
     add_bytes(zf, context.manifest_bytes, prefix + SOURCE_MANIFEST_NAME)
     add_directory(zf, prefix + ".git/")
-    for _directory, archive_path in git_metadata_directories():
+    directories = {"objects", "objects/info", "objects/pack", "refs", "refs/heads", "refs/tags"}
+    for archive_path, _data in context.git_files:
+      directories.update(str(parent) for parent in PurePosixPath(archive_path).parents if str(parent) != ".")
+    for archive_path in sorted(directories):
       add_directory(zf, prefix + ".git/" + archive_path)
-    for source, archive_path in git_metadata_files():
-      if archive_path == "config":
-        config = source.read_text(encoding="utf-8")
-        config = re.sub(
-          r"(?m)^(\s*filemode\s*=\s*).*$",
-          r"\g<1>false",
-          config,
-        )
-        add_bytes(zf, config.encode(), prefix + ".git/" + archive_path)
-      else:
-        add_file(zf, source, prefix + ".git/" + archive_path, mode=0o644)
+    for archive_path, data in context.git_files:
+      add_bytes(zf, data, prefix + ".git/" + archive_path)
 
 
 def default_runtimes() -> list[Path]:
@@ -622,7 +669,7 @@ def build_runtime_handoff(
   ).encode()
   with zipfile.ZipFile(output, "w") as zf:
     for entry in context.entries:
-      add_file(zf, entry.path, prefix + entry.archive_path, mode=entry.mode)
+      add_source_entry(zf, entry, prefix)
     add_bytes(zf, context.manifest_bytes, prefix + SOURCE_MANIFEST_NAME)
     add_bytes(zf, handoff, prefix + "RUNTIME-HANDOFF.txt")
 

@@ -40,6 +40,12 @@ def main() -> int:
     raise SystemExit(
       "error: release requires a clean Git worktree; changed paths:\n" + details
     )
+  flags = subprocess.run(
+    ["git", "ls-files", "-v", "-z"], cwd=ROOT, capture_output=True, check=True,
+  ).stdout
+  hidden = [item[2:].decode("utf-8", errors="replace") for item in flags.split(b"\0") if item and not item.startswith(b"H ")]
+  if hidden:
+    raise SystemExit("error: release rejects hidden Git index flags (assume-unchanged/skip-worktree):\n" + "\n".join("  " + path for path in hidden))
 
   print("Tauridium release Git worktree is clean.")
   return 0

@@ -89,8 +89,11 @@ HEAD carries the exact version tag. `just package` is the strict tag-only artifa
 
 A complete release normally delivers three artifacts in the same handoff:
 
-- `tauridium-X.Y.Z-src.zip`: tracked source + real `.git` history + generated SHA-256
-  source manifest.
+- `tauridium-X.Y.Z-src.zip`: exact tagged source + real `.git` history sanitized to
+  only approved release ancestry/ref(s), plus a SHA-256 manifest covering source
+  and included Git files. Never copy a producer's local `.git` configuration,
+  hooks, reflogs, private files, unrelated refs or unreachable objects into public
+  source. Full local Git recovery checkpoints remain private and separate.
 - `tauridium-X.Y.Z-run-<target>.zip`: verified native runtime for the actual Rust target;
   otherwise use the explicit `run-build-handoff` archive.
 - `tauridium-X.Y.Z-doc.zip`: release documentation, checksums, manifest, and evidence.

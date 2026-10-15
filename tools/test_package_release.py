@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import sys
 import subprocess
@@ -315,6 +316,59 @@ class PackageReleaseTests(unittest.TestCase):
 
     with self.assertRaisesRegex(SystemExit, "requires a real Git checkout"):
       PACKAGE.build_source(self.root / "source.zip", "0.2.0", context)
+
+  def test_public_git_excludes_local_config_hooks_private_files_and_dangling_objects(self) -> None:
+    self.init_git_repository()
+    subprocess.run(["git", "config", "http.https://example.invalid/.extraheader", "Authorization: SYNTHETIC"], cwd=self.root, check=True)
+    (self.root / ".git" / "private-build-note").write_text("PRIVATE RECOVERY ONLY", encoding="utf-8")
+    (self.root / ".git" / "hooks" / "pre-commit").write_text("# inert synthetic hook", encoding="utf-8")
+    dangling = subprocess.check_output(["git", "hash-object", "-w", "--stdin"], cwd=self.root, input=b"Private unreachable recovery material").decode().strip()
+    context = PACKAGE.source_context("0.2.0")
+    output = self.root / "public-source.zip"
+    PACKAGE.build_source(output, "0.2.0", context)
+    extracted = self.root / "privacy-extracted"
+    with zipfile.ZipFile(output) as archive:
+      names = archive.namelist()
+      self.assertFalse(any("/hooks/" in name or "/logs/" in name or "private-build-note" in name for name in names))
+      self.assertNotIn("Authorization", archive.read("tauridium-0.2.0/.git/config").decode())
+      self.assertTrue(context.manifest["gitFiles"])
+      for entry in context.manifest["gitFiles"]:
+        self.assertEqual(hashlib.sha256(archive.read("tauridium-0.2.0/" + entry["path"])).hexdigest(), entry["sha256"])
+      archive.extractall(extracted)
+    result = subprocess.run(["git", "cat-file", "-e", dangling], cwd=extracted / "tauridium-0.2.0", capture_output=True)
+    self.assertNotEqual(result.returncode, 0)
+    self.assertTrue((self.root / ".git" / "private-build-note").exists())
+
+  def test_hidden_index_flags_are_rejected_even_when_status_is_clean(self) -> None:
+    self.init_git_repository()
+    for flag, reset in [("--assume-unchanged", "--no-assume-unchanged"), ("--skip-worktree", "--no-skip-worktree")]:
+      subprocess.run(["git", "update-index", flag, "source.txt"], cwd=self.root, check=True)
+      try:
+        with self.assertRaisesRegex(SystemExit, "hidden index flags"):
+          PACKAGE.source_context("0.2.0")
+      finally:
+        subprocess.run(["git", "update-index", reset, "source.txt"], cwd=self.root, check=True)
+
+  def test_manifest_paths_reject_windows_drives_streams_and_git_metadata(self) -> None:
+    for value in ["C:/outside", "a\\..\\outside", "file:stream", ".git/config", "dir./file", "dir /file", "."]:
+      with self.subTest(value=value), self.assertRaisesRegex(SystemExit, "invalid source-manifest path"):
+        PACKAGE.safe_manifest_path(value)
+
+  def test_source_export_uses_captured_tag_bytes_not_later_disk_changes(self) -> None:
+    self.init_git_repository()
+    context = PACKAGE.source_context("0.2.0")
+    (self.root / "source.txt").write_text("Unreviewed disk modification\n", encoding="utf-8")
+    output = self.root / "snapshot.zip"
+    PACKAGE.build_source(output, "0.2.0", context)
+    with zipfile.ZipFile(output) as archive:
+      self.assertEqual(archive.read("tauridium-0.2.0/source.txt"), b"source v2\n")
+
+  def test_sanitized_source_is_reproducible_across_fresh_exports(self) -> None:
+    self.init_git_repository()
+    first = PACKAGE.source_context("0.2.0")
+    second = PACKAGE.source_context("0.2.0")
+    self.assertEqual(first.git_files, second.git_files)
+    self.assertEqual(first.manifest_bytes, second.manifest_bytes)
 
   def test_git_index_modes_are_used_instead_of_host_filesystem_modes(self) -> None:
     subprocess.run(["git", "init", "-q"], cwd=self.root, check=True)

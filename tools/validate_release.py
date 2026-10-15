@@ -355,9 +355,9 @@ def main() -> int:
     "source-manifest checksum mismatch",
     "context.manifest_bytes",
     'git_command("ls-files", "--stage", "-z")',
-    'def git_metadata_files()',
     'prefix + ".git/" + archive_path',
-    'r"(?m)^(\\s*filemode\\s*=\\s*).*$"',
+    'def sanitized_git_files(',
+    '"gitFiles": [',
     'requires a real Git checkout',
     'changed paths:',
     'mode=0o755',
@@ -372,7 +372,6 @@ def main() -> int:
       fail(f"release packager is missing source-ZIP fallback protection: {package_marker}")
   for marker in (
     "def add_directory(",
-    "def git_metadata_directories(",
     'add_directory(zf, prefix + ".git/")',
     'f"tauridium-{release_version}-run-{suffix}.zip"',
     '"x86_64-pc-windows-msvc": "win-x64"',
