@@ -26,7 +26,7 @@ class Patch0708Tests(unittest.TestCase):
     self.assertIn("CreateNamedPipeW", SINGLE)
     self.assertIn("GetNamedPipeServerProcessId", SINGLE)
     self.assertIn("AllowSetForegroundWindow(primary_pid)", SINGLE)
-    self.assertIn("write_all(pipe, &[ACTIVATION_ACK])", SINGLE)
+    self.assertRegex(SINGLE, r"write_all\(\s*pipe,\s*&\[ACTIVATION_ACK\],")
     self.assertIn("PeekNamedPipe", SINGLE)
 
   def test_activation_carries_launch_context_and_is_queued_until_ui_is_ready(self) -> None:

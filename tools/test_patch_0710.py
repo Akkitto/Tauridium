@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,7 +22,9 @@ class Patch0710Tests(unittest.TestCase):
     self.assertIn("let result = activate_existing_window(&main_thread_app, request);", SINGLE)
     self.assertIn("let _ = completion.send(result);", SINGLE)
     accept_pos = SINGLE.index("if let Err(error) = target.accept(request)")
-    ack_pos = SINGLE.index("write_all(pipe, &[ACTIVATION_ACK])?;")
+    ack = re.search(r"write_all\(\s*pipe,\s*&\[ACTIVATION_ACK\],\s*Instant::now\(\) \+ ACK_RECEIPT_WINDOW", SINGLE)
+    self.assertIsNotNone(ack)
+    ack_pos = ack.start()
     self.assertLess(accept_pos, ack_pos)
     self.assertIn("ACK only after accept() returns", SINGLE)
 
@@ -89,7 +92,7 @@ class Patch0710Tests(unittest.TestCase):
   def test_failed_activation_is_explicitly_rejected_and_diagnosable(self) -> None:
     self.assertIn("const ACTIVATION_NACK: u8 = 0", SINGLE)
     self.assertIn('"activation.rejected"', SINGLE)
-    self.assertIn("write_all(pipe, &[ACTIVATION_NACK])", SINGLE)
+    self.assertRegex(SINGLE, r"write_all\(\s*pipe,\s*&\[ACTIVATION_NACK\],\s*Instant::now\(\) \+ ACK_RECEIPT_WINDOW")
     self.assertIn('"activation.redirect.rejected"', SINGLE)
     self.assertIn('"activation.pipe.connect_retry"', SINGLE)
     self.assertIn('"activation.pipe.wait_retry"', SINGLE)

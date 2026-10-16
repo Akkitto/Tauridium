@@ -27,6 +27,15 @@ class WindowsIpcSecurityTests(unittest.TestCase):
     self.assertIn("pending_activation.deadline <= Instant::now()", source)
     self.assertIn("connected_silent_and_partial_peers_cannot_block_the_native_pipe_forever", source)
 
+  def test_writes_use_overlapped_deadlines_and_drain_cancellation_before_dropping_storage(self):
+    source = (ROOT / "src-tauri/src/single_instance.rs").read_text(encoding="utf-8")
+    self.assertIn("PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED", source)
+    self.assertIn("GetOverlappedResultEx", source)
+    self.assertIn("CancelIoEx(self.pipe, self.overlapped.as_ref())", source)
+    self.assertIn("write_all(pipe, payload, deadline)", source)
+    self.assertIn("large_native_write_to_a_nonreading_peer_times_out_and_cancels_safely", source)
+    self.assertIn("large_native_overlapped_transfers_preserve_every_byte", source)
+
 
 if __name__ == "__main__":
   unittest.main()

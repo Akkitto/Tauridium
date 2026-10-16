@@ -24,12 +24,13 @@ mod windows {
     use tauri::{AppHandle, Emitter, Manager};
     use windows_sys::Win32::{
         Foundation::{
-            CloseHandle, GetLastError, SetLastError, ERROR_ALREADY_EXISTS, ERROR_PIPE_CONNECTED,
-            GENERIC_READ, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE, WAIT_ABANDONED, WAIT_FAILED,
-            WAIT_OBJECT_0, WAIT_TIMEOUT,
+            CloseHandle, GetLastError, SetLastError, ERROR_ALREADY_EXISTS, ERROR_IO_PENDING,
+            ERROR_PIPE_CONNECTED, GENERIC_READ, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE,
+            WAIT_ABANDONED, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
         },
         Storage::FileSystem::{
-            CreateFileW, ReadFile, WriteFile, OPEN_EXISTING, PIPE_ACCESS_DUPLEX,
+            CreateFileW, ReadFile, WriteFile, FILE_FLAG_OVERLAPPED, OPEN_EXISTING,
+            PIPE_ACCESS_DUPLEX,
         },
         System::{
             Pipes::{
@@ -38,7 +39,11 @@ mod windows {
                 PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
             },
             RemoteDesktop::ProcessIdToSessionId,
-            Threading::{CreateMutexW, GetCurrentProcessId, ReleaseMutex, WaitForSingleObject},
+            Threading::{
+                CreateEventW, CreateMutexW, GetCurrentProcessId, ReleaseMutex, WaitForSingleObject,
+                INFINITE,
+            },
+            IO::{CancelIoEx, GetOverlappedResult, GetOverlappedResultEx, OVERLAPPED},
         },
         UI::WindowsAndMessaging::{
             AllowSetForegroundWindow, IsIconic, IsWindowVisible, SetForegroundWindow, ShowWindow,
@@ -503,7 +508,7 @@ mod windows {
                 0,
                 std::ptr::null(),
                 OPEN_EXISTING,
-                0,
+                FILE_FLAG_OVERLAPPED,
                 std::ptr::null_mut(),
             );
             if pipe != INVALID_HANDLE_VALUE {
@@ -612,8 +617,8 @@ mod windows {
         );
         let length = u32::try_from(payload.len())
             .map_err(|_| "Tauridium activation payload length overflow".to_string())?;
-        write_all(pipe, &length.to_le_bytes())?;
-        write_all(pipe, payload)?;
+        write_all(pipe, &length.to_le_bytes(), deadline)?;
+        write_all(pipe, payload, deadline)?;
 
         let mut ack = [0_u8; 1];
         loop {
@@ -643,7 +648,7 @@ mod windows {
         }
         // Receipt is an optional transport extension: an older primary may close
         // after its original FlushFileBuffers completed. Its valid ACK still wins.
-        if let Err(error) = write_all(pipe, &[ACTIVATION_ACK]) {
+        if let Err(error) = write_all(pipe, &[ACTIVATION_ACK], deadline) {
             startup_diagnostics::log("secondary", "activation.receipt.compatibility", &error);
         }
         if ack[0] != ACTIVATION_ACK {
@@ -674,7 +679,7 @@ mod windows {
             unsafe {
                 let pipe = CreateNamedPipeW(
                     pipe_name.as_ptr(),
-                    PIPE_ACCESS_DUPLEX,
+                    PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
                     PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
                     PIPE_UNLIMITED_INSTANCES,
                     PIPE_BUFFER_BYTES,
@@ -693,8 +698,7 @@ mod windows {
                     continue;
                 }
 
-                let connected = ConnectNamedPipe(pipe, std::ptr::null_mut()) != 0
-                    || GetLastError() == ERROR_PIPE_CONNECTED;
+                let connected = connect_pipe(pipe).is_ok();
                 if connected {
                     if let Err(error) = handle_activation_client(pipe, &target) {
                         startup_diagnostics::log("primary", "activation.request.error", &error);
@@ -739,11 +743,15 @@ mod windows {
                 "activation.rejected",
                 &error,
             );
-            write_all(pipe, &[ACTIVATION_NACK])?;
+            write_all(
+                pipe,
+                &[ACTIVATION_NACK],
+                Instant::now() + ACK_RECEIPT_WINDOW,
+            )?;
             await_ack_receipt(pipe);
             return Err(error);
         }
-        write_all(pipe, &[ACTIVATION_ACK])?;
+        write_all(pipe, &[ACTIVATION_ACK], Instant::now() + ACK_RECEIPT_WINDOW)?;
         startup_diagnostics::log_for_path(
             diagnostics_log.as_deref(),
             "primary",
@@ -792,48 +800,153 @@ mod windows {
                 }
             },
             |destination| {
-                let mut received = 0_u32;
-                if ReadFile(
+                let mut operation = PipeOperation::new(pipe)?;
+                let started = ReadFile(
                     pipe,
                     destination.as_mut_ptr(),
                     destination.len() as u32,
-                    &mut received,
                     std::ptr::null_mut(),
-                ) == 0
-                {
-                    Err(format!(
-                        "Unable to read Tauridium activation pipe: {}",
-                        std::io::Error::last_os_error()
-                    ))
-                } else {
-                    Ok(received as usize)
-                }
+                    operation.overlapped.as_mut(),
+                );
+                operation.complete(started, Some(deadline))
             },
         )
     }
 
-    unsafe fn write_all(pipe: HANDLE, buffer: &[u8]) -> Result<(), String> {
-        let mut offset = 0_usize;
-        while offset < buffer.len() {
-            let remaining = u32::try_from(buffer.len() - offset).unwrap_or(u32::MAX);
-            let mut written = 0_u32;
-            if WriteFile(
-                pipe,
-                buffer[offset..].as_ptr(),
-                remaining,
-                &mut written,
-                std::ptr::null_mut(),
-            ) == 0
-            {
+    // The OVERLAPPED allocation/event and caller's buffer must remain alive until
+    // cancellation completes. Never return a timed-out borrowed buffer to its
+    // caller while the kernel can still access it.
+    struct PipeOperation {
+        pipe: HANDLE,
+        overlapped: Box<OVERLAPPED>,
+        pending: bool,
+    }
+
+    impl PipeOperation {
+        unsafe fn new(pipe: HANDLE) -> Result<Self, String> {
+            let event = CreateEventW(std::ptr::null(), 1, 0, std::ptr::null());
+            if event.is_null() {
                 return Err(format!(
-                    "Unable to write Tauridium activation pipe: {}",
+                    "Unable to create Tauridium pipe event: {}",
                     std::io::Error::last_os_error()
                 ));
             }
-            if written == 0 {
+            Ok(Self {
+                pipe,
+                overlapped: Box::new(OVERLAPPED {
+                    hEvent: event,
+                    ..OVERLAPPED::default()
+                }),
+                pending: false,
+            })
+        }
+
+        unsafe fn complete(
+            &mut self,
+            started: i32,
+            deadline: Option<Instant>,
+        ) -> Result<usize, String> {
+            if started != 0 {
+                let mut transferred = 0;
+                if GetOverlappedResult(self.pipe, self.overlapped.as_ref(), &mut transferred, 0)
+                    != 0
+                {
+                    return Ok(transferred as usize);
+                }
+                return Err(format!(
+                    "Unable to inspect completed Tauridium pipe I/O: {}",
+                    std::io::Error::last_os_error()
+                ));
+            }
+            let error = GetLastError();
+            if error != ERROR_IO_PENDING {
+                return Err(format!(
+                    "Tauridium activation pipe I/O failed: {}",
+                    std::io::Error::from_raw_os_error(error as i32)
+                ));
+            }
+            self.pending = true;
+            let milliseconds = match deadline {
+                Some(deadline) => {
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    if remaining.is_zero() {
+                        return Err("Tauridium activation pipe I/O exceeded its deadline".into());
+                    }
+                    remaining
+                        .as_millis()
+                        .saturating_add(1)
+                        .min(u128::from(INFINITE - 1)) as u32
+                }
+                // Only the idle listener's ConnectNamedPipe has no deadline.
+                None => INFINITE,
+            };
+            let mut received = 0;
+            if GetOverlappedResultEx(
+                self.pipe,
+                self.overlapped.as_ref(),
+                &mut received,
+                milliseconds,
+                0,
+            ) != 0
+            {
+                self.pending = false;
+                return Ok(received as usize);
+            }
+            let error = GetLastError();
+            if error == WAIT_TIMEOUT {
+                return Err("Tauridium activation pipe I/O exceeded its deadline".into());
+            }
+            Err(format!(
+                "Tauridium activation pipe completion failed: {}",
+                std::io::Error::from_raw_os_error(error as i32)
+            ))
+        }
+    }
+
+    impl Drop for PipeOperation {
+        fn drop(&mut self) {
+            unsafe {
+                if self.pending {
+                    CancelIoEx(self.pipe, self.overlapped.as_ref());
+                    let mut transferred = 0;
+                    // Drain kernel cancellation before dropping the borrowed I/O
+                    // storage. No untrusted peer read is needed for cancellation.
+                    GetOverlappedResult(self.pipe, self.overlapped.as_ref(), &mut transferred, 1);
+                }
+                CloseHandle(self.overlapped.hEvent);
+            }
+        }
+    }
+
+    unsafe fn connect_pipe(pipe: HANDLE) -> Result<(), String> {
+        let mut operation = PipeOperation::new(pipe)?;
+        let started = ConnectNamedPipe(pipe, operation.overlapped.as_mut());
+        if started == 0 && GetLastError() == ERROR_PIPE_CONNECTED {
+            return Ok(());
+        }
+        operation.complete(started, None).map(|_| ())
+    }
+
+    unsafe fn write_all(pipe: HANDLE, buffer: &[u8], deadline: Instant) -> Result<(), String> {
+        let mut offset = 0_usize;
+        while offset < buffer.len() {
+            let remaining = u32::try_from(buffer.len() - offset).unwrap_or(u32::MAX);
+            if Instant::now() >= deadline {
+                return Err("Tauridium activation pipe write exceeded its deadline".into());
+            }
+            let mut operation = PipeOperation::new(pipe)?;
+            let started = WriteFile(
+                pipe,
+                buffer[offset..].as_ptr(),
+                remaining,
+                std::ptr::null_mut(),
+                operation.overlapped.as_mut(),
+            );
+            let written = operation.complete(started, Some(deadline))?;
+            if written == 0 || written > remaining as usize {
                 return Err("Tauridium activation pipe accepted no data".into());
             }
-            offset += written as usize;
+            offset += written;
         }
         Ok(())
     }
@@ -850,8 +963,7 @@ mod windows {
             }
         }
 
-        #[test]
-        fn connected_silent_and_partial_peers_cannot_block_the_native_pipe_forever() {
+        fn connected_pair() -> (OwnedHandle, OwnedHandle) {
             let mut random = [0_u8; 16];
             getrandom::fill(&mut random).unwrap();
             let nonce: String = random.iter().map(|byte| format!("{byte:02x}")).collect();
@@ -866,7 +978,7 @@ mod windows {
             unsafe {
                 let pipe = CreateNamedPipeW(
                     name.as_ptr(),
-                    PIPE_ACCESS_DUPLEX,
+                    PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
                     PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
                     1,
                     4096,
@@ -887,7 +999,7 @@ mod windows {
                     0,
                     std::ptr::null(),
                     OPEN_EXISTING,
-                    0,
+                    FILE_FLAG_OVERLAPPED,
                     std::ptr::null_mut(),
                 );
                 assert_ne!(
@@ -897,10 +1009,15 @@ mod windows {
                     std::io::Error::last_os_error()
                 );
                 let client = OwnedHandle(client);
-                assert!(
-                    ConnectNamedPipe(server.0, std::ptr::null_mut()) != 0
-                        || GetLastError() == ERROR_PIPE_CONNECTED
-                );
+                connect_pipe(server.0).unwrap();
+                (server, client)
+            }
+        }
+
+        #[test]
+        fn connected_silent_and_partial_peers_cannot_block_the_native_pipe_forever() {
+            let (server, client) = connected_pair();
+            unsafe {
                 let started = Instant::now();
                 assert!(
                     read_exact(server.0, &mut [0; 4], started + Duration::from_millis(25))
@@ -908,7 +1025,7 @@ mod windows {
                         .contains("deadline")
                 );
                 assert!(started.elapsed() < Duration::from_secs(3));
-                write_all(client.0, &[42]).unwrap();
+                write_all(client.0, &[42], Instant::now() + Duration::from_secs(1)).unwrap();
                 let mut partial = [0_u8; 4];
                 assert!(read_exact(
                     server.0,
@@ -917,11 +1034,55 @@ mod windows {
                 )
                 .is_err());
                 assert_eq!(partial[0], 42);
-                write_all(server.0, &[ACTIVATION_ACK]).unwrap();
+                write_all(
+                    server.0,
+                    &[ACTIVATION_ACK],
+                    Instant::now() + Duration::from_secs(1),
+                )
+                .unwrap();
                 let started = Instant::now();
                 await_ack_receipt(server.0);
                 assert!(started.elapsed() < Duration::from_secs(3));
             }
+        }
+
+        #[test]
+        fn large_native_write_to_a_nonreading_peer_times_out_and_cancels_safely() {
+            let (_server, client) = connected_pair();
+            let payload = vec![42; MAX_ACTIVATION_PAYLOAD_BYTES];
+            let started = Instant::now();
+            let error =
+                unsafe { write_all(client.0, &payload, started + Duration::from_millis(25)) }
+                    .unwrap_err();
+            assert!(error.contains("deadline"), "{error}");
+            assert!(started.elapsed() < Duration::from_secs(3));
+        }
+
+        #[test]
+        fn large_native_overlapped_transfers_preserve_every_byte() {
+            let (server, client) = connected_pair();
+            let client_bits = client.0 as usize;
+            let expected = vec![42; MAX_ACTIVATION_PAYLOAD_BYTES];
+            let outgoing = expected.clone();
+            let writer = std::thread::spawn(move || unsafe {
+                write_all(
+                    client_bits as HANDLE,
+                    &outgoing,
+                    Instant::now() + Duration::from_secs(3),
+                )
+            });
+            let mut received = vec![0; expected.len()];
+            let read = unsafe {
+                read_exact(
+                    server.0,
+                    &mut received,
+                    Instant::now() + Duration::from_secs(3),
+                )
+            };
+            let written = writer.join().unwrap();
+            read.unwrap();
+            written.unwrap();
+            assert_eq!(received, expected);
         }
     }
 }
