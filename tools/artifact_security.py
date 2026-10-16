@@ -185,8 +185,18 @@ def zip_container(data: bytes) -> bool:
   # ZIP readers accept prepended bytes and empty/ZIP64 archives. Recognize the
   # same layouts before enforcing our narrower public-layout policy, including
   # renamed members and Git blobs. Never silently inspect only compressed bytes.
-  return (data.startswith((b"PK\x03\x04", b"PK\x05\x06", b"PK\x06\x06"))
-          or zipfile.is_zipfile(io.BytesIO(data)))
+  if data.startswith((b"PK\x03\x04", b"PK\x05\x06", b"PK\x06\x06")):
+    return True
+  # Newer Python probes also validate the first directory entry. A recognizable
+  # footer with a corrupt directory must still reach a rejecting parser, never
+  # degrade to raw inspection merely because that stricter probe returns False.
+  tail = data[-65557:]
+  marker = tail.rfind(b"PK\x05\x06")
+  if marker >= 0 and len(tail) - marker >= 22:
+    comment_size = struct.unpack_from("<H", tail, marker + 20)[0]
+    if marker + 22 + comment_size == len(tail):
+      return True
+  return zipfile.is_zipfile(io.BytesIO(data))
 
 
 def container(data: bytes) -> bool:

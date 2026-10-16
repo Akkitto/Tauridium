@@ -96,6 +96,8 @@ class ArtifactParserTests(unittest.TestCase):
         scanner = security.Scanner(Path(temporary), Path("/unused-tools"))
         prefixed = b"Harmless prefix" + payload
         self.assertTrue(security.container(prefixed))
+        with mock.patch.object(security.zipfile, "is_zipfile", return_value=False):
+          self.assertTrue(security.container(prefixed))
         with self.assertRaises((SystemExit, zipfile.BadZipFile, security.ArtifactRejection)):
           scanner.save(prefixed, "nested/renamed.bin")
 
