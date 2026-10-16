@@ -99,9 +99,9 @@ def main() -> int:
     xdo("click", 1)
     time.sleep(0.3)
 
-  def top(width, height):
+  def top(width, height, *, steps=30):
     xdo("mousemove", "--sync", width - 25, height // 2)
-    xdo("click", "--repeat", 30, "--delay", 15, 4)
+    xdo("click", "--repeat", steps, "--delay", 15, 4)
     time.sleep(0.3)
 
   for theme in args.theme or ("dark", "light", "oled"):
@@ -182,18 +182,18 @@ def main() -> int:
               click(control)
               preference = {"directory": "", "askEachDownload": False}
               wait_for(lambda: saved("serviceDownloadSettings", {args.service_id: preference}), "special-ID own override")
-              top(width, height)
+              top(width, height, steps=120)
               text, rows, _ = capture(window, f"{name}-identity-close")
               click(word(rows, "close"))
               text, rows, control = open_identity_settings()
               assert "System Downloads folder" in text, "Saved special-ID override did not reopen"
               click(control)
               wait_for(lambda: saved("serviceDownloadSettings", {}), "special-ID override removal")
-              top(width, height)
+              top(width, height, steps=120)
               text, rows, _ = capture(window, f"{name}-identity-finish")
               click(word(rows, "close"))
-              top(width, height)
-              text, rows, _ = capture(window, f"{name}-identity-return")
+              top(width, height, steps=120)
+              text, rows, _ = capture(window, f"{name}-identity-return", psm=6)
               click(word(rows, "General"))
               text, _, _ = capture(window, f"{name}-identity-final")
               assert "Startup" in text, "Service Settings broke global navigation"
