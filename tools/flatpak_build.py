@@ -62,6 +62,44 @@ def verify_inputs(generated: dict[str, bytes], source: dict[str, bytes]) -> None
     raise SystemExit("error: selected Flatpak builder lock differs from its reviewed toolchain policy")
 
 
+def exact_tree_archive(revision: str) -> bytes:
+  """Export Git tree/blob bytes, never producer/tracked export attributes or filters."""
+  stream = io.BytesIO()
+  directories = set()
+  total = 0
+  with tarfile.open(fileobj=stream, mode="w", format=tarfile.PAX_FORMAT) as archive:
+    for row in git("ls-tree", "-r", "-z", "--full-tree", revision).split(b"\0"):
+      if not row:
+        continue
+      metadata, raw_path = row.split(b"\t", 1)
+      mode, kind, oid = metadata.split()
+      name = raw_path.decode("utf-8")
+      parts = PurePosixPath(name).parts
+      if (kind != b"blob" or mode not in (b"100644", b"100755")
+          or not re.fullmatch(rb"[0-9a-f]{40}", oid) or not parts or name != "/".join(parts)
+          or name.startswith("/") or "\\" in name or ":" in name
+          or any(part in (".", "..", ".git") for part in parts)):
+        raise SystemExit("error: exact Flatpak source requires safe regular Git tree entries")
+      data = git("cat-file", "blob", oid.decode("ascii"))
+      actual = hashlib.sha1(b"blob " + str(len(data)).encode("ascii") + b"\0" + data, usedforsecurity=False).hexdigest()
+      if actual != oid.decode("ascii"):
+        raise SystemExit("error: Flatpak source object does not match its Git identity")
+      total += len(data)
+      if total > 512 * 1024**2:
+        raise SystemExit("error: Flatpak source snapshot exceeds its byte budget")
+      for index in range(1, len(parts)):
+        parent = "/".join(parts[:index])
+        if parent not in directories:
+          entry = tarfile.TarInfo(parent)
+          entry.type, entry.mode = tarfile.DIRTYPE, 0o755
+          archive.addfile(entry)
+          directories.add(parent)
+      entry = tarfile.TarInfo(name)
+      entry.mode, entry.size = (0o755 if mode == b"100755" else 0o644), len(data)
+      archive.addfile(entry, io.BytesIO(data))
+  return stream.getvalue()
+
+
 def snapshot_flatpak(archive: bytes, destination: Path) -> None:
   # Keep the original relative module/include/patch paths. Never relocate by a
   # basename search, copy ignored files, or extract archive links/special entries.
@@ -81,6 +119,7 @@ def snapshot_flatpak(archive: bytes, destination: Path) -> None:
         if stream is None:
           raise SystemExit("error: Flatpak configuration snapshot is incomplete")
         target.write_bytes(stream.read())
+        target.chmod(member.mode & 0o777)
 
 
 def local_manifest(text: str, archive: Path, digest: str) -> str:
@@ -120,12 +159,12 @@ def prepare(publication: bool, parent: Path) -> tuple[Path, Path]:
     raise SystemExit("error: Flatpak publication builder policy differs from selected source")
   parent.mkdir(parents=True, exist_ok=True)
   output = Path(tempfile.mkdtemp(prefix=revision[:12] + "-", dir=parent))
-  archive = git("archive", "--format=tar", revision)
+  archive = exact_tree_archive(revision)
   source = output / "source.tar"
   source.write_bytes(archive)
   digest = hashlib.sha256(archive).hexdigest()
   # Build configuration comes from reviewed HEAD; application source is explicit.
-  snapshot_flatpak(git("archive", "--format=tar", head, "flatpak"), output / "configuration")
+  snapshot_flatpak(archive if revision == head else exact_tree_archive(head), output / "configuration")
   manifest = output / "configuration" / MANIFEST
   manifest.write_text(local_manifest(text, source, digest), encoding="utf-8", newline="\n")
   (output / "identity.json").write_text(json.dumps({

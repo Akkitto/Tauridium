@@ -89,6 +89,37 @@ class FlatpakSnapshotTests(unittest.TestCase):
     with self.assertRaisesRegex(SystemExit, "hidden Git index"):
       build.prepare(False, Path(self.temporary.name) / "hidden")
 
+  def test_local_and_tracked_export_attributes_cannot_change_source_or_configuration(self):
+    source = self.root / "substitution.txt"
+    source.write_bytes(b"Literal $Format:%H$ stays unchanged\n")
+    script = self.root / "flatpak/executable.sh"
+    script.write_bytes(b"#!/bin/sh\nexit 0\n")
+    script.chmod(0o755)
+    (self.root / ".gitattributes").write_text("package-lock.json export-ignore\nsubstitution.txt export-subst\n", encoding="utf-8")
+    self.run_git("add", ".")
+    self.run_git("update-index", "--chmod=+x", "flatpak/executable.sh")
+    self.run_git("commit", "-qm", "Test: Add tracked archive attributes")
+    baseline = build.exact_tree_archive(self.run_git("rev-parse", "HEAD").strip())
+    (self.root / ".git/info/attributes").write_text("flatpak/* export-ignore\nsubstitution.txt export-ignore\n", encoding="utf-8")
+    self.run_git("config", "core.attributesFile", str(self.root / ".git/info/attributes"))
+    output, _ = build.prepare(False, Path(self.temporary.name) / "attribute-proof")
+    self.assertEqual((output / "source.tar").read_bytes(), baseline)
+    with tarfile.open(output / "source.tar") as archive:
+      for name in (*build.LOCKS, *build.GENERATED, "substitution.txt"):
+        self.assertEqual(archive.extractfile(name).read(), self.run_git("show", "HEAD:" + name).encode())
+      self.assertEqual(archive.getmember("flatpak/executable.sh").mode, 0o755)
+    self.assertEqual((output / "configuration/flatpak/executable.sh").read_bytes(), script.read_bytes())
+    if os.name == "posix":
+      self.assertEqual((output / "configuration/flatpak/executable.sh").stat().st_mode & 0o777, 0o755)
+
+  def test_source_snapshot_rejects_symlinks_and_gitlinks_instead_of_dereferencing_them(self):
+    for mode, kind in ((b"120000", b"blob"), (b"160000", b"commit")):
+      with self.subTest(mode=mode):
+        listing = mode + b" " + kind + b" " + b"a" * 40 + b"\tunsafe\0"
+        with mock.patch.object(build, "git", return_value=listing):
+          with self.assertRaisesRegex(SystemExit, "safe regular"):
+            build.exact_tree_archive("a" * 40)
+
   def test_old_publication_without_build_metadata_has_an_actionable_safe_error(self):
     actual_git = build.git
     def legacy_source(*arguments):
