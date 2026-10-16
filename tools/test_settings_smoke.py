@@ -29,6 +29,13 @@ class SettingsSmokeTests(unittest.TestCase):
     self.assertEqual(control_phrase([row("8", 10), row("seconds", 40)], "8 seconds"), (35, 50))
     self.assertIsNone(control_phrase([row("8", 10), row("seconds", 40), row("later", 70)], "8 seconds"))
 
+  def test_checkbox_symbol_does_not_hide_its_complete_label(self):
+    rows = [row("#\u00ae", 10), row("Override", 40), row("downloads", 70)]
+    self.assertEqual(control_phrase(rows, "Override downloads", checkbox=True), (65, 50))
+    self.assertIsNone(control_phrase(rows, "Override downloads"))
+    self.assertIsNone(control_phrase([row("Description", 10), *rows[1:]], "Override downloads", checkbox=True))
+    self.assertIsNone(control_phrase([*rows, row("later", 100)], "Override downloads", checkbox=True))
+
 
 if __name__ == "__main__":
   unittest.main()

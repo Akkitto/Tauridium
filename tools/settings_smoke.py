@@ -17,7 +17,7 @@ import time
 from nix_smoke import isolated_environment
 
 
-def control_phrase(rows: list[dict], label: str) -> tuple[int, int] | None:
+def control_phrase(rows: list[dict], label: str, *, checkbox=False) -> tuple[int, int] | None:
   """Locate a complete rendered value, never its description or a clipped value."""
   lines: dict[tuple, list[dict]] = {}
   for row in rows:
@@ -25,6 +25,12 @@ def control_phrase(rows: list[dict], label: str) -> tuple[int, int] | None:
     lines.setdefault(key, []).append(row)
   for words in lines.values():
     words.sort(key=lambda row: row["left"])
+    # A checked native checkbox can be recognized as a standalone symbol.
+    # Keep requiring the entire label; never accept a substring of a description.
+    if checkbox and len(words) > 1:
+      symbol = words[0]["text"].strip()
+      if 1 <= len(symbol) <= 3 and not any(character.isalnum() for character in symbol):
+        words = words[1:]
     # Ignore only the native dropdown indicator, not extra description words.
     if words[-1]["text"].strip() in ("v", "V", "⌄"):
       words = words[:-1]
@@ -65,17 +71,18 @@ def main() -> int:
       time.sleep(0.15)
     raise RuntimeError(f"Timed out waiting for {description}")
 
-  def capture(window, name):
+  def capture(window, name, *, psm=11):
     png = output / f"{name}.png"
     subprocess.run(["magick", "import", "-window", window, str(png)], check=True, timeout=10)
     rows = []
-    enlarged = subprocess.run(["magick", str(png), "-resize", "200%", "png:-"], capture_output=True, check=True, timeout=10)
-    ocr = subprocess.run(["tesseract", "stdin", "stdout", "--psm", "11", "tsv"], input=enlarged.stdout, capture_output=True, check=True, timeout=30)
+    scale = 3 if psm == 6 else 2
+    enlarged = subprocess.run(["magick", str(png), "-resize", f"{scale * 100}%", "png:-"], capture_output=True, check=True, timeout=10)
+    ocr = subprocess.run(["tesseract", "stdin", "stdout", "--psm", str(psm), "tsv"], input=enlarged.stdout, capture_output=True, check=True, timeout=30)
     rows.extend(csv.DictReader(io.StringIO(ocr.stdout.decode("utf-8")), delimiter="\t"))
     rows = [row for row in rows if row["text"].strip()]
     for row in rows:
       for key in ("left", "top", "width", "height"):
-        row[key] = round(int(row[key]) / 2)
+        row[key] = round(int(row[key]) / scale)
     text = " ".join(row["text"] for row in rows)
     (output / f"{name}.txt").write_text(text + "\n", encoding="utf-8")
     return text, rows, struct.unpack(">II", png.read_bytes()[16:24])
@@ -147,8 +154,9 @@ def main() -> int:
             assert "Startup" in text, text
             if args.service_id:
               def open_identity_settings():
-                text, rows, _ = capture(window, f"{name}-identity-navigation")
-                click(word(rows, "Services"))
+                # Dense tab text needs line OCR, unlike sparse switch controls.
+                text, rows, _ = capture(window, f"{name}-identity-navigation", psm=6)
+                click(word(rows, "Services", rightmost=True))
                 for step in range(24):
                   text, rows, _ = capture(window, f"{name}-identity-list-{step}")
                   if "Identity canary" in text and "Service settings" in text:
@@ -161,7 +169,7 @@ def main() -> int:
                   raise RuntimeError("Synthetic service Settings control is not reachable")
                 for step in range(32):
                   text, rows, _ = capture(window, f"{name}-identity-downloads-{step}")
-                  control = control_phrase(rows, "Override download settings for this service")
+                  control = control_phrase(rows, "Override download settings for this service", checkbox=True)
                   if control is not None:
                     return text, rows, control
                   xdo("mousemove", "--sync", width - 25, height // 2)
