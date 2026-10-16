@@ -10,10 +10,13 @@ advisory channel and verify it is private before attaching sensitive material.
 This file does not claim private reporting is enabled: the owner must activate
 and verify it as part of secure release setup.
 
-If the private reporting entry is unavailable, open only a non-sensitive request
-for a private security contact, without exploit/secret attachments. Do not invent
-an email address or send sensitive data through an unverified channel. Never use
-an application/service account password as a test credential.
+If the private reporting entry is unavailable, do not publish the report or attach
+sensitive material. This repository may have public issues/discussions disabled;
+they are not a promised fallback contact route. Use an already verified private
+maintainer contact if you have one, otherwise wait for the owner to enable private
+reporting. Do not invent an email address. Never use an application/service account
+password as a test credential. The owner must verify a working private reporting
+route before the next security-reviewed publication.
 
 A useful private report identifies the version/platform, expected boundary,
 minimal synthetic reproduction, impact and proposed mitigation. Prefer generated

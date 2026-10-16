@@ -13,7 +13,9 @@ NSIS, AppImage/SquashFS, DEB and RPM payloads. It scans raw bytes, contiguous AS
 and both UTF-16 byte orders, and base64/other encoded secrets using Gitleaks.
 Source Git configuration/ref/file inventories are checked before Git is invoked;
 all approved reachable Git objects are decoded and scanned, including deleted
-historical blobs. Local hooks, credentials, aliases, remotes, reflogs, unrelated
+historical blobs and recognized containers inside those blobs. Nesting context and
+global expansion budgets continue through Git/archive boundaries. Local hooks,
+credentials, aliases, remotes, reflogs, unrelated
 refs and unreachable producer objects never belong in a public source ZIP.
 
 No application, installer, DLL, archive script, extracted hook, maintainer script,
@@ -46,7 +48,14 @@ private key or whole detector rule is ignored. Public test vectors must never be
 used as application authentication keys.
 
 Synthetic regression controls cover plaintext, UTF-16, base64, nested archives,
-deleted approved Git-history secrets, inline-ignore bypass attempts, NSIS budgets,
+deleted compressed approved Git-history secrets, inline-ignore bypass attempts, NSIS budgets,
 Git-hook rejection, creation of auxiliary files and MSI fallback constraints.
 Set `TAURIDIUM_ARTIFACT_SECURITY_TOOLS` to the checksum-verified tool directory when
 running these integration controls. CI must run them, not accept environment skips.
+
+Untrusted parser/OS/process exception strings never belong in public diagnostics:
+they can contain private member names, paths or argv. The public scanner boundary
+emits stable error categories; only explicitly reviewed static rejections and
+rule/payload-hash findings use the detailed public channel. A valid outer archive
+with a corrupt nested archive is regression-tested through the actual CLI to
+ensure its sensitive synthetic member name is not printed before rejection.

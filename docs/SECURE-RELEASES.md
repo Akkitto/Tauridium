@@ -33,6 +33,40 @@ Preflight checks reviewer/tag restrictions without creating environments. Missin
 protection or scope confirmation fails closed. Repository/org secret locations and
 branch rules remain owner responsibilities, not settings silently changed by scripts.
 
+### Solo-maintainer configuration
+
+For the present one-maintainer project, use **Akkitto** as the required reviewer
+of both environments and leave **Prevent self-review** disabled. Keep administrator
+bypass disabled. This is an intentional pause to inspect the exact source/jobs
+before exposing a key or publishing bytes; it is not an independent second-person
+review and cannot protect against a compromised owner account. Use a passkey/MFA
+and review account recovery/access separately. Add independent review if a trusted
+maintainer joins later, rather than configuring a nonexistent reviewer now.
+
+In the default-branch ruleset require actual successful security, Linux, Windows
+native and both Nix architecture jobs. Select their observed check contexts after
+an authorized CI run; do not type an invented context that never runs. A solo
+maintainer can require PRs with **zero** outside approvals, merge their own passing
+PRs and retain an audit trail without locking themselves out. Preserve the existing
+deletion/force-push restrictions; do not silently replace unrelated owner rules.
+
+For tags matching `v*`, use an active no-bypass rule preventing updates/deletion.
+If tag creation must be restricted, use a separate creation rule with the owner
+allowed to create tags. Combining all three restrictions under one owner bypass
+would also permit tag rewriting and defeat the immutable-tag rule.
+
+Enable **Private vulnerability reporting** in GitHub repository security settings
+and verify that the private Report a vulnerability entry is actually available.
+Disabled public issues/discussions are not a replacement. The current integration
+does not provide authenticated administration access; local documentation and
+preflight code cannot activate these remote settings.
+
+Check secret **names/scopes**, not values, using the GitHub UI or `gh secret list`
+and `gh secret list --env release-signing`. If a key needs moving, enter it from
+the owner's existing secure store into the environment; GitHub cannot return its
+old secret value. Do not put a key on a command line or copy it into a builder.
+Set `RELEASE_KEY_SCOPE_CONFIRMED=true` only after this review is complete.
+
 ## Workflow boundaries
 
 The tag workflow uses these separate runners:
@@ -84,3 +118,28 @@ See [artifact inspection](ARTIFACT-SECURITY.md). Raw logs, profiles, screenshots
 scan corpora and full-Git recovery checkpoints stay private. Do not upload ignored
 evidence directories recursively. Static scans and signatures cannot prove absence
 of every secret or vulnerability; retain platform runtime and manual UX checks.
+
+### Recurring owner review
+
+- Daily: monitor the security workflow's fresh npm/RustSec results and actual
+  scanner controls. An unpushed workflow does not run; enable notification delivery
+  and investigate failures rather than treating a schedule as an operational proof.
+- Weekly: review dependency update PRs and the pinned Tauri CLI/scanner/toolchain
+  upstream releases. Reassess builder findings before their 15 November 2026 expiry;
+  maintenance assessments expire 15 January 2027. Do not extend them without evidence.
+- Monthly, and before a security release: review Nix inputs, GNOME SDK/platform,
+  WebKitGTK/WebView2, native libraries and vendored compatibility patches. Prepare
+  lock updates in a disposable private checkout; inspect the diff, then run actual
+  Nix package/install/VM checks and the local Flatpak build. No automatic merge,
+  floating source pin or unreviewed candidate build belongs under signing keys.
+- Before publication: review exact source, required checks, protections, key scope,
+  signatures/attestations and final remote draft bytes. Validate Windows transport,
+  real vault migration/cleanup, Settings, sign-in, file drops, downloads and Scoop.
+
+Native Windows unit gates now run before release bundling on both Windows targets.
+They include private-DACL checks, silent/partial/non-reading pipe peers, large
+overlapped transfers and a real Credential Manager migration/removal using only a
+new synthetic session. Cross-Clippy cannot establish that these tests passed on
+Windows; GUI/sign-in behavior also needs native execution. Pipe cancellation must
+finish before its borrowed buffers are dropped; bounded peer waits are not a claim
+of bounded kernel teardown on a malfunctioning OS.

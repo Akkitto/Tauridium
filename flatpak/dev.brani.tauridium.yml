@@ -1,3 +1,5 @@
+# Publication reference: validate its source/inputs with just flatpak-publication-check.
+# Local unreleased development uses just flatpak-build, not this historical pin.
 id: dev.brani.tauridium
 runtime: org.gnome.Platform
 runtime-version: '51'
