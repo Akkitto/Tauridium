@@ -16,13 +16,20 @@ env:
   NODE_OPTIONS: --no-deprecation
 
 jobs:
+  security:
+    uses: ./.github/workflows/security.yml
+
   nix:
     uses: ./.github/workflows/nix.yml
 
   gate:
     name: Release gates
+    needs: security
     runs-on: ubuntu-22.04
     timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -31,7 +38,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-          cache: npm
+          package-manager-cache: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
@@ -39,9 +46,6 @@ jobs:
         with:
           toolchain: 1.97.1
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: src-tauri
       - name: Install just
         run: cargo install just --locked --version 1.56.0
       - name: Initialize build environment
@@ -55,6 +59,11 @@ jobs:
           test "$GITHUB_REF_NAME" = "v$VERSION"
           git fetch origin master:refs/remotes/origin/master
           git merge-base --is-ancestor "$GITHUB_SHA" origin/master
+      - name: Verify existing owner-protected release environments
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_KEY_SCOPE_CONFIRMED: ${{ vars.RELEASE_KEY_SCOPE_CONFIRMED }}
+        run: python3 tools/release_environment.py
       - name: Run canonical release gates
         run: just ci
 
@@ -114,8 +123,6 @@ jobs:
             os: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
-    env:
-      TAURI_UPDATER_SIGNING_ENABLED: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -124,7 +131,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-          cache: npm
+          package-manager-cache: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
@@ -133,10 +140,6 @@ jobs:
           toolchain: 1.97.1
           targets: ${{ matrix.target }}
           components: rustfmt
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: src-tauri
-          key: ${{ matrix.target }}
       - name: Install just (Linux)
         if: runner.os == 'Linux'
         run: cargo install just --locked --version 1.56.0
@@ -152,20 +155,9 @@ jobs:
         run: just init
       - name: Scan Cargo cache for known malicious crates
         run: just rust-supply-chain-host
-      - name: Build native bundles with updater artifacts
-        if: env.TAURI_UPDATER_SIGNING_ENABLED == 'true'
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      - name: Build native bundles without any signing credentials
         run: just bundle-target ${{ matrix.target }}
-      - name: Build native bundles without updater artifacts
-        if: env.TAURI_UPDATER_SIGNING_ENABLED != 'true'
-        run: just bundle-target-no-updater ${{ matrix.target }}
-      - name: Collect and validate signed native assets
-        if: env.TAURI_UPDATER_SIGNING_ENABLED == 'true'
-        run: just package-native-signed ${{ matrix.target }}
-      - name: Collect native assets without updater signatures
-        if: env.TAURI_UPDATER_SIGNING_ENABLED != 'true'
+      - name: Collect exact unsigned native asset set
         run: just package-native ${{ matrix.target }}
       - name: Verify portable Windows package
         if: runner.os == 'Windows'
@@ -214,7 +206,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-          cache: npm
+          package-manager-cache: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
@@ -236,13 +228,13 @@ jobs:
             -Target '${{ matrix.target }}' `
             -PreviousVersion '0.0.0'
 
-  publish:
-    name: Finalize release
+  verify:
+    name: Keyless candidate verification
     needs: [handoff, build, scoop, nix]
-    runs-on: ubuntu-22.04
-    timeout-minutes: 20
-    permissions:
-      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      sha256: ${{ steps.seal.outputs.sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -251,52 +243,140 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-      - uses: dtolnay/rust-toolchain@cf201f30d2291af293e25b32e435b13c42d51aaf # 1.97.1
-        with:
-          toolchain: 1.97.1
-      - name: Install just
-        run: cargo install just --locked --version 1.56.0
-      - name: Download staged handoff assets
+      - name: Download exact same-run artifacts without merged directories
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: release-handoff
-          path: release/published-assets
-      - name: Download staged native assets
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: native-*
-          path: release/published-assets
-          merge-multiple: true
-      - name: Generate and validate release metadata
+          path: release/inputs
+      - name: Assemble bounded exact target inventories
+        run: python3 tools/assemble_release.py release/inputs release/unsigned
+      - name: Install pinned data-only scanners and MSI reader
         run: |
-          VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
-          just updater-manifest-if-signed release/published-assets
-          just scoop-release-manifest release/published-assets
-          just scoop-validate-manifest "release/published-assets/tauridium-${VERSION}-scoop.json" release/published-assets
-          just release-checksums release/published-assets
-      - name: Publish verified release atomically
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends msitools
+          python3 tools/security_tools.py "$RUNNER_TEMP/security-tools"
+      - name: Scan all decoded candidates including binary and Git history
+        run: python3 tools/artifact_security.py release/unsigned --tools "$RUNNER_TEMP/security-tools"
+      - name: Seal unsigned input bytes for the fresh signer
+        id: seal
+        run: |
+          DIGEST="$(python3 -I tools/release_snapshot.py seal release/unsigned --stage unsigned --commit "$GITHUB_SHA")"
+          [[ "$DIGEST" =~ ^[a-f0-9]{64}$ ]]
+          echo "sha256=$DIGEST" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: verified-unsigned
+          path: release/unsigned/*
+          compression-level: 0
+          if-no-files-found: error
+
+  sign:
+    name: Protected minimal updater signing
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: release-signing
+    outputs:
+      sha256: ${{ steps.sign.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Install only the pinned official standalone signer before key custody
+        run: python3 -I tools/security_tools.py "$RUNNER_TEMP/signer" --only minisign
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: verified-unsigned
+          path: release/unsigned
+      - name: Sign previously verified opaque bytes without build tools or artifact parsers
+        id: sign
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          INPUT_SHA256: ${{ needs.verify.outputs.sha256 }}
+        run: |
+          DIGEST="$(python3 -I tools/sign_release.py release/unsigned release/signed --minisign "$RUNNER_TEMP/signer/minisign" --input-sha256 "$INPUT_SHA256" --commit "$GITHUB_SHA")"
+          [[ "$DIGEST" =~ ^[a-f0-9]{64}$ ]]
+          echo "sha256=$DIGEST" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: verified-signed
+          path: release/signed/*
+          compression-level: 0
+          if-no-files-found: error
+
+  finalize:
+    name: Keyless final snapshot and provenance
+    needs: sign
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    outputs:
+      sha256: ${{ steps.finalize.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: verified-signed
+          path: release/signed
+      - name: Install pinned data-only scanners and MSI reader
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends msitools
+          python3 tools/security_tools.py "$RUNNER_TEMP/security-tools"
+          echo "$RUNNER_TEMP/security-tools" >> "$GITHUB_PATH"
+      - name: Reverify signatures and generate complete metadata without any private keys
+        id: finalize
+        env:
+          INPUT_SHA256: ${{ needs.sign.outputs.sha256 }}
+        run: |
+          DIGEST="$(python3 tools/finalize_release.py custody release/signed --output release/final --input-sha256 "$INPUT_SHA256" --commit "$GITHUB_SHA")"
+          [[ "$DIGEST" =~ ^[a-f0-9]{64}$ ]]
+          echo "sha256=$DIGEST" >> "$GITHUB_OUTPUT"
+      - name: Scan the exact final public snapshot before attestation and promotion
+        run: python3 tools/artifact_security.py release/final --tools "$RUNNER_TEMP/security-tools"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: release/final/SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: final-public-snapshot
+          path: release/final/*
+          compression-level: 0
+          if-no-files-found: error
+
+  publish:
+    name: Protected hash-only publication
+    needs: finalize
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: release-publishing
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: final-public-snapshot
+          path: release/final
+      - name: Publish only the exact verified bytes through a private draft
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            echo "A GitHub Release already exists for $GITHUB_REF_NAME; refusing to mutate published assets." >&2
-            exit 1
-          fi
-          mapfile -t files < <(
-            find release/published-assets -maxdepth 1 -type f \
-              ! -name 'release-notes.md' -print | sort
-          )
-          if [[ ${#files[@]} -eq 0 ]]; then
-            echo 'No verified release assets were staged.' >&2
-            exit 1
-          fi
-          gh release create "$GITHUB_REF_NAME" "${files[@]}" \
-            --verify-tag \
-            --latest \
-            --title "Tauridium ${GITHUB_REF_NAME#v}" \
-            --notes-file release/published-assets/release-notes.md
+          INPUT_SHA256: ${{ needs.finalize.outputs.sha256 }}
+        run: python3 -I tools/publish_release.py release/final --commit "$GITHUB_SHA" --input-sha256 "$INPUT_SHA256"

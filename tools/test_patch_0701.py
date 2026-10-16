@@ -22,7 +22,7 @@ class Patch0701Tests(unittest.TestCase):
     self.assertNotIn("--draft", WORKFLOW)
 
   def test_scoop_consumes_the_exact_native_artifact_from_the_same_run(self) -> None:
-    scoop = WORKFLOW.split("  scoop:", 1)[1].split("  publish:", 1)[0]
+    scoop = WORKFLOW.split("  scoop:", 1)[1].split("  verify:", 1)[0]
     self.assertIn("needs: build", scoop)
     self.assertIn("name: native-${{ matrix.target }}", scoop)
     self.assertIn("path: release/scoop-assets", scoop)
@@ -30,22 +30,24 @@ class Patch0701Tests(unittest.TestCase):
     self.assertNotIn("gh release", scoop)
 
   def test_public_release_is_created_only_after_all_validation_jobs(self) -> None:
+    verify = WORKFLOW.split("  verify:", 1)[1].split("  sign:", 1)[0]
+    self.assertIn("needs: [handoff, build, scoop, nix]", verify)
+    self.assertIn("python3 tools/assemble_release.py", verify)
+    self.assertNotIn("merge-multiple: true", WORKFLOW)
+    self.assertIn("needs: verify", WORKFLOW.split("  sign:", 1)[1].split("  finalize:", 1)[0])
+    self.assertIn("needs: sign", WORKFLOW.split("  finalize:", 1)[1].split("  publish:", 1)[0])
     publish = WORKFLOW.split("  publish:", 1)[1]
-    self.assertIn("needs: [handoff, build, scoop, nix]", publish)
-    self.assertIn("pattern: native-*", publish)
-    self.assertIn("merge-multiple: true", publish)
-    self.assertIn("just scoop-release-manifest release/published-assets", publish)
-    self.assertIn("just release-checksums release/published-assets", publish)
-    self.assertIn('gh release create "$GITHUB_REF_NAME" "${files[@]}"', publish)
-    self.assertIn("--verify-tag", publish)
-    self.assertIn("--latest", publish)
-    self.assertNotIn("gh release upload", publish)
-    self.assertNotIn("gh release edit", publish)
+    self.assertIn("needs: finalize", publish)
+    self.assertIn("environment: release-publishing", publish)
+    self.assertIn("--input-sha256", publish)
+    self.assertNotIn("tools/artifact_security.py", publish)
+    self.assertNotIn("cargo", publish)
 
   def test_release_job_refuses_to_mutate_an_existing_public_release(self) -> None:
-    publish = WORKFLOW.split("  publish:", 1)[1]
-    self.assertIn('if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then', publish)
-    self.assertIn("refusing to mutate published assets", publish)
+    publish = (ROOT / "tools/publish_release.py").read_text(encoding="utf-8")
+    self.assertIn("refusing to overwrite or replace any assets", publish)
+    self.assertIn("verify_remote_assets(staged, snapshot)", publish)
+    self.assertNotIn('"upload"', publish)
 
 
 if __name__ == "__main__":

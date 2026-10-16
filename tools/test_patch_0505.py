@@ -55,24 +55,25 @@ class Patch0505Tests(unittest.TestCase):
       "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
       "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
       "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
-      "Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6",
       "just ci",
       "just package-handoff",
       "just bundle-target ${{ matrix.target }}",
-      "just package-native-signed ${{ matrix.target }}",
-      "just updater-manifest-if-signed release/published-assets",
-      "just release-checksums release/published-assets",
+      "just package-native ${{ matrix.target }}",
+      "python3 -I tools/sign_release.py",
+      "python3 tools/finalize_release.py custody",
       "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
       "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
-      "gh release create \"$GITHUB_REF_NAME\"",
+      "python3 -I tools/publish_release.py",
       "windows-11-arm",
       "ubuntu-22.04-arm",
     ):
       self.assertIn(marker, workflow)
     self.assertNotIn("macos-latest", workflow)
     self.assertNotIn("tauri-apps/tauri-action", workflow)
+    self.assertNotIn("Swatinem/rust-cache@", workflow)
+    self.assertNotIn("cache: npm", workflow)
     self.assertIn("permissions:\n  contents: read", workflow)
-    self.assertIn("bundle-target-no-updater", workflow)
+    self.assertNotIn("TAURI_UPDATER_SIGNING_ENABLED", workflow)
     self.assertIn("package-native ${{ matrix.target }}", workflow)
 
   def test_just_exposes_release_build_and_metadata_steps(self) -> None:

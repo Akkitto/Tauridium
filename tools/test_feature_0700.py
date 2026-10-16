@@ -158,10 +158,11 @@ class Feature0700Tests(unittest.TestCase):
   def test_release_publishes_submission_ready_manifest_and_checksums(self) -> None:
     workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     release_assets = (TOOLS / "release_assets.py").read_text(encoding="utf-8")
-    self.assertIn("just scoop-release-manifest release/published-assets", workflow)
-    self.assertIn("just scoop-validate-manifest", workflow)
-    self.assertIn('"release/published-assets/tauridium-${VERSION}-scoop.json"', workflow)
-    self.assertIn("just release-checksums release/published-assets", workflow)
+    finalizer = (TOOLS / "finalize_release.py").read_text(encoding="utf-8")
+    self.assertIn("python3 tools/finalize_release.py custody", workflow)
+    self.assertIn("scoop.generate_release_manifest", finalizer)
+    self.assertIn("scoop.validate_release_manifest", finalizer)
+    self.assertIn("release_assets.write_checksums", finalizer)
     self.assertIn("Windows releases", release_assets)
     self.assertIn("generated Scoop manifest", release_assets)
 

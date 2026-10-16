@@ -20,7 +20,7 @@ class Patch0714Tests(unittest.TestCase):
       CARGO,
     )
     self.assertIn(
-      'zip = { version = "=4.6.1", default-features = false, features = ["deflate-flate2"] }',
+      'zip = { version = "=9.0.4", default-features = false, features = ["deflate-flate2"] }',
       CARGO,
     )
 

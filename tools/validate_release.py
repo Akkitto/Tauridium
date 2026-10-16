@@ -200,7 +200,7 @@ def main() -> int:
     "def ensure_tauri_cli() -> None:",
     '["cargo", "tauri", "--version"]',
     '["cargo", "install", "tauri-cli", "--locked", "--version", version, "--force"]',
-    "ensure_pinned_rust_toolchain()\n      ensure_tauri_cli()\n      install_javascript_dependencies()",
+    "ensure_pinned_rust_toolchain()\n      ensure_tauri_cli()\n      ensure_cargo_audit()\n      install_javascript_dependencies()",
   ):
     if marker not in init_py:
       fail(f"Unix initializer is missing Tauri CLI bootstrap coverage: {marker}")
@@ -1630,7 +1630,7 @@ def main() -> int:
     fail("CI/release workflows must not float Rust stable; use pinned Rust 1.97.1")
   if ci.count("toolchain: 1.97.1") < 2:
     fail("CI does not pin every Rust job to Rust 1.97.1")
-  if release_workflow.count("toolchain: 1.97.1") < 4:
+  if release_workflow.count("toolchain: 1.97.1") != 3:
     fail("tagged release workflow does not pin Rust 1.97.1 in all Rust jobs")
   if "run: just ci" not in ci or "run: just ci" not in release_workflow:
     fail("CI and release workflow must execute the canonical just ci gate")
@@ -1647,15 +1647,14 @@ def main() -> int:
     "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
     "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
     "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
-    "Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6",
     "just package-handoff",
     "just bundle-target ${{ matrix.target }}",
-    "just package-native-signed ${{ matrix.target }}",
-    "just updater-manifest-if-signed release/published-assets",
-    "just release-checksums release/published-assets",
+    "just package-native ${{ matrix.target }}",
+    "python3 -I tools/sign_release.py",
+    "python3 tools/finalize_release.py custody",
     "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
     "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
-    'gh release create "$GITHUB_REF_NAME" "${files[@]}"',
+    'python3 -I tools/publish_release.py',
     "windows-11-arm",
     "ubuntu-22.04-arm",
   ):
@@ -1668,13 +1667,15 @@ def main() -> int:
   if "permissions:\n  contents: read" not in release_workflow:
     fail("release workflow does not default to least-privilege read permissions")
   for marker in (
-    "bundle-target-no-updater",
-    "if: env.TAURI_UPDATER_SIGNING_ENABLED == 'true'",
-    "if: env.TAURI_UPDATER_SIGNING_ENABLED != 'true'",
+    "environment: release-signing",
+    "environment: release-publishing",
     "just package-native ${{ matrix.target }}",
   ):
     if marker not in release_workflow:
-      fail(f"release workflow is missing optional updater-signing fallback: {marker}")
+      fail(f"release workflow is missing isolated signing/publication behavior: {marker}")
+  build_job = release_workflow.split("  build:", 1)[1].split("  scoop:", 1)[0]
+  if "secrets." in build_job or "TAURI_UPDATER_SIGNING_ENABLED" in release_workflow:
+    fail("release builds must never receive signing secrets or silently publish unsigned updates")
   if "Require updater signing key" in release_workflow:
     fail("release workflow must not fail normal native packaging solely because updater signing is unavailable")
   no_updater_config = json.loads(read("src-tauri/tauri.no-updater.conf.json"))
@@ -1952,9 +1953,9 @@ def main() -> int:
     ('repository: ScoopInstaller/Scoop', release_workflow),
     ('ref: b588a06e41d920d2123ec70aee682bae14935939', release_workflow),
     ('os: windows-11-arm', release_workflow),
-    ('just scoop-release-manifest release/published-assets', release_workflow),
-    ('just scoop-validate-manifest', release_workflow),
-    ('tauridium-${VERSION}-scoop.json', release_workflow),
+    ('scoop.generate_release_manifest', read('tools/finalize_release.py')),
+    ('scoop.validate_release_manifest', read('tools/finalize_release.py')),
+    ('f"tauridium-{release_version}-scoop.json"', read('tools/finalize_release.py')),
     ('& $CheckverCommand -App $AutoupdateManifestPath -Update -ThrowError', scoop_smoke),
     ('Scoop autoupdate produced an unexpected portable SHA-256.', scoop_smoke),
     ('& $ScoopCommand update tauridium', scoop_smoke),
@@ -1994,15 +1995,16 @@ def main() -> int:
     "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
     "name: release-handoff",
     "name: native-${{ matrix.target }}",
-    "pattern: native-*",
-    "merge-multiple: true",
-    'gh release create "$GITHUB_REF_NAME" "${files[@]}"',
+    "python3 tools/assemble_release.py",
+    "python3 -I tools/publish_release.py",
   ):
     if invariant not in release_workflow:
       fail(f"0.7.1 release-staging invariant is missing: {invariant}")
   for forbidden in ("gh release download", "--draft", "gh release upload", "gh release edit"):
     if forbidden in release_workflow:
       fail(f"0.7.1 release workflow must not use draft-release staging: {forbidden}")
+  if "merge-multiple: true" in release_workflow:
+    fail("release staging must not merge target downloads and silently overwrite duplicate files")
   for test_marker in (
     "test_release_validation_uses_actions_artifacts_not_draft_release_assets",
     "test_scoop_consumes_the_exact_native_artifact_from_the_same_run",

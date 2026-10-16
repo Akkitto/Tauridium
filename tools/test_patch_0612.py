@@ -29,26 +29,27 @@ class Patch0612Tests(unittest.TestCase):
 
   def test_release_builds_without_updater_artifacts_when_signing_key_is_unavailable(self) -> None:
     self.assertIn("bundle-target-no-updater target:", self.justfile)
-    self.assertIn("src-tauri/tauri.no-updater.conf.json", self.justfile)
+    self.assertIn("src-tauri/tauri.no-updater.conf.json", (ROOT / "tools/tauri_build.py").read_text(encoding="utf-8"))
     self.assertIn("\"createUpdaterArtifacts\": false", self.no_updater_config)
-    self.assertIn("if: env.TAURI_UPDATER_SIGNING_ENABLED == 'true'", self.workflow)
-    self.assertIn("if: env.TAURI_UPDATER_SIGNING_ENABLED != 'true'", self.workflow)
-    self.assertIn("run: just bundle-target-no-updater ${{ matrix.target }}", self.workflow)
+    build = self.workflow.split("  build:", 1)[1].split("  scoop:", 1)[0]
+    self.assertNotIn("secrets.", build)
+    self.assertNotIn("TAURI_UPDATER_SIGNING_ENABLED", self.workflow)
+    self.assertIn("run: just bundle-target ${{ matrix.target }}", build)
     self.assertIn("run: just package-native ${{ matrix.target }}", self.workflow)
     self.assertNotIn("Require updater signing key", self.workflow)
 
   def test_signed_release_path_stays_strict_when_signing_is_configured(self) -> None:
     self.assertIn("run: just bundle-target ${{ matrix.target }}", self.workflow)
-    self.assertIn("run: just package-native-signed ${{ matrix.target }}", self.workflow)
-    self.assertIn("TAURI_UPDATER_SIGNING_ENABLED: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}", self.workflow)
+    self.assertIn("environment: release-signing", self.workflow)
+    self.assertIn("python3 -I tools/sign_release.py", self.workflow)
     self.assertIn("TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}", self.workflow)
 
   def test_publish_only_uploads_updater_manifest_when_one_was_generated(self) -> None:
-    self.assertIn("just updater-manifest-if-signed release/published-assets", self.workflow)
-    publish = self.workflow.split("- name: Publish verified release atomically", 1)[1]
-    self.assertIn("find release/published-assets -maxdepth 1 -type f", publish)
-    self.assertIn("! -name 'release-notes.md'", publish)
-    self.assertNotIn("latest.json", publish)
+    self.assertIn("python3 tools/finalize_release.py custody", self.workflow)
+    publish = (ROOT / "tools/publish_release.py").read_text(encoding="utf-8")
+    self.assertIn('policy.public_names(release_version)', publish)
+    self.assertIn('release_snapshot.verify', publish)
+    self.assertIn('"--draft=false"', publish)
     self.assertIn("updater-manifest-if-signed assets_dir=\"release/published-assets\":", self.justfile)
 
   def test_unsigned_and_partial_updater_asset_sets_are_distinguished(self) -> None:

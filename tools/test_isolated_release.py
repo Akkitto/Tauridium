@@ -18,6 +18,7 @@ import release_policy
 import sign_release
 import release_snapshot
 import updater_signature
+from package_release import ZIP_TIME
 
 
 class IsolatedReleaseTests(unittest.TestCase):
@@ -133,7 +134,7 @@ class IsolatedReleaseTests(unittest.TestCase):
           path = staged / name
           if name.endswith(".zip"):
             with zipfile.ZipFile(path, "w") as archive:
-              entry = zipfile.ZipInfo("tauridium.exe" if "portable" in name else "README.md", release_assets.ZIP_TIME)
+              entry = zipfile.ZipInfo("tauridium.exe" if "portable" in name else "README.md", ZIP_TIME)
               entry.compress_type = zipfile.ZIP_DEFLATED
               archive.writestr(entry, b"Synthetic inert custody fixture")
           elif name.endswith(".sha256"):

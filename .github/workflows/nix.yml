@@ -45,14 +45,5 @@ jobs:
       - name: Test declarative NixOS installation in isolated VM
         if: matrix.system == 'x86_64-linux'
         run: nix --extra-experimental-features 'nix-command flakes' build .#nixos-test --no-link --print-build-logs
-      - name: Preserve Nix smoke evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: nix-smoke-${{ matrix.system }}
-          if-no-files-found: warn
-          path: |
-            release/evidence/nix-smoke
-            release/evidence/download-toast-smoke
-            release/evidence/settings-smoke
-            release/evidence/nix-integration
+      # Raw ignored evidence stays private. Public evidence requires the explicit
+      # reviewed version/hash allowlist; never recursively upload profile/log/OCR data.

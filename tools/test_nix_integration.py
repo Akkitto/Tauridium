@@ -90,7 +90,8 @@ class NixIntegrationTests(unittest.TestCase):
     workflow = (ROOT / ".github/workflows/nix.yml").read_text(encoding="utf-8")
     recipes = (ROOT / "justfile").read_text(encoding="utf-8")
     self.assertIn("--command just nix-integration", workflow)
-    self.assertIn("release/evidence/nix-integration", workflow)
+    self.assertNotIn("actions/upload-artifact@", workflow)
+    self.assertIn("reviewed version/hash allowlist", workflow)
     self.assertIn("just nix-integration", recipes.split("nix-check:\n", 1)[1].split("[unix]", 1)[0])
 
   def test_documented_release_input_matches_package_version(self):
