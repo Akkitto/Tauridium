@@ -408,7 +408,9 @@ class RealArtifactScannerTests(unittest.TestCase):
   def rendered_token_png(self, root):
     image = root / "synthetic.png"
     for _ in range(10):
-      token = "AKIA" + "".join(secrets.choice("ACEFHJKLPRTVXY347") for _ in range(16))
+      # Sampling without replacement avoids accidental low-entropy fixtures that
+      # the real detector intentionally filters; do not rely on a lucky token.
+      token = "AKIA" + "".join(secrets.SystemRandom().sample("ACEFHJKLPRTVXY347", 16))
       subprocess.run([shutil.which("magick") or shutil.which("convert"), "-size", "2600x180", "xc:white",
                       "-font", "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", "-pointsize", "64",
                       "-fill", "black", "-gravity", "center", "-annotate", "0", "token = " + token, str(image)],
@@ -417,6 +419,12 @@ class RealArtifactScannerTests(unittest.TestCase):
       if token.encode() in text:
         break
     self.assertTrue(token.encode() in text, "OCR positive control could not read the synthetic token exactly")
+    control = root / "ocr-positive-control"
+    control.mkdir()
+    scanner = self.scanner(control)
+    scanner.save(text, "OCR-CONTROL", decode=False)
+    with self.assertRaisesRegex(RuntimeError, "secret scan rejected"):
+      scanner.scan()
     return token, image.read_bytes()
 
   def scanner(self, root):
