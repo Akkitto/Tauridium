@@ -40,6 +40,15 @@ jobs:
         run: python3 tools/audit_dependencies.py
       - name: Install checksum-verified official artifact scanners
         run: python3 tools/security_tools.py "$RUNNER_TEMP/security-tools"
+      - name: Install data-only package readers and real OCR test prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends msitools wixl tesseract-ocr imagemagick fonts-dejavu-core
+          command -v msiinfo
+          command -v wixl
+          command -v tesseract
+          command -v convert
+          test -f /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf
       - name: Exercise actual scanners with harmless and deliberately seeded controls
         env:
           TAURIDIUM_ARTIFACT_SECURITY_TOOLS: ${{ runner.temp }}/security-tools

@@ -183,7 +183,9 @@ def public_selftests(data: bytes, name: str, approved: set[str]) -> tuple[bytes,
 
 def container(data: bytes) -> bool:
   return (data.startswith((b"PK\x03\x04", b"\x1f\x8b", b"\xfd7zXZ\0", b"BZh", b"MSCF",
-                           b"7z\xbc\xaf\x27\x1c", b"070701", b"070702", b"\x28\xb5\x2f\xfd", b"hsqs"))
+                           b"7z\xbc\xaf\x27\x1c", b"070701", b"070702", b"\x28\xb5\x2f\xfd", b"hsqs",
+                           b"!<arch>\n", bytes.fromhex("edabeedb"), bytes.fromhex("d0cf11e0a1b11ae1")))
+          or data.startswith(b"\x7fELF") and data[8:11] in (b"AI\x01", b"AI\x02")
           or len(data) > 262 and data[257:262] == b"ustar")
 
 
@@ -194,6 +196,9 @@ class Scanner:
     self.corpus.mkdir(mode=0o700)
     self.sources: dict[str, Path] = {}
     self.seen: set[str] = set()
+    self.inspected: set[str] = set()
+    self.decoded_payloads: set[str] = set()
+    self.ocr_completed: set[str] = set()
     self.expanded = 0
     self.records = 0
     self.public_vectors = 0
@@ -207,32 +212,39 @@ class Scanner:
     if len(data) > MAX_PAYLOAD or self.expanded > MAX_EXPANDED or self.records > 100_000 or depth > 8:
       raise ArtifactRejection("Artifact expansion exceeded its depth/file/byte budget")
     original_digest = hashlib.sha256(data).hexdigest()
-    if original_digest in self.seen:
-      return
     self.seen.add(original_digest)
+    # Deduplicate inspection work, never context-specific obligations. The same
+    # bytes can require OCR or a different scoped public-vector transform later.
     sanitized, count = public_selftests(data, name, self.approved)
-    self.public_vectors += count
-    path = self.corpus / (original_digest + ".payload")
-    path.write_bytes(sanitized)
-    path.chmod(0o600)
-    self.sources[path.name] = path
-    if "/evidence/" in name and Path(name).suffix.lower() == ".png":
+    inspected_digest = hashlib.sha256(sanitized).hexdigest()
+    path = self.corpus / (inspected_digest + ".payload")
+    if inspected_digest not in self.inspected:
+      self.inspected.add(inspected_digest)
+      self.public_vectors += count
+      path.write_bytes(sanitized)
+      path.chmod(0o600)
+      self.sources[path.name] = path
+      # Keep original byte strings in both UTF-16 byte orders; no lossy decoding.
+      for label, expression, encoding in (
+          ("ascii", rb"[\x20-\x7e\t]{8,}", "ascii"),
+          ("utf16le", rb"(?:[\x20-\x7e]\x00){8,}", "utf-16-le"),
+          ("utf16be", rb"(?:\x00[\x20-\x7e]){8,}", "utf-16-be")):
+        strings = [match.group(0).decode(encoding).encode("utf-8") for match in re.finditer(expression, sanitized)]
+        view = self.corpus / (inspected_digest + "." + label)
+        view.write_bytes(b"\n".join(strings))
+        view.chmod(0o600)
+        self.sources[view.name] = path
+    if ("evidence" in Path(name).parts and Path(name).suffix.lower() == ".png"
+        and original_digest not in self.ocr_completed):
       ocr = shutil.which("tesseract")
       if not ocr:
         raise ArtifactRejection("Reviewed public PNG evidence requires the OCR secret-scan gate")
       self.save(bounded_command([ocr, str(path.resolve()), "stdout"], limit=8 * 1024**2, timeout=60),
                 name + "/OCR-TEXT", depth=depth + 1, decode=False)
-    # Scan original byte strings in both UTF-16 byte orders too; no lossy decoding.
-    for label, expression, encoding in (
-        ("ascii", rb"[\x20-\x7e\t]{8,}", "ascii"),
-        ("utf16le", rb"(?:[\x20-\x7e]\x00){8,}", "utf-16-le"),
-        ("utf16be", rb"(?:\x00[\x20-\x7e]){8,}", "utf-16-be")):
-      strings = [match.group(0).decode(encoding).encode("utf-8") for match in re.finditer(expression, sanitized)]
-      view = self.corpus / (original_digest + "." + label)
-      view.write_bytes(b"\n".join(strings))
-      view.chmod(0o600)
-      self.sources[view.name] = path
-    if decode and (container(data) or data.startswith(b"MZ") and b"\xef\xbe\xad\xdeNullsoftInst" in data):
+      self.ocr_completed.add(original_digest)
+    if (decode and original_digest not in self.decoded_payloads
+        and (container(data) or data.startswith(b"MZ") and b"\xef\xbe\xad\xdeNullsoftInst" in data)):
+      self.decoded_payloads.add(original_digest)
       self.decode(path, name, depth)
 
   def decode(self, path: Path, name: str, depth: int, *, installer=False) -> None:
@@ -247,8 +259,12 @@ class Scanner:
     if not separator:
       raise ArtifactRejection("Artifact decoder returned no member inventory")
     nsis = b"Type = Nsis" in listing
-    if installer and not nsis:
+    if (installer or data.startswith(b"MZ") and b"\xef\xbe\xad\xdeNullsoftInst" in data) and not nsis:
       raise ArtifactRejection("Windows setup artifact is not an NSIS installer")
+    # The decoder identifies compound MSI databases from their bytes, including
+    # renamed/nested/Git-history objects. Never limit table inspection to a suffix.
+    if data.startswith(bytes.fromhex("d0cf11e0a1b11ae1")) and "Extension = msi" in header.splitlines():
+      self.msi(path, name, depth)
     solid, offset_base = nsis_solid_stream(data) if nsis else (None, 0)
     if solid is not None:
       self.save(solid, name + "/COMPLETE-NSIS-SOLID-STREAM", depth=depth + 1, decode=False)
@@ -372,26 +388,26 @@ class Scanner:
         self.decoded["git-" + kind] += 1
 
   def add(self, path: Path) -> None:
-    policy.regular(path)
+    policy.inspect_file(path)
     data = path.read_bytes()
-    self.save(data, path.name, decode=not path.name.endswith("-setup.exe"))
-    if path.name.endswith("-setup.exe") or path.suffix in (".AppImage", ".deb", ".rpm", ".msi"):
-      digest = hashlib.sha256(data).hexdigest()
-      self.decode(self.corpus / (digest + ".payload"), path.name, 0, installer=path.name.endswith("-setup.exe"))
-    if path.suffix == ".msi":
-      tool = shutil.which("msiinfo")
-      if not tool:
-        raise ArtifactRejection("MSI table/stream scanner requires msitools (msiinfo)")
-      for kind, operation in (("tables", "export"), ("streams", "extract")):
-        names = bounded_command([tool, kind, str(path.resolve())], limit=1024**2).decode("utf-8").splitlines()
-        for name in names:
-          # Default IDT export writes Binary/Icon files. SQL export is read-only
-          # (libmsi query/fetch/printf); object bytes are scanned via `extract`.
-          if operation == "export":
-            payload = self.msi_table(tool, path, name)
-          else:
-            payload = bounded_command([tool, operation, str(path.resolve()), name])
-          self.save(payload, path.name + "/MSI-" + kind + "/" + name)
+    if path.name.endswith("-setup.exe") and b"\xef\xbe\xad\xdeNullsoftInst" not in data:
+      raise ArtifactRejection("Windows setup artifact is not an NSIS installer")
+    self.save(data, path.name)
+
+  def msi(self, path: Path, name: str, depth: int) -> None:
+    tool = shutil.which("msiinfo")
+    if not tool:
+      raise ArtifactRejection("MSI table/stream scanner requires msitools (msiinfo)")
+    self.decoded["msi-metadata"] += 1
+    for kind, operation in (("tables", "export"), ("streams", "extract")):
+      names = bounded_command([tool, kind, str(path.resolve())], limit=1024**2).decode("utf-8").splitlines()
+      for member in names:
+        # SQL export is read-only; inspect object streams separately as data.
+        if operation == "export":
+          payload = self.msi_table(tool, path, member)
+        else:
+          payload = bounded_command([tool, operation, str(path.resolve()), member])
+        self.save(payload, name + "/MSI-" + kind + "/" + member, depth=depth + 1)
 
   @staticmethod
   def msi_table(tool: str, path: Path, name: str) -> bytes:

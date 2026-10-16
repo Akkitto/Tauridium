@@ -12,6 +12,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import tarfile
 import unittest
 from unittest import mock
 import zipfile
@@ -35,6 +36,47 @@ def synthetic_nsis(payload: bytes):
 
 
 class ArtifactParserTests(unittest.TestCase):
+  def test_recursive_dispatch_recognizes_packages_without_relying_on_filenames(self):
+    for data in (b"!<arch>\n", bytes.fromhex("edabeedb"), bytes.fromhex("d0cf11e0a1b11ae1"),
+                 b"\x7fELF" + bytes(4) + b"AI\x02"):
+      self.assertTrue(security.container(data))
+    self.assertFalse(security.container(b"\x7fELF" + bytes(64)))
+
+  def test_nested_renamed_msi_requires_the_auxiliary_table_gate(self):
+    with tempfile.TemporaryDirectory() as temporary:
+      scanner = security.Scanner(Path(temporary), Path("/unused-tools"))
+      with (mock.patch.object(security, "bounded_command", return_value=b"Type = Compound\nExtension = msi\n----------\n"),
+            mock.patch.object(scanner, "msi") as msi):
+        scanner.save(bytes.fromhex("d0cf11e0a1b11ae1") + bytes(64), "GIT-OBJECT/renamed", depth=3)
+        self.assertEqual(msi.call_args.args[1:], ("GIT-OBJECT/renamed", 3))
+
+  def test_decode_and_ocr_obligations_survive_prior_content_only_inspection(self):
+    with tempfile.TemporaryDirectory() as temporary:
+      scanner = security.Scanner(Path(temporary), Path("/unused-tools"))
+      png = b"\x89PNG\r\n\x1a\nsynthetic-control"
+      scanner.save(png, "assets/copy.png")
+      with mock.patch.object(security.shutil, "which", return_value=None):
+        with self.assertRaisesRegex(RuntimeError, "requires the OCR"):
+          scanner.save(png, "evidence/screenshot.png")
+      with (mock.patch.object(security.shutil, "which", return_value="synthetic-tesseract"),
+            mock.patch.object(security, "bounded_command", return_value=b"Harmless OCR") as ocr):
+        scanner.save(png, "evidence/screenshot.png")
+        scanner.save(png, "other/evidence/screenshot.png")
+        self.assertEqual(ocr.call_count, 1)
+      with mock.patch.object(scanner, "decode") as decode:
+        scanner.save(b"!<arch>\nsynthetic", "listing.bin", decode=False)
+        scanner.save(b"!<arch>\nsynthetic", "nested.bin")
+        decode.assert_called_once()
+
+  def test_scoped_public_vectors_do_not_suppress_an_unapproved_duplicate(self):
+    fixture = b"-----BEGIN PRIVATE KEY-----\nSYNTHETIC-NOT-A-KEY\n-----END PRIVATE KEY-----"
+    with tempfile.TemporaryDirectory() as temporary:
+      scanner = security.Scanner(Path(temporary), Path("/unused-tools"))
+      scanner.approved = {hashlib.sha256(security.normalized_pem(fixture)).hexdigest()}
+      scanner.save(fixture, "usr/lib/libgnutls.so.30")
+      scanner.save(fixture, "unapproved/key.pem")
+      self.assertTrue(any(fixture == path.read_bytes() for path in scanner.sources.values()))
+
   def test_public_errors_withhold_arbitrary_parser_paths_and_process_arguments(self):
     marker = "private-filename-never-publish"
     for error in (RuntimeError(marker), OSError(marker), ValueError(marker),
@@ -103,6 +145,108 @@ class ArtifactParserTests(unittest.TestCase):
 @unittest.skipUnless(TOOLS and (TOOLS / "gitleaks").is_file() and (TOOLS / "7zz").is_file(),
                      "Set TAURIDIUM_ARTIFACT_SECURITY_TOOLS to checksum-verified scanner directory")
 class RealArtifactScannerTests(unittest.TestCase):
+  @unittest.skipUnless(shutil.which("wixl") and shutil.which("msiinfo"), "Real MSI control requires wixl and msiinfo")
+  def test_renamed_nested_msi_property_tables_are_scanned(self):
+    with tempfile.TemporaryDirectory() as temporary:
+      root = Path(temporary)
+      token = self.token()
+      (root / "payload.txt").write_text("Harmless data, never executed", encoding="utf-8")
+      (root / "fixture.wxs").write_text(f'''<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+<Product Id="*" Name="Synthetic" Language="1033" Version="1.0.0" Manufacturer="Synthetic"
+ UpgradeCode="9A9AA0F3-B491-4096-8987-A7DCFA47E155">
+<Package InstallerVersion="200" Compressed="yes"/>
+<Property Id="SYNTHETIC_TOKEN" Value="{token}"/>
+<Binary Id="SyntheticBinary" SourceFile="payload.txt"/>
+<Icon Id="SyntheticIcon" SourceFile="payload.txt"/>
+<Media Id="1" Cabinet="fixture.cab" EmbedCab="yes"/>
+<Directory Id="TARGETDIR" Name="SourceDir"><Directory Id="ProgramFilesFolder">
+<Directory Id="INSTALLFOLDER" Name="Synthetic"><Component Id="Payload" Guid="*">
+<File Id="PayloadFile" Source="payload.txt" KeyPath="yes"/></Component></Directory></Directory></Directory>
+<Feature Id="Main" Level="1"><ComponentRef Id="Payload"/></Feature>
+</Product></Wix>''', encoding="utf-8")
+      subprocess.run(["wixl", "-o", "fixture.msi", "fixture.wxs"], cwd=root, capture_output=True, check=True, timeout=30)
+      outer = root / "renamed.zip"
+      with zipfile.ZipFile(outer, "w", compression=zipfile.ZIP_DEFLATED) as target:
+        target.writestr("renamed-object.bin", (root / "fixture.msi").read_bytes())
+      state = root / "scanner"
+      state.mkdir()
+      scanner = self.scanner(state)
+      scanner.add(outer)
+      self.assertEqual(scanner.decoded["msi-metadata"], 1)
+      with self.assertRaisesRegex(RuntimeError, "secret scan rejected") as caught:
+        scanner.scan()
+      self.assertNotIn(token, str(caught.exception))
+
+  def test_deb_secret_is_rejected_directly_nested_and_in_deleted_history(self):
+    def packed_tar(name, payload):
+      stream = io.BytesIO()
+      with tarfile.open(fileobj=stream, mode="w:gz") as archive:
+        entry = tarfile.TarInfo(name)
+        entry.size = len(payload)
+        archive.addfile(entry, io.BytesIO(payload))
+      return stream.getvalue()
+    def member(name, payload):
+      header = f'{name + "/":<16}{0:<12}{0:<6}{0:<6}{100644:<8}{len(payload):<10}`\n'.encode()
+      return header + payload + (b"\n" if len(payload) % 2 else b"")
+    token = self.token()
+    deb = (b"!<arch>\n" + member("debian-binary", b"2.0\n")
+           + member("control.tar.gz", packed_tar("control", b"Package: synthetic\nVersion: 1.0\nArchitecture: all\n"))
+           + member("data.tar.gz", packed_tar("usr/share/synthetic", ("token = " + token).encode())))
+    with tempfile.TemporaryDirectory() as temporary:
+      root = Path(temporary)
+      direct = root / "synthetic.deb"
+      direct.write_bytes(deb)
+      nested = root / "nested.zip"
+      with zipfile.ZipFile(nested, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("renamed-package.bin", deb)
+      history = self.historical_source(deb, "deleted.deb")
+      for index, path in enumerate((direct, nested, history)):
+        with self.subTest(placement=index):
+          state = root / f"scanner-{index}"
+          state.mkdir()
+          scanner = self.scanner(state)
+          scanner.add(path)
+          with self.assertRaisesRegex(RuntimeError, "secret scan rejected") as caught:
+            scanner.scan()
+          self.assertNotIn(token, str(caught.exception))
+
+  @unittest.skipUnless(shutil.which("tesseract") and (shutil.which("magick") or shutil.which("convert"))
+                       and Path("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf").is_file(),
+                       "Real evidence OCR control requires Tesseract, ImageMagick and DejaVu Mono")
+  def test_real_evidence_ocr_rejects_both_duplicate_orders_and_cross_artifact_reuse(self):
+    with tempfile.TemporaryDirectory() as temporary:
+      root = Path(temporary)
+      image = root / "synthetic.png"
+      for _ in range(10):
+        token = "AKIA" + "".join(secrets.choice("ACEFHJKLPRTVXY347") for _ in range(16))
+        subprocess.run([shutil.which("magick") or shutil.which("convert"), "-size", "2600x180", "xc:white",
+                        "-font", "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", "-pointsize", "64",
+                        "-fill", "black", "-gravity", "center", "-annotate", "0", "token = " + token, str(image)],
+                       capture_output=True, check=True, timeout=30)
+        text = subprocess.check_output(["tesseract", str(image), "stdout"], stderr=subprocess.DEVNULL, timeout=30)
+        if token.encode() in text:
+          break
+      self.assertTrue(token.encode() in text, "OCR positive control could not read the synthetic token exactly")
+      data = image.read_bytes()
+      for order in ("ordinary-first", "evidence-first", "cross-artifact"):
+        with self.subTest(order=order):
+          state = root / order
+          state.mkdir()
+          scanner = self.scanner(state)
+          names = ["assets/copied.png", "evidence/screenshot.png"]
+          if order == "evidence-first":
+            names.reverse()
+          if order == "cross-artifact":
+            scanner.save(data, "earlier.zip/assets/copied.png")
+          archive = root / f"{order}.zip"
+          with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as target:
+            for name in names:
+              target.writestr(name, data)
+          scanner.add(archive)
+          with self.assertRaisesRegex(RuntimeError, "secret scan rejected") as caught:
+            scanner.scan()
+          self.assertNotIn(token, str(caught.exception))
+
   def scanner(self, root):
     return security.Scanner(root, TOOLS)
 
