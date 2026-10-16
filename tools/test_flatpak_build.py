@@ -111,3 +111,10 @@ class FlatpakSnapshotTests(unittest.TestCase):
     self.assertIn("flatpak-build:\n  python3 tools/flatpak_build.py", justfile)
     self.assertNotIn("--install", justfile.split("flatpak-build:", 1)[1].split("\n\n", 1)[0])
 
+  def test_signing_credentials_are_rejected_before_snapshot_or_builder_execution(self):
+    with (mock.patch.dict(os.environ, {"TAURI_SIGNING_PRIVATE_KEY": "synthetic-never-a-real-key"}),
+          mock.patch("sys.argv", ["flatpak_build.py"]), mock.patch.object(build, "prepare") as prepare):
+      with self.assertRaisesRegex(SystemExit, "signing"):
+        build.main()
+      prepare.assert_not_called()
+

@@ -15,6 +15,7 @@ import tarfile
 import tempfile
 
 import generate_flatpak_sources as sources
+import tauri_build
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = "flatpak/dev.brani.tauridium.yml"
@@ -34,13 +35,13 @@ def git(*arguments: str) -> bytes:
                         check=True, capture_output=True, timeout=90).stdout
 
 
-def builder_command() -> list[str]:
+def builder_command(environment: dict[str, str]) -> list[str]:
   native = shutil.which("flatpak-builder")
   if native:
     return [native]
   flatpak = shutil.which("flatpak")
   if flatpak:
-    result = subprocess.run([flatpak, "info", "org.flatpak.Builder"], capture_output=True, timeout=30)
+    result = subprocess.run([flatpak, "info", "org.flatpak.Builder"], env=environment, capture_output=True, timeout=30)
     if result.returncode == 0:
       return [flatpak, "run", "--command=flatpak-builder", "org.flatpak.Builder"]
   raise SystemExit("error: install flatpak-builder or org.flatpak.Builder; nix develop supplies the native builder")
@@ -136,14 +137,15 @@ def main() -> int:
   parser.add_argument("--prepare-only", action="store_true", help="Validate and materialize the immutable snapshot without building")
   parser.add_argument("--output-parent", type=Path, default=ROOT / "release/flatpak")
   args = parser.parse_args()
+  environment = tauri_build.build_environment(dict(os.environ))
   output, manifest = prepare(args.publication, args.output_parent.resolve())
   print(f"Verified immutable Flatpak snapshot: {output}", flush=True)
   if args.prepare_only:
     return 0
-  command = builder_command()
+  command = builder_command(environment)
   subprocess.run([*command, "--sandbox", "--user", "--disable-rofiles-fuse", "--keep-build-dirs",
                   "--state-dir=" + str(ROOT / ".flatpak-builder"), "--repo=" + str(output / "repo"),
-                  str(output / "build"), str(manifest)], cwd=ROOT, check=True)
+                  str(output / "build"), str(manifest)], cwd=ROOT, env=environment, check=True)
   executables = {entry.name for entry in (output / "build/files/bin").iterdir()}
   if executables != {"tauridium"}:
     raise SystemExit("error: final Flatpak runtime executable inventory differs; builder tools must not ship")
