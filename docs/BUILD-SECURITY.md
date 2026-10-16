@@ -79,3 +79,14 @@ Regression tests generate only ephemeral synthetic keys outside the repository.
 They cover real Tauri CLI output, independent Minisign verification, wrong keys,
 tampered bytes, altered signed-version comments, dummy/oversized signatures,
 complete-set classification and preservation of existing output on rejection.
+
+Protected release signing uses the official checksum-pinned standalone Minisign,
+not the build SDK. See [secure release activation](SECURE-RELEASES.md) for owner
+environment/secret-scope requirements, hash-sealed job boundaries, expiring
+upstream builder-only advisory assessments and the distinction between updater
+signatures and Windows Authenticode. `just audit` uses the pinned current scanner
+and actual application/builder locks; daily and required CI enforce the same gate.
+
+Dependency-update PRs are proposed weekly for npm, Cargo and Actions. They still
+require source review, tests, regenerated Flatpak offline sources and correct Nix
+hashes; automated dependency PRs do not authorize automatic merging or release.

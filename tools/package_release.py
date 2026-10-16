@@ -738,6 +738,11 @@ def build_docs(
     for name in ("README.md", "CHANGELOG.md", "AGENTS.md", "LICENSE"):
       add_source_entry(zf, entries[name], prefix)
     for source, archive_path in (
+      (ROOT / "SECURITY.md", "SECURITY.md"),
+      (ROOT / "docs" / "BUILD-SECURITY.md", "docs/BUILD-SECURITY.md"),
+      (ROOT / "docs" / "SECURE-RELEASES.md", "docs/SECURE-RELEASES.md"),
+      (ROOT / "docs" / "ARTIFACT-SECURITY.md", "docs/ARTIFACT-SECURITY.md"),
+      (ROOT / "docs" / "BROWSER-PRIVACY.md", "docs/BROWSER-PRIVACY.md"),
       (ROOT / "docs" / "installation.md", "docs/installation.md"),
       (ROOT / "docs" / "NIX.md", "docs/NIX.md"),
       (ROOT / "docs" / "file-drops.md", "docs/file-drops.md"),

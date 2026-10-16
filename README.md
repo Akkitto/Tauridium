@@ -144,6 +144,10 @@ checkout's local Git file-mode setting so Windows does not report unchanged exec
 scripts as modified.
 
 Version tags trigger the release workflow after the repository quality gates pass.
+Protected signing/publication additionally requires the owner activation described in
+[Secure releases](docs/SECURE-RELEASES.md). See [Security policy](SECURITY.md),
+[build controls](docs/BUILD-SECURITY.md), [artifact inspection](docs/ARTIFACT-SECURITY.md)
+and [Windows browser privacy](docs/BROWSER-PRIVACY.md) for their boundaries and limitations.
 
 ## Licence
 

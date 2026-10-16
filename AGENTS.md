@@ -54,8 +54,10 @@ and workspace order, sessions, backups, exports, and upgrade compatibility.
 - Preserve existing history; do not rewrite another contributor's commits or Git identity.
 - Set agent identity repository-locally, never globally. For OpenAI release work use:
   `OpenAI Release Builder <release@openai.invalid>`.
-- Use the project's capitalized commit taxonomy (`Feat`, `Fix`, `Perf`, `Test`, `Fmt`,
-  `Doc`, `Build`, `CI`, `Dep`, `Struct`, `Prog`, `Proj`, `Revert`, `Misc`).
+- Use Capitalized Conventional Commits Dialect v1.3.2: `Feat`, `Fix`, `Sec`, `Opt`,
+  `Struct`, `Op`, `Build`, `CI`, `Dep`, `Test`, `Doc`, `Fmt`, `Proj`, `Prog`, `Gen`,
+  `Release`, `Revert`. Security intent takes `Sec` precedence. Keep imperative
+  capitalized summaries without a final period; order producers before consumers.
 - Keep commits focused. Release identity/tagging belongs in a final release commit when
   practical.
 

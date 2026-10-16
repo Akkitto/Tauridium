@@ -345,6 +345,24 @@ class PackageReleaseTests(unittest.TestCase):
       with PACKAGE.release_zip(self.root / "linked.zip") as archive:
         PACKAGE.add_file(archive, stage / "linked.txt", "linked.txt")
 
+  def test_security_guidance_is_exported_only_from_immutable_approved_source(self) -> None:
+    names = ("SECURITY.md", "docs/BUILD-SECURITY.md", "docs/ARTIFACT-SECURITY.md",
+             "docs/SECURE-RELEASES.md", "docs/BROWSER-PRIVACY.md")
+    for name in names:
+      path = self.root / name
+      path.parent.mkdir(parents=True, exist_ok=True)
+      path.write_text("Reviewed security guidance", encoding="utf-8")
+    self.init_git_repository()
+    context = PACKAGE.source_context("0.2.0")
+    (self.root / "SECURITY.md").write_text("Private later draft", encoding="utf-8")
+    source = self.root / "source.zip"
+    source.write_bytes(b"synthetic source")
+    output = self.root / "docs.zip"
+    PACKAGE.build_docs(output, "0.2.0", source, [], context)
+    with zipfile.ZipFile(output) as archive:
+      for name in names:
+        self.assertEqual(archive.read("tauridium-0.2.0-doc/" + name), b"Reviewed security guidance")
+
   def test_atomic_zip_failure_preserves_existing_artifact_and_removes_staging(self) -> None:
     output = self.root / "existing.zip"
     output.write_bytes(b"KEEP EXISTING")

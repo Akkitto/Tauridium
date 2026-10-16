@@ -1,5 +1,24 @@
 # Changelog
 
+## [Unreleased]
+
+### Security
+
+- Confine native command authority and local-origin navigation to app-owned views;
+  validate service identities and session deletion at every relevant boundary.
+- Export immutable approved source/Git ancestry and explicitly reviewed evidence;
+  validate exact artifact inventories, real version-bound signatures and full decoded
+  payloads before isolated protected signing and verified draft publication.
+- Store remembered credentials in native OS vaults, create private atomic files before
+  writing, redact retained/exported diagnostics and bound network/notification/pipe work.
+- Require trust for personal executable recipe content; pin upstream recipe revisions,
+  native tooling and Actions. Enforce hook-free npm installs and current advisory gates.
+- Refresh maintained runtime dependencies and ZIP parsing, enforce a production shell
+  CSP, and make Windows tracking exceptions explicit, profile-scoped and restart-safe.
+- Keep recovery checkpoints and raw evidence private. New release activation requires
+  owner-reviewed environments and secret scope; no version/tag/publication is created
+  by this remediation. See `docs/SECURE-RELEASES.md` for residual upstream assessments.
+
 ## [0.9.5] - 2026-10-05
 
 ### Fixed
