@@ -36,7 +36,7 @@ class Patch0426Tests(unittest.TestCase):
   def test_sidebar_unread_badge_respects_persisted_service_badge_preference(self) -> None:
     row = APP.split("{#snippet row(s: Service)}", 1)[1].split("{/snippet}", 1)[0]
     self.assertIn("s.isBadgeEnabled !== false", row)
-    self.assertIn('(unreadMap[s.id] ?? 0) > 0', row)
+    self.assertIn('(ownValue(unreadMap, s.id) ?? 0) > 0', row)
     self.assertIn('toggle("Unread badge"', APP)
     self.assertIn("isBadgeEnabled: s.isBadgeEnabled", APP)
 
