@@ -121,8 +121,12 @@ def lint(output: Path, environment: dict[str, str], *, online=False) -> None:
   expanded = subprocess.run([*command, "--show-manifest", str(manifest)], env=environment,
                             cwd=build.ROOT, capture_output=True, check=True, timeout=60)
   definition = json.loads(expanded.stdout)
-  source = definition["modules"][-1]["sources"][-1]
-  if (definition.get("app-id") != APP_ID or source.get("type") != "archive"
+  module = definition["modules"][-1]
+  sources = [source for source in module["sources"] if source.get("type") == "archive" and source.get("dest") == "source"]
+  if len(sources) != 1:
+    raise SystemExit("error: candidate manifest has no unique application source archive")
+  source = sources[0]
+  if (definition.get("id") != APP_ID or module.get("name") != "tauridium"
       or Path(source.get("path", "")).resolve() != (output / "source.tar").resolve()
       or source.get("sha256") != build.file_digest(output / "source.tar")):
     raise SystemExit("error: candidate manifest does not describe its sealed source")

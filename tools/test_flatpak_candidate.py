@@ -106,8 +106,10 @@ class FlatpakCandidateTests(unittest.TestCase):
       candidate.validate_permissions(path)
 
   def test_lint_inspects_only_the_selected_manifest_repository_and_installed_metadata(self):
-    manifest = {"app-id": candidate.APP_ID, "modules": [{"sources": [{"type": "archive",
-      "path": str(self.output / "source.tar"), "sha256": build.file_digest(self.output / "source.tar")}]}]}
+    # --show-manifest normalizes app-id to id and expands included sources.
+    manifest = {"id": candidate.APP_ID, "modules": [{"name": "tauridium", "sources": [{"type": "archive", "dest": "source",
+      "path": str(self.output / "source.tar"), "sha256": build.file_digest(self.output / "source.tar")},
+      {"type": "inline", "contents": "Harmless offline-cache entry"}]}]}
     with (mock.patch.object(build, "builder_command", return_value=["flatpak-builder"]),
           mock.patch.object(candidate, "flatpak", return_value="flatpak"),
           mock.patch.object(candidate.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, json.dumps(manifest).encode())) as run):
