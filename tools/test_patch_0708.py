@@ -22,7 +22,8 @@ class Patch0708Tests(unittest.TestCase):
 
   def test_activation_pipe_starts_before_tauri_setup_and_acknowledges_requests(self) -> None:
     pre_setup = MAIN.split("tauri::Builder::default()", 1)[0]
-    self.assertIn("windows_instance_coordinator.start_activation_listener();", pre_setup)
+    self.assertIn("windows_instance_coordinator.start_activation_listener()", pre_setup)
+    self.assertIn('"instance.listener_error"', pre_setup)
     self.assertIn("CreateNamedPipeW", SINGLE)
     self.assertIn("GetNamedPipeServerProcessId", SINGLE)
     self.assertIn("AllowSetForegroundWindow(primary_pid)", SINGLE)
@@ -50,7 +51,7 @@ class Patch0708Tests(unittest.TestCase):
     self.assertIn("Duration::from_secs(5)", SINGLE)
     self.assertIn("WaitNamedPipeW", SINGLE)
     self.assertIn("refusing to start a parallel application session", SINGLE)
-    preflight = MAIN.split("let windows_instance_coordinator", 1)[1].split("tauri::Builder::default()", 1)[0]
+    preflight = MAIN.split("let mut windows_instance_coordinator", 1)[1].split("tauri::Builder::default()", 1)[0]
     self.assertIn("std::process::exit(2);", preflight)
     self.assertNotIn("Fail open", preflight)
 

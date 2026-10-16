@@ -5533,7 +5533,7 @@ fn main() {
     }
 
     #[cfg(windows)]
-    let windows_instance_coordinator = match windows_instance_preflight() {
+    let mut windows_instance_coordinator = match windows_instance_preflight() {
         Ok(WindowsInstancePreflight::ActivatedExisting) => {
             startup_diagnostics::log(
                 "secondary",
@@ -5549,7 +5549,10 @@ fn main() {
         }
     };
     #[cfg(windows)]
-    windows_instance_coordinator.start_activation_listener();
+    if let Err(error) = windows_instance_coordinator.start_activation_listener() {
+        startup_diagnostics::report_fatal("launch", "instance.listener_error", &error);
+        std::process::exit(2);
+    }
     #[cfg(windows)]
     let windows_activation_target = windows_instance_coordinator.activation_target();
 

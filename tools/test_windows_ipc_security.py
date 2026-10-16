@@ -10,12 +10,28 @@ class WindowsIpcSecurityTests(unittest.TestCase):
   def test_server_and_mutex_use_actual_user_private_security(self):
     source = (ROOT / "src-tauri/src/single_instance.rs").read_text(encoding="utf-8")
     self.assertIn("CreateMutexW(private_security.get()", source)
-    pipe = source.split("let pipe = CreateNamedPipeW(", 1)[1].split(");", 1)[0]
+    pipe = source.split("fn reserve_activation_pipe", 1)[1].split("if pipe == INVALID_HANDLE_VALUE", 1)[0]
     self.assertIn("private_security.get()", pipe)
     self.assertIn("PIPE_REJECT_REMOTE_CLIENTS", pipe)
+    self.assertIn("FILE_FLAG_FIRST_PIPE_INSTANCE", pipe)
     security = (ROOT / "src-tauri/src/windows_security.rs").read_text(encoding="utf-8")
     self.assertIn('Self::new("GA")', security)
     self.assertIn("TokenUser", security)
+
+  def test_context_is_sent_only_after_owner_user_and_session_checks(self):
+    source = (ROOT / "src-tauri/src/single_instance.rs").read_text(encoding="utf-8")
+    send = source.split("unsafe fn send_activation_request", 1)[1].split("unsafe fn verify_pipe_peer", 1)[0]
+    self.assertLess(send.index("verify_pipe_peer(pipe, true)?"), send.index("AllowSetForegroundWindow"))
+    self.assertLess(send.index("verify_pipe_peer(pipe, true)?"), send.index("write_all(pipe"))
+    peer = source.split("unsafe fn verify_pipe_peer", 1)[1].split("fn activation_server_loop", 1)[0]
+    for check in ("require_current_user_owner", "require_current_user_process", "current_windows_session_id"):
+      self.assertIn(check, peer)
+    self.assertIn("SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION", source)
+    listener = source.split("fn activation_server_loop", 1)[1].split("unsafe fn handle_activation_client", 1)[0]
+    self.assertNotIn("CreateNamedPipeW", listener)
+    self.assertNotIn("CloseHandle", listener)
+    self.assertIn("exclusive_endpoint_rejects_squatting_and_stays_reserved_between_clients", source)
+    self.assertIn("activation_client_limits_impersonation_to_identification", source)
 
   def test_each_read_has_an_absolute_deadline_and_flush_is_never_unbounded(self):
     source = (ROOT / "src-tauri/src/single_instance.rs").read_text(encoding="utf-8")

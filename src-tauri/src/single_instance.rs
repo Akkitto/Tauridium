@@ -19,6 +19,7 @@ pub(crate) struct InstanceActivationRequest {
 mod windows {
     use super::{InstanceActivationRequest, MAX_ACTIVATION_PAYLOAD_BYTES};
     use crate::{reposition_active, startup_diagnostics};
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{mpsc, Arc, Mutex};
     use std::time::{Duration, Instant};
     use tauri::{AppHandle, Emitter, Manager};
@@ -29,14 +30,15 @@ mod windows {
             WAIT_ABANDONED, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
         },
         Storage::FileSystem::{
-            CreateFileW, ReadFile, WriteFile, FILE_FLAG_OVERLAPPED, OPEN_EXISTING,
-            PIPE_ACCESS_DUPLEX,
+            CreateFileW, ReadFile, WriteFile, FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OVERLAPPED,
+            OPEN_EXISTING, PIPE_ACCESS_DUPLEX, SECURITY_IDENTIFICATION, SECURITY_SQOS_PRESENT,
         },
         System::{
             Pipes::{
                 ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe,
-                GetNamedPipeServerProcessId, PeekNamedPipe, WaitNamedPipeW, PIPE_READMODE_BYTE,
-                PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
+                GetNamedPipeClientProcessId, GetNamedPipeServerProcessId, PeekNamedPipe,
+                WaitNamedPipeW, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE,
+                PIPE_WAIT,
             },
             RemoteDesktop::ProcessIdToSessionId,
             Threading::{
@@ -359,10 +361,87 @@ mod windows {
         )))
     }
 
+    unsafe fn open_activation_pipe(name: &[u16]) -> HANDLE {
+        CreateFileW(
+            name.as_ptr(),
+            GENERIC_READ | GENERIC_WRITE,
+            0,
+            std::ptr::null(),
+            OPEN_EXISTING,
+            FILE_FLAG_OVERLAPPED | SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION,
+            std::ptr::null_mut(),
+        )
+    }
+
     pub(crate) struct WindowsInstanceCoordinator {
         mutex: HANDLE,
-        pipe_name: Vec<u16>,
+        pipe: Option<Arc<ReservedPipe>>,
+        stopping: Arc<AtomicBool>,
+        listener: Option<std::thread::JoinHandle<()>>,
         activation_target: Arc<WindowsActivationTarget>,
+    }
+
+    // Owning integer handle permits transfer to the listener. Only that thread
+    // performs I/O; coordinator shutdown only cancels it and joins before closing.
+    struct ReservedPipe(usize);
+
+    impl ReservedPipe {
+        fn raw(&self) -> HANDLE {
+            self.0 as HANDLE
+        }
+    }
+
+    impl Drop for ReservedPipe {
+        fn drop(&mut self) {
+            unsafe { CloseHandle(self.raw()) };
+        }
+    }
+
+    fn reserve_activation_pipe(name: &[u16]) -> Result<ReservedPipe, String> {
+        let private_security = crate::windows_security::PrivateAttributes::kernel_object()
+            .map_err(|_| "Unable to create private activation security".to_string())?;
+        let pipe = unsafe {
+            CreateNamedPipeW(
+                name.as_ptr(),
+                PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
+                PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
+                1,
+                PIPE_BUFFER_BYTES,
+                PIPE_BUFFER_BYTES,
+                0,
+                private_security.get(),
+            )
+        };
+        if pipe == INVALID_HANDLE_VALUE {
+            return Err("Unable to reserve Tauridium activation endpoint exclusively; another or untrusted endpoint exists. Close other Tauridium processes and retry.".into());
+        }
+        let pipe = ReservedPipe(pipe as usize);
+        crate::windows_security::require_current_user_owner(pipe.raw())
+            .map_err(|_| "Tauridium activation endpoint has an unexpected owner".to_string())?;
+        Ok(pipe)
+    }
+
+    fn primary_coordinator(
+        mutex: HANDLE,
+        name: &[u16],
+    ) -> Result<WindowsInstanceCoordinator, String> {
+        let pipe = match reserve_activation_pipe(name) {
+            Ok(pipe) => pipe,
+            Err(error) => {
+                unsafe {
+                    ReleaseMutex(mutex);
+                    CloseHandle(mutex);
+                }
+                return Err(error);
+            }
+        };
+        Ok(WindowsInstanceCoordinator {
+            mutex,
+            pipe: Some(Arc::new(pipe)),
+            stopping: Arc::new(AtomicBool::new(false)),
+            listener: None,
+            activation_target: Arc::new(WindowsActivationTarget::default()),
+        })
     }
 
     // The coordinator owns the named mutex for the lifetime of the primary process.
@@ -370,6 +449,21 @@ mod windows {
     // marker file or PID cleanup is required.
     impl Drop for WindowsInstanceCoordinator {
         fn drop(&mut self) {
+            self.stopping.store(true, Ordering::Release);
+            if let Some(pipe) = &self.pipe {
+                unsafe { CancelIoEx(pipe.raw(), std::ptr::null()) };
+            }
+            if let Some(listener) = self.listener.take() {
+                if listener.join().is_err() {
+                    startup_diagnostics::log(
+                        "primary",
+                        "activation.listener.shutdown",
+                        "activation listener terminated unexpectedly",
+                    );
+                }
+            }
+            // Close the reserved endpoint before releasing the primary lease.
+            self.pipe.take();
             unsafe {
                 let _ = ReleaseMutex(self.mutex);
                 let _ = CloseHandle(self.mutex);
@@ -382,15 +476,29 @@ mod windows {
             self.activation_target.clone()
         }
 
-        pub(crate) fn start_activation_listener(&self) {
+        pub(crate) fn start_activation_listener(&mut self) -> Result<(), String> {
             startup_diagnostics::log(
                 "primary",
                 "activation.listener.start",
                 "starting Windows named-pipe activation listener",
             );
-            let pipe_name = self.pipe_name.clone();
+            if self.listener.is_some() {
+                return Err("Tauridium activation listener is already started".into());
+            }
+            let pipe = self
+                .pipe
+                .as_ref()
+                .ok_or("Tauridium activation endpoint is unavailable")?
+                .clone();
+            let stopping = self.stopping.clone();
             let target = self.activation_target.clone();
-            std::thread::spawn(move || activation_server_loop(pipe_name, target));
+            self.listener = Some(
+                std::thread::Builder::new()
+                    .name("tauridium-activation".into())
+                    .spawn(move || activation_server_loop(pipe, target, stopping))
+                    .map_err(|_| "Unable to start Tauridium activation listener".to_string())?,
+            );
+            Ok(())
         }
     }
 
@@ -421,19 +529,23 @@ mod windows {
                     std::io::Error::last_os_error()
                 ));
             }
-            if GetLastError() != ERROR_ALREADY_EXISTS {
+            let existed = GetLastError() == ERROR_ALREADY_EXISTS;
+            if crate::windows_security::require_current_user_owner(mutex).is_err() {
+                if !existed {
+                    ReleaseMutex(mutex);
+                }
+                CloseHandle(mutex);
+                return Err("Tauridium instance mutex has an unexpected owner".into());
+            }
+            if !existed {
                 startup_diagnostics::log(
                     "primary",
                     "instance.primary",
                     "acquired the session mutex as the durable primary instance",
                 );
-                return Ok(WindowsInstancePreflight::Primary(
-                    WindowsInstanceCoordinator {
-                        mutex,
-                        pipe_name,
-                        activation_target: Arc::new(WindowsActivationTarget::default()),
-                    },
-                ));
+                return Ok(WindowsInstancePreflight::Primary(primary_coordinator(
+                    mutex, &pipe_name,
+                )?));
             }
 
             startup_diagnostics::log(
@@ -478,13 +590,9 @@ mod windows {
                         "instance.takeover",
                         "previous primary released or abandoned the mutex; this launch is taking over cleanly",
                     );
-                    return Ok(WindowsInstancePreflight::Primary(
-                        WindowsInstanceCoordinator {
-                            mutex,
-                            pipe_name,
-                            activation_target: Arc::new(WindowsActivationTarget::default()),
-                        },
-                    ));
+                    return Ok(WindowsInstancePreflight::Primary(primary_coordinator(
+                        mutex, &pipe_name,
+                    )?));
                 }
                 WAIT_TIMEOUT => {}
                 WAIT_FAILED => {
@@ -502,15 +610,7 @@ mod windows {
                 }
             }
 
-            let pipe = CreateFileW(
-                pipe_name.as_ptr(),
-                GENERIC_READ | GENERIC_WRITE,
-                0,
-                std::ptr::null(),
-                OPEN_EXISTING,
-                FILE_FLAG_OVERLAPPED,
-                std::ptr::null_mut(),
-            );
+            let pipe = open_activation_pipe(&pipe_name);
             if pipe != INVALID_HANDLE_VALUE {
                 startup_diagnostics::log(
                     "secondary",
@@ -591,8 +691,8 @@ mod windows {
         payload: &[u8],
         deadline: Instant,
     ) -> Result<(), String> {
-        let mut primary_pid = 0_u32;
-        if GetNamedPipeServerProcessId(pipe, &mut primary_pid) != 0 && primary_pid != 0 {
+        let primary_pid = verify_pipe_peer(pipe, true)?;
+        {
             // A user-launched secondary process is normally eligible to transfer its
             // foreground permission. Failure is non-fatal: the activation request is
             // still delivered and Windows retains final focus policy control.
@@ -601,12 +701,6 @@ mod windows {
                 "secondary",
                 "activation.foreground_permission",
                 &format!("primary_pid={primary_pid} granted={foreground_granted}"),
-            );
-        } else {
-            startup_diagnostics::log(
-                "secondary",
-                "activation.primary_pid_unavailable",
-                "named pipe connected but the primary PID could not be queried",
             );
         }
 
@@ -662,51 +756,46 @@ mod windows {
         Ok(())
     }
 
-    fn activation_server_loop(pipe_name: Vec<u16>, target: Arc<WindowsActivationTarget>) {
-        let private_security = match crate::windows_security::PrivateAttributes::kernel_object() {
-            Ok(security) => security,
-            Err(error) => {
-                startup_diagnostics::log(
-                    "primary",
-                    "activation.security.error",
-                    &error.to_string(),
-                );
-                eprintln!("Unable to establish private Tauridium activation security: {error}");
-                return;
-            }
+    unsafe fn verify_pipe_peer(pipe: HANDLE, server: bool) -> Result<u32, String> {
+        crate::windows_security::require_current_user_owner(pipe).map_err(|_| {
+            "Tauridium activation endpoint ownership could not be verified".to_string()
+        })?;
+        let mut pid = 0;
+        let received = if server {
+            GetNamedPipeServerProcessId(pipe, &mut pid)
+        } else {
+            GetNamedPipeClientProcessId(pipe, &mut pid)
         };
-        loop {
-            unsafe {
-                let pipe = CreateNamedPipeW(
-                    pipe_name.as_ptr(),
-                    PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
-                    PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
-                    PIPE_UNLIMITED_INSTANCES,
-                    PIPE_BUFFER_BYTES,
-                    PIPE_BUFFER_BYTES,
-                    0,
-                    private_security.get(),
-                );
-                if pipe == INVALID_HANDLE_VALUE {
-                    let error = format!(
-                        "Unable to create Tauridium activation pipe: {}",
-                        std::io::Error::last_os_error()
-                    );
-                    startup_diagnostics::log("primary", "activation.pipe.create_error", &error);
-                    eprintln!("{error}");
-                    std::thread::sleep(Duration::from_millis(250));
-                    continue;
-                }
+        if received == 0 || pid == 0 {
+            return Err("Tauridium activation peer identity is unavailable".into());
+        }
+        crate::windows_security::require_current_user_process(pid)
+            .map_err(|_| "Tauridium activation peer user could not be verified".to_string())?;
+        let mut session = 0;
+        if ProcessIdToSessionId(pid, &mut session) == 0 || session != current_windows_session_id()?
+        {
+            return Err("Tauridium activation peer is in an unexpected Windows session".into());
+        }
+        Ok(pid)
+    }
 
-                let connected = connect_pipe(pipe).is_ok();
-                if connected {
-                    if let Err(error) = handle_activation_client(pipe, &target) {
+    fn activation_server_loop(
+        pipe: Arc<ReservedPipe>,
+        target: Arc<WindowsActivationTarget>,
+        stopping: Arc<AtomicBool>,
+    ) {
+        // Reuse the original exclusive instance: closing/recreating it would open
+        // a squatting window between every client. No extra instances are allowed.
+        while !stopping.load(Ordering::Acquire) {
+            unsafe {
+                let connected = connect_pipe(pipe.raw(), Some(&stopping)).is_ok();
+                if connected && !stopping.load(Ordering::Acquire) {
+                    if let Err(error) = handle_activation_client(pipe.raw(), &target) {
                         startup_diagnostics::log("primary", "activation.request.error", &error);
                         eprintln!("Unable to accept Tauridium activation request: {error}");
                     }
                 }
-                let _ = DisconnectNamedPipe(pipe);
-                let _ = CloseHandle(pipe);
+                let _ = DisconnectNamedPipe(pipe.raw());
             }
         }
     }
@@ -715,6 +804,7 @@ mod windows {
         pipe: HANDLE,
         target: &WindowsActivationTarget,
     ) -> Result<(), String> {
+        verify_pipe_peer(pipe, false)?;
         let read_deadline = Instant::now() + ACTIVATION_RETRY_WINDOW;
         let mut length_bytes = [0_u8; 4];
         read_exact(pipe, &mut length_bytes, read_deadline)?;
@@ -918,11 +1008,20 @@ mod windows {
         }
     }
 
-    unsafe fn connect_pipe(pipe: HANDLE) -> Result<(), String> {
+    unsafe fn connect_pipe(pipe: HANDLE, stopping: Option<&AtomicBool>) -> Result<(), String> {
         let mut operation = PipeOperation::new(pipe)?;
         let started = ConnectNamedPipe(pipe, operation.overlapped.as_mut());
         if started == 0 && GetLastError() == ERROR_PIPE_CONNECTED {
             return Ok(());
+        }
+        // Close the race where shutdown's CancelIoEx ran just before this I/O
+        // began. Mark/drain a pending connect rather than blocking after shutdown.
+        if started == 0
+            && GetLastError() == ERROR_IO_PENDING
+            && stopping.is_some_and(|flag| flag.load(Ordering::Acquire))
+        {
+            operation.pending = true;
+            return Err("Tauridium activation listener is stopping".into());
         }
         operation.complete(started, None).map(|_| ())
     }
@@ -993,15 +1092,7 @@ mod windows {
                     std::io::Error::last_os_error()
                 );
                 let server = OwnedHandle(pipe);
-                let client = CreateFileW(
-                    name.as_ptr(),
-                    GENERIC_READ | GENERIC_WRITE,
-                    0,
-                    std::ptr::null(),
-                    OPEN_EXISTING,
-                    FILE_FLAG_OVERLAPPED,
-                    std::ptr::null_mut(),
-                );
+                let client = open_activation_pipe(&name);
                 assert_ne!(
                     client,
                     INVALID_HANDLE_VALUE,
@@ -1009,8 +1100,120 @@ mod windows {
                     std::io::Error::last_os_error()
                 );
                 let client = OwnedHandle(client);
-                connect_pipe(server.0).unwrap();
+                connect_pipe(server.0, None).unwrap();
                 (server, client)
+            }
+        }
+
+        fn unique_name() -> Vec<u16> {
+            let mut random = [0_u8; 16];
+            getrandom::fill(&mut random).unwrap();
+            wide(&format!(
+                r"\\.\pipe\tauridium-reservation-{}-{}",
+                std::process::id(),
+                random
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>()
+            ))
+        }
+
+        #[test]
+        fn exclusive_endpoint_rejects_squatting_and_stays_reserved_between_clients() {
+            let name = unique_name();
+            let server = reserve_activation_pipe(&name).unwrap();
+            for _ in 0..2 {
+                assert!(reserve_activation_pipe(&name).is_err());
+                unsafe {
+                    let client = OwnedHandle(open_activation_pipe(&name));
+                    assert_ne!(client.0, INVALID_HANDLE_VALUE);
+                    connect_pipe(server.raw(), None).unwrap();
+                    assert_eq!(
+                        verify_pipe_peer(client.0, true).unwrap(),
+                        GetCurrentProcessId()
+                    );
+                    assert_eq!(
+                        verify_pipe_peer(server.raw(), false).unwrap(),
+                        GetCurrentProcessId()
+                    );
+                    assert!(reserve_activation_pipe(&name).is_err());
+                    assert_ne!(DisconnectNamedPipe(server.raw()), 0);
+                }
+            }
+            drop(server);
+            assert!(reserve_activation_pipe(&name).is_ok());
+        }
+
+        #[test]
+        fn unavailable_peer_is_rejected_without_sending_context() {
+            unsafe {
+                assert!(verify_pipe_peer(INVALID_HANDLE_VALUE, true).is_err());
+            }
+            assert!(crate::windows_security::require_current_user_process(0).is_err());
+        }
+
+        #[test]
+        fn idle_reserved_listener_cancels_before_releasing_the_primary_lease() {
+            let name = unique_name();
+            let security = crate::windows_security::PrivateAttributes::kernel_object().unwrap();
+            let mutex_name = wide(&format!(
+                "Local\\tauridium-shutdown-{}-{}",
+                std::process::id(),
+                name.len()
+            ));
+            let mutex = unsafe { CreateMutexW(security.get(), 1, mutex_name.as_ptr()) };
+            assert!(!mutex.is_null());
+            let mut coordinator = primary_coordinator(mutex, &name).unwrap();
+            coordinator.start_activation_listener().unwrap();
+            std::thread::sleep(Duration::from_millis(20));
+            let started = Instant::now();
+            drop(coordinator);
+            assert!(started.elapsed() < Duration::from_secs(3));
+            assert!(reserve_activation_pipe(&name).is_ok());
+        }
+
+        #[test]
+        fn activation_client_limits_impersonation_to_identification() {
+            use windows_sys::Win32::Security::{
+                GetTokenInformation, RevertToSelf, SecurityIdentification, TokenImpersonationLevel,
+                TOKEN_QUERY,
+            };
+            use windows_sys::Win32::System::Pipes::ImpersonateNamedPipeClient;
+            use windows_sys::Win32::System::Threading::{GetCurrentThread, OpenThreadToken};
+            struct Revert;
+            impl Drop for Revert {
+                fn drop(&mut self) {
+                    unsafe {
+                        RevertToSelf();
+                    }
+                }
+            }
+            let (server, client) = connected_pair();
+            unsafe {
+                let deadline = Instant::now() + Duration::from_secs(1);
+                write_all(client.0, &[42], deadline).unwrap();
+                read_exact(server.0, &mut [0; 1], deadline).unwrap();
+                assert_ne!(ImpersonateNamedPipeClient(server.0), 0);
+                let _revert = Revert;
+                let mut token = std::ptr::null_mut();
+                assert_ne!(
+                    OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, 1, &mut token),
+                    0
+                );
+                let token = OwnedHandle(token);
+                let mut level = 0_i32;
+                let mut needed = 0;
+                assert_ne!(
+                    GetTokenInformation(
+                        token.0,
+                        TokenImpersonationLevel,
+                        (&mut level as *mut i32).cast(),
+                        std::mem::size_of::<i32>() as u32,
+                        &mut needed
+                    ),
+                    0
+                );
+                assert_eq!(level, SecurityIdentification);
             }
         }
 
