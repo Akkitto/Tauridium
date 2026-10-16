@@ -1,6 +1,7 @@
 """Synthetic leak controls and independent NSIS parsing; no real credential fixtures."""
 import base64
 import hashlib
+import io
 import json
 import lzma
 import os
@@ -125,32 +126,68 @@ class RealArtifactScannerTests(unittest.TestCase):
       with self.assertRaisesRegex(RuntimeError, "secret scan rejected"):
         scanner.scan()
 
-  def test_deleted_secret_in_approved_git_history_is_still_scanned(self):
+  def historical_source(self, payload, filename):
     from test_package_release import PackageReleaseTests
     fixture = PackageReleaseTests()
     fixture.setUp()
     self.addCleanup(fixture.tearDown)
     fixture.init_git_repository()
-    token = self.token()
-    path = fixture.root / "historical.txt"
-    path.write_text("token = " + token + "\n", encoding="ascii")
+    path = fixture.root / filename
+    path.write_bytes(payload)
     def git(*args):
       subprocess.run(["git", *args], cwd=fixture.root, capture_output=True, check=True)
-    git("add", "historical.txt")
+    git("add", filename)
     git("commit", "-qm", "Test: Add synthetic historical token")
-    git("rm", "-q", "historical.txt")
+    git("rm", "-q", filename)
     git("commit", "-qm", "Test: Remove synthetic token from current tree")
     git("tag", "-f", "v0.2.0")
     source = fixture.root / "source.zip"
     with mock.patch.object(package_release, "ROOT", fixture.root):
       context = package_release.source_context("0.2.0")
       package_release.build_source(source, "0.2.0", context)
+    return source
+
+  def test_deleted_secret_in_approved_git_history_is_still_scanned(self):
+    token = self.token()
+    source = self.historical_source(("token = " + token + "\n").encode(), "historical.txt")
     with tempfile.TemporaryDirectory() as temporary:
       scanner = self.scanner(Path(temporary))
       scanner.add(source)
       self.assertGreater(scanner.decoded["git-blob"], 0)
       with self.assertRaisesRegex(RuntimeError, "secret scan rejected"):
         scanner.scan()
+
+  def test_deleted_compressed_secret_in_exported_history_is_recursively_scanned(self):
+    token = self.token()
+    inner = io.BytesIO()
+    with zipfile.ZipFile(inner, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+      archive.writestr("secret.txt", "token = " + token)
+    outer = io.BytesIO()
+    with zipfile.ZipFile(outer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+      archive.writestr("nested.zip", inner.getvalue())
+    source = self.historical_source(outer.getvalue(), "deleted.zip")
+    with tempfile.TemporaryDirectory() as temporary:
+      scanner = self.scanner(Path(temporary))
+      scanner.add(source)
+      self.assertGreaterEqual(scanner.decoded["zip"], 3)
+      with self.assertRaisesRegex(RuntimeError, "secret scan rejected") as caught:
+        scanner.scan()
+      self.assertNotIn(token, str(caught.exception))
+
+  def test_git_archives_keep_enclosing_depth_and_aggregate_expansion_budgets(self):
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+      archive.writestr("readme.txt", "Harmless bounded historical input" * 100)
+    source = self.historical_source(payload.getvalue(), "deleted.zip")
+    for mode in ("depth", "bytes"):
+      with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temporary:
+        scanner = self.scanner(Path(temporary))
+        with self.assertRaisesRegex(RuntimeError, "expansion exceeded"):
+          if mode == "depth":
+            scanner.save(source.read_bytes(), "outer-source.zip", depth=7)
+          else:
+            with mock.patch.object(security, "MAX_EXPANDED", source.stat().st_size):
+              scanner.add(source)
 
   def test_harmless_control_passes(self):
     with tempfile.TemporaryDirectory() as temporary:

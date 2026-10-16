@@ -303,9 +303,9 @@ class Scanner:
       if archive.testzip() is not None:
         raise RuntimeError("ZIP CRC verification failed")
     if git_files:
-      self.git_objects(git_files, manifest)
+      self.git_objects(git_files, manifest, depth=depth + 1)
 
-  def git_objects(self, files: dict[str, bytes], manifest: dict | None) -> None:
+  def git_objects(self, files: dict[str, bytes], manifest: dict | None, *, depth=0) -> None:
     if not manifest or not isinstance(manifest.get("gitFiles"), list):
       raise RuntimeError("Source Git history has no approved-file hash inventory")
     version = manifest["version"]
@@ -348,7 +348,9 @@ class Scanner:
         if not re.fullmatch(r"[0-9a-f]{40}", oid) or kind not in ("blob", "tree", "commit", "tag") or int(size) > MAX_PAYLOAD:
           raise RuntimeError("Invalid or oversized source Git object")
         payload = bounded_command(command + ["cat-file", kind, oid], env=env)
-        self.save(payload, "GIT-OBJECT/" + oid, decode=False)
+        # Approved history can retain deleted compressed files. Inspect them just
+        # like current-tree assets, without resetting the enclosing depth budget.
+        self.save(payload, "GIT-OBJECT/" + oid, depth=depth + 1)
         self.decoded["git-" + kind] += 1
 
   def add(self, path: Path) -> None:
