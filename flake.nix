@@ -125,6 +125,8 @@
               git
               appstream
               desktop-file-utils
+              flatpak
+              flatpak-builder
               nixfmt
             ];
             buildInputs = with pkgs; [

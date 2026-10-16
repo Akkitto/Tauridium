@@ -304,7 +304,11 @@ nix-nixos-test:
 
 [unix]
 flatpak-build:
-  flatpak run --command=flathub-build org.flatpak.Builder --install flatpak/dev.brani.tauridium.yml
+  python3 tools/flatpak_build.py
+
+[unix]
+flatpak-publication-check:
+  python3 tools/flatpak_build.py --publication --prepare-only
 
 [unix]
 flatpak-test:
