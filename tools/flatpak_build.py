@@ -110,7 +110,10 @@ def prepare(publication: bool, parent: Path) -> tuple[Path, Path]:
       raise SystemExit("error: materialize the immutable Flatpak publication source pin first")
     if git("rev-parse", matches[0]["tag"] + "^{commit}").decode().strip() != revision:
       raise SystemExit("error: Flatpak publication tag and source commit differ")
-  selected = {name: git("show", revision + ":" + name) for name in LOCKS}
+  try:
+    selected = {name: git("show", revision + ":" + name) for name in LOCKS}
+  except subprocess.CalledProcessError:
+    raise SystemExit("error: selected Flatpak source predates required reviewed build metadata; use just flatpak-build for local HEAD, then synchronize the publication pin after an authorized release") from None
   current = {name: git("show", head + ":" + name) for name in (*GENERATED, "data/build-toolchain.json")}
   verify_inputs(current, selected)
   if current["data/build-toolchain.json"] != selected["data/build-toolchain.json"]:

@@ -89,6 +89,18 @@ class FlatpakSnapshotTests(unittest.TestCase):
     with self.assertRaisesRegex(SystemExit, "hidden Git index"):
       build.prepare(False, Path(self.temporary.name) / "hidden")
 
+  def test_old_publication_without_build_metadata_has_an_actionable_safe_error(self):
+    actual_git = build.git
+    def legacy_source(*arguments):
+      if arguments[0] == "show" and arguments[1].endswith(":data/build-toolchain.json"):
+        raise subprocess.CalledProcessError(128, ["git", "show", "private-path-withheld"])
+      return actual_git(*arguments)
+    with mock.patch.object(build, "git", side_effect=legacy_source):
+      with self.assertRaisesRegex(SystemExit, "predates required reviewed build metadata") as caught:
+        build.prepare(True, Path(self.temporary.name) / "missing-policy")
+      self.assertNotIn("private-path-withheld", str(caught.exception))
+    self.assertFalse((Path(self.temporary.name) / "missing-policy").exists())
+
   def test_configuration_rejects_archive_links_and_escape_paths(self):
     for name, kind in (("flatpak/../../outside", tarfile.REGTYPE), ("flatpak/link", tarfile.SYMTYPE)):
       with self.subTest(name=name):
