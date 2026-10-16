@@ -1,5 +1,6 @@
 // Pure UI helpers kept here for isolated Vitest coverage.
 import recipeSource from "../../data/recipe-source.json";
+import { ownValue } from "./settingsMaps";
 
 // Choose black or white according to WCAG relative-luminance contrast.
 export function accentFg(hex: string): string {
@@ -437,7 +438,7 @@ export function orderWorkspacesForQuickSwitch<T extends { id: string; name: stri
     a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }) ||
     a.id.localeCompare(b.id);
   const recent = (a: T, b: T) =>
-    (lastUsed[b.id] ?? 0) - (lastUsed[a.id] ?? 0) ||
+    (ownValue(lastUsed, b.id) ?? 0) - (ownValue(lastUsed, a.id) ?? 0) ||
     (customRank.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
       (customRank.get(b.id) ?? Number.MAX_SAFE_INTEGER);
 

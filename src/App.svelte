@@ -3,6 +3,7 @@
   import { managedUpdateText } from "./lib/distribution";
   import { downloadToastPreview } from "./lib/downloadToast";
   import { browserProfileNamespace, retainedTrackingExceptions } from "./lib/browserPrivacy";
+  import { ownValue, setOwnValue, copyOwnEntry, downloadOverride, downloadDirectoryLabel } from "./lib/settingsMaps";
   import tauridiumLogo from "./assets/tauridium.svg";
   import { listen } from "@tauri-apps/api/event";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
@@ -787,7 +788,7 @@
   }
 
   function serviceSandboxId(serviceId: string): string | null {
-    return appSettings.serviceSandboxes?.[serviceId] || null;
+    return ownValue(appSettings.serviceSandboxes, serviceId) || null;
   }
 
   function showToast(message: string, tone: "default" | "success" = "default") {
@@ -815,7 +816,7 @@
 
   function preferredWebsiteIcon(service: Service): string | null {
     if (service.useFavicon !== true) return null;
-    return serviceIcons[service.id] ?? null;
+    return ownValue(serviceIcons, service.id) ?? null;
   }
 
   function displayedServiceIcon(service: Service): string {
@@ -823,11 +824,11 @@
   }
 
   function serviceIconInverted(serviceId: string): boolean {
-    return appSettings.serviceIconInversions?.[serviceId] === true;
+    return ownValue(appSettings.serviceIconInversions, serviceId) === true;
   }
 
   function serviceZoomPercent(serviceId: string): number {
-    return normalizeServiceZoomPercent(appSettings.serviceZoomLevels?.[serviceId] ?? 100);
+    return normalizeServiceZoomPercent(ownValue(appSettings.serviceZoomLevels, serviceId) ?? 100);
   }
 
   function queueServiceZoom(
@@ -882,14 +883,14 @@
   async function saveServiceIconInversion(serviceId: string, inverted: boolean) {
     const previous = { ...appSettings.serviceIconInversions };
     const serviceIconInversions = { ...previous };
-    if (inverted) serviceIconInversions[serviceId] = true;
+    if (inverted) setOwnValue(serviceIconInversions, serviceId, true);
     else delete serviceIconInversions[serviceId];
-    if ((previous[serviceId] === true) === inverted) return;
+    if ((ownValue(previous, serviceId) === true) === inverted) return;
 
     appSettings = { ...appSettings, serviceIconInversions };
     try {
       const persisted = await setAppSettings({ serviceIconInversions });
-      if ((persisted.serviceIconInversions[serviceId] === true) !== inverted) {
+      if ((ownValue(persisted.serviceIconInversions, serviceId) === true) !== inverted) {
         throw new Error("Tauridium could not verify the service icon inversion setting");
       }
       appSettings = persisted;
@@ -905,15 +906,15 @@
     const namespace = browserProfileNamespace(serviceId, appSettings.serviceSandboxes);
     const shared = namespace.startsWith("sandbox:");
     const previous = { ...appSettings.trackingPreventionExceptions };
-    if ((previous[namespace] === true) === enabled) return;
+    if ((ownValue(previous, namespace) === true) === enabled) return;
     trackingPrivacyBusy = true;
     try {
       if (enabled && !(await confirmAsk(`Reduce Windows tracking protection for ${shared ? "every service in this shared sandbox" : "this service's isolated browser profile"}? This can help embedded sign-in challenges but reduces privacy. SmartScreen stays enabled. The change applies only after restarting Tauridium.`))) return;
       const trackingPreventionExceptions = { ...previous };
-      if (enabled) trackingPreventionExceptions[namespace] = true;
+      if (enabled) setOwnValue(trackingPreventionExceptions, namespace, true);
       else delete trackingPreventionExceptions[namespace];
       const persisted = await setAppSettings({ trackingPreventionExceptions });
-      if ((persisted.trackingPreventionExceptions[namespace] === true) !== enabled) {
+      if ((ownValue(persisted.trackingPreventionExceptions, namespace) === true) !== enabled) {
         throw new Error("Tauridium could not verify the browser profile privacy setting");
       }
       appSettings = persisted;
@@ -926,19 +927,15 @@
   }
 
   function workspaceIcon(workspace: Workspace): string | null {
-    return appSettings.workspaceIcons[workspace.id] ?? null;
+    return ownValue(appSettings.workspaceIcons, workspace.id) ?? null;
   }
 
   function serviceDownloadOverride(serviceId: string): DownloadPreferenceOverride | null {
-    return appSettings.serviceDownloadSettings?.[serviceId] ?? null;
+    return downloadOverride(appSettings.serviceDownloadSettings, serviceId);
   }
 
   function workspaceDownloadOverride(workspaceId: string): DownloadPreferenceOverride | null {
-    return appSettings.workspaceDownloadSettings?.[workspaceId] ?? null;
-  }
-
-  function downloadDirectoryLabel(directory: string): string {
-    return directory.trim() || "System Downloads folder";
+    return downloadOverride(appSettings.workspaceDownloadSettings, workspaceId);
   }
 
   function inheritedDownloadPreference(): DownloadPreferenceOverride {
@@ -962,15 +959,15 @@
     if (downloadSettingsBusy) return;
     const previous = { ...appSettings.serviceDownloadSettings };
     const serviceDownloadSettings = { ...previous };
-    if (preference) serviceDownloadSettings[serviceId] = preference;
+    if (preference) setOwnValue(serviceDownloadSettings, serviceId, preference);
     else delete serviceDownloadSettings[serviceId];
-    if (sameDownloadPreference(previous[serviceId], preference)) return;
+    if (sameDownloadPreference(ownValue(previous, serviceId), preference)) return;
 
     downloadSettingsBusy = true;
     appSettings = { ...appSettings, serviceDownloadSettings };
     try {
       const persisted = await setAppSettings({ serviceDownloadSettings });
-      if (!sameDownloadPreference(persisted.serviceDownloadSettings[serviceId], preference)) {
+      if (!sameDownloadPreference(ownValue(persisted.serviceDownloadSettings, serviceId), preference)) {
         throw new Error("Tauridium could not verify the service download settings");
       }
       appSettings = persisted;
@@ -987,15 +984,15 @@
     if (downloadSettingsBusy) return;
     const previous = { ...appSettings.workspaceDownloadSettings };
     const workspaceDownloadSettings = { ...previous };
-    if (preference) workspaceDownloadSettings[workspaceId] = preference;
+    if (preference) setOwnValue(workspaceDownloadSettings, workspaceId, preference);
     else delete workspaceDownloadSettings[workspaceId];
-    if (sameDownloadPreference(previous[workspaceId], preference)) return;
+    if (sameDownloadPreference(ownValue(previous, workspaceId), preference)) return;
 
     downloadSettingsBusy = true;
     appSettings = { ...appSettings, workspaceDownloadSettings };
     try {
       const persisted = await setAppSettings({ workspaceDownloadSettings });
-      if (!sameDownloadPreference(persisted.workspaceDownloadSettings[workspaceId], preference)) {
+      if (!sameDownloadPreference(ownValue(persisted.workspaceDownloadSettings, workspaceId), preference)) {
         throw new Error("Tauridium could not verify the workspace download settings");
       }
       appSettings = persisted;
@@ -1726,7 +1723,7 @@
     error = null;
     serviceSettingsReturnToSettings = returnToSettings;
     settingsSvc = { ...s }; // Editable copy; applied to the server on Save.
-    serviceTemplateDraft = { ...(appSettings.serviceCustomUrlTemplates[s.id] ?? { enabled: false, customId1: "", customId2: "" }) };
+    serviceTemplateDraft = { ...(ownValue(appSettings.serviceCustomUrlTemplates, s.id) ?? { enabled: false, customId1: "", customId2: "" }) };
     serviceTemplateDirty = false;
     serviceWorkspaceQuery = "";
     serviceWorkspaceNewName = "";
@@ -1998,7 +1995,8 @@
       await updateService(newId, duplicatedServicePatch(service));
       if (service.useFavicon === true) {
         await copyServiceIconCache(service.id, newId);
-        if (serviceIcons[service.id]) serviceIcons = { ...serviceIcons, [newId]: serviceIcons[service.id] };
+        const icon = ownValue(serviceIcons, service.id);
+        if (icon) serviceIcons = { ...serviceIcons, [newId]: icon };
       }
 
       for (const workspace of workspaces.filter((candidate) => candidate.services.includes(service.id))) {
@@ -2015,13 +2013,13 @@
       const serviceDownloadSettings = { ...appSettings.serviceDownloadSettings };
       const serviceIconInversions = { ...appSettings.serviceIconInversions };
       const serviceZoomLevels = { ...appSettings.serviceZoomLevels };
-      if (serviceCustomUrlTemplates[service.id]) serviceCustomUrlTemplates[newId] = { ...serviceCustomUrlTemplates[service.id] };
-      if (serviceSandboxes[service.id]) serviceSandboxes[newId] = serviceSandboxes[service.id];
-      if (service.id in serviceShortcutCaptureOverrides) serviceShortcutCaptureOverrides[newId] = serviceShortcutCaptureOverrides[service.id];
-      if (serviceDownloadSettings[service.id]) serviceDownloadSettings[newId] = { ...serviceDownloadSettings[service.id] };
-      if (serviceIconInversions[service.id] === true) serviceIconInversions[newId] = true;
-      if (serviceZoomLevels[service.id]) serviceZoomLevels[newId] = serviceZoomLevels[service.id];
-      if (serviceCustomUrlTemplates[newId] || serviceSandboxes[newId] || newId in serviceShortcutCaptureOverrides || serviceDownloadSettings[newId] || serviceIconInversions[newId] === true || serviceZoomLevels[newId]) {
+      copyOwnEntry(serviceCustomUrlTemplates, service.id, newId);
+      copyOwnEntry(serviceSandboxes, service.id, newId);
+      copyOwnEntry(serviceShortcutCaptureOverrides, service.id, newId);
+      copyOwnEntry(serviceDownloadSettings, service.id, newId);
+      copyOwnEntry(serviceIconInversions, service.id, newId);
+      copyOwnEntry(serviceZoomLevels, service.id, newId);
+      if (ownValue(serviceCustomUrlTemplates, newId) || ownValue(serviceSandboxes, newId) || Object.hasOwn(serviceShortcutCaptureOverrides, newId) || ownValue(serviceDownloadSettings, newId) || ownValue(serviceIconInversions, newId) === true || ownValue(serviceZoomLevels, newId)) {
         appSettings = await setAppSettings({
           serviceCustomUrlTemplates,
           serviceSandboxes,
@@ -2123,12 +2121,12 @@
       statusMap = rest;
       services = services.filter((x) => x.id !== s.id);
       if (
-        appSettings.serviceSandboxes[s.id] ||
-        appSettings.serviceCustomUrlTemplates[s.id] ||
-        s.id in appSettings.serviceShortcutCaptureOverrides ||
-        appSettings.serviceDownloadSettings[s.id] ||
-        appSettings.serviceIconInversions[s.id] === true ||
-        appSettings.serviceZoomLevels[s.id]
+        ownValue(appSettings.serviceSandboxes, s.id) ||
+        ownValue(appSettings.serviceCustomUrlTemplates, s.id) ||
+        Object.hasOwn(appSettings.serviceShortcutCaptureOverrides, s.id) ||
+        ownValue(appSettings.serviceDownloadSettings, s.id) ||
+        ownValue(appSettings.serviceIconInversions, s.id) === true ||
+        ownValue(appSettings.serviceZoomLevels, s.id)
       ) {
         const serviceSandboxes = { ...appSettings.serviceSandboxes };
         const serviceCustomUrlTemplates = { ...appSettings.serviceCustomUrlTemplates };
@@ -2289,15 +2287,15 @@
     if (!managedWorkspace || (!busyAlready && managedWorkspaceBusy)) return;
     const previous = { ...appSettings.workspaceIcons };
     const workspaceIcons = { ...previous };
-    if (iconUrl) workspaceIcons[managedWorkspace.id] = iconUrl;
+    if (iconUrl) setOwnValue(workspaceIcons, managedWorkspace.id, iconUrl);
     else delete workspaceIcons[managedWorkspace.id];
-    if ((previous[managedWorkspace.id] ?? null) === (workspaceIcons[managedWorkspace.id] ?? null)) return;
+    if ((ownValue(previous, managedWorkspace.id) ?? null) === (ownValue(workspaceIcons, managedWorkspace.id) ?? null)) return;
 
     if (!busyAlready) managedWorkspaceBusy = true;
     appSettings = { ...appSettings, workspaceIcons };
     try {
       const persisted = await setAppSettings({ workspaceIcons });
-      if ((persisted.workspaceIcons[managedWorkspace.id] ?? null) !== (iconUrl ?? null)) {
+      if ((ownValue(persisted.workspaceIcons, managedWorkspace.id) ?? null) !== (iconUrl ?? null)) {
         throw new Error("Tauridium could not verify the saved workspace icon");
       }
       appSettings = persisted;
@@ -2386,12 +2384,12 @@
   }
 
   function serviceShortcutCaptureMode(serviceId: string): "inherit" | "tauridium" | "website" {
-    if (!(serviceId in appSettings.serviceShortcutCaptureOverrides)) return "inherit";
-    return appSettings.serviceShortcutCaptureOverrides[serviceId] ? "tauridium" : "website";
+    if (!Object.hasOwn(appSettings.serviceShortcutCaptureOverrides, serviceId)) return "inherit";
+    return ownValue(appSettings.serviceShortcutCaptureOverrides, serviceId) ? "tauridium" : "website";
   }
 
   function effectiveServiceShortcutCapture(serviceId: string): boolean {
-    return appSettings.serviceShortcutCaptureOverrides[serviceId] ?? appSettings.captureServiceShortcuts;
+    return ownValue(appSettings.serviceShortcutCaptureOverrides, serviceId) ?? appSettings.captureServiceShortcuts;
   }
 
   async function setServiceShortcutCaptureMode(
@@ -2401,7 +2399,7 @@
     const previous = { ...appSettings.serviceShortcutCaptureOverrides };
     const serviceShortcutCaptureOverrides = { ...previous };
     if (mode === "inherit") delete serviceShortcutCaptureOverrides[serviceId];
-    else serviceShortcutCaptureOverrides[serviceId] = mode === "tauridium";
+    else setOwnValue(serviceShortcutCaptureOverrides, serviceId, mode === "tauridium");
     appSettings = { ...appSettings, serviceShortcutCaptureOverrides };
     try {
       appSettings = await setAppSettings({ serviceShortcutCaptureOverrides });
@@ -3656,15 +3654,15 @@
     if (sandboxAssignmentBusy || trackingPrivacyBusy) return;
     const previous = { ...appSettings.serviceSandboxes };
     const serviceSandboxes = { ...previous };
-    if (sandboxId) serviceSandboxes[serviceId] = sandboxId;
+    if (sandboxId) setOwnValue(serviceSandboxes, serviceId, sandboxId);
     else delete serviceSandboxes[serviceId];
-    if ((previous[serviceId] ?? "") === (serviceSandboxes[serviceId] ?? "")) return;
+    if ((ownValue(previous, serviceId) ?? "") === (ownValue(serviceSandboxes, serviceId) ?? "")) return;
 
     sandboxAssignmentBusy = true;
     appSettings = { ...appSettings, serviceSandboxes };
     try {
       const persisted = await setAppSettings({ serviceSandboxes });
-      const actual = persisted.serviceSandboxes[serviceId] ?? "";
+      const actual = ownValue(persisted.serviceSandboxes, serviceId) ?? "";
       if (actual !== (sandboxId || "")) throw new Error("Tauridium could not verify the saved sandbox assignment");
       appSettings = persisted;
       if (view === "svcSettings" && settingsSvc?.id === serviceId) showServiceSettingsSaved(serviceId);
@@ -4214,10 +4212,10 @@
               </span>
               <span class="switch-control">
                 <input class="switch-input" type="checkbox"
-                  checked={appSettings.trackingPreventionExceptions[privacyNamespace] === true}
+                  checked={ownValue(appSettings.trackingPreventionExceptions, privacyNamespace) === true}
                   disabled={trackingPrivacyBusy || sandboxAssignmentBusy}
                   aria-label="Reduce Windows tracking prevention for this browser profile"
-                  onclick={(event) => { event.preventDefault(); void saveTrackingException(settingsServiceId, appSettings.trackingPreventionExceptions[privacyNamespace] !== true); }} />
+                  onclick={(event) => { event.preventDefault(); void saveTrackingException(settingsServiceId, ownValue(appSettings.trackingPreventionExceptions, privacyNamespace) !== true); }} />
                 <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
               </span>
             </label>
