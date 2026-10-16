@@ -6092,7 +6092,14 @@ mod tests {
     fn automatic_backup_filename_unicode_never_panics_in_any_timestamp_segment() {
         let valid = "2026-10-16-001122-003";
         for (begin, end) in [(0, 4), (5, 7), (8, 10), (11, 17), (18, 21)] {
-            for character in ['é', '€', '🙂', '中', 'ß', '\u{202e}'] {
+            for character in [
+                '\u{e9}',
+                '\u{20ac}',
+                '\u{1f642}',
+                '\u{4e2d}',
+                '\u{df}',
+                '\u{202e}',
+            ] {
                 for index in begin..end {
                     let next = index + character.len_utf8();
                     if next > end {

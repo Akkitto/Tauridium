@@ -57,7 +57,7 @@ class Patch0414Tests(unittest.TestCase):
 
   def test_shortcut_override_follows_duplicate_and_delete_lifecycle(self) -> None:
     duplicate = APP.split('async function duplicateServiceFromUi', 1)[1].split('async function reloadServiceFromUi', 1)[0]
-    self.assertIn('serviceShortcutCaptureOverrides[newId] = serviceShortcutCaptureOverrides[service.id]', duplicate)
+    self.assertIn('copyOwnEntry(serviceShortcutCaptureOverrides, service.id, newId)', duplicate)
     delete = APP.split('async function handleDelete', 1)[1].split('async function handleClearCache', 1)[0]
     self.assertIn('delete serviceShortcutCaptureOverrides[s.id]', delete)
 

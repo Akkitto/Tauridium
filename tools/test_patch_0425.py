@@ -78,7 +78,7 @@ class Patch0425Tests(unittest.TestCase):
     self.assertIn('Tauridium could not verify the workspace download settings', APP)
     self.assertIn('delete serviceDownloadSettings[s.id];', APP)
     self.assertIn('delete workspaceDownloadSettings[ws.id];', APP)
-    self.assertIn('serviceDownloadSettings[newId] = { ...serviceDownloadSettings[service.id] };', APP)
+    self.assertIn('copyOwnEntry(serviceDownloadSettings, service.id, newId);', APP)
 
   def test_ask_each_download_keeps_original_authenticated_webview_download(self) -> None:
     handler = MAIN.split('builder = builder.on_download', 1)[1].split('// Per-service storage isolation', 1)[0]

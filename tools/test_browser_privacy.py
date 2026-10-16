@@ -22,7 +22,7 @@ class BrowserPrivacyTests(unittest.TestCase):
     app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
     setter = app.split("async function saveTrackingException", 1)[1].split("function workspaceIcon", 1)[0]
     self.assertIn('enabled && !(await confirmAsk', setter)
-    self.assertIn('persisted.trackingPreventionExceptions[namespace]', setter)
+    self.assertIn('ownValue(persisted.trackingPreventionExceptions, namespace)', setter)
     self.assertIn('showToast("Saved — restart', setter)
     self.assertIn('event.preventDefault(); void saveTrackingException', app)
     self.assertIn('every service in this shared sandbox', app)

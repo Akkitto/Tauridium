@@ -84,7 +84,7 @@ class ServiceZoomPatchTests(unittest.TestCase):
     self.assertIn('text: "Reset zoom (100%)"', APP)
     self.assertIn('<div class="set-title">Page zoom</div>', APP)
     self.assertIn("serviceZoomOperations", APP)
-    self.assertIn("serviceZoomLevels[newId]", APP)
+    self.assertIn("copyOwnEntry(serviceZoomLevels, service.id, newId)", APP)
     self.assertIn("delete serviceZoomLevels[s.id]", APP)
     self.assertIn("page zoom, notifications", README)
 

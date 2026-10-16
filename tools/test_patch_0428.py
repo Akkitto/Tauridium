@@ -23,7 +23,7 @@ class Patch0428Tests(unittest.TestCase):
     self.assertGreaterEqual(APP.count("class:service-icon-inverted={serviceIconInverted("), 3)
     self.assertIn(".service-icon-inverted { filter: invert(1); }", APP)
     self.assertIn("delete serviceIconInversions[s.id];", APP)
-    self.assertIn("serviceIconInversions[newId] = true", APP)
+    self.assertIn("copyOwnEntry(serviceIconInversions, service.id, newId)", APP)
 
   def test_service_context_menu_is_native_so_child_webviews_cannot_cover_it(self) -> None:
     self.assertIn('import { Menu } from "@tauri-apps/api/menu";', APP)
@@ -41,8 +41,8 @@ class Patch0428Tests(unittest.TestCase):
 
   def test_download_settings_verification_is_semantic_not_json_key_order_dependent(self) -> None:
     self.assertIn("export function sameDownloadPreference", UI)
-    self.assertIn("sameDownloadPreference(persisted.serviceDownloadSettings[serviceId], preference)", APP)
-    self.assertIn("sameDownloadPreference(persisted.workspaceDownloadSettings[workspaceId], preference)", APP)
+    self.assertIn("sameDownloadPreference(ownValue(persisted.serviceDownloadSettings, serviceId), preference)", APP)
+    self.assertIn("sameDownloadPreference(ownValue(persisted.workspaceDownloadSettings, workspaceId), preference)", APP)
     self.assertNotIn("JSON.stringify(persisted.serviceDownloadSettings", APP)
     self.assertIn("compares values rather than object key insertion order", UI_TEST)
 
