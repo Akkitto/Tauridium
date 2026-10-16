@@ -22,6 +22,11 @@ Package recognition is signature-based at every boundary, not a top-level filena
 shortcut: renamed/nested DEB, RPM, compound/MSI and AppImage payloads are decoded.
 MSI databases identified inside compound containers also receive auxiliary table
 and stream inspection; a missing reader fails closed rather than dropping coverage.
+ZIP recognition also checks the bounded end structure, so a renamed or historical
+ZIP with prepended bytes cannot fall back to raw compressed-byte inspection.
+Public ZIPs deliberately reject preambles, concatenated archives, unindexed local
+records, overlaps and trailing container data. Normal ZIPs, comments, ZIP64 and
+streaming data descriptors remain supported; CRC/member safety checks still apply.
 
 No application, installer, DLL, archive script, extracted hook, maintainer script,
 or reconstructed uninstaller is executed. Decoders use disposable working
@@ -47,6 +52,12 @@ that every possible secret format, image, personal datum or novel encoding is sa
 Content deduplication is separate from OCR and scoped vector transformations. An
 image seen first outside evidence still requires OCR at its evidence occurrence;
 an OCR-completed set avoids duplicate work without dropping that obligation.
+Container traversal is cached by content and inherited evidence context, not content
+alone or arbitrary path aliases. A later evidence alias replays descendant obligations,
+including through Git object identities and renamed PNGs recognized by signature.
+At most two inherited contexts exist per container; all traversals retain depth and
+aggregate budgets. Scoped public-vector substitution changes scan views only, never
+the original container bytes consumed by archive parsers.
 
 The only private-key-shaped exclusions are exact normalized, publicly documented
 GnuTLS known-answer self-test constants, restricted to decoded libgnutls payloads
@@ -62,7 +73,9 @@ Set `TAURIDIUM_ARTIFACT_SECURITY_TOOLS` to the checksum-verified tool directory 
 running these integration controls. CI must run them, not accept environment skips.
 Controls include a real nested/renamed MSI property, direct/nested/deleted-history
 DEB secrets and actual OCR/Gitleaks rejection in both duplicate orders and across
-artifacts. Security CI installs msitools/wixl, Tesseract, ImageMagick and DejaVu Mono
+artifacts, including nested-container aliases and deleted historical PNGs. Prefixed
+and unindexed compressed ZIP controls fail closed at direct/nested/history boundaries.
+Security CI installs msitools/wixl, Tesseract, ImageMagick and DejaVu Mono
 for those controls; portable unit runs without those tools explicitly report skips.
 
 Untrusted parser/OS/process exception strings never belong in public diagnostics:

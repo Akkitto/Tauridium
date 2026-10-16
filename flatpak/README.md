@@ -50,6 +50,14 @@ Test/lint select that exact current-HEAD candidate, reject incomplete/stale/chan
 outputs, and never fall back to a root `repo` or installed app. An explicit candidate
 directory can be passed as the recipe's single argument. Run the recipes on separate
 lines: optional arguments in `just` can otherwise consume a following recipe name.
+The shared `tools/flatpak_policy.py` contract validates metadata before publishing a
+successful candidate seal and again before every test/run/lint action. It requires
+the reviewed GNOME 51 runtime/SDK architecture pair, exact application/context/session
+bus settings, no added system-bus policy or runtime environment, and only the known
+Debug/Build metadata. Unknown groups, application fields, inherited defaults or
+extension injection fail closed. A future legitimate policy/runtime change must
+update the explicit contract and regression tests; matching hashes alone are not
+permission approval. Existing reviewed generated Debug/Build groups remain accepted.
 
 `flatpak-test` is a headless production/distribution identity check. `flatpak-lint`
 validates the selected manifest/source binding, exported repository, actual sandbox
