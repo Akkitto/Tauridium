@@ -94,12 +94,18 @@
           pkgs = pkgsFor system;
           toolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
           pinnedTauriCli = pkgs.callPackage ./packaging/nix/tauri-cli.nix { };
+          pinnedCargoAudit =
+            assert
+              pkgs.cargo-audit.version == (builtins.fromJSON (builtins.readFile ./data/build-toolchain.json))
+              .cargoAudit;
+            pkgs.cargo-audit;
         in
         {
           default = pkgs.mkShell {
             packages = with pkgs; [
               toolchain
               pinnedTauriCli
+              pinnedCargoAudit
               minisign
               nodejs_24
               python3

@@ -151,12 +151,13 @@ class ReleaseIdentityTests(unittest.TestCase):
   def test_native_only_runs_identity_then_native_without_developer_tools(self, identity, native) -> None:
     with patch.object(INIT, "ensure_pinned_rust_toolchain") as rust_toolchain, patch.object(
       INIT, "ensure_tauri_cli"
-    ) as tauri_cli, patch.object(INIT, "install_javascript_dependencies") as npm:
+    ) as tauri_cli, patch.object(INIT, "ensure_cargo_audit") as audit, patch.object(INIT, "install_javascript_dependencies") as npm:
       self.assertEqual(INIT.main(["--native-only"]), 0)
     identity.assert_called_once_with()
     native.assert_called_once_with()
     rust_toolchain.assert_not_called()
     tauri_cli.assert_not_called()
+    audit.assert_not_called()
     npm.assert_not_called()
 
 
@@ -246,16 +247,18 @@ class TauriCliTests(unittest.TestCase):
       INIT.ensure_tauri_cli()
 
   @patch.object(INIT, "install_javascript_dependencies")
+  @patch.object(INIT, "ensure_cargo_audit")
   @patch.object(INIT, "ensure_tauri_cli")
   @patch.object(INIT, "ensure_pinned_rust_toolchain")
   @patch.object(INIT, "install_linux_system_dependencies")
   @patch.object(INIT, "validate_release_identity")
   def test_full_init_ensures_pinned_rust_and_tauri_cli_before_npm(
-    self, _identity, _native, rust_toolchain, tauri_cli, npm
+    self, _identity, _native, rust_toolchain, tauri_cli, audit, npm
   ) -> None:
     self.assertEqual(INIT.main([]), 0)
     rust_toolchain.assert_called_once_with()
     tauri_cli.assert_called_once_with()
+    audit.assert_called_once_with()
     npm.assert_called_once_with()
 
 

@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "builderLockSha256": "d98da5271e820521d43eb4df9d62ec7e4846b9a9a5bd579a08acd3c02b5f7786",
+  "assessments": [
+    {
+      "lock": "flatpak/tauri-cli.Cargo.lock",
+      "id": null,
+      "package": "zip",
+      "version": "8.0.0",
+      "kind": "yanked",
+      "expires": "2026-11-15",
+      "status": "reviewed-upstream-builder-only-withdrawal",
+      "reason": "All ZIP versions older than 9.0.3 were withdrawn. Application and Windows updater actually migrate to 9.0.4. The exact published current supported CLI lock still selects 8.0.0: only reviewed repository-owned inputs, no untrusted artifact inspection or keys in this builder. Protected signing and publishing never invoke Cargo/Tauri or its ZIP parser. Track the next supported upstream CLI; this is not a parser fix or a runtime exception."
+    },
+    {
+      "lock": "flatpak/tauri-cli.Cargo.lock",
+      "id": "RUSTSEC-2025-0144",
+      "package": "ml-dsa",
+      "version": "0.0.4",
+      "kind": "vulnerability",
+      "expires": "2026-11-15",
+      "status": "not-affected-under-enforced-controls",
+      "reason": "Official pinned builder only: private ML-DSA timing in optional OpenPGP RPM signing, not the application runtime. Canonical builds reject signing keys and produce unsigned RPMs; isolated updater signing uses Minisign Ed25519, not PGP. This is not an upstream patch or permission to use the affected PGP signing API."
+    },
+    {
+      "lock": "flatpak/tauri-cli.Cargo.lock",
+      "id": "RUSTSEC-2023-0071",
+      "package": "rsa",
+      "version": "0.9.10",
+      "kind": "vulnerability",
+      "expires": "2026-11-15",
+      "status": "not-affected-under-enforced-controls",
+      "reason": "Official pinned builder only: private RSA timing in optional OpenPGP RPM signing. No patched upstream release exists in the reviewed advisory. Canonical build environments reject RPM/updater signing credentials; protected updater signing invokes only Minisign Ed25519. No private RSA operation or key is used by these supported paths."
+    },
+    {
+      "lock": "src-tauri/Cargo.lock",
+      "id": "RUSTSEC-2024-0370",
+      "package": "proc-macro-error",
+      "version": "1.0.4",
+      "kind": "unmaintained",
+      "expires": "2027-01-15",
+      "status": "reviewed-maintenance-warning",
+      "reason": "GTK3/GLib 0.18 derive-tooling dependency; no vulnerability is asserted by this maintenance advisory. Retain ABI compatibility while tracking the complete upstream GTK/WebKit migration. The separate GLib unsoundness is actually backported, not ignored."
+    },
+    {
+      "lock": "flatpak/tauri-cli.Cargo.lock",
+      "id": "RUSTSEC-2024-0436",
+      "package": "paste",
+      "version": "1.0.15",
+      "kind": "unmaintained",
+      "expires": "2027-01-15",
+      "status": "reviewed-maintenance-warning",
+      "reason": "Build-only dependency in the exact published supported Tauri CLI lock; no vulnerability is asserted. Reassess together with the next supported CLI update."
+    },
+    {
+      "lock": "flatpak/tauri-cli.Cargo.lock",
+      "id": "RUSTSEC-2026-0206",
+      "package": "rustybuzz",
+      "version": "0.20.1",
+      "kind": "unmaintained",
+      "expires": "2027-01-15",
+      "status": "reviewed-maintenance-warning",
+      "reason": "Build-only icon/text renderer in the exact supported CLI lock. Only reviewed repository-owned build assets are renderer inputs; builder executable is not published in application packages. Track the supported upstream CLI update."
+    },
+    {
+      "lock": "flatpak/tauri-cli.Cargo.lock",
+      "id": "RUSTSEC-2026-0192",
+      "package": "ttf-parser",
+      "version": "0.25.1",
+      "kind": "unmaintained",
+      "expires": "2027-01-15",
+      "status": "reviewed-maintenance-warning",
+      "reason": "Build-only font parser in the pinned CLI renderer; no vulnerability is asserted by this maintenance advisory. Reassess with the next supported CLI instead of altering its reviewed published lock silently."
+    }
+  ]
+}

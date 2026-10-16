@@ -444,6 +444,25 @@ def ensure_tauri_cli() -> None:
   print(f"+ Tauri CLI: installed pinned {version}", flush=True)
 
 
+def ensure_cargo_audit() -> None:
+  version = json.loads((ROOT / "data/build-toolchain.json").read_text(encoding="utf-8"))["cargoAudit"]
+
+  def matches() -> bool:
+    executable = shutil.which("cargo-audit")
+    if not executable:
+      return False
+    result = subprocess.run([executable, "audit", "--version"], check=False, capture_output=True, text=True)
+    return result.returncode == 0 and result.stdout.strip() in (f"cargo-audit {version}", f"cargo-audit-audit {version}")
+
+  if not matches():
+    if os.environ.get("TAURIDIUM_NIX_DEV_SHELL") == "1":
+      raise InitError(f"Nix development shell requires cargo-audit {version}; re-enter the updated nix develop environment")
+    run_checked(["cargo", "install", "cargo-audit", "--locked", "--version", version, "--force"])
+    if not matches():
+      raise InitError(f"cargo-audit does not match pinned {version} after installation")
+  print(f"+ cargo-audit: pinned {version}", flush=True)
+
+
 def install_javascript_dependencies() -> None:
   if not shutil.which("node"):
     raise InitError("Node.js is required but was not found in PATH")
@@ -482,6 +501,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.native_only:
       ensure_pinned_rust_toolchain()
       ensure_tauri_cli()
+      ensure_cargo_audit()
       install_javascript_dependencies()
   except subprocess.CalledProcessError as exc:
     command = " ".join(str(part) for part in exc.cmd)

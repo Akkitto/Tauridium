@@ -43,6 +43,7 @@ lint:
 
 [windows]
 lint:
+  cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
   cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings
 
 [unix]
@@ -57,6 +58,7 @@ check:
 [windows]
 check:
   npm run check
+  cargo check --manifest-path src-tauri/Cargo.toml --all-targets --locked
   cargo check --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/validate_release.py
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/scoop.py validate-template
@@ -73,6 +75,7 @@ test:
 test:
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 -m unittest discover -s tools -p "test_*.py"
   npm test
+  cargo test --manifest-path src-tauri/Cargo.toml --locked
   cargo test --manifest-path src-tauri/Cargo.toml --all-features --locked
 
 [unix]
@@ -117,9 +120,15 @@ test-file-drop-fallback:
 test-download-toast:
   python3 tools/download_toast_smoke.py
 
+[unix]
 audit: rust-supply-chain-host
-  npm audit --audit-level=high
-  cargo audit
+  npm audit --audit-level=low
+  python3 tools/audit_dependencies.py
+
+[windows]
+audit: rust-supply-chain-host
+  npm audit --audit-level=low
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/audit_dependencies.py
 
 [unix]
 doc:

@@ -277,7 +277,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
       '["cargo", "install", "tauri-cli", "--locked", "--version", version, "--force"]',
       init_py,
     )
-    self.assertIn('ensure_pinned_rust_toolchain()\n      ensure_tauri_cli()\n      install_javascript_dependencies()', init_py)
+    self.assertIn('ensure_pinned_rust_toolchain()\n      ensure_tauri_cli()\n      ensure_cargo_audit()\n      install_javascript_dependencies()', init_py)
 
   def test_release_packaging_requires_pinned_rustfmt_check(self) -> None:
     toolchain = (ROOT / "rust-toolchain.toml").read_text(encoding="utf-8")

@@ -17,6 +17,9 @@ env:
   NODE_OPTIONS: --no-deprecation
 
 jobs:
+  security:
+    uses: ./.github/workflows/security.yml
+
   nix:
     uses: ./.github/workflows/nix.yml
 

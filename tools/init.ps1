@@ -797,30 +797,32 @@ try {
     # -------------------------------------------------------------------------
     # cargo-audit
     # -------------------------------------------------------------------------
+    $CargoAuditVersion = [string]$BuildToolchain.cargoAudit
+    if ($CargoAuditVersion -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid pinned cargo-audit version" }
     $SavedErrorActionPreference = $ErrorActionPreference
     try {
       $ErrorActionPreference = "SilentlyContinue"
-      & cargo.exe audit --version *> $null
+      $CargoAuditOutput = (& cargo.exe audit --version 2>$null | Out-String).Trim()
       $CargoAuditProbeExitCode = $LASTEXITCODE
     } finally {
       $ErrorActionPreference = $SavedErrorActionPreference
     }
-    if ($CargoAuditProbeExitCode -ne 0) {
-      Write-Host "+ cargo.exe install cargo-audit --locked"
-      & cargo.exe install cargo-audit --locked
+    if ($CargoAuditProbeExitCode -ne 0 -or $CargoAuditOutput -notmatch ("^cargo-audit(?:-audit)? " + [regex]::Escape($CargoAuditVersion) + '$')) {
+      Write-Host "+ cargo.exe install cargo-audit --locked --version $CargoAuditVersion --force"
+      & cargo.exe install cargo-audit --locked --version $CargoAuditVersion --force
       if ($LASTEXITCODE -ne 0) {
         throw ("cargo.exe install cargo-audit failed with exit code {0}" -f $LASTEXITCODE)
       }
       $SavedErrorActionPreference = $ErrorActionPreference
       try {
         $ErrorActionPreference = "SilentlyContinue"
-        & cargo.exe audit --version *> $null
+        $CargoAuditOutput = (& cargo.exe audit --version 2>$null | Out-String).Trim()
         $CargoAuditProbeExitCode = $LASTEXITCODE
       } finally {
         $ErrorActionPreference = $SavedErrorActionPreference
       }
-      if ($CargoAuditProbeExitCode -ne 0) {
-        throw "cargo audit is still unavailable after installing cargo-audit"
+      if ($CargoAuditProbeExitCode -ne 0 -or $CargoAuditOutput -notmatch ("^cargo-audit(?:-audit)? " + [regex]::Escape($CargoAuditVersion) + '$')) {
+        throw "cargo audit does not match the pinned version after installation"
       }
     }
 

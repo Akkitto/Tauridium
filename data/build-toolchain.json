@@ -1,4 +1,5 @@
 {
+  "cargoAudit": "0.22.2",
   "tauriCli": "2.12.3",
   "tauriCliCrateSha256": "9a6f47e865c7c526880d9e3a0c4bb84255d6e3f45fac2684adf82458ee565a18",
   "tauriCliLockSha256": "d98da5271e820521d43eb4df9d62ec7e4846b9a9a5bd579a08acd3c02b5f7786"
