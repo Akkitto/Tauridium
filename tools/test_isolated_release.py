@@ -1,4 +1,5 @@
 """Key custody and deterministic build-input inventory regression coverage."""
+import base64
 import json
 import os
 from pathlib import Path
@@ -55,28 +56,30 @@ class IsolatedReleaseTests(unittest.TestCase):
       assets = root / "assets"
       assets.mkdir()
       (assets / "release-notes.md").write_text("Synthetic notes", encoding="utf-8")
-      first = assets / release_assets.expected_updater_artifact_names("9.9.9")[0]
+      first = assets / sorted(release_assets.expected_updater_artifact_names("9.9.9"))[0]
       first.write_bytes(b"synthetic")
-      replies = [subprocess.CompletedProcess([], 0, "tauri-cli 2.12.3\n", ""),
-                 subprocess.CompletedProcess([], 1, b"synthetic-private-key", b"synthetic-private-key")]
-      with (mock.patch.dict(os.environ, {"TAURI_SIGNING_PRIVATE_KEY": "synthetic-private-key"}, clear=True),
+      replies = [subprocess.CompletedProcess([], 1, b"synthetic-private-key", b"synthetic-private-key")]
+      with (mock.patch.dict(os.environ, {"TAURI_SIGNING_PRIVATE_KEY": base64.b64encode(b"synthetic-private-key").decode()}, clear=True),
+            mock.patch.object(sign_release, "pinned_signer", return_value="/synthetic/minisign"),
             mock.patch.object(sign_release.policy, "validate_directory", return_value=[first]),
             mock.patch.object(sign_release.subprocess, "run", side_effect=replies)):
         with self.assertRaisesRegex(SystemExit, "output withheld") as caught:
-          sign_release.sign(assets, root / "output", "9.9.9", executable="/synthetic/cargo-tauri")
+          sign_release.sign(assets, root / "output", "9.9.9", executable="/synthetic/minisign")
         self.assertNotIn("synthetic-private-key", str(caught.exception))
         self.assertFalse((root / "output").exists())
         self.assertFalse(any(path.name.startswith(".tauridium-signer-") for path in root.iterdir()))
 
-  @unittest.skipUnless(shutil.which("cargo-tauri") and updater_signature.find_minisign(), "Pinned CLI and Minisign required")
-  def test_real_isolated_cli_signer_round_trips_all_six_version_bound_artifacts(self):
+  @unittest.skipUnless(os.name == "posix" and shutil.which("cargo-tauri") and os.environ.get("TAURIDIUM_TEST_MINISIGN"),
+                       "Linux, Tauri test-key generator and pinned TAURIDIUM_TEST_MINISIGN required")
+  def test_real_minisign_signer_accepts_encrypted_tauri_keys_and_binds_all_six_versions(self):
     with tempfile.TemporaryDirectory(prefix="tauridium-isolated-signer-test-") as temporary:
       root = Path(temporary)
       key = root / "ephemeral-test.key"
       cli = shutil.which("cargo-tauri")
       env = {name: value for name, value in os.environ.items()
              if not name.startswith(("TAURI_PRIVATE_KEY", "TAURI_SIGNING_PRIVATE_KEY"))}
-      subprocess.run([cli, "signer", "generate", "--ci", "--password", "", "--write-keys", str(key)],
+      password = " synthetic passphrase with spaces and café "
+      subprocess.run([cli, "signer", "generate", "--ci", "--password", password, "--write-keys", str(key)],
                      cwd=root, env=env, check=True, capture_output=True, timeout=60)
       assets = root / "assets"
       assets.mkdir()
@@ -90,14 +93,30 @@ class IsolatedReleaseTests(unittest.TestCase):
       # Format/inventory parsing is tested independently; this test exercises
       # the real signing process against harmless bytes, never actual installers.
       with (mock.patch.dict(os.environ, {**env, "TAURI_SIGNING_PRIVATE_KEY": key.read_text(encoding="utf-8").strip(),
-                                         "TAURI_SIGNING_PRIVATE_KEY_PASSWORD": ""}, clear=True),
+                                         "TAURI_SIGNING_PRIVATE_KEY_PASSWORD": password}, clear=True),
             mock.patch.object(sign_release.policy, "validate_directory", return_value=files),
             mock.patch.object(updater_signature, "configured_public_key", return_value=public_key)):
         output = root / "signed"
-        sign_release.sign(assets, output, "9.9.9", executable=cli)
+        sign_release.sign(assets, output, "9.9.9", executable=os.environ["TAURIDIUM_TEST_MINISIGN"])
         for name in release_assets.expected_updater_artifact_names("9.9.9"):
-          updater_signature.verify(output / name, output / (name + ".sig"), "9.9.9", public_key=public_key)
+          updater_signature.verify(output / name, output / (name + ".sig"), "9.9.9", public_key=public_key,
+                                    executable=os.environ["TAURIDIUM_TEST_MINISIGN"])
         self.assertEqual(len(list(output.iterdir())), 13)
+
+  def test_signer_refuses_an_unpinned_executable_before_execution(self):
+    with tempfile.TemporaryDirectory() as temporary:
+      path = Path(temporary) / "minisign"
+      path.write_bytes(b"not the official executable")
+      with self.assertRaisesRegex(SystemExit, "checksum-pinned"):
+        sign_release.pinned_signer(str(path))
+
+  def test_key_custody_never_invokes_build_tools_or_complex_artifact_parsers(self):
+    source = (sign_release.ROOT / "tools/sign_release.py").read_text(encoding="utf-8")
+    self.assertNotIn("from package_release", source)
+    self.assertNotIn("from release_assets", source)
+    self.assertEqual(source.count("inspect=False"), 2)
+    self.assertIn('input=password + b"\\n"', source)
+    self.assertIn('dir="/dev/shm"', source)
 
 
 if __name__ == "__main__":

@@ -56,7 +56,8 @@ def decode_envelope(encoded: str | bytes) -> bytes:
     return base64.b64decode(encoded.strip(), validate=True)
 
 
-def verify(artifact: Path, signature: Path, release_version: str, *, public_key: str | None = None) -> str:
+def verify(artifact: Path, signature: Path, release_version: str, *, public_key: str | None = None,
+           executable: str | None = None) -> str:
     try:
         require_regular(artifact)
         encoded = read_small(signature).strip()
@@ -79,7 +80,7 @@ def verify(artifact: Path, signature: Path, release_version: str, *, public_key:
         key_packet = base64.b64decode(key_lines[1], validate=True)
         if len(key_packet) != 42 or key_packet[:2] != b"Ed" or packet[2:10] != key_packet[2:10]:
             raise ValueError("Signature does not match the configured updater public key")
-        executable = find_minisign()
+        executable = executable or find_minisign()
         if executable is None:
             raise ValueError("Minisign is required for signature verification; run just init (on macOS: brew install minisign)")
         # Use the maintained verifier, including the global/trusted-comment signature;

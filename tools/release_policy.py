@@ -126,7 +126,8 @@ def inspect_file(path: Path) -> None:
           json.loads(path.read_text(encoding="utf-8"))
 
 
-def validate_directory(directory: Path, expected: set[str], *, internal: set[str] | None = None) -> list[Path]:
+def validate_directory(directory: Path, expected: set[str], *, internal: set[str] | None = None,
+                       inspect: bool = True) -> list[Path]:
   internal = internal or set()
   metadata = directory.lstat()
   if not stat.S_ISDIR(metadata.st_mode) or getattr(metadata, "st_file_attributes", 0) & 0x400:
@@ -142,7 +143,8 @@ def validate_directory(directory: Path, expected: set[str], *, internal: set[str
     total += regular(path).st_size
     if total > MAX_TOTAL:
       raise SystemExit("error: public artifact set exceeds its size budget")
-    inspect_file(path)
+    if inspect:
+      inspect_file(path)
   return [directory / name for name in sorted(expected)]
 
 

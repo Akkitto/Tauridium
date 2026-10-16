@@ -21,13 +21,17 @@ class HttpsOnlyRedirect(HTTPRedirectHandler):
     return super().redirect_request(request, fp, code, message, headers, newurl)
 
 
-def install(output: Path) -> None:
+def install(output: Path, only: str | None = None) -> None:
   if platform.system() != "Linux" or platform.machine() not in ("x86_64", "amd64"):
     raise SystemExit("error: isolated public artifact scanning runs on Linux x64")
   if output.exists() or output.is_symlink():
     raise SystemExit("error: scanner installation requires a fresh directory")
   output.parent.mkdir(parents=True, exist_ok=True)
   policy = json.loads((ROOT / "data/security-tools.json").read_text(encoding="utf-8"))
+  if only is not None:
+    if only not in policy:
+      raise SystemExit("error: unknown security tool")
+    policy = {only: policy[only]}
   opener = build_opener(HttpsOnlyRedirect())
   with tempfile.TemporaryDirectory(prefix=".tauridium-scanners-", dir=output.parent) as temporary:
     staged = Path(temporary)
@@ -45,7 +49,10 @@ def install(output: Path) -> None:
         stream = archive.extractfile(matches[0])
         if stream is None:
           raise SystemExit("error: scanner archive executable cannot be read")
-        (staged / name).write_bytes(stream.read())
+        binary = stream.read()
+        if entry.get("binarySha256") and hashlib.sha256(binary).hexdigest() != entry["binarySha256"]:
+          raise SystemExit("error: security executable checksum verification failed")
+        (staged / name).write_bytes(binary)
         (staged / name).chmod(0o755)
     os.rename(staged, output)
   print(f"Verified scanner tools installed: {output}")
@@ -54,4 +61,6 @@ def install(output: Path) -> None:
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description=__doc__)
   parser.add_argument("output", type=Path)
-  install(parser.parse_args().output)
+  parser.add_argument("--only", choices=("minisign", "gitleaks", "7zz"))
+  args = parser.parse_args()
+  install(args.output, args.only)
