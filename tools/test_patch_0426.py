@@ -16,8 +16,9 @@ WRY_WEBVIEW2 = (ROOT / "vendor/wry/src/webview2/mod.rs").read_text(encoding="utf
 
 class Patch0426Tests(unittest.TestCase):
   def test_windows_remote_webviews_allow_turnstile_storage_and_use_native_user_agent(self) -> None:
-    self.assertIn("options.set_enable_tracking_prevention(!is_remote_http);", WRY_WEBVIEW2)
-    self.assertIn('url.starts_with("https://") || url.starts_with("http://")', WRY_WEBVIEW2)
+    self.assertIn("options.set_enable_tracking_prevention(!(is_remote_http && relax_tracking));", WRY_WEBVIEW2)
+    self.assertIn('Some("--tauridium-relax-tracking-prevention")', WRY_WEBVIEW2)
+    self.assertIn("tracking_prevention_startup", MAIN)
     self.assertIn("else if cfg!(windows) {", MAIN)
     self.assertIn("None", MAIN.split("else if cfg!(windows) {", 1)[1].split("} else {", 1)[0])
     self.assertIn("if let Some(ua) = ua.as_deref()", MAIN)

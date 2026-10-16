@@ -1468,7 +1468,7 @@ def main() -> int:
   patch_0426 = read("tools/test_patch_0426.py")
   wry_webview2 = read("vendor/wry/src/webview2/mod.rs")
   for marker in (
-    'options.set_enable_tracking_prevention(!is_remote_http);',
+    'options.set_enable_tracking_prevention(!(is_remote_http && relax_tracking));',
     'else if cfg!(windows) {',
     'if let Some(ua) = ua.as_deref()',
     's.isBadgeEnabled !== false && (unreadMap[s.id] ?? 0) > 0',

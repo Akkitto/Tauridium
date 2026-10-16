@@ -2,6 +2,7 @@
 
 mod audit;
 mod backup;
+mod browser_privacy;
 mod credentials;
 mod distribution;
 mod download_notifications;
@@ -317,7 +318,9 @@ struct AppState {
     unread: Mutex<HashMap<String, i64>>,    // unread count per service (for the dock badge)
     flags: Mutex<HashMap<String, ServiceFlags>>, // per-service settings (notification/mute/badge)
     notification_budget: Mutex<notification_security::Budget>,
-    settings: Mutex<Value>,    // app settings cache (read by the poller, etc.)
+    settings: Mutex<Value>, // app settings cache (read by the poller, etc.)
+    #[cfg(windows)]
+    tracking_prevention_startup: Mutex<Value>, // immutable after setup; profile options require restart
     settings_write: Mutex<()>, // serializes app-settings read/modify/write transactions
     sidebar_w: Mutex<f64>,     // sidebar width (initialized during setup, default 240)
     desired_active: Mutex<Option<String>>, // last requested service (prevents focus stealing during switches)
@@ -2351,6 +2354,15 @@ async fn create_service_webview(
     });
     // Per-service storage isolation: macOS -> data_store_identifier (data_directory
     // ignored); Windows/Linux use a dedicated data_directory to avoid shared sessions.
+    #[cfg(windows)]
+    if browser_privacy::exception_enabled(
+        &state.tracking_prevention_startup.lock().unwrap(),
+        service_id,
+        sandbox_id,
+    ) {
+        // Internal marker consumed by patched Wry, never a Chromium command-line flag.
+        builder = builder.additional_browser_args("--tauridium-relax-tracking-prevention");
+    }
     #[cfg(target_os = "macos")]
     {
         let store = storage_identifier(service_id, sandbox_id)
@@ -3678,6 +3690,10 @@ fn default_app_settings_value() -> Value {
     settings.insert("keybindings".into(), Value::Object(keybindings));
     settings.insert("sandboxes".into(), Value::Array(Vec::new()));
     settings.insert(
+        "trackingPreventionExceptions".into(),
+        Value::Object(serde_json::Map::new()),
+    );
+    settings.insert(
         "serviceSandboxes".into(),
         Value::Object(serde_json::Map::new()),
     );
@@ -4108,6 +4124,7 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         return Err("App setting serviceIconInversions is invalid".into());
     }
     validate_service_zoom_levels(object.get("serviceZoomLevels"))?;
+    browser_privacy::validate(object.get("trackingPreventionExceptions"))?;
     validate_keybindings(object.get("keybindings"))?;
     validate_sandboxes(object.get("sandboxes"), object.get("serviceSandboxes"))?;
     let backup_retention = object
@@ -5590,6 +5607,12 @@ fn main() {
             // Cache app settings in memory for the poller, shutdown handling, and related logic.
             *app.state::<AppState>().settings.lock().unwrap() =
                 read_app_settings_value(app.handle());
+            #[cfg(windows)]
+            {
+                let state = app.state::<AppState>();
+                *state.tracking_prevention_startup.lock().unwrap() = state.settings.lock().unwrap()
+                    .get("trackingPreventionExceptions").cloned().unwrap_or_else(|| serde_json::json!({}));
+            }
             startup_diagnostics::log("primary", "settings.loaded", "application settings loaded into memory");
             {
                 let st = app.state::<AppState>();

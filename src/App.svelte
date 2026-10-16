@@ -2,6 +2,7 @@
   import { onDestroy, onMount } from "svelte";
   import { managedUpdateText } from "./lib/distribution";
   import { downloadToastPreview } from "./lib/downloadToast";
+  import { browserProfileNamespace, retainedTrackingExceptions } from "./lib/browserPrivacy";
   import tauridiumLogo from "./assets/tauridium.svg";
   import { listen } from "@tauri-apps/api/event";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
@@ -186,6 +187,7 @@
   let serviceSandboxQuery = $state("");
   let serviceSandboxPage = $state(0);
   let sandboxAssignmentBusy = $state(false);
+  let trackingPrivacyBusy = $state(false);
   let serviceIconUrlDraft = $state("");
   let serviceIconUrlBusy = $state(false);
   let newWorkspaceName = $state("");
@@ -321,6 +323,7 @@
     customUrlTemplatesEnabled: false,
     serviceCustomUrlTemplates: {},
     serviceIconInversions: {},
+    trackingPreventionExceptions: {},
     serviceZoomLevels: {},
     serviceOrder: [],
     workspaceOrder: [],
@@ -897,6 +900,31 @@
     }
   }
 
+  async function saveTrackingException(serviceId: string, enabled: boolean) {
+    if (trackingPrivacyBusy || sandboxAssignmentBusy) return;
+    const namespace = browserProfileNamespace(serviceId, appSettings.serviceSandboxes);
+    const shared = namespace.startsWith("sandbox:");
+    const previous = { ...appSettings.trackingPreventionExceptions };
+    if ((previous[namespace] === true) === enabled) return;
+    trackingPrivacyBusy = true;
+    try {
+      if (enabled && !(await confirmAsk(`Reduce Windows tracking protection for ${shared ? "every service in this shared sandbox" : "this service's isolated browser profile"}? This can help embedded sign-in challenges but reduces privacy. SmartScreen stays enabled. The change applies only after restarting Tauridium.`))) return;
+      const trackingPreventionExceptions = { ...previous };
+      if (enabled) trackingPreventionExceptions[namespace] = true;
+      else delete trackingPreventionExceptions[namespace];
+      const persisted = await setAppSettings({ trackingPreventionExceptions });
+      if ((persisted.trackingPreventionExceptions[namespace] === true) !== enabled) {
+        throw new Error("Tauridium could not verify the browser profile privacy setting");
+      }
+      appSettings = persisted;
+      showToast("Saved — restart Tauridium to apply browser privacy changes", "success");
+    } catch (err) {
+      error = `Unable to save browser privacy setting: ${err}`;
+    } finally {
+      trackingPrivacyBusy = false;
+    }
+  }
+
   function workspaceIcon(workspace: Workspace): string | null {
     return appSettings.workspaceIcons[workspace.id] ?? null;
   }
@@ -1233,6 +1261,9 @@
     const serviceIconInversions = Object.fromEntries(
       Object.entries(appSettings.serviceIconInversions).filter(([serviceId]) => serviceIds.has(serviceId)),
     );
+    const trackingPreventionExceptions = retainedTrackingExceptions(
+      appSettings.trackingPreventionExceptions, serviceIds, new Set(appSettings.sandboxes.map((sandbox) => sandbox.id)),
+    );
     const serviceDownloadSettings = Object.fromEntries(
       Object.entries(appSettings.serviceDownloadSettings).filter(([serviceId]) => serviceIds.has(serviceId)),
     );
@@ -1243,6 +1274,7 @@
     const usageHistoryChanged = Object.keys(workspaceLastUsed).length !== Object.keys(appSettings.workspaceLastUsed).length;
     const workspaceIconsChanged = Object.keys(workspaceIcons).length !== Object.keys(appSettings.workspaceIcons).length;
     const serviceIconInversionsChanged = Object.keys(serviceIconInversions).length !== Object.keys(appSettings.serviceIconInversions).length;
+    const trackingExceptionsChanged = Object.keys(trackingPreventionExceptions).length !== Object.keys(appSettings.trackingPreventionExceptions).length;
     const serviceDownloadSettingsChanged = Object.keys(serviceDownloadSettings).length !== Object.keys(appSettings.serviceDownloadSettings).length;
     const workspaceDownloadSettingsChanged = Object.keys(workspaceDownloadSettings).length !== Object.keys(appSettings.workspaceDownloadSettings).length;
     if (
@@ -1252,6 +1284,7 @@
       !usageHistoryChanged &&
       !workspaceIconsChanged &&
       !serviceIconInversionsChanged &&
+      !trackingExceptionsChanged &&
       !serviceDownloadSettingsChanged &&
       !workspaceDownloadSettingsChanged
     ) return;
@@ -1264,6 +1297,7 @@
         workspaceLastUsed,
         workspaceIcons,
         serviceIconInversions,
+        trackingPreventionExceptions,
         serviceDownloadSettings,
         workspaceDownloadSettings,
       });
@@ -3619,7 +3653,7 @@
   }
 
   async function assignServiceSandbox(serviceId: string, sandboxId: string) {
-    if (sandboxAssignmentBusy) return;
+    if (sandboxAssignmentBusy || trackingPrivacyBusy) return;
     const previous = { ...appSettings.serviceSandboxes };
     const serviceSandboxes = { ...previous };
     if (sandboxId) serviceSandboxes[serviceId] = sandboxId;
@@ -3672,6 +3706,8 @@
     );
     appSettings = await setAppSettings({
       sandboxes: appSettings.sandboxes.filter((candidate) => candidate.id !== sandbox.id),
+      trackingPreventionExceptions: Object.fromEntries(Object.entries(appSettings.trackingPreventionExceptions)
+        .filter(([key]) => key !== `sandbox:${sandbox.id}`)),
       serviceSandboxes,
     });
     if (activeWasAssigned && activeService) selectService(activeService);
@@ -4168,6 +4204,24 @@
             <p class="desc">Per-service browser identity, overrides the global one. Reloads the service.</p>
           </div>
 
+          {#if osKind === "win"}
+            <div class="set-title">Windows browser privacy</div>
+            {@const privacyNamespace = browserProfileNamespace(settingsServiceId, appSettings.serviceSandboxes)}
+            <label class="download-setting-row setting-card-toggle">
+              <span class="setting-copy">
+                <strong>Reduce tracking prevention for sign-in compatibility</strong>
+                <span class="desc">Off by default. Use only if an embedded sign-in challenge fails. Reduces privacy, not SmartScreen protection. Applies to {privacyNamespace.startsWith("sandbox:") ? "every service in this shared sandbox" : "this isolated service profile"}. Restart Tauridium after changing this setting.</span>
+              </span>
+              <span class="switch-control">
+                <input class="switch-input" type="checkbox"
+                  checked={appSettings.trackingPreventionExceptions[privacyNamespace] === true}
+                  disabled={trackingPrivacyBusy || sandboxAssignmentBusy}
+                  aria-label="Reduce Windows tracking prevention for this browser profile"
+                  onclick={(event) => { event.preventDefault(); void saveTrackingException(settingsServiceId, appSettings.trackingPreventionExceptions[privacyNamespace] !== true); }} />
+                <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+              </span>
+            </label>
+          {/if}
           <div class="set-title">Proxy</div>
           {@render toggle("Use a proxy", "Route this service through an HTTP/HTTPS proxy.", "isProxyFeatureEnabled", settingsSvc.isProxyFeatureEnabled === true)}
           {#if settingsSvc.isProxyFeatureEnabled}

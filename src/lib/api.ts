@@ -363,6 +363,7 @@ export interface AppSettings {
   customUrlTemplatesEnabled: boolean;
   serviceCustomUrlTemplates: Record<string, ServiceCustomUrlTemplate>;
   serviceIconInversions: Record<string, boolean>;
+  trackingPreventionExceptions: Record<string, boolean>;
   serviceZoomLevels: Record<string, number>;
   serviceOrder: string[];
   workspaceOrder: string[];

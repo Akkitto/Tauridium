@@ -296,11 +296,32 @@ impl InnerWebView {
       .and_then(|context| context.data_directory())
       .map(HSTRING::from);
 
-    // additional browser args
-    let additional_browser_args = pl_attrs.additional_browser_args.unwrap_or_else(|| {
+    // Tauridium's native-only profile marker is consumed here, never sent to Chromium.
+    // Environment options must stay identical for every view sharing a data directory.
+    let relax_tracking =
+      pl_attrs.additional_browser_args.as_deref() == Some("--tauridium-relax-tracking-prevention");
+    let is_remote_http = attributes
+      .url
+      .as_deref()
+      .and_then(|url| url.parse::<http::Uri>().ok())
+      .is_some_and(|uri| {
+        matches!(uri.scheme_str(), Some("http" | "https"))
+          && !matches!(
+            uri.host(),
+            Some("tauri.localhost" | "asset.localhost" | "ipc.localhost")
+          )
+      });
+    let provided_args = pl_attrs.additional_browser_args.filter(|_| !relax_tracking);
+    let additional_browser_args = provided_args.unwrap_or_else(|| {
       // remove "mini menu" - See https://github.com/tauri-apps/wry/issues/535
       // and "smart screen" - See https://github.com/tauri-apps/tauri/issues/1345
-      let default_args = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
+      // Retain upstream custom-protocol compatibility only for app-owned local content.
+      // Remote services keep SmartScreen reputation protection even with a tracking exception.
+      let default_args = if is_remote_http {
+        "--disable-features=msWebOOUI,msPdfOOUI"
+      } else {
+        "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"
+      };
       let mut arguments = String::from(default_args);
 
       if attributes.autoplay {
@@ -333,16 +354,9 @@ impl InnerWebView {
       options.set_additional_browser_arguments(additional_browser_args);
       options.set_are_browser_extensions_enabled(pl_attrs.browser_extensions_enabled);
 
-      // Tauridium hosts third-party web applications in remote service webviews. WebView2
-      // tracking prevention is enabled by default and can block the cross-site storage/network
-      // access required by embedded authentication challenges such as Cloudflare Turnstile.
-      // Keep tracking prevention enabled for local application content, but disable it for
-      // remote HTTP(S) webviews so the embedded site receives normal browser-compatible
-      // cookie/storage semantics. Popups reuse their opener environment and inherit this setting.
-      let is_remote_http = attributes.url.as_deref().is_some_and(|url| {
-        url.starts_with("https://") || url.starts_with("http://")
-      });
-      options.set_enable_tracking_prevention(!is_remote_http);
+      // Default on. Exceptions require explicit persisted profile-level consent at startup.
+      // Authentication popups reuse the opener environment and inherit the same policy.
+      options.set_enable_tracking_prevention(!(is_remote_http && relax_tracking));
 
       // Get user's system language
       let lcid = GetUserDefaultUILanguage();
