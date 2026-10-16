@@ -178,37 +178,34 @@ fn verify_zip(bytes: &[u8], expected: &[ZipEntry]) -> Result<(), String> {
         let mut file = archive
             .by_index(index)
             .map_err(|error| format!("Unable to read service export ZIP entry {index}: {error}"))?;
+        let name = file
+            .name()
+            .map_err(|error| format!("Invalid service export filename: {error}"))?
+            .into_owned();
         if file.enclosed_name().is_none() {
-            return Err(format!(
-                "Unsafe path in service export ZIP: {}",
-                file.name()
-            ));
+            return Err(format!("Unsafe path in service export ZIP: {}", name));
         }
-        let Some(expected_entry) = expected_by_path.get(file.name()) else {
-            return Err(format!(
-                "Unexpected service export ZIP entry: {}",
-                file.name()
-            ));
+        let Some(expected_entry) = expected_by_path.get(name.as_str()) else {
+            return Err(format!("Unexpected service export ZIP entry: {}", name));
         };
-        if !seen.insert(file.name().to_string()) {
-            return Err(format!(
-                "Duplicate service export ZIP entry: {}",
-                file.name()
-            ));
+        if !seen.insert(name.clone()) {
+            return Err(format!("Duplicate service export ZIP entry: {}", name));
         }
         if file.size() != expected_entry.bytes.len() as u64 {
             return Err(format!(
                 "Service export ZIP size verification failed for {}",
-                file.name()
+                name
             ));
         }
         let mut data = Vec::with_capacity(expected_entry.bytes.len());
-        file.read_to_end(&mut data)
-            .map_err(|error| format!("Unable to verify {}: {error}", file.name()))?;
+        file.by_ref()
+            .take(expected_entry.bytes.len() as u64 + 1)
+            .read_to_end(&mut data)
+            .map_err(|error| format!("Unable to verify {name}: {error}"))?;
         if data != expected_entry.bytes {
             return Err(format!(
                 "Service export ZIP content verification failed for {}",
-                file.name()
+                name
             ));
         }
     }

@@ -16,6 +16,8 @@ upstream `v2_42` feature is declared to select WebKit's matching API correctly.
 Do not remove these compatibility changes when refreshing dependencies.
 
 The updater is pinned to maintained 2.14.0 with `requireSignedVersion: true`.
+Its narrowly scoped ZIP dependency patch is documented in
+`tauri-plugin-updater/TAURIDIUM-PATCH.md`; the application also uses ZIP 9.0.4.
 The CLI is independently pinned to 2.12.3. Old signatures lacking the signed
 version are intentionally rejected by new clients. This task does not re-sign,
 publish or change historical releases; the next authorized release must use the
