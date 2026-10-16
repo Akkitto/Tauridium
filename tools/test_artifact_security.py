@@ -35,6 +35,16 @@ def synthetic_nsis(payload: bytes):
 
 
 class ArtifactParserTests(unittest.TestCase):
+  def test_public_errors_withhold_arbitrary_parser_paths_and_process_arguments(self):
+    marker = "private-filename-never-publish"
+    for error in (RuntimeError(marker), OSError(marker), ValueError(marker),
+                  zipfile.BadZipFile(marker), security.DecoderFailure(1, marker.encode(), True),
+                  subprocess.CalledProcessError(1, [marker]), TypeError(marker)):
+      with self.subTest(error=type(error).__name__):
+        self.assertNotIn(marker, security.public_failure(error))
+    self.assertEqual(security.public_failure(security.ArtifactRejection("Static budget rejection")),
+                     "Static budget rejection")
+
   def test_decoder_uses_disposable_cwd_and_rejects_any_auxiliary_write(self):
     with self.assertRaisesRegex(RuntimeError, "unexpectedly wrote"):
       security.bounded_command([sys.executable, "-c", "from pathlib import Path; Path('synthetic-output').write_text('synthetic')"])
@@ -188,6 +198,29 @@ class RealArtifactScannerTests(unittest.TestCase):
           else:
             with mock.patch.object(security, "MAX_EXPANDED", source.stat().st_size):
               scanner.add(source)
+
+  def test_nested_corrupt_archive_cli_failure_never_prints_sensitive_member_name(self):
+    token = self.token()
+    nested = io.BytesIO()
+    payload = b"Harmless nested CRC control"
+    with zipfile.ZipFile(nested, "w", compression=zipfile.ZIP_STORED) as archive:
+      archive.writestr(token + ".txt", payload)
+    corrupted = bytearray(nested.getvalue())
+    corrupted[corrupted.index(payload)] ^= 1
+    with tempfile.TemporaryDirectory() as temporary:
+      assets = Path(temporary) / "assets"
+      assets.mkdir()
+      outer = assets / "synthetic.zip"
+      with zipfile.ZipFile(outer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("nested.zip", corrupted)
+      security.policy.inspect_file(outer)
+      result = subprocess.run([sys.executable, str(security.ROOT / "tools/artifact_security.py"),
+                               str(assets), "--tools", str(TOOLS)], capture_output=True, text=True, timeout=60)
+      self.assertEqual(result.returncode, 1)
+      output = result.stdout + result.stderr
+      self.assertIn("ZIP structure or integrity validation failed", output)
+      self.assertNotIn(token, output)
+      self.assertNotIn("Traceback", output)
 
   def test_harmless_control_passes(self):
     with tempfile.TemporaryDirectory() as temporary:
