@@ -1471,7 +1471,7 @@ def main() -> int:
     'options.set_enable_tracking_prevention(!(is_remote_http && relax_tracking));',
     'else if cfg!(windows) {',
     'if let Some(ua) = ua.as_deref()',
-    's.isBadgeEnabled !== false && (unreadMap[s.id] ?? 0) > 0',
+    's.isBadgeEnabled !== false && (ownValue(unreadMap, s.id) ?? 0) > 0',
     'Enable custom URL placeholders for this service',
     'showToast("Saved", "success")',
     '.toast.success { background: #187a45;',
@@ -1699,8 +1699,8 @@ def main() -> int:
     'const menu = await Menu.new({',
     'await menu.popup(new LogicalPosition(x, y));',
     '.service-workspace-search.service-sandbox-search { width: min(100%, 240px);',
-    'sameDownloadPreference(persisted.serviceDownloadSettings[serviceId], preference)',
-    'sameDownloadPreference(persisted.workspaceDownloadSettings[workspaceId], preference)',
+    'sameDownloadPreference(ownValue(persisted.serviceDownloadSettings, serviceId), preference)',
+    'sameDownloadPreference(ownValue(persisted.workspaceDownloadSettings, workspaceId), preference)',
   ):
     if marker not in app + api_ts + read("src/lib/ui.ts"):
       fail(f"0.4.28 quality-of-life invariant is missing: {marker}")
@@ -2274,7 +2274,8 @@ def main() -> int:
   if reveal_index < 0 or bind_index < 0 or reveal_index >= bind_index:
     fail("0.7.10 must bind queued Windows activation only after startup visibility restoration")
   accept_index = single_instance_rs.find("if let Err(error) = target.accept(request)")
-  ack_index = single_instance_rs.find("write_all(pipe, &[ACTIVATION_ACK])?;")
+  ack_match = re.search(r"write_all\(\s*pipe,\s*&\[ACTIVATION_ACK\],\s*Instant::now\(\) \+ ACK_RECEIPT_WINDOW", single_instance_rs)
+  ack_index = ack_match.start() if ack_match else -1
   if accept_index < 0 or ack_index < 0 or accept_index >= ack_index:
     fail("0.7.10 activation acknowledgement must follow completed primary acceptance")
   if '"Win32_System_Console"' not in cargo:
