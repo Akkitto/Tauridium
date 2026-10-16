@@ -55,6 +55,10 @@
             inherit pkgs;
             package = self.packages.${system}.tauridium;
           };
+          security-boundary-smoke = import ./packaging/nix/security-boundary-smoke.nix {
+            inherit pkgs;
+            package = self.packages.${system}.tauridium;
+          };
           nixos-test = import ./packaging/nix/nixos-test.nix {
             inherit pkgs;
             package = self.packages.${system}.tauridium;
@@ -82,6 +86,13 @@
           type = "app";
           program = "${self.packages.${system}.settings-smoke}/bin/tauridium-settings-smoke";
           meta.description = "Isolated production Settings navigation and control tests";
+        };
+        security-boundary-smoke = {
+          type = "app";
+          program = "${
+            self.packages.${system}.security-boundary-smoke
+          }/bin/tauridium-security-boundary-smoke";
+          meta.description = "Isolated production native-authority and navigation negative tests";
         };
       });
       formatter = forAllSystems (system: (pkgsFor system).nixfmt);

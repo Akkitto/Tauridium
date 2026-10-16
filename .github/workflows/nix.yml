@@ -42,6 +42,8 @@ jobs:
         run: nix --extra-experimental-features 'nix-command flakes' run .#download-toast-smoke
       - name: Exercise production Settings navigation and download controls
         run: nix --extra-experimental-features 'nix-command flakes' run .#settings-smoke
+      - name: Reject remote native commands and local-origin navigation in production
+        run: nix --extra-experimental-features 'nix-command flakes' run .#security-boundary-smoke
       - name: Test declarative NixOS installation in isolated VM
         if: matrix.system == 'x86_64-linux'
         run: nix --extra-experimental-features 'nix-command flakes' build .#nixos-test --no-link --print-build-logs
