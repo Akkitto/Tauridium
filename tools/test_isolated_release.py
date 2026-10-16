@@ -7,13 +7,16 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import zipfile
 from unittest import mock
 
 import assemble_release
 import build_input_sbom
+import finalize_release
 import release_assets
 import release_policy
 import sign_release
+import release_snapshot
 import updater_signature
 
 
@@ -78,7 +81,7 @@ class IsolatedReleaseTests(unittest.TestCase):
       cli = shutil.which("cargo-tauri")
       env = {name: value for name, value in os.environ.items()
              if not name.startswith(("TAURI_PRIVATE_KEY", "TAURI_SIGNING_PRIVATE_KEY"))}
-      password = " synthetic passphrase with spaces and café "
+      password = " synthetic passphrase with spaces and caf\u00e9 "
       subprocess.run([cli, "signer", "generate", "--ci", "--password", password, "--write-keys", str(key)],
                      cwd=root, env=env, check=True, capture_output=True, timeout=60)
       assets = root / "assets"
@@ -109,6 +112,55 @@ class IsolatedReleaseTests(unittest.TestCase):
       path.write_bytes(b"not the official executable")
       with self.assertRaisesRegex(SystemExit, "checksum-pinned"):
         sign_release.pinned_signer(str(path))
+
+  @unittest.skipUnless(os.environ.get("TAURIDIUM_TEST_MINISIGN"), "Pinned Minisign required")
+  def test_complete_private_candidate_crosses_all_custody_hash_boundaries_without_publication(self):
+    with tempfile.TemporaryDirectory(prefix="tauridium-custody-control-") as temporary:
+      root = Path(temporary)
+      executable = os.environ["TAURIDIUM_TEST_MINISIGN"]
+      key, public = root / "ephemeral.key", root / "ephemeral.pub"
+      subprocess.run([executable, "-G", "-W", "-s", str(key), "-p", str(public)], capture_output=True, check=True, timeout=60)
+      public_key = base64.b64encode(public.read_bytes()).decode()
+      version = release_assets.version()
+      commit = finalize_release.git_output("rev-parse", "HEAD")
+      inputs = root / "inputs"
+      for directory in {"release-handoff"} | {"native-" + target for target in release_policy.TARGETS}:
+        staged = inputs / directory
+        staged.mkdir(parents=True)
+        names = (release_policy.handoff_names(version) | {"release-notes.md"} if directory == "release-handoff"
+                 else release_policy.target_names(version, directory[len("native-"):]))
+        for name in sorted(names):
+          path = staged / name
+          if name.endswith(".zip"):
+            with zipfile.ZipFile(path, "w") as archive:
+              entry = zipfile.ZipInfo("tauridium.exe" if "portable" in name else "README.md", release_assets.ZIP_TIME)
+              entry.compress_type = zipfile.ZIP_DEFLATED
+              archive.writestr(entry, b"Synthetic inert custody fixture")
+          elif name.endswith(".sha256"):
+            path.write_text(release_policy.digest(staged / name[:-7]) + "  " + name[:-7] + "\n", encoding="utf-8")
+          elif name.endswith(".exe"):
+            header = bytearray(132)
+            header[:2], header[60:64], header[128:] = b"MZ", (128).to_bytes(4, "little"), b"PE\0\0"
+            path.write_bytes(header)
+          else:
+            magic = {".msi": bytes.fromhex("d0cf11e0a1b11ae1"), ".rpm": bytes.fromhex("edabeedb"),
+                     ".deb": b"!<arch>\n", ".AppImage": b"\x7fELF\0\0\0\0AI\x02"}.get(path.suffix, b"Synthetic notes")
+            path.write_bytes(magic)
+      unsigned, signed, final = (root / name for name in ("unsigned", "signed", "final"))
+      assemble_release.assemble(inputs, unsigned, version)
+      unsigned_digest = release_snapshot.seal(unsigned, version, commit, "unsigned")
+      release_snapshot.verify(unsigned, version, commit, "unsigned", unsigned_digest)
+      environment = {**os.environ, "TAURI_SIGNING_PRIVATE_KEY": base64.b64encode(key.read_bytes()).decode(),
+                     "TAURI_SIGNING_PRIVATE_KEY_PASSWORD": ""}
+      with (mock.patch.dict(os.environ, environment, clear=True),
+            mock.patch.object(updater_signature, "configured_public_key", return_value=public_key)):
+        sign_release.sign(unsigned, signed, version, executable=executable)
+        signed_digest = release_snapshot.seal(signed, version, commit, "signed")
+        final_digest = finalize_release.custody(signed, final, signed_digest, commit)
+      release_snapshot.verify(final, version, commit, "final", final_digest)
+      self.assertEqual({path.name for path in final.iterdir()}, release_policy.public_names(version) | {"TRANSFER.json", "release-notes.md"})
+      self.assertFalse(any("key" in path.name for path in final.iterdir()))
+      self.assertNotIn("TRANSFER.json", (final / "SHA256SUMS").read_text(encoding="utf-8"))
 
   def test_key_custody_never_invokes_build_tools_or_complex_artifact_parsers(self):
     source = (sign_release.ROOT / "tools/sign_release.py").read_text(encoding="utf-8")

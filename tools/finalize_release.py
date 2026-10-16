@@ -1,7 +1,9 @@
 """Generate/recheck a complete immutable public snapshot; print only its exact file list."""
 import argparse
 import json
+import os
 from pathlib import Path
+import shutil
 import tempfile
 
 import build_input_sbom
@@ -9,6 +11,7 @@ from package_release import git_output, version
 import release_assets
 import release_policy as policy
 import scoop
+import release_snapshot
 
 
 def finalize(directory: Path) -> None:
@@ -53,12 +56,37 @@ def verify(directory: Path) -> list[Path]:
   return files
 
 
+def custody(source: Path, output: Path, expected: str, commit: str) -> str:
+  release_version = version()
+  if commit != git_output("rev-parse", "HEAD"):
+    raise SystemExit("error: finalization commit differs from the reviewed checkout")
+  release_snapshot.verify(source, release_version, commit, "signed", expected)
+  if output.exists() or output.is_symlink():
+    raise SystemExit("error: finalization requires a fresh output directory")
+  output.parent.mkdir(parents=True, exist_ok=True)
+  with tempfile.TemporaryDirectory(prefix=".tauridium-final-", dir=output.parent) as temporary:
+    staged = Path(temporary)
+    for name in sorted(release_snapshot.names(release_version, "signed")):
+      shutil.copyfile(source / name, staged / name)
+    finalize(staged)
+    digest = release_snapshot.seal(staged, release_version, commit, "final")
+    os.rename(staged, output)
+  return digest
+
+
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description=__doc__)
-  parser.add_argument("command", choices=("generate", "verify", "list"))
+  parser.add_argument("command", choices=("generate", "verify", "list", "custody"))
   parser.add_argument("assets", type=Path)
+  parser.add_argument("--output", type=Path)
+  parser.add_argument("--input-sha256")
+  parser.add_argument("--commit")
   args = parser.parse_args()
-  if args.command == "generate":
+  if args.command == "custody":
+    if not args.output or not args.input_sha256 or not args.commit:
+      parser.error("custody requires --output, --input-sha256 and --commit")
+    print(custody(args.assets, args.output, args.input_sha256, args.commit))
+  elif args.command == "generate":
     finalize(args.assets)
   else:
     paths = verify(args.assets)
