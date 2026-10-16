@@ -4670,6 +4670,7 @@ fn validate_automatic_backup_filename(filename: &str) -> Result<(), String> {
         .and_then(|value| value.strip_suffix(SUFFIX))
         .ok_or_else(|| "Automatic backup filename is invalid".to_string())?;
     if stamp.len() != 21
+        || !stamp.is_ascii()
         || stamp.as_bytes().get(4) != Some(&b'-')
         || stamp.as_bytes().get(7) != Some(&b'-')
         || stamp.as_bytes().get(10) != Some(&b'-')
@@ -6085,6 +6086,47 @@ mod tests {
                 "unexpectedly accepted {invalid}"
             );
         }
+    }
+
+    #[test]
+    fn automatic_backup_filename_unicode_never_panics_in_any_timestamp_segment() {
+        let valid = "2026-10-16-001122-003";
+        for (begin, end) in [(0, 4), (5, 7), (8, 10), (11, 17), (18, 21)] {
+            for character in ['é', '€', '🙂', '中', 'ß', '\u{202e}'] {
+                for index in begin..end {
+                    let next = index + character.len_utf8();
+                    if next > end {
+                        continue;
+                    }
+                    let stamp = format!("{}{}{}", &valid[..index], character, &valid[next..]);
+                    assert_eq!(stamp.len(), 21);
+                    let name = format!("tauridium-auto-backup-{stamp}.json");
+                    assert!(validate_automatic_backup_filename(&name).is_err());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn automatic_backup_retention_preserves_malformed_names_and_unrelated_files() {
+        let root = identity_migration_test_root();
+        std::fs::create_dir(&root).unwrap();
+        let protected = root.join("tauridium-auto-backup-2026-10-16-001122-003.json");
+        let unrelated = root.join("unrelated.json");
+        let unicode = root.join("tauridium-auto-backup-2026-10-16-0€00-001.json");
+        for path in [&protected, &unrelated, &unicode] {
+            std::fs::write(path, b"Harmless synthetic retention canary").unwrap();
+        }
+        assert_eq!(
+            prune_automatic_backups(&root, backup::RetentionMode::Count, 1, 90, &protected)
+                .unwrap(),
+            0
+        );
+        for path in [&protected, &unrelated, &unicode] {
+            assert!(path.is_file());
+            std::fs::remove_file(path).unwrap();
+        }
+        std::fs::remove_dir(root).unwrap();
     }
 
     #[test]
