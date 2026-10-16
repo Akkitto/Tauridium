@@ -135,7 +135,9 @@ def validate_directory(directory: Path, expected: set[str], *, internal: set[str
   actual = {path.name for path in directory.iterdir()}
   missing, extra = expected - actual, actual - expected - internal
   if missing or extra:
-    raise SystemExit(f"error: public artifact inventory differs: missing={sorted(missing)}, unexpected={sorted(extra)}")
+    # An unexpected filename itself can contain a credential. Public CI logs
+    # may show approved missing names and counts, never attacker-supplied names.
+    raise SystemExit(f"error: public artifact inventory differs: missing={sorted(missing)}, unexpectedFileCount={len(extra)}")
   total = 0
   for name in sorted(actual):
     safe_name(name)

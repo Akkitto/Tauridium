@@ -52,6 +52,15 @@ class ReleasePolicyTests(unittest.TestCase):
       with self.assertRaisesRegex(SystemExit, "link or special"):
         policy.inspect_file(path)
 
+  def test_inventory_diagnostics_never_print_unapproved_filenames(self):
+    with tempfile.TemporaryDirectory() as directory:
+      root = Path(directory)
+      name = "synthetic-private-value-in-filename.env"
+      (root / name).write_bytes(b"Synthetic")
+      with self.assertRaisesRegex(SystemExit, "unexpectedFileCount=1") as caught:
+        policy.validate_directory(root, set())
+      self.assertNotIn(name, str(caught.exception))
+
   def test_invalid_last_bundle_never_promotes_partial_collection(self):
     with tempfile.TemporaryDirectory() as directory:
       output = Path(directory) / "native"
