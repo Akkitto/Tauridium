@@ -410,6 +410,46 @@ mod tests {
         assert!(vault.data.borrow().is_empty());
         fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
+    #[cfg(windows)]
+    #[test]
+    fn native_windows_vault_migrates_and_removes_only_its_synthetic_session() {
+        let mut nonce = [0_u8; 16];
+        getrandom::fill(&mut nonce).unwrap();
+        let label: String = nonce.iter().map(|byte| format!("{byte:02x}")).collect();
+        let token = format!("synthetic-native-control-{label}");
+        let path = path(&label);
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                // Only this newly generated test session is eligible for cleanup.
+                if clear(&self.0, &NativeVault).is_err() {
+                    eprintln!("Synthetic Windows credential cleanup needs review");
+                }
+                let _ = fs::remove_dir(self.0.parent().unwrap());
+            }
+        }
+        let _cleanup = Cleanup(path.clone());
+        crate::private_file::write(
+            &path,
+            &serde_json::to_vec(&serde_json::json!({
+                "mode": "server", "server": "https://example.test", "token": token
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let saved = load(&path, &NativeVault).unwrap();
+        assert!(matches!(saved, SavedSession::Server { token: restored, .. } if restored == token));
+        assert!(!fs::read_to_string(&path).unwrap().contains(&token));
+        let account = read(&path).unwrap().unwrap().credential_account.unwrap();
+        assert!(native_entry(&account).unwrap().get_password().is_ok());
+        clear(&path, &NativeVault).unwrap();
+        assert!(matches!(
+            native_entry(&account).unwrap().get_password(),
+            Err(keyring_core::Error::NoEntry)
+        ));
+        assert!(!path.exists());
+    }
+
     #[test]
     fn unavailable_vault_never_silently_falls_back_to_plaintext() {
         let path = path("locked");
