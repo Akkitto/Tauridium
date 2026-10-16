@@ -43,6 +43,8 @@ def main() -> int:
   parser.add_argument("--dbus-config", type=Path, required=True)
   parser.add_argument("--output", type=Path, default=Path("release/evidence/settings-smoke"))
   parser.add_argument("--theme", choices=("dark", "light", "oled"), action="append")
+  parser.add_argument("--service-id", choices=("__proto__", "constructor", "toString"),
+                      help="Run real service Settings persistence/reopening controls for a special valid ID")
   args = parser.parse_args()
   if not args.binary.is_file() or not os.environ.get("DISPLAY"):
     parser.error("requires a production executable and an isolated X11 DISPLAY")
@@ -109,8 +111,13 @@ def main() -> int:
         settings = {"theme": theme, "closeToSystemTray": False, "fetchMissingServiceIcons": False,
                     "customTitleTemplatesEnabled": True, "windowTitleTemplate": title,
                     "taskbarTitleTemplate": title, "downloadToasts": False}
+        profile = {"version": 1, "services": [], "workspaces": []}
+        if args.service_id:
+          profile["services"].append({"id": args.service_id, "name": "Identity canary", "recipeId": "custom-website",
+                                      "isLocalRecipe": True, "isEnabled": False, "customUrl": "https://example.invalid"})
+          settings["preloadServices"] = False
         for filename, value in (("session.json", {"mode": "local", "version": 1}),
-                                ("local_profile.json", {"version": 1, "services": [], "workspaces": []}),
+                                ("local_profile.json", profile),
                                 ("app_settings.json", settings)):
           (data / filename).write_text(json.dumps(value), encoding="utf-8")
 
@@ -138,6 +145,53 @@ def main() -> int:
             text, rows, size = capture(window, f"{name}-general")
             assert size == (width, height), f"Requested window size was not rendered: {size}"
             assert "Startup" in text, text
+            if args.service_id:
+              def open_identity_settings():
+                text, rows, _ = capture(window, f"{name}-identity-navigation")
+                click(word(rows, "Services"))
+                for step in range(24):
+                  text, rows, _ = capture(window, f"{name}-identity-list-{step}")
+                  if "Identity canary" in text and "Service settings" in text:
+                    click(word(rows, "settings", rightmost=True))
+                    break
+                  xdo("mousemove", "--sync", width - 25, height // 2)
+                  xdo("click", "--repeat", 2, "--delay", 30, 5)
+                  time.sleep(0.2)
+                else:
+                  raise RuntimeError("Synthetic service Settings control is not reachable")
+                for step in range(32):
+                  text, rows, _ = capture(window, f"{name}-identity-downloads-{step}")
+                  control = control_phrase(rows, "Override download settings for this service")
+                  if control is not None:
+                    return text, rows, control
+                  xdo("mousemove", "--sync", width - 25, height // 2)
+                  xdo("click", "--repeat", 3, "--delay", 30, 5)
+                  time.sleep(0.2)
+                raise RuntimeError("Service download settings failed to render for a special ID")
+
+              text, rows, control = open_identity_settings()
+              assert "Inherited" in text, "Missing ID inherited a prototype property"
+              click(control)
+              preference = {"directory": "", "askEachDownload": False}
+              wait_for(lambda: saved("serviceDownloadSettings", {args.service_id: preference}), "special-ID own override")
+              top(width, height)
+              text, rows, _ = capture(window, f"{name}-identity-close")
+              click(word(rows, "close"))
+              text, rows, control = open_identity_settings()
+              assert "System Downloads folder" in text, "Saved special-ID override did not reopen"
+              click(control)
+              wait_for(lambda: saved("serviceDownloadSettings", {}), "special-ID override removal")
+              top(width, height)
+              text, rows, _ = capture(window, f"{name}-identity-finish")
+              click(word(rows, "close"))
+              top(width, height)
+              text, rows, _ = capture(window, f"{name}-identity-return")
+              click(word(rows, "General"))
+              text, _, _ = capture(window, f"{name}-identity-final")
+              assert "Startup" in text, "Service Settings broke global navigation"
+              reports.append({"serviceId": args.service_id, "size": [width, height], "ownOverridePersisted": True,
+                              "reopened": True, "removed": True, "globalNavigation": True})
+              continue
             advanced = word(rows, "Advanced")
             click(advanced)
             text, rows, _ = capture(window, f"{name}-advanced")

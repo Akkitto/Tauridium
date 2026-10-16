@@ -47,6 +47,15 @@ describe("ID-keyed settings dictionaries", () => {
     expect(ownValue(objects, id)).not.toBe(objects.origin);
   });
 
+  it("copies reactive proxy records without DataCloneError or shared mutation", () => {
+    const original = { directory: "/synthetic", askEachDownload: true };
+    const values = { source: new Proxy(original, {}) };
+    copyOwnEntry(values, "source", "constructor");
+    const copied = downloadOverride(values, "constructor");
+    expect(copied).toEqual(original);
+    expect(ownValue(values, "constructor")).not.toBe(original);
+  });
+
   it("wires both rendered Settings branches through validated own-entry preferences", () => {
     for (const marker of ["downloadOverride(appSettings.serviceDownloadSettings, serviceId)",
       "downloadOverride(appSettings.workspaceDownloadSettings, workspaceId)",

@@ -11,7 +11,12 @@ export function setOwnValue<T>(values: Record<string, T>, key: string, value: T)
 
 export function copyOwnEntry<T>(values: Record<string, T>, source: string, destination: string): void {
   const value = ownValue(values, source);
-  if (value !== undefined) setOwnValue(values, destination, structuredClone(value));
+  if (value !== undefined) {
+    // These settings are flat records. Spreading also unwraps a Svelte reactive
+    // proxy; structuredClone would reject that proxy during service duplication.
+    const copied = value !== null && typeof value === "object" ? { ...value } : value;
+    setOwnValue(values, destination, copied);
+  }
 }
 
 export function downloadOverride(values: Readonly<Record<string, unknown>> | null | undefined, key: string): DownloadPreferenceOverride | null {

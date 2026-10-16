@@ -1500,7 +1500,7 @@
         service.id !== activeId &&
         service.isEnabled !== false &&
         service.isHibernationEnabled === true &&
-        statusMap[service.id]
+        ownValue(statusMap, service.id)
       ) {
         scheduleHibernation(service.id);
       }
@@ -1805,7 +1805,7 @@
       await refreshNativeServicesMenu();
       if (previous?.isHibernationEnabled !== s.isHibernationEnabled) {
         clearHibTimer(s.id);
-        if (s.id !== activeId && s.isHibernationEnabled === true && statusMap[s.id]) {
+        if (s.id !== activeId && s.isHibernationEnabled === true && ownValue(statusMap, s.id)) {
           scheduleHibernation(s.id);
         }
       }
@@ -3851,7 +3851,7 @@
               <p class="load-err-detail">{serviceLoadError}</p>
               <button class="primary" onclick={retryActiveService}>Reload</button>
             </div>
-          {:else if statusMap[activeService.id] !== "ready"}
+          {:else if ownValue(statusMap, activeService.id) !== "ready"}
             <div class="placeholder">
               <div class="spinner" aria-hidden="true"></div>
               <p>Loading {serviceLabel(activeService)}…</p>
@@ -5483,8 +5483,8 @@
       oncontextmenu={(e) => openServiceContextMenu(e, s)}
       onclick={(e) => onServiceRowClick(e, s)}
       onkeydown={(e) => openServiceContextMenuFromKeyboard(e, s)}
-      title={`${serviceLabel(s)}${hibernated.has(s.id) ? " · Hibernated" : ""}${(unreadMap[s.id] ?? 0) > 0 ? ` · ${unreadMap[s.id]} unread` : ""}`}
-      aria-label={`${serviceLabel(s)}${hibernated.has(s.id) ? ", hibernated" : ""}${(unreadMap[s.id] ?? 0) > 0 ? `, ${unreadMap[s.id]} unread` : ""}`}
+      title={`${serviceLabel(s)}${hibernated.has(s.id) ? " · Hibernated" : ""}${(ownValue(unreadMap, s.id) ?? 0) > 0 ? ` · ${ownValue(unreadMap, s.id)} unread` : ""}`}
+      aria-label={`${serviceLabel(s)}${hibernated.has(s.id) ? ", hibernated" : ""}${(ownValue(unreadMap, s.id) ?? 0) > 0 ? `, ${ownValue(unreadMap, s.id)} unread` : ""}`}
     >
       {#if serviceIconFailed(s)}
         <span class="dot">{serviceLabel(s).slice(0, 1).toUpperCase()}</span>
@@ -5495,9 +5495,9 @@
         <span class="srow-name">{serviceLabel(s)}</span>
       {/if}
       {#if hibernated.has(s.id) && !appSettings.sidebarCollapsed}<span class="zzz" title="Hibernated">💤</span>{/if}
-      {#if s.isBadgeEnabled !== false && (unreadMap[s.id] ?? 0) > 0 && (s.isMuted !== true || appSettings.showMessageBadgeWhenMuted)}
+      {#if s.isBadgeEnabled !== false && (ownValue(unreadMap, s.id) ?? 0) > 0 && (s.isMuted !== true || appSettings.showMessageBadgeWhenMuted)}
         <span class="ubadge" class:muted={s.isMuted === true}>
-          {unreadMap[s.id] > 99 ? "99+" : unreadMap[s.id]}
+          {(ownValue(unreadMap, s.id) ?? 0) > 99 ? "99+" : (ownValue(unreadMap, s.id) ?? 0)}
         </span>
       {/if}
     </button>
