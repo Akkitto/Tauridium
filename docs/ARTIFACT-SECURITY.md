@@ -18,6 +18,11 @@ global expansion budgets continue through Git/archive boundaries. Local hooks,
 credentials, aliases, remotes, reflogs, unrelated
 refs and unreachable producer objects never belong in a public source ZIP.
 
+Package recognition is signature-based at every boundary, not a top-level filename
+shortcut: renamed/nested DEB, RPM, compound/MSI and AppImage payloads are decoded.
+MSI databases identified inside compound containers also receive auxiliary table
+and stream inspection; a missing reader fails closed rather than dropping coverage.
+
 No application, installer, DLL, archive script, extracted hook, maintainer script,
 or reconstructed uninstaller is executed. Decoders use disposable working
 directories with time, actual-byte, nesting and aggregate expansion limits;
@@ -39,6 +44,9 @@ raw ignored `release/evidence`, local recovery checkpoints or unreviewed logs.
 Reviewed public PNG evidence is OCR-scanned too; human privacy review and its
 version-specific hash allowlist remain required. Automated scanners cannot prove
 that every possible secret format, image, personal datum or novel encoding is safe.
+Content deduplication is separate from OCR and scoped vector transformations. An
+image seen first outside evidence still requires OCR at its evidence occurrence;
+an OCR-completed set avoids duplicate work without dropping that obligation.
 
 The only private-key-shaped exclusions are exact normalized, publicly documented
 GnuTLS known-answer self-test constants, restricted to decoded libgnutls payloads
@@ -52,6 +60,10 @@ deleted compressed approved Git-history secrets, inline-ignore bypass attempts, 
 Git-hook rejection, creation of auxiliary files and MSI fallback constraints.
 Set `TAURIDIUM_ARTIFACT_SECURITY_TOOLS` to the checksum-verified tool directory when
 running these integration controls. CI must run them, not accept environment skips.
+Controls include a real nested/renamed MSI property, direct/nested/deleted-history
+DEB secrets and actual OCR/Gitleaks rejection in both duplicate orders and across
+artifacts. Security CI installs msitools/wixl, Tesseract, ImageMagick and DejaVu Mono
+for those controls; portable unit runs without those tools explicitly report skips.
 
 Untrusted parser/OS/process exception strings never belong in public diagnostics:
 they can contain private member names, paths or argv. The public scanner boundary

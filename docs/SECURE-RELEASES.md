@@ -143,3 +143,11 @@ new synthetic session. Cross-Clippy cannot establish that these tests passed on
 Windows; GUI/sign-in behavior also needs native execution. Pipe cancellation must
 finish before its borrowed buffers are dropped; bounded peer waits are not a claim
 of bounded kernel teardown on a malfunctioning OS.
+
+Windows activation also reserves the first pipe instance exclusively before UI
+startup, retains that endpoint between clients, and checks object ownership plus
+peer process user/session before sending launch context or granting foreground
+permission. The client requests identification-only SQOS. Native tests cover
+preexisting/extra endpoint rejection, reconnect reservation, actual owner checks,
+identification level and cancelled idle-listener shutdown. Native execution is
+still required: compiling these tests in WSL is not proof they passed on Windows.

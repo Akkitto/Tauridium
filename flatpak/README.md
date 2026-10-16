@@ -33,13 +33,37 @@ For local development use a clean, committed checkout and build its exact HEAD:
 
 ```text
 just flatpak-build
+just flatpak-test
+just flatpak-lint
 ```
 
 This exports a fresh build/repository under ignored, private `release/flatpak/`.
 It does not install over the user's existing app. The source is a checksum-bound
-Git archive, not an ignored-file directory sweep; relative module patches are
-preserved. The Nix development shell supplies the native builder; otherwise
+exact Git tree/blob archive, not `git archive` or an ignored-file directory sweep.
+Neither tracked nor producer-local export attributes/filters can omit or rewrite
+committed files. Relative module patches and executable modes are preserved.
+The Nix development shell supplies the native builder; otherwise
 install `flatpak-builder` or the current `org.flatpak.Builder` application.
+
+The builder publishes `release/flatpak/latest.json` only after a successful export.
+Test/lint select that exact current-HEAD candidate, reject incomplete/stale/changed
+outputs, and never fall back to a root `repo` or installed app. An explicit candidate
+directory can be passed as the recipe's single argument. Run the recipes on separate
+lines: optional arguments in `just` can otherwise consume a following recipe name.
+
+`flatpak-test` is a headless production/distribution identity check. `flatpak-lint`
+validates the selected manifest/source binding, exported repository, actual sandbox
+permissions, installed AppStream metadata and desktop file offline. It does not
+claim online Flathub approval. For manual GUI testing, use `just flatpak-run`: this
+runs the candidate read-only with temporary XDG data, no owner app profile and no
+real credential-vault access. Closing it discards that temporary test profile.
+
+`just flatpak-flathub-lint` runs the official online Flathub policy checks against
+the same candidate. Network, reverse-domain ownership/reachability, or submission
+policy failures are real failures, not suppressed exceptions. For example the
+existing `dev.brani.tauridium` ID's domain can be challenge-blocked to automated
+clients. Resolve such publication conditions with the domain owner/Flathub; do not
+change the application ID casually because existing profiles depend on it.
 
 Publication is a different operation. Before submitting the publication reference,
 verify that its immutable tag/commit and all three offline source manifests agree:
@@ -51,7 +75,9 @@ just flatpak-publication-check
 The unchanged 0.9.5 publication pin is historical while security changes are
 unreleased. This check deliberately rejects incompatible old source/new inputs;
 do not move an existing release tag. After an authorized release, update the
-publication pin and offline inputs together, then run the Flathub checks:
+publication pin and offline inputs together, then run the submission checks. The
+following explicit Flathub command installs an application and is **not** the local
+non-installing QA workflow above:
 
 ```text
 flatpak run --command=flathub-build org.flatpak.Builder --install flatpak/dev.brani.tauridium.yml
