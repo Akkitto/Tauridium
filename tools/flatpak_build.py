@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import stat
 
 import generate_flatpak_sources as sources
 import tauri_build
@@ -26,6 +27,59 @@ PIN = re.compile(r"(?m)^      - type: git\n        url: https://github.com/Akkit
                  r"        tag: (?P<tag>v[0-9]+\.[0-9]+\.[0-9]+)\n"
                  r"        commit: (?P<commit>\S+)\n        dest: source\n"
                  r"        x-checker-data:\n          type: git\n          tag-pattern: [^\n]+\n")
+
+
+def file_digest(path: Path) -> str:
+  if not path.is_file() or path.is_symlink():
+    raise SystemExit("error: Flatpak candidate requires regular files, not links")
+  digest = hashlib.sha256()
+  with path.open("rb") as stream:
+    for block in iter(lambda: stream.read(1024**2), b""):
+      digest.update(block)
+  return digest.hexdigest()
+
+
+def tree_digest(root: Path) -> str:
+  if not root.is_dir() or root.is_symlink():
+    raise SystemExit("error: Flatpak candidate tree must be a real directory")
+  records = []
+  for path in sorted(root.rglob("*")):
+    name = path.relative_to(root).as_posix()
+    if path.is_symlink():
+      if not path.resolve().is_relative_to(root.resolve()):
+        raise SystemExit("error: Flatpak candidate contains an escaping link")
+      records.append([name, "link", os.readlink(path)])
+    elif path.is_file():
+      records.append([name, stat.S_IMODE(path.stat().st_mode), file_digest(path)])
+    elif not path.is_dir():
+      raise SystemExit("error: Flatpak candidate contains a special file")
+  return hashlib.sha256(json.dumps(records, separators=(",", ":")).encode()).hexdigest()
+
+
+def atomic_json(path: Path, value: dict) -> None:
+  path.parent.mkdir(parents=True, exist_ok=True)
+  with tempfile.NamedTemporaryFile(prefix=".tauridium-candidate-", dir=path.parent, delete=False) as stream:
+    temporary = Path(stream.name)
+    try:
+      stream.write((json.dumps(value, indent=2) + "\n").encode("utf-8"))
+      stream.flush()
+      os.fsync(stream.fileno())
+      stream.close()
+      os.replace(temporary, path)
+    finally:
+      temporary.unlink(missing_ok=True)
+
+
+def seal_candidate(output: Path) -> None:
+  result = {"passed": True, "installed": False, "runtimeExecutables": ["tauridium"],
+            "identitySha256": file_digest(output / "identity.json"),
+            "runtimeSha256": tree_digest(output / "build/files"),
+            "metadataSha256": file_digest(output / "build/metadata"),
+            "repoSha256": tree_digest(output / "repo")}
+  atomic_json(output / "result.json", result)
+  # Publish the pointer only after every build/export and inventory check passes.
+  atomic_json(ROOT / "release/flatpak/latest.json", {"candidate": str(output.resolve()),
+              "resultSha256": file_digest(output / "result.json")})
 
 
 def git(*arguments: str) -> bytes:
@@ -168,7 +222,9 @@ def prepare(publication: bool, parent: Path) -> tuple[Path, Path]:
   manifest = output / "configuration" / MANIFEST
   manifest.write_text(local_manifest(text, source, digest), encoding="utf-8", newline="\n")
   (output / "identity.json").write_text(json.dumps({
+      "schemaVersion": 1,
       "commit": revision, "configurationCommit": head, "sourceSha256": digest,
+      "configurationSha256": tree_digest(output / "configuration"),
       "publicationPinVerified": publication, "installed": False}, indent=2) + "\n", encoding="utf-8")
   return output, manifest
 
@@ -191,8 +247,7 @@ def main() -> int:
   executables = {entry.name for entry in (output / "build/files/bin").iterdir()}
   if executables != {"tauridium"}:
     raise SystemExit("error: final Flatpak runtime executable inventory differs; builder tools must not ship")
-  (output / "result.json").write_text(json.dumps({"passed": True, "installed": False,
-      "runtimeExecutables": sorted(executables)}, indent=2) + "\n", encoding="utf-8")
+  seal_candidate(output)
   print(f"Flatpak build/export passed, no application installed: {output}", flush=True)
   return 0
 

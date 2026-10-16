@@ -311,16 +311,20 @@ flatpak-publication-check:
   python3 tools/flatpak_build.py --publication --prepare-only
 
 [unix]
-flatpak-test:
-  flatpak run dev.brani.tauridium
+flatpak-test candidate="":
+  python3 tools/flatpak_candidate.py test --candidate {{quote(candidate)}}
 
 [unix]
-flatpak-lint:
-  flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest flatpak/dev.brani.tauridium.yml
-  flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream data/dev.brani.tauridium.metainfo.xml
-  flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
-  desktop-file-validate data/dev.brani.tauridium.desktop
-  flatpak info --show-permissions dev.brani.tauridium
+flatpak-run candidate="":
+  python3 tools/flatpak_candidate.py run --candidate {{quote(candidate)}}
+
+[unix]
+flatpak-lint candidate="":
+  python3 tools/flatpak_candidate.py lint --candidate {{quote(candidate)}}
+
+[unix]
+flatpak-flathub-lint candidate="":
+  python3 tools/flatpak_candidate.py flathub-lint --candidate {{quote(candidate)}}
 
 [unix]
 flatpak-clean:
