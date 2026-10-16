@@ -16,6 +16,7 @@ import tempfile
 import stat
 
 import generate_flatpak_sources as sources
+from flatpak_policy import validate_permissions
 import tauri_build
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -71,6 +72,9 @@ def atomic_json(path: Path, value: dict) -> None:
 
 
 def seal_candidate(output: Path) -> None:
+  # A successful pointer is a custody transition, not merely a byte hash. Refuse
+  # unreviewed runtime permissions before writing either success document.
+  validate_permissions(output / "build/metadata")
   result = {"passed": True, "installed": False, "runtimeExecutables": ["tauridium"],
             "identitySha256": file_digest(output / "identity.json"),
             "runtimeSha256": tree_digest(output / "build/files"),

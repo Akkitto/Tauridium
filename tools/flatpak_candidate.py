@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import configparser
 import json
 import os
 from pathlib import Path
@@ -12,9 +11,8 @@ import subprocess
 import tempfile
 
 import flatpak_build as build
+from flatpak_policy import APP_ID, validate_permissions
 import tauri_build
-
-APP_ID = "dev.brani.tauridium"
 
 
 def document(path: Path) -> dict:
@@ -68,6 +66,9 @@ def select(candidate: str = "") -> Path:
             (build.tree_digest(output / "repo"), result.get("repoSha256")))
   if any(actual != expected for actual, expected in checks):
     raise SystemExit("error: candidate bytes changed after its successful build; rebuild instead of testing mixed outputs")
+  # Recheck policy independently of seals, including outputs from older helpers.
+  # All consumers (test/run/lint), not only lint, require the reviewed sandbox.
+  validate_permissions(output / "build/metadata")
   return output
 
 
@@ -96,22 +97,6 @@ def runtime_command(output: Path, profile: Path) -> list[str]:
   if os.environ.get("GDK_BACKEND") == "x11":
     arguments.extend(["--nosocket=wayland", "--socket=x11"])
   return [*arguments, str(output / "build"), "/app/bin/tauridium"]
-
-
-def validate_permissions(path: Path) -> None:
-  metadata = configparser.ConfigParser(interpolation=None)
-  metadata.optionxform = str
-  metadata.read(path, encoding="utf-8")
-  application = metadata["Application"]
-  if (application.get("name") != APP_ID or application.get("command") != "tauridium"
-      or not application.get("runtime", "").startswith("org.gnome.Platform/")
-      or not application.get("sdk", "").startswith("org.gnome.Sdk/")):
-    raise SystemExit("error: candidate runtime identity is invalid")
-  context = {key: set(filter(None, value.split(";"))) for key, value in metadata["Context"].items()}
-  expected = {"shared": {"ipc", "network"}, "sockets": {"fallback-x11", "pulseaudio", "wayland"}, "devices": {"dri"}}
-  if context != expected or dict(metadata["Session Bus Policy"]) != {
-      "org.kde.StatusNotifierWatcher": "talk", "org.freedesktop.secrets": "talk"}:
-    raise SystemExit("error: candidate permissions differ from the reviewed least-privilege contract")
 
 
 def lint(output: Path, environment: dict[str, str], *, online=False) -> None:
@@ -175,5 +160,5 @@ def main() -> int:
 if __name__ == "__main__":
   try:
     raise SystemExit(main())
-  except (OSError, ValueError, KeyError, configparser.Error, subprocess.SubprocessError):
+  except (OSError, ValueError, KeyError, subprocess.SubprocessError):
     raise SystemExit("error: candidate validation failed; inspect private command output; online Flathub checks also require network/ownership verification") from None

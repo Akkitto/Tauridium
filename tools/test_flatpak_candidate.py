@@ -8,21 +8,8 @@ from unittest import mock
 
 import flatpak_build as build
 import flatpak_candidate as candidate
+from test_flatpak_policy import METADATA
 import test_flatpak_build as fixtures
-
-METADATA = '''[Application]
-name=dev.brani.tauridium
-runtime=org.gnome.Platform/x86_64/51
-sdk=org.gnome.Sdk/x86_64/51
-command=tauridium
-[Context]
-shared=ipc;network;
-sockets=fallback-x11;pulseaudio;wayland;
-devices=dri;
-[Session Bus Policy]
-org.kde.StatusNotifierWatcher=talk
-org.freedesktop.secrets=talk
-'''
 
 
 class FlatpakCandidateTests(unittest.TestCase):
@@ -104,6 +91,29 @@ class FlatpakCandidateTests(unittest.TestCase):
     path.write_text(METADATA.replace("devices=dri;", "devices=dri;\nfilesystems=host;"), encoding="utf-8")
     with self.assertRaisesRegex(SystemExit, "permissions differ"):
       candidate.validate_permissions(path)
+
+  def test_unreviewed_metadata_cannot_replace_successful_candidate_custody(self):
+    pointer = self.root / "release/flatpak/latest.json"
+    result = self.output / "result.json"
+    before = pointer.read_bytes(), result.read_bytes()
+    (self.output / "build/metadata").write_text(METADATA + "[Environment]\nLD_PRELOAD=synthetic-private-value\n", encoding="utf-8")
+    with self.assertRaisesRegex(SystemExit, "permissions differ"):
+      build.seal_candidate(self.output)
+    self.assertEqual((pointer.read_bytes(), result.read_bytes()), before)
+
+  def test_all_consumers_reject_unreviewed_metadata_even_with_matching_legacy_seals(self):
+    path = self.output / "build/metadata"
+    path.write_text(METADATA + "[System Bus Policy]\norg.freedesktop.NetworkManager=talk\n", encoding="utf-8")
+    result_path = self.output / "result.json"
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    result["metadataSha256"] = build.file_digest(path)
+    build.atomic_json(result_path, result)
+    build.atomic_json(self.root / "release/flatpak/latest.json", {
+      "candidate": str(self.output), "resultSha256": build.file_digest(result_path)})
+    for action in ("test", "run", "lint", "flathub-lint"):
+      with self.subTest(action=action), mock.patch("sys.argv", ["flatpak_candidate.py", action]):
+        with self.assertRaisesRegex(SystemExit, "permissions differ"):
+          candidate.main()
 
   def test_lint_inspects_only_the_selected_manifest_repository_and_installed_metadata(self):
     # --show-manifest normalizes app-id to id and expands included sources.
