@@ -36,6 +36,16 @@ def synthetic_nsis(payload: bytes):
 
 
 class ArtifactParserTests(unittest.TestCase):
+  def test_noncanonical_windows_git_casing_cannot_skip_approved_history_validation(self):
+    for directory in (".Git", ".GIT", ".gIt"):
+      with self.subTest(directory=directory), tempfile.TemporaryDirectory() as temporary:
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, "w") as archive:
+          archive.writestr(directory + "/config", "Harmless unapproved configuration")
+        scanner = security.Scanner(Path(temporary), Path("/unused-tools"))
+        with self.assertRaisesRegex(RuntimeError, "noncanonical Git"):
+          scanner.save(stream.getvalue(), "renamed.bin")
+
   def test_container_context_replay_is_bounded_and_does_not_suppress_missing_ocr(self):
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:

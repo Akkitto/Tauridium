@@ -360,6 +360,8 @@ class Scanner:
         parts = member.filename.split("/")
         if any(part.lower() in {".aws", ".ssh", ".gnupg", ".env", "session.json", "app_settings.json"} for part in parts):
           raise ArtifactRejection("Public archive contains private configuration material")
+        if any(part.lower() == ".git" and part != ".git" for part in parts):
+          raise ArtifactRejection("Public archive contains noncanonical Git directory casing")
         if ".git" in parts:
           relative = "/".join(parts[parts.index(".git") + 1:])
           git_files[relative] = payload

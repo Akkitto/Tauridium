@@ -13,6 +13,15 @@ import release_policy as policy
 
 
 class ReleasePolicyTests(unittest.TestCase):
+  def test_zip_directory_members_cannot_hide_nonempty_payloads(self):
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+      archive.writestr("hidden/", "Harmless nonempty directory control")
+    with zipfile.ZipFile(io.BytesIO(stream.getvalue())) as archive:
+      self.assertIsNone(archive.testzip())
+      with self.assertRaisesRegex(SystemExit, "directory entries"):
+        policy.zip_layout(archive)
+
   def test_zip_layout_accepts_streaming_descriptors_zip64_and_comments(self):
     class Streaming(io.BytesIO):
       def seek(self, *_args):

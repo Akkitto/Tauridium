@@ -97,6 +97,8 @@ def zip_layout(archive: zipfile.ZipFile) -> None:
   original_position = stream.tell()
   try:
     for index, entry in enumerate(entries):
+      if entry.is_dir() and entry.file_size:
+        raise SystemExit("error: ZIP directory entries must not contain file payloads")
       boundary = entries[index + 1].header_offset if index + 1 < len(entries) else archive.start_dir
       stream.seek(entry.header_offset)
       header = stream.read(30)
