@@ -36,6 +36,16 @@ class WindowsIpcSecurityTests(unittest.TestCase):
     self.assertIn("large_native_write_to_a_nonreading_peer_times_out_and_cancels_safely", source)
     self.assertIn("large_native_overlapped_transfers_preserve_every_byte", source)
 
+  def test_release_executes_native_windows_quality_and_vault_controls_before_bundling(self):
+    workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    build = workflow.split("  build:\n", 1)[1].split("  scoop:\n", 1)[0]
+    self.assertIn("components: rustfmt, clippy", build)
+    position = build.index("name: Run native Windows security and application gates")
+    self.assertLess(position, build.index("name: Build native bundles"))
+    self.assertIn("if: runner.os == 'Windows'\n        run: just quality", build[position:])
+    credentials = (ROOT / "src-tauri/src/credentials.rs").read_text(encoding="utf-8")
+    self.assertIn("native_windows_vault_migrates_and_removes_only_its_synthetic_session", credentials)
+
 
 if __name__ == "__main__":
   unittest.main()

@@ -139,7 +139,7 @@ jobs:
         with:
           toolchain: 1.97.1
           targets: ${{ matrix.target }}
-          components: rustfmt
+          components: rustfmt, clippy
       - name: Install just (Linux)
         if: runner.os == 'Linux'
         run: cargo install just --locked --version 1.56.0
@@ -155,6 +155,9 @@ jobs:
         run: just init
       - name: Scan Cargo cache for known malicious crates
         run: just rust-supply-chain-host
+      - name: Run native Windows security and application gates
+        if: runner.os == 'Windows'
+        run: just quality
       - name: Build native bundles without any signing credentials
         run: just bundle-target ${{ matrix.target }}
       - name: Collect exact unsigned native asset set
