@@ -181,8 +181,16 @@ def public_selftests(data: bytes, name: str, approved: set[str]) -> tuple[bytes,
   return PEM.sub(replace, data), count
 
 
+def zip_container(data: bytes) -> bool:
+  # ZIP readers accept prepended bytes and empty/ZIP64 archives. Recognize the
+  # same layouts before enforcing our narrower public-layout policy, including
+  # renamed members and Git blobs. Never silently inspect only compressed bytes.
+  return (data.startswith((b"PK\x03\x04", b"PK\x05\x06", b"PK\x06\x06"))
+          or zipfile.is_zipfile(io.BytesIO(data)))
+
+
 def container(data: bytes) -> bool:
-  return (data.startswith((b"PK\x03\x04", b"\x1f\x8b", b"\xfd7zXZ\0", b"BZh", b"MSCF",
+  return (zip_container(data) or data.startswith((b"\x1f\x8b", b"\xfd7zXZ\0", b"BZh", b"MSCF",
                            b"7z\xbc\xaf\x27\x1c", b"070701", b"070702", b"\x28\xb5\x2f\xfd", b"hsqs",
                            b"!<arch>\n", bytes.fromhex("edabeedb"), bytes.fromhex("d0cf11e0a1b11ae1")))
           or data.startswith(b"\x7fELF") and data[8:11] in (b"AI\x01", b"AI\x02")
@@ -197,7 +205,7 @@ class Scanner:
     self.sources: dict[str, Path] = {}
     self.seen: set[str] = set()
     self.inspected: set[str] = set()
-    self.decoded_payloads: set[str] = set()
+    self.decoded_payloads: set[tuple[str, bool]] = set()
     self.ocr_completed: set[str] = set()
     self.expanded = 0
     self.records = 0
@@ -234,7 +242,8 @@ class Scanner:
         view.write_bytes(b"\n".join(strings))
         view.chmod(0o600)
         self.sources[view.name] = path
-    if ("evidence" in Path(name).parts and Path(name).suffix.lower() == ".png"
+    evidence_context = "evidence" in Path(name).parts
+    if (evidence_context and (Path(name).suffix.lower() == ".png" or data.startswith(b"\x89PNG\r\n\x1a\n"))
         and original_digest not in self.ocr_completed):
       ocr = shutil.which("tesseract")
       if not ocr:
@@ -242,14 +251,26 @@ class Scanner:
       self.save(bounded_command([ocr, str(path.resolve()), "stdout"], limit=8 * 1024**2, timeout=60),
                 name + "/OCR-TEXT", depth=depth + 1, decode=False)
       self.ocr_completed.add(original_digest)
-    if (decode and original_digest not in self.decoded_payloads
+    # A later alias can confer an obligation on descendants, not just this leaf.
+    # There are only two inherited policy contexts, never one cache key per path.
+    decode_key = (original_digest, evidence_context)
+    if (decode and decode_key not in self.decoded_payloads
         and (container(data) or data.startswith(b"MZ") and b"\xef\xbe\xad\xdeNullsoftInst" in data)):
-      self.decoded_payloads.add(original_digest)
+      if sanitized != data:
+        # Scoped string normalization is solely a scan view. Archive parsing must
+        # always consume original bytes, never substituted offsets/CRC contents.
+        raw = self.root / "original-containers"
+        raw.mkdir(mode=0o700, exist_ok=True)
+        path = raw / original_digest
+        if not path.exists():
+          path.write_bytes(data)
+          path.chmod(0o600)
       self.decode(path, name, depth)
+      self.decoded_payloads.add(decode_key)
 
   def decode(self, path: Path, name: str, depth: int, *, installer=False) -> None:
     data = path.read_bytes()
-    if data.startswith(b"PK\x03\x04"):
+    if zip_container(data):
       self.zip(data, name, depth)
       return
     seven = str(self.tools / "7zz")
@@ -314,6 +335,7 @@ class Scanner:
     git_files = {}
     manifest = None
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
+      policy.zip_layout(archive)
       paths = set()
       for member in archive.infolist():
         policy.safe_name(member.filename)
@@ -337,9 +359,9 @@ class Scanner:
       if archive.testzip() is not None:
         raise ArtifactRejection("ZIP CRC verification failed")
     if git_files:
-      self.git_objects(git_files, manifest, depth=depth + 1)
+      self.git_objects(git_files, manifest, depth=depth + 1, context_name=name)
 
-  def git_objects(self, files: dict[str, bytes], manifest: dict | None, *, depth=0) -> None:
+  def git_objects(self, files: dict[str, bytes], manifest: dict | None, *, depth=0, context_name="SOURCE") -> None:
     if not manifest or not isinstance(manifest.get("gitFiles"), list):
       raise ArtifactRejection("Source Git history has no approved-file hash inventory")
     version = manifest["version"]
@@ -384,7 +406,7 @@ class Scanner:
         payload = bounded_command(command + ["cat-file", kind, oid], env=env)
         # Approved history can retain deleted compressed files. Inspect them just
         # like current-tree assets, without resetting the enclosing depth budget.
-        self.save(payload, "GIT-OBJECT/" + oid, depth=depth + 1)
+        self.save(payload, context_name + "/GIT-OBJECT/" + oid, depth=depth + 1)
         self.decoded["git-" + kind] += 1
 
   def add(self, path: Path) -> None:

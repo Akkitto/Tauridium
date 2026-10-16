@@ -81,6 +81,83 @@ def public_names(version: str, *, signed: bool = True, metadata: bool = True) ->
   return names
 
 
+def zip_layout(archive: zipfile.ZipFile) -> None:
+  # Public ZIPs are ordinary archives, never self-extracting/concatenated data.
+  # Account for all local records too: a directory can omit a compressed member
+  # without breaking ZipFile.testzip(), leaving its contents silently uninspected.
+  entries = sorted(archive.infolist(), key=lambda entry: entry.header_offset)
+  if len(entries) > 100_000:
+    raise SystemExit("error: ZIP member inventory exceeds the public size budget")
+  if (entries[0].header_offset if entries else archive.start_dir) != 0:
+    raise SystemExit("error: ZIP preambles or concatenated archive layouts are not permitted")
+  failure = "error: ZIP contains unindexed, overlapping or trailing container data"
+  stream = archive.fp
+  if stream is None:
+    raise SystemExit(failure)
+  original_position = stream.tell()
+  try:
+    for index, entry in enumerate(entries):
+      boundary = entries[index + 1].header_offset if index + 1 < len(entries) else archive.start_dir
+      stream.seek(entry.header_offset)
+      header = stream.read(30)
+      if len(header) != 30 or header[:4] != b"PK\x03\x04":
+        raise SystemExit(failure)
+      _, _, flags, compression, _, _, crc, compressed, expanded, name_size, extra_size = struct.unpack("<4s5H3I2H", header)
+      end = entry.header_offset + 30 + name_size + extra_size + entry.compress_size
+      if flags != entry.flag_bits or compression != entry.compress_type or end > boundary:
+        raise SystemExit(failure)
+      if not flags & 8:
+        if (end != boundary or crc != entry.CRC
+            or compressed not in (entry.compress_size, 0xffffffff) or expanded not in (entry.file_size, 0xffffffff)):
+          raise SystemExit(failure)
+      else:
+        # Streaming ZIPs legitimately use signed/unsigned 32-bit or ZIP64 data
+        # descriptors. Permit exactly the descriptor bytes, never an arbitrary gap.
+        wide = compressed == 0xffffffff or expanded == 0xffffffff
+        size = 20 if wide else 12
+        gap = boundary - end
+        if gap not in (size, size + 4):
+          raise SystemExit(failure)
+        stream.seek(end)
+        descriptor = stream.read(gap)
+        if gap == size + 4:
+          if descriptor[:4] != b"PK\x07\x08":
+            raise SystemExit(failure)
+          descriptor = descriptor[4:]
+        if struct.unpack("<IQQ" if wide else "<III", descriptor) != (entry.CRC, entry.compress_size, entry.file_size):
+          raise SystemExit(failure)
+    stream.seek(0, os.SEEK_END)
+    length = stream.tell()
+    stream.seek(max(0, length - 65557))
+    tail = stream.read(65557)
+    marker = tail.rfind(b"PK\x05\x06")
+    if marker < 0 or len(tail) - marker < 22:
+      raise SystemExit(failure)
+    _, disk, directory_disk, disk_count, count, directory_size, directory_offset, comment_size = struct.unpack_from("<4s4H2IH", tail, marker)
+    end_record = length - len(tail) + marker
+    if marker + 22 + comment_size != len(tail) or disk or directory_disk:
+      raise SystemExit(failure)
+    stream.seek(max(0, end_record - 20))
+    locator = stream.read(20)
+    if locator.startswith(b"PK\x06\x07"):
+      _, locator_disk, position, disks = struct.unpack("<4sIQI", locator)
+      if locator_disk or disks != 1 or position > end_record - 76:
+        raise SystemExit(failure)
+      stream.seek(position)
+      record = stream.read(56)
+      if len(record) != 56 or record[:4] != b"PK\x06\x06":
+        raise SystemExit(failure)
+      _, record_size, _, _, disk, directory_disk, disk_count, count, directory_size, directory_offset = struct.unpack("<4sQ2H2I4Q", record)
+      if disk or directory_disk or record_size != 44 or position + 56 != end_record - 20:
+        raise SystemExit(failure)
+      end_record = position
+    if (disk_count != count or count != len(entries) or directory_offset != archive.start_dir
+        or directory_offset + directory_size != end_record):
+      raise SystemExit(failure)
+  finally:
+    stream.seek(original_position)
+
+
 def inspect_file(path: Path) -> None:
   size = regular(path).st_size
   with path.open("rb") as stream:
@@ -88,6 +165,7 @@ def inspect_file(path: Path) -> None:
     suffix = path.suffix
     if suffix == ".zip":
       with zipfile.ZipFile(path) as archive:
+        zip_layout(archive)
         names = set()
         total = 0
         for entry in archive.infolist():
