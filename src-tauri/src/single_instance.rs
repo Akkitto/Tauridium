@@ -1122,12 +1122,51 @@ mod windows {
         fn exclusive_endpoint_rejects_squatting_and_stays_reserved_between_clients() {
             let name = unique_name();
             let server = reserve_activation_pipe(&name).unwrap();
-            for _ in 0..2 {
+            for iteration in 0..2 {
                 assert!(reserve_activation_pipe(&name).is_err());
                 unsafe {
+                    // A disconnected instance is not listening again until
+                    // ConnectNamedPipe is rearmed. Match the production server
+                    // loop, rather than opening the next client while disconnected.
+                    let mut connection = PipeOperation::new(server.raw()).unwrap();
+                    let started = ConnectNamedPipe(server.raw(), connection.overlapped.as_mut());
+                    if started == 0 {
+                        let error = GetLastError();
+                        // Mark pending before any assertion/client call so Drop
+                        // cancels and drains I/O before its OVERLAPPED is released.
+                        connection.pending = error == ERROR_IO_PENDING;
+                        assert!(
+                            connection.pending,
+                            "connect iteration {iteration}: {}",
+                            std::io::Error::from_raw_os_error(error as i32)
+                        );
+                    }
                     let client = OwnedHandle(open_activation_pipe(&name));
-                    assert_ne!(client.0, INVALID_HANDLE_VALUE);
-                    connect_pipe(server.raw(), None).unwrap();
+                    assert_ne!(
+                        client.0,
+                        INVALID_HANDLE_VALUE,
+                        "client iteration {iteration}: {}",
+                        std::io::Error::last_os_error()
+                    );
+                    if connection.pending {
+                        let mut transferred = 0;
+                        let completed = GetOverlappedResultEx(
+                            server.raw(),
+                            connection.overlapped.as_ref(),
+                            &mut transferred,
+                            u32::try_from(ACTIVATION_RETRY_WINDOW.as_millis()).unwrap(),
+                            0,
+                        );
+                        if completed != 0 {
+                            connection.pending = false;
+                        }
+                        assert_ne!(
+                            completed,
+                            0,
+                            "completion iteration {iteration}: {}",
+                            std::io::Error::last_os_error()
+                        );
+                    }
                     assert_eq!(
                         verify_pipe_peer(client.0, true).unwrap(),
                         GetCurrentProcessId()
@@ -1138,6 +1177,7 @@ mod windows {
                     );
                     assert!(reserve_activation_pipe(&name).is_err());
                     assert_ne!(DisconnectNamedPipe(server.raw()), 0);
+                    assert!(reserve_activation_pipe(&name).is_err());
                 }
             }
             drop(server);
