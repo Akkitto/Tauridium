@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-17
+
+### Changed
+
+- Establish the first major release around the existing Windows, Linux, Flatpak
+  and Nix distribution paths, with stricter application and release boundaries.
+- Personal executable recipes require explicit trust. Remembered credentials use
+  the operating-system vault; unavailable vaults do not silently fall back to
+  plaintext storage. Existing profiles, service sessions and settings are retained.
+- Release producers must use exact approved inventories, immutable source history,
+  current advisory checks and separated key-free build/signing/publication stages.
+  Legacy ad-hoc artifact assembly is not an accepted publication path.
+
 ### Security
 
 - Confine native command authority and local-origin navigation to app-owned views;
@@ -15,9 +28,14 @@
   native tooling and Actions. Enforce hook-free npm installs and current advisory gates.
 - Refresh maintained runtime dependencies and ZIP parsing, enforce a production shell
   CSP, and make Windows tracking exceptions explicit, profile-scoped and restart-safe.
-- Keep recovery checkpoints and raw evidence private. New release activation requires
-  owner-reviewed environments and secret scope; no version/tag/publication is created
-  by this remediation. See `docs/SECURE-RELEASES.md` for residual upstream assessments.
+- Validate complete ZIP streams, typed Git storage and all reachable historical
+  evidence contexts; reject ambiguous source roots and unsealed Flatpak runtimes.
+- Migrate every native, Nix and Flatpak builder to the reviewed stable Tauri CLI
+  patch with ZIP 9, remove unused RPM OpenPGP signing, and replace the withdrawn
+  inout dependency without weakening locked builds or unsigned RPM support.
+- Keep recovery checkpoints and raw evidence private. Public release activation
+  requires owner-reviewed environments and secret scope. See
+  `docs/SECURE-RELEASES.md` for residual upstream assessments and release prerequisites.
 
 ## [0.9.5] - 2026-10-05
 

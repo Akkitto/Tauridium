@@ -29,10 +29,10 @@ class FlatpakSnapshotTests(unittest.TestCase):
     self.run_git("add", ".")
     self.run_git("commit", "-qm", "Test: Create synthetic source")
     initial = self.run_git("rev-parse", "HEAD").strip()
-    self.run_git("tag", "v0.9.5")
     manifest = self.root / build.MANIFEST
     match = build.PIN.search(manifest.read_text(encoding="utf-8"))
     self.assertIsNotNone(match)
+    self.run_git("tag", match["tag"])
     manifest.write_text(manifest.read_text(encoding="utf-8").replace(match["commit"], initial), encoding="utf-8")
     self.run_git("commit", "-qam", "Test: Bind publication reference")
     self.patch = mock.patch.object(build, "ROOT", self.root)
@@ -56,7 +56,7 @@ class FlatpakSnapshotTests(unittest.TestCase):
     text = manifest.read_text(encoding="utf-8")
     self.assertIn(str(output / "source.tar"), text)
     self.assertIn("archive-type: tar", text)
-    self.assertNotIn("tag: v0.9.5", text)
+    self.assertNotRegex(text, r"(?m)^\s*tag:")
     with tarfile.open(output / "source.tar") as archive:
       self.assertNotIn("private.ignore", archive.getnames())
       self.assertFalse(any(name.startswith(".git/") for name in archive.getnames()))
@@ -79,6 +79,12 @@ class FlatpakSnapshotTests(unittest.TestCase):
     with self.assertRaisesRegex(SystemExit, "offline inputs do not match"):
       build.prepare(True, Path(self.temporary.name) / "stale-publication")
     self.assertFalse((Path(self.temporary.name) / "stale-publication").exists())
+
+  def test_publication_fixture_creates_the_declared_tag_at_its_source_commit(self):
+    text = (self.root / build.MANIFEST).read_text(encoding="utf-8")
+    match = build.PIN.search(text)
+    self.assertIsNotNone(match)
+    self.assertEqual(self.run_git("rev-parse", match["tag"] + "^{commit}").strip(), match["commit"])
 
   def test_dirty_and_hidden_index_snapshots_are_rejected(self):
     (self.root / "untracked.txt").write_text("Harmless edit", encoding="utf-8")

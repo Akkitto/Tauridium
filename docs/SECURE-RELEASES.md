@@ -8,8 +8,8 @@ before starting project/dependency build code. npm lifecycle hooks stay disabled
 
 ## Owner activation before the next authorized release
 
-This remediation does **not** create a release, version, tag, push, secret or remote
-policy change. The owner must review and activate these controls on GitHub:
+A local release commit, tag or ZIP does **not** activate remote protections or
+confirm signing-key scope. The owner must review and activate these controls on GitHub:
 
 1. Pre-create `release-signing` and `release-publishing` environments. Require an
    appropriate reviewer and restrict deployment policies to **tags named `v*` only**.

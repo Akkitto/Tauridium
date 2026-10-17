@@ -4512,7 +4512,7 @@ dependencies = [
 
 [[package]]
 name = "tauridium"
-version = "0.9.5"
+version = "1.0.0"
 dependencies = [
  "apple-native-keyring-store",
  "base64 0.22.1",

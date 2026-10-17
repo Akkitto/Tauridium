@@ -80,10 +80,11 @@ verify that its immutable tag/commit and all three offline source manifests agre
 just flatpak-publication-check
 ```
 
-The unchanged 0.9.5 publication pin is historical while security changes are
-unreleased. This check deliberately rejects incompatible old source/new inputs;
-do not move an existing release tag. After an authorized release, update the
-publication pin and offline inputs together, then run the submission checks. The
+The 1.0.0 source-commit placeholder is materialized only after the immutable
+release commit/tag exists, avoiding a self-referential commit. This check rejects
+an unresolved pin or incompatible source/offline inputs; do not move an existing
+release tag. After tagging, pin that exact commit and verify the matching offline
+inputs before running the submission checks. The
 following explicit Flathub command installs an application and is **not** the local
 non-installing QA workflow above:
 
