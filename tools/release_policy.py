@@ -99,6 +99,11 @@ def zip_layout(archive: zipfile.ZipFile) -> None:
   original_position = stream.tell()
   try:
     for index, entry in enumerate(entries):
+      # ZipInfo may normalize backslashes on Windows and truncate NULs. Reject
+      # the original central-directory name before trusting that transformed view.
+      safe_name(entry.orig_filename)
+      if entry.orig_filename != entry.filename:
+        raise SystemExit("error: unsafe normalized ZIP member path")
       if entry.is_dir() and entry.file_size:
         raise SystemExit("error: ZIP directory entries must not contain file payloads")
       boundary = entries[index + 1].header_offset if index + 1 < len(entries) else archive.start_dir

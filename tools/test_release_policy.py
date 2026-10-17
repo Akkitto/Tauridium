@@ -196,7 +196,14 @@ class ReleasePolicyTests(unittest.TestCase):
       with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "test.zip"
         with zipfile.ZipFile(path, "w") as archive:
-          archive.writestr(name, b"synthetic")
+          # ZipInfo's writer normalizes backslashes on Windows. Author the raw
+          # local/central names so this is genuinely an unsafe ZIP on every host.
+          archive.writestr("x" * len(name), b"synthetic")
+        data = path.read_bytes()
+        self.assertEqual(data.count(b"x" * len(name)), 2)
+        path.write_bytes(data.replace(b"x" * len(name), name.encode("ascii")))
+        with zipfile.ZipFile(path) as archive:
+          self.assertEqual(archive.infolist()[0].orig_filename, name)
         with self.assertRaisesRegex(SystemExit, "unsafe"):
           policy.inspect_file(path)
     with tempfile.TemporaryDirectory() as directory:
@@ -207,6 +214,19 @@ class ReleasePolicyTests(unittest.TestCase):
         archive.writestr(entry, b"outside")
       with self.assertRaisesRegex(SystemExit, "link or special"):
         policy.inspect_file(path)
+
+  def test_zip_layout_rejects_original_names_even_when_reader_normalizes_them(self):
+    for raw in ("directory\\file", "visible\0hidden"):
+      with self.subTest(raw=raw):
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, "w") as archive:
+          archive.writestr("readme.txt", b"Harmless control")
+        with zipfile.ZipFile(io.BytesIO(stream.getvalue())) as archive:
+          entry = archive.infolist()[0]
+          entry.orig_filename = raw
+          entry.filename = raw.split("\0")[0].replace("\\", "/")
+          with self.assertRaisesRegex(SystemExit, "unsafe"):
+            policy.zip_layout(archive)
 
   def test_inventory_diagnostics_never_print_unapproved_filenames(self):
     with tempfile.TemporaryDirectory() as directory:

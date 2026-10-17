@@ -31,6 +31,8 @@
 
 ### Security
 
+- Validate original ZIP member names before Windows path normalization or NUL
+  truncation, retaining strict unsafe-path checks on every host.
 - Confine native command authority and local-origin navigation to app-owned views;
   validate service identities and session deletion at every relevant boundary.
 - Export immutable approved source/Git ancestry and explicitly reviewed evidence;
