@@ -188,7 +188,8 @@ class FlatpakSnapshotTests(unittest.TestCase):
     for newline in ("\n", "\r\n"):
       valid = text.replace("\n", newline)
       for malformed in ("not the reviewed manifest", valid + valid,
-                        valid.replace("https://github.com/Akkitto/Tauridium.git", "https://example.invalid/other.git")):
+                        valid.replace("https://github.com/Akkitto/Tauridium.git", "https://example.invalid/other.git"),
+                        valid.replace("github.com", "githubXcom"), valid.replace("Tauridium.git", "TauridiumXgit")):
         with self.subTest(newline=newline, malformed=malformed[:25]):
           with self.assertRaisesRegex(SystemExit, "one exact immutable"):
             build.local_manifest(malformed, Path("/synthetic/source.tar"), "a" * 64)

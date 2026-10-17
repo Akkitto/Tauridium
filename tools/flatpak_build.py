@@ -25,7 +25,7 @@ LOCKS = ("src-tauri/Cargo.lock", "package-lock.json", "flatpak/tauri-cli.Cargo.l
          "data/build-toolchain.json")
 GENERATED = ("flatpak/cargo-sources.json", "flatpak/node-sources.json", "flatpak/tauri-cli-cargo-sources.json",
              "flatpak/tauri-cli-policy.json")
-PIN = re.compile(r"(?m)^      - type: git\r?\n        url: https://github.com/Akkitto/Tauridium.git\r?\n"
+PIN = re.compile(r"(?m)^      - type: git\r?\n        url: https://github\.com/Akkitto/Tauridium\.git\r?\n"
                  r"        tag: (?P<tag>v[0-9]+\.[0-9]+\.[0-9]+)\r?\n"
                  r"        commit: (?P<commit>\S+)\r?\n        dest: source\r?\n"
                  r"        x-checker-data:\r?\n          type: git\r?\n          tag-pattern: [^\r\n]+\r?\n")
