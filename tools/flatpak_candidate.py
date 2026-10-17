@@ -40,6 +40,7 @@ def select(candidate: str = "") -> Path:
   if raw.is_symlink() or not raw.is_dir():
     raise SystemExit("error: candidate must be a real successful build directory")
   output = raw.resolve()
+  build.validate_runtime_layout(output)
   identity, result = document(output / "identity.json"), document(output / "result.json")
   if (identity.get("schemaVersion") != 1 or identity.get("configurationCommit") != head
       or identity.get("installed") is not False or result.get("passed") is not True

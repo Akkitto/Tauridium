@@ -13,6 +13,36 @@ import test_flatpak_build as fixtures
 
 
 class FlatpakCandidateTests(unittest.TestCase):
+  def test_custom_runtime_is_rejected_before_sealing_and_by_every_consumer(self):
+    path = self.output / "build/usr"
+    pointer = self.root / "release/flatpak/latest.json"
+    result = self.output / "result.json"
+    original = pointer.read_bytes(), result.read_bytes()
+    for kind in ("directory", "file", "link", "broken-link"):
+      with self.subTest(kind=kind):
+        try:
+          if kind == "directory":
+            path.mkdir()
+          elif kind == "file":
+            path.write_bytes(b"Harmless control")
+          else:
+            try:
+              path.symlink_to(self.output / ("build/files" if kind == "link" else "absent"), target_is_directory=True)
+            except OSError:
+              continue  # Windows may not grant symlink privileges.
+          with self.assertRaisesRegex(SystemExit, "custom runtime"):
+            build.seal_candidate(self.output)
+          self.assertEqual((pointer.read_bytes(), result.read_bytes()), original)
+          for action in ("test", "run", "lint", "flathub-lint"):
+            with mock.patch("sys.argv", ["flatpak_candidate.py", action]):
+              with self.assertRaisesRegex(SystemExit, "custom runtime"):
+                candidate.main()
+        finally:
+          if path.is_dir() and not path.is_symlink():
+            path.rmdir()
+          else:
+            path.unlink(missing_ok=True)
+
   def setUp(self):
     self.fixture = fixtures.FlatpakSnapshotTests()
     self.fixture.setUp()

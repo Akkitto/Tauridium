@@ -71,9 +71,17 @@ def atomic_json(path: Path, value: dict) -> None:
       temporary.unlink(missing_ok=True)
 
 
+def validate_runtime_layout(output: Path) -> None:
+  # flatpak build prefers build/usr over the runtime named in metadata, even
+  # with --runtime. No custom SDK/runtime tree is supported by this producer.
+  if os.path.lexists(output / "build/usr"):
+    raise SystemExit("error: Flatpak candidate contains an unreviewed custom runtime")
+
+
 def seal_candidate(output: Path) -> None:
   # A successful pointer is a custody transition, not merely a byte hash. Refuse
   # unreviewed runtime permissions before writing either success document.
+  validate_runtime_layout(output)
   validate_permissions(output / "build/metadata")
   result = {"passed": True, "installed": False, "runtimeExecutables": ["tauridium"],
             "identitySha256": file_digest(output / "identity.json"),
