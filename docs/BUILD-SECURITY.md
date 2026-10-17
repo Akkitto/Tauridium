@@ -29,19 +29,33 @@ code to perform the security scan.
 
 ## Pinned native tooling
 
-data/build-toolchain.json identifies supported Tauri CLI 2.12.3 and the SHA-256
-digests of its published crate and Cargo.lock. Native initialization reuses only
-that exact CLI; a different installed version is replaced with a locked install.
-Nix builds the same checksum-pinned published crate and dependency bundle, retains
-the nixpkgs Tauri hook, and never installs tools into the user's Cargo directory.
-Flatpak builds from the same crate/lock and removes cargo-tauri during final
-cleanup; the build-only executable is not a runtime dependency.
+data/build-toolchain.json pins the official stable Tauri CLI 2.12.3 and bundler
+2.10.3 crate checksums. Upstream still requires ZIP 8, which is affected by
+RUSTSEC-2026-0367/0368/0369. The shared `flatpak/prepare-tauri-cli.py` helper
+verifies both immutable archives, extracts only bounded regular files, and
+narrowly changes both ZIP requirements to 9.0.4. It binds the bundler as a local
+dependency and assigns the distinct CLI identity `2.12.3+tauridium.1`. The exact
+patched lock is separately hash-pinned; it is not represented as upstream's lock.
+No Cargo registry source is edited. Patch preconditions fail closed on drift.
+
+The same narrow source preparation disables RPM's OpenPGP feature and replaces
+the unused signing branch with explicit credential rejection plus unsigned RPM
+construction. All payload compression formats remain enabled. This removes the
+OpenPGP/ML-DSA stack rather than retaining a build-only vulnerability exception.
+The remaining whole-lock RSA advisory belongs to macOS certificate key generation,
+not the affected decryption API; its precise expiring assessment is still printed.
+
+Native initialization, Nix and Flatpak all use that same preparation and lock.
+An unpatched CLI with the upstream version is not reused. Nix retains the
+nixpkgs Tauri hook and never installs into the user's Cargo directory. Flatpak
+removes cargo-tauri during final cleanup; the builder is not a runtime dependency.
+This security migration can be retired after a reviewed stable upstream release
+provides the fixes. Do not replace it with prerelease Tauri 3 or advisory ignores.
 
 tools/generate_flatpak_sources.py regenerates and exactly checks the CLI's offline
 source manifest as well as the application's Cargo/npm sources. A source-count or
 nonempty-file check is not sufficient. Tool updates must review the new published
-lock, advisories, checksums and all three producer paths together. Prerelease Tauri
-3 tooling is not an acceptable substitute for the supported Tauri 2 builder.
+lock, advisories, checksums and all three producer paths together.
 
 ## Updater signature verification
 
@@ -90,3 +104,25 @@ and actual application/builder locks; daily and required CI enforce the same gat
 Dependency-update PRs are proposed weekly for npm, Cargo and Actions. They still
 require source review, tests, regenerated Flatpak offline sources and correct Nix
 hashes; automated dependency PRs do not authorize automatic merging or release.
+
+## Complete archive and candidate inspection
+
+Public ZIPs support only stored and deflate compression. Validation accounts for
+every physical record and independently decodes each complete compressed span,
+including empty directories. Actual output, full CRC, end-of-stream and exact
+compressed-byte consumption must all agree; declared sizes and `testzip()` alone
+are not sufficient. Byte, record, nesting and decoder-time budgets fail closed.
+Unsupported codecs are rejected, never inspected only as compressed bytes.
+
+A source archive has one Git root and one manifest at that same root. Multiple
+roots, overwritten relative inventories and ambiguous manifests are rejected.
+All approved reachable history is inspected, including deleted containers. A
+bounded traversal of historical trees retains evidence obligations across every
+alias/rename, so a deleted evidence PNG still receives OCR without needing an
+outer archive named evidence. Private full-Git checkpoints are never public input.
+
+Flatpak candidates must satisfy the complete reviewed metadata policy at both
+sealing and consumption. They also reject any `build/usr` entry, including a
+dangling symlink: Flatpak would otherwise use that custom runtime instead of the
+GNOME runtime named in metadata. Read-only execution does not establish runtime
+identity. Candidate tests do not install over the owner's application or profile.

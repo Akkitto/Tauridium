@@ -107,11 +107,13 @@ attested files, and verify hashes/signatures before using installers.
 against a fresh RustSec database. Security CI is required by normal CI/release and
 also scheduled daily. Exact version/lock-scoped assessments in
 `data/security-advisory-policy.json` expire and are printed, never silently ignored.
-The application ZIP parser is maintained; the official pinned builder still has
-upstream-only withdrawn/maintenance/private-PGP-signing findings. The supported
-builder has no keys and only reviewed repository inputs; isolated updater signing
-does not use those APIs. These controls are conditional assessments, not upstream
-fixes. New/changed/expired findings fail and need review. A supplied offline database
+The application and patched stable builder both use maintained ZIP 9. The shared
+builder preparation removes RPM's unused OpenPGP/ML-DSA stack entirely. Whole-lock
+scanning still reports an RSA advisory from the macOS-only certificate generator:
+its reviewed API use generates ephemeral keys, not the affected RSA decryption.
+That precise expiring assessment and upstream maintenance warnings remain visible;
+this is not an upstream RSA fix or a claim of zero findings. New/changed/expired
+findings fail and need review. A supplied offline database
 snapshot is labeled a diagnostic, never the current online gate.
 
 See [artifact inspection](ARTIFACT-SECURITY.md). Raw logs, profiles, screenshots/OCR,
