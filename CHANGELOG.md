@@ -24,6 +24,8 @@
   retaining strict checksum verification and real CRLF-conversion regressions.
 - Bind synthetic Flatpak publication fixtures to their declared release tag, and
   refresh both measured Nix vendor hashes for the 1.0.0 root lockfile identity.
+- Rebuild exported approved Git objects with fixed single-threaded packing,
+  eliminating transport-pack nondeterminism without copying producer configuration.
 
 ### Security
 

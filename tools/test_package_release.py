@@ -440,6 +440,30 @@ class PackageReleaseTests(unittest.TestCase):
     self.assertEqual(first.git_files, second.git_files)
     self.assertEqual(first.manifest_bytes, second.manifest_bytes)
 
+  def test_packed_source_is_independent_of_producer_compression_and_delta_layout(self) -> None:
+    self.init_git_repository()
+    for index in range(120):
+      (self.root / f"packed-{index}.txt").write_bytes(
+        b"Deterministic synthetic shared source line\n" * 100 + str(index).encode() + b"\n")
+    def git(*arguments):
+      return subprocess.check_output(["git", *arguments], cwd=self.root, stderr=subprocess.DEVNULL)
+    git("add", ".")
+    git("commit", "-qm", "Test: Create enough approved objects to require packing")
+    git("tag", "-f", "v0.2.0")
+    git("config", "pack.threads", "4")
+    git("config", "pack.compression", "0")
+    git("repack", "-adF", "--depth=0", "--window=0")
+    original_pack = tuple(path.name for path in (self.root / ".git/objects/pack").glob("*.pack"))
+    first = PACKAGE.source_context("0.2.0")
+    self.assertTrue(any(name.endswith(".pack") for name, _ in first.git_files))
+    git("config", "pack.compression", "9")
+    git("repack", "-adF", "--depth=30", "--window=20")
+    changed_pack = tuple(path.name for path in (self.root / ".git/objects/pack").glob("*.pack"))
+    self.assertNotEqual(original_pack, changed_pack)
+    second = PACKAGE.source_context("0.2.0")
+    self.assertEqual(first.git_files, second.git_files)
+    self.assertEqual(first.manifest_bytes, second.manifest_bytes)
+
   def test_git_index_modes_are_used_instead_of_host_filesystem_modes(self) -> None:
     subprocess.run(["git", "init", "-q"], cwd=self.root, check=True)
     subprocess.run(["git", "config", "user.name", "Test"], cwd=self.root, check=True)

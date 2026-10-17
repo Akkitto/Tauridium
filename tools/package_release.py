@@ -495,6 +495,12 @@ def sanitized_git_files(release_version: str) -> tuple[tuple[str, bytes], ...]:
     run("update-ref", "refs/heads/master", commit)
     run("symbolic-ref", "HEAD", "refs/heads/master")
     run("read-tree", commit)
+    # Transport packs may depend on upload-pack's thread scheduling, producer
+    # settings and reused compressed objects/deltas. Rebuild the approved object
+    # set from scratch under fixed single-threaded packing before hashing it.
+    run("-c", "pack.threads=1", "-c", "pack.compression=6", "-c", "pack.windowMemory=0",
+        "-c", "pack.writeReverseIndex=false", "-c", "repack.writeBitmaps=false",
+        "repack", "-adF", "--depth=50", "--window=10")
     git_dir = clean / ".git"
     # Fixed, inert public configuration; never copy producer configuration.
     (git_dir / "config").write_text(

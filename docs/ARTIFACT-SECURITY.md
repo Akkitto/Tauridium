@@ -17,6 +17,10 @@ historical blobs and recognized containers inside those blobs. Nesting context a
 global expansion budgets continue through Git/archive boundaries. Local hooks,
 credentials, aliases, remotes, reflogs, unrelated
 refs and unreachable producer objects never belong in a public source ZIP.
+Approved objects are repacked from scratch with fixed compression/delta settings
+and a single packing thread before their hashes enter the source manifest. This
+removes transport-pack scheduling and producer compression as ZIP inputs; no
+producer configuration is copied or normalized into public Git metadata.
 
 Package recognition is signature-based at every boundary, not a top-level filename
 shortcut: renamed/nested DEB, RPM, compound/MSI and AppImage payloads are decoded.
