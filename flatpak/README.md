@@ -80,11 +80,13 @@ verify that its immutable tag/commit and all three offline source manifests agre
 just flatpak-publication-check
 ```
 
-The 1.0.0 source-commit placeholder is materialized only after the immutable
-release commit/tag exists, avoiding a self-referential commit. This check rejects
-an unresolved pin or incompatible source/offline inputs; do not move an existing
-release tag. After tagging, pin that exact commit and verify the matching offline
-inputs before running the submission checks. The
+The publication reference targets the immutable 1.0.0 source commit. Its pin was
+materialized after tagging to avoid a self-referential commit; the tagged source
+archive therefore retains the preparatory placeholder. Use this post-tag upstream
+reference for publication, or `just flatpak-build` for local tagged-source testing.
+This check rejects unresolved pins or incompatible source/offline inputs; do not
+move an existing published release tag. Verify the matching offline inputs before
+running submission checks. The
 following explicit Flathub command installs an application and is **not** the local
 non-installing QA workflow above:
 

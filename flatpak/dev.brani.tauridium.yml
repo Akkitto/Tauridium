@@ -1,5 +1,5 @@
 # Publication reference: validate its source/inputs with just flatpak-publication-check.
-# Local development uses just flatpak-build; materialize the source commit after tagging.
+# Local development uses just flatpak-build; publication uses the immutable tag/commit below.
 id: dev.brani.tauridium
 runtime: org.gnome.Platform
 runtime-version: '51'
@@ -76,7 +76,7 @@ modules:
       - type: git
         url: https://github.com/Akkitto/Tauridium.git
         tag: v1.0.0
-        commit: __TAURIDIUM_V100_COMMIT__
+        commit: a760ba14c63ec2d3b3dfe2503603da53e3b39e43
         dest: source
         x-checker-data:
           type: git
