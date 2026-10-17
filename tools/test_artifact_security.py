@@ -504,6 +504,10 @@ class RealArtifactScannerTests(unittest.TestCase):
 
   def test_git_pack_hidden_suffix_is_rejected_even_with_recomputed_storage_checksums(self):
     source = self.historical_source(b"Harmless historical control", "deleted.txt", packed=True)
+    with tempfile.TemporaryDirectory() as temporary:
+      scanner = self.scanner(Path(temporary))
+      scanner.add(source)
+      self.assertTrue(scanner.scan()["passed"])
     with zipfile.ZipFile(source) as archive:
       entries = [(copy.copy(member), archive.read(member)) for member in archive.infolist()]
     pack_name, pack = next((member.filename, data) for member, data in entries if member.filename.endswith(".pack"))
