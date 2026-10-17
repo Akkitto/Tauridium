@@ -14,6 +14,18 @@ import release_policy as policy
 
 
 class ReleasePolicyTests(unittest.TestCase):
+  def test_zip_decoder_drains_bounded_internal_output_at_chunk_boundaries(self):
+    for size in (65535, 65536, 65537, 131071, 131072, 131073):
+      for level in (0, 1, 6, 9):
+        with self.subTest(size=size, level=level):
+          stream = io.BytesIO()
+          payload = bytes(size)
+          with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=level) as archive:
+            archive.writestr("harmless.bin", payload)
+          with zipfile.ZipFile(io.BytesIO(stream.getvalue())) as archive:
+            policy.zip_layout(archive)
+            self.assertEqual(policy.zip_payload(archive, archive.infolist()[0], limit=size), payload)
+
   def test_actual_zip_codec_output_and_consumption_are_verified(self):
     prefix, hidden = b"Harmless visible prefix\n", b"Hidden synthetic payload\n"
     for method in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):

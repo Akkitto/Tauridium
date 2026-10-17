@@ -194,7 +194,7 @@ def zip_payload(archive: zipfile.ZipFile, entry: zipfile.ZipInfo, *, limit: int)
       raise zipfile.BadZipFile(failure)
     remaining -= len(block)
     pending = block
-    while pending:
+    while True:
       if time.monotonic() > deadline:
         raise SystemExit("error: ZIP decoder exceeded its time budget")
       chunk = decoder.decompress(pending, min(65536, entry.file_size - len(output) + 1)) if decoder else pending
@@ -205,6 +205,11 @@ def zip_payload(archive: zipfile.ZipFile, entry: zipfile.ZipInfo, *, limit: int)
       if decoder and (decoder.unused_data or decoder.eof and remaining):
         raise zipfile.BadZipFile(failure)
       pending = decoder.unconsumed_tail if decoder else b""
+      # zlib can consume the last input byte yet retain output internally when
+      # max_length is reached. Drain it with bounded empty-input calls too;
+      # absence of unconsumed_tail alone does not mean all output was produced.
+      if decoder is None or decoder.eof or not pending and not chunk:
+        break
   if (decoder and not decoder.eof) or len(output) != entry.file_size or crc != entry.CRC:
     raise zipfile.BadZipFile(failure)
   return bytes(output)
