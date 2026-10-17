@@ -862,8 +862,8 @@ try {
     if ($LASTEXITCODE -ne 0) {
       throw ("npm.cmd audit failed with exit code {0}" -f $LASTEXITCODE)
     }
-    Write-Host "+ npm.cmd exec --offline -- esbuild --version"
-    & npm.cmd exec --offline -- esbuild --version
+    Write-Host "+ node.exe tools/check_esbuild.mjs"
+    & node.exe tools/check_esbuild.mjs
     if ($LASTEXITCODE -ne 0) {
       throw ("local esbuild validation failed with exit code {0}" -f $LASTEXITCODE)
     }

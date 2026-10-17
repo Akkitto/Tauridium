@@ -494,13 +494,9 @@ def install_javascript_dependencies() -> None:
   run_checked(["npm", "ci", "--ignore-scripts"])
   run_checked(["npm", "audit", "--audit-level=high"])
 
-  # Verify the approved dependency is actually runnable. esbuild's install
-  # script may replace its JavaScript shim with a platform-native executable,
-  # so invoking node on node_modules/esbuild/bin/esbuild is incorrect (ELF on
-  # Linux, PE on Windows). npm exec resolves and launches the local package bin
-  # using the platform-appropriate mechanism. --offline prevents registry
-  # fallback and therefore also verifies that npm ci installed it locally.
-  run_checked(["npm", "exec", "--offline", "--", "esbuild", "--version"])
+  # Exercise the locked local API and native optional package without depending
+  # on npm's command shims or running esbuild's deliberately disabled postinstall.
+  run_checked(["node", "tools/check_esbuild.mjs"])
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:

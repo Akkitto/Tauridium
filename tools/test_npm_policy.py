@@ -64,3 +64,45 @@ class NpmPolicyTests(unittest.TestCase):
             self.assertFalse(marker.exists(), "The explicit bootstrap flag must beat an unsafe environment override")
             run(["ci"])
             self.assertFalse(marker.exists(), "The project default must protect ordinary manual npm ci")
+
+
+@unittest.skipUnless(shutil.which("node"), "Requires Node from the initialized development environment")
+class EsbuildProbeTests(unittest.TestCase):
+    def run_probe(self, *, version="0.25.12", failure=False, missing=False):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "tools").mkdir()
+            shutil.copyfile(ROOT / "tools/check_esbuild.mjs", root / "tools/check_esbuild.mjs")
+            (root / "package-lock.json").write_text(json.dumps({
+                "packages": {"node_modules/esbuild": {"version": "0.25.12"}},
+            }), encoding="utf-8")
+            if not missing:
+                package = root / "node_modules/esbuild"
+                package.mkdir(parents=True)
+                # Deliberately no bin directory, npm shim or install script.
+                body = "throw new Error('synthetic native transform failure')" if failure else (
+                    "if (options.loader !== 'js') throw new Error('wrong loader'); return {code: input}"
+                )
+                (package / "index.js").write_text(
+                    "exports.version = " + json.dumps(version) + ";\n"
+                    "exports.transformSync = (input, options) => { " + body + " };\n",
+                    encoding="utf-8",
+                )
+            return subprocess.run([shutil.which("node"), str(root / "tools/check_esbuild.mjs")],
+                                  cwd=root, capture_output=True, text=True, timeout=30)
+
+    def test_probe_uses_local_api_without_executable_shims(self):
+        result = self.run_probe()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("native transform validated", result.stdout)
+
+    def test_probe_rejects_package_version_mismatch(self):
+        self.assertNotEqual(self.run_probe(version="0.0.0").returncode, 0)
+
+    def test_probe_propagates_native_transform_failure(self):
+        result = self.run_probe(failure=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("synthetic native transform failure", result.stderr)
+
+    def test_probe_cannot_fall_back_to_global_or_registry_package(self):
+        self.assertNotEqual(self.run_probe(missing=True).returncode, 0)

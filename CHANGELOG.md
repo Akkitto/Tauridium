@@ -17,6 +17,8 @@
 
 ### Fixed
 
+- Validate the locked local esbuild API with a real native transform on Windows
+  and Linux, without requiring npm command shims or enabling dependency scripts.
 - Bootstrap the checksum-pinned official Minisign binary on Linux x64/ARM64
   without assuming an Ubuntu 22.04 apt package exists. Verify ignored tool caches
   independently in later processes and reject damaged caches without overwriting them.

@@ -13,8 +13,10 @@ tools/npm_policy.py validator rejects root installation hooks and unexpected
 dependency hook metadata before installation. The locked esbuild and optional
 macOS fsevents install hooks are recognized in the lockfile but never executed.
 esbuild uses the native executable in its locked optional platform package; the
-initializer verifies it with npm exec --offline -- esbuild --version. Missing or
-unsupported platform binaries fail visibly rather than triggering a downloader.
+initializer verifies its locked local API and performs a real native transform
+with node tools/check_esbuild.mjs. No npm command shim, installation script or
+registry fallback is required. Missing, mismatched or unsupported local binaries
+fail visibly rather than triggering a downloader.
 
 Explicit reviewed npm run build/check/test commands still work. This policy is
 not a claim that a compiler or directly invoked build dependency is harmless:

@@ -282,7 +282,7 @@ class NpmPolicyTests(unittest.TestCase):
   @patch.object(INIT, "validate_npm_policy")
   @patch.object(INIT, "run_checked")
   @patch.object(INIT.shutil, "which", return_value="/usr/bin/tool")
-  def test_esbuild_validation_executes_package_bin_instead_of_parsing_it_with_node(
+  def test_esbuild_validation_uses_shared_local_api_probe_without_npm_shims(
     self,
     _which,
     run_checked,
@@ -295,9 +295,9 @@ class NpmPolicyTests(unittest.TestCase):
     self.assertEqual(commands[1], ["npm", "audit", "--audit-level=high"])
     self.assertEqual(
       commands[2],
-      ["npm", "exec", "--offline", "--", "esbuild", "--version"],
+      ["node", "tools/check_esbuild.mjs"],
     )
-    self.assertFalse(any(command and command[0] == "node" for command in commands))
+    self.assertNotIn(["node", "node_modules/esbuild/bin/esbuild"], commands)
 
 
 if __name__ == "__main__":
