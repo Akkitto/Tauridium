@@ -33,6 +33,30 @@ def load_clean_checker():
 
 
 class ReleaseWorkflowTests(unittest.TestCase):
+  def test_release_validator_requires_shared_locked_esbuild_native_probe(self) -> None:
+    validator = load_release_validator()
+    validator.validate_esbuild_probe(*(validator.read(path) for path in (
+      "tools/init.py", "tools/init.ps1", "tools/check_esbuild.mjs",
+    )))
+
+  def test_release_validator_rejects_missing_esbuild_probe_controls(self) -> None:
+    validator = load_release_validator()
+    sources = [validator.read(path) for path in (
+      "tools/init.py", "tools/init.ps1", "tools/check_esbuild.mjs",
+    )]
+    for index, marker in (
+      (0, '["node", "tools/check_esbuild.mjs"]'),
+      (1, '& node.exe tools/check_esbuild.mjs'),
+      (2, 'assert.equal(esbuild.version,'),
+      (2, 'esbuild.transformSync(input,'),
+      (2, '../node_modules/esbuild'),
+    ):
+      with self.subTest(marker=marker):
+        broken = list(sources)
+        broken[index] = broken[index].replace(marker, "REMOVED-CONTROL")
+        with self.assertRaisesRegex(SystemExit, "locked local esbuild API"):
+          validator.validate_esbuild_probe(*broken)
+
   def test_generate_handler_parser_keeps_commands_after_cfg_attribute(self) -> None:
     validator = load_release_validator()
     source = """

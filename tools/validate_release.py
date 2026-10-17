@@ -79,6 +79,20 @@ def validate_just_recipe_platforms(justfile: str) -> None:
       fail(f"duplicate just recipe {name!r} has overlapping platform definitions")
 
 
+def validate_esbuild_probe(init_py: str, init_ps1: str, probe: str) -> None:
+  for source, markers in (
+    (init_py, ('["node", "tools/check_esbuild.mjs"]',)),
+    (init_ps1, ('& node.exe tools/check_esbuild.mjs',)),
+    (probe, ('../node_modules/esbuild', 'lock.packages["node_modules/esbuild"].version',
+             'assert.equal(esbuild.version,', 'esbuild.transformSync(input,',
+             'assert.equal(esbuild.transformSync(')),
+  ):
+    if any(marker not in source for marker in markers):
+      fail("initializer must validate the locked local esbuild API with a native transform")
+  if '"exec", "--offline", "--", "esbuild"' in init_py or 'npm.cmd exec --offline -- esbuild' in init_ps1:
+    fail("initializer must not depend on missing Windows esbuild command shims")
+
+
 def main() -> int:
   tauri = json.loads(read("src-tauri/tauri.conf.json"))
   package = json.loads(read("package.json"))
@@ -192,8 +206,7 @@ def main() -> int:
     fail("initializer does not detect mixed/stale release extraction")
   if "--native-only" not in init_py:
     fail("initializer lacks native-only diagnostic mode")
-  if '["npm", "exec", "--offline", "--", "esbuild", "--version"]' not in init_py:
-    fail("initializer does not validate esbuild through npm's platform-aware executable path")
+  validate_esbuild_probe(init_py, init_ps1, read("tools/check_esbuild.mjs"))
   if '["node", str(esbuild), "--version"]' in init_py:
     fail("initializer still attempts to parse the native esbuild binary with Node.js")
   for marker in (
