@@ -54,7 +54,7 @@ class FlatpakSnapshotTests(unittest.TestCase):
     self.assertEqual(identity["commit"], self.run_git("rev-parse", "HEAD").strip())
     self.assertFalse(identity["installed"])
     text = manifest.read_text(encoding="utf-8")
-    self.assertIn(str(output / "source.tar"), text)
+    self.assertIn("path: " + json.dumps(str(output / "source.tar")), text)
     self.assertIn("archive-type: tar", text)
     self.assertNotRegex(text, r"(?m)^\s*tag:")
     with tarfile.open(output / "source.tar") as archive:
@@ -137,6 +137,20 @@ class FlatpakSnapshotTests(unittest.TestCase):
       self.assertEqual(archive.extractfile("literal-crlf.txt").read(), payload)
     self.assertEqual(build.git("show", "HEAD:literal-crlf.txt"), payload)
 
+  def test_crlf_manifest_pin_is_parsed_without_normalizing_committed_source_bytes(self):
+    manifest = self.root / build.MANIFEST
+    payload = manifest.read_text(encoding="utf-8").replace("\n", "\r\n").encode("utf-8")
+    manifest.write_bytes(payload)
+    self.run_git("config", "core.autocrlf", "false")
+    self.run_git("add", build.MANIFEST)
+    self.run_git("commit", "--allow-empty", "-qm", "Test: Preserve CRLF manifest pin")
+    output, local = build.prepare(False, Path(self.temporary.name) / "crlf-pin")
+    with tarfile.open(output / "source.tar") as archive:
+      self.assertEqual(archive.extractfile(build.MANIFEST).read(), payload)
+    self.assertEqual(build.git("show", "HEAD:" + build.MANIFEST), payload)
+    self.assertIn("path: " + json.dumps(str(output / "source.tar")), local.read_text(encoding="utf-8"))
+    self.assertNotRegex(local.read_text(encoding="utf-8"), r"(?m)^\s*tag:")
+
   def test_source_snapshot_rejects_symlinks_and_gitlinks_instead_of_dereferencing_them(self):
     for mode, kind in ((b"120000", b"blob"), (b"160000", b"commit")):
       with self.subTest(mode=mode):
@@ -170,8 +184,14 @@ class FlatpakSnapshotTests(unittest.TestCase):
           build.snapshot_flatpak(data.getvalue(), Path(self.temporary.name) / "configuration")
 
   def test_unexpected_manifest_shape_fails_instead_of_building_wrong_source(self):
-    with self.assertRaisesRegex(SystemExit, "one exact immutable"):
-      build.local_manifest("not the reviewed manifest", Path("/synthetic/source.tar"), "a" * 64)
+    text = (self.root / build.MANIFEST).read_text(encoding="utf-8")
+    for newline in ("\n", "\r\n"):
+      valid = text.replace("\n", newline)
+      for malformed in ("not the reviewed manifest", valid + valid,
+                        valid.replace("https://github.com/Akkitto/Tauridium.git", "https://example.invalid/other.git")):
+        with self.subTest(newline=newline, malformed=malformed[:25]):
+          with self.assertRaisesRegex(SystemExit, "one exact immutable"):
+            build.local_manifest(malformed, Path("/synthetic/source.tar"), "a" * 64)
 
   def test_default_recipe_does_not_install_the_historical_publication_reference(self):
     repo = Path(__file__).resolve().parents[1]
