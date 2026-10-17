@@ -121,11 +121,21 @@ class FlatpakSnapshotTests(unittest.TestCase):
     self.assertEqual((output / "source.tar").read_bytes(), baseline)
     with tarfile.open(output / "source.tar") as archive:
       for name in (*build.LOCKS, *build.GENERATED, "substitution.txt"):
-        self.assertEqual(archive.extractfile(name).read(), self.run_git("show", "HEAD:" + name).encode())
+        self.assertEqual(archive.extractfile(name).read(), build.git("show", "HEAD:" + name))
       self.assertEqual(archive.getmember("flatpak/executable.sh").mode, 0o755)
     self.assertEqual((output / "configuration/flatpak/executable.sh").read_bytes(), script.read_bytes())
     if os.name == "posix":
       self.assertEqual((output / "configuration/flatpak/executable.sh").stat().st_mode & 0o777, 0o755)
+
+  def test_exact_snapshot_preserves_committed_crlf_blob_bytes(self):
+    payload = b"Literal CRLF source control\r\nSecond line\r\n"
+    (self.root / "literal-crlf.txt").write_bytes(payload)
+    self.run_git("add", "literal-crlf.txt")
+    self.run_git("commit", "-qm", "Test: Preserve literal CRLF source bytes")
+    output, _ = build.prepare(False, Path(self.temporary.name) / "crlf-bytes")
+    with tarfile.open(output / "source.tar") as archive:
+      self.assertEqual(archive.extractfile("literal-crlf.txt").read(), payload)
+    self.assertEqual(build.git("show", "HEAD:literal-crlf.txt"), payload)
 
   def test_source_snapshot_rejects_symlinks_and_gitlinks_instead_of_dereferencing_them(self):
     for mode, kind in ((b"120000", b"blob"), (b"160000", b"commit")):
