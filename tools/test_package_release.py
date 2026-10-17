@@ -328,7 +328,8 @@ class PackageReleaseTests(unittest.TestCase):
     PACKAGE.build_docs(output, "0.2.0", source, [], context)
     with zipfile.ZipFile(output) as archive:
       self.assertFalse(any("/evidence/" in name for name in archive.namelist()))
-      self.assertEqual(archive.read("tauridium-0.2.0-doc/README.md"), b"README\n")
+      self.assertEqual(archive.read("tauridium-0.2.0-doc/README.md"),
+                       subprocess.check_output(PACKAGE.git_command("show", "v0.2.0:README.md"), cwd=self.root))
 
   def test_recursive_artifact_input_rejects_outside_root_symlinks(self) -> None:
     import os
@@ -431,7 +432,25 @@ class PackageReleaseTests(unittest.TestCase):
     output = self.root / "snapshot.zip"
     PACKAGE.build_source(output, "0.2.0", context)
     with zipfile.ZipFile(output) as archive:
-      self.assertEqual(archive.read("tauridium-0.2.0/source.txt"), b"source v2\n")
+      self.assertEqual(archive.read("tauridium-0.2.0/source.txt"),
+                       subprocess.check_output(PACKAGE.git_command("show", "v0.2.0:source.txt"), cwd=self.root))
+
+  def test_source_and_docs_preserve_literal_crlf_in_tagged_blobs(self) -> None:
+    self.init_git_repository()
+    payload = b"Literal tagged CRLF control\r\nSecond line\r\n"
+    for name in ("README.md", "source.txt"):
+      (self.root / name).write_bytes(payload)
+    subprocess.run(["git", "add", "README.md", "source.txt"], cwd=self.root, check=True)
+    subprocess.run(["git", "commit", "-qm", "Test: Preserve literal CRLF blobs"], cwd=self.root, check=True)
+    subprocess.run(["git", "tag", "-f", "v0.2.0"], cwd=self.root, check=True, capture_output=True)
+    context = PACKAGE.source_context("0.2.0")
+    source, docs = self.root / "source.zip", self.root / "docs.zip"
+    PACKAGE.build_source(source, "0.2.0", context)
+    PACKAGE.build_docs(docs, "0.2.0", source, [], context)
+    with zipfile.ZipFile(source) as archive:
+      self.assertEqual(archive.read("tauridium-0.2.0/source.txt"), payload)
+    with zipfile.ZipFile(docs) as archive:
+      self.assertEqual(archive.read("tauridium-0.2.0-doc/README.md"), payload)
 
   def test_sanitized_source_is_reproducible_across_fresh_exports(self) -> None:
     self.init_git_repository()

@@ -26,6 +26,7 @@ class KeyFreeBuildTests(unittest.TestCase):
   def test_canonical_build_calls_direct_pinned_cli_and_final_unsigned_config(self):
     responses = [subprocess.CompletedProcess([], 0, "tauri-cli 2.12.3+tauridium.1\n", ""), subprocess.CompletedProcess([], 0)]
     with (mock.patch.dict(os.environ, {"PATH": "synthetic"}, clear=True),
+          mock.patch.object(tauri_build.Path, "home", return_value=tauri_build.ROOT / "synthetic-home"),
           mock.patch.object(tauri_build.shutil, "which", return_value="/synthetic/cargo-tauri"),
           mock.patch.object(tauri_build.subprocess, "run", side_effect=responses) as run):
       self.assertEqual(tauri_build.build(["--no-bundle", "--ci"]), 0)

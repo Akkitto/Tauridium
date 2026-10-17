@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -54,6 +55,8 @@ class IsolatedReleaseTests(unittest.TestCase):
     self.assertTrue(all(entry["scope"] == "optional" for entry in first["components"]))
     self.assertIn("not proof", first["metadata"]["properties"][1]["value"])
 
+  @unittest.skipUnless(sys.platform == "linux" and Path("/dev/shm").is_dir(),
+                       "Production signing custody requires Linux shared-memory staging")
   def test_failed_signer_never_promotes_output_or_prints_private_diagnostics(self):
     with tempfile.TemporaryDirectory() as temporary:
       root = Path(temporary)
@@ -72,6 +75,18 @@ class IsolatedReleaseTests(unittest.TestCase):
         self.assertNotIn("synthetic-private-key", str(caught.exception))
         self.assertFalse((root / "output").exists())
         self.assertFalse(any(path.name.startswith(".tauridium-signer-") for path in root.iterdir()))
+
+  def test_signer_rejects_non_linux_before_key_staging_or_executable_validation(self):
+    with tempfile.TemporaryDirectory() as temporary:
+      root = Path(temporary)
+      with (mock.patch.dict(os.environ, {"TAURI_SIGNING_PRIVATE_KEY": "synthetic-never-a-real-key"}, clear=True),
+            mock.patch.object(sign_release.sys, "platform", "win32"),
+            mock.patch.object(sign_release, "pinned_signer") as signer):
+        with self.assertRaisesRegex(SystemExit, "requires Linux shared-memory"):
+          sign_release.sign(root / "absent", root / "output", "9.9.9", executable="absent")
+        signer.assert_not_called()
+        self.assertNotIn("TAURI_SIGNING_PRIVATE_KEY", os.environ)
+      self.assertFalse((root / "output").exists())
 
   @unittest.skipUnless(os.name == "posix" and shutil.which("cargo-tauri") and os.environ.get("TAURIDIUM_TEST_MINISIGN"),
                        "Linux, Tauri test-key generator and pinned TAURIDIUM_TEST_MINISIGN required")
