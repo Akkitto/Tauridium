@@ -19,6 +19,7 @@ import tempfile
 from pathlib import Path
 from typing import Sequence
 from npm_policy import validate as validate_script_free_npm
+from updater_signature import find_minisign
 
 ROOT = Path(__file__).resolve().parents[1]
 OS_RELEASE = Path("/etc/os-release")
@@ -66,7 +67,6 @@ APT_NETWORK_OPTIONS = (
 # Tauri v2 Linux prerequisites, with pkg-config/pkgconf made explicit because
 # the Rust -sys crates use it to locate the native libraries.
 APT_PACKAGES = (
-  "minisign",
   "pkg-config",
   "libwebkit2gtk-4.1-dev",
   "build-essential",
@@ -295,7 +295,8 @@ def native_prerequisites_missing() -> list[str]:
     if not any(pkg_config_exists(module) for module in alternatives):
       missing.append("|".join(alternatives))
   for tool in LINUX_REQUIRED_TOOLS:
-    if not shutil.which(tool):
+    executable = find_minisign() if tool == "minisign" else shutil.which(tool)
+    if not executable:
       missing.append(f"tool:{tool}")
   if shutil.which("cc") and not libxdo_development_available():
     missing.append("libxdo-dev")
@@ -306,6 +307,19 @@ def run_checked(command: Sequence[str]) -> None:
   printable = " ".join(command)
   print(f"+ {printable}", flush=True)
   subprocess.run(list(command), cwd=ROOT, check=True)
+
+
+def ensure_linux_minisign() -> None:
+  """Use the existing exact official binary pins, not an unavailable Jammy package."""
+  if find_minisign():
+    return
+  from security_tools import install, minisign_cache
+  destination = minisign_cache()
+  if destination.exists() or destination.is_symlink():
+    raise InitError("cached Minisign failed integrity checks; preserve/remove that cache explicitly before retrying")
+  install(destination, "minisign")
+  if not find_minisign():
+    raise InitError("official Minisign bootstrap did not provide the checksum-verified executable")
 
 
 def install_linux_system_dependencies() -> None:
@@ -329,6 +343,13 @@ def install_linux_system_dependencies() -> None:
 
   if os.environ.get("TAURIDIUM_NIX_DEV_SHELL") == "1":
     raise InitError("Nix shell native prerequisites are missing: " + ", ".join(missing) + "; update/re-enter `nix develop` instead of installing host packages")
+
+  if "tool:minisign" in missing:
+    ensure_linux_minisign()
+    missing = native_prerequisites_missing()
+    if not missing:
+      print("Native Tauri prerequisites: installed.", flush=True)
+      return
 
   print(
     "Native Tauri prerequisites missing: " + ", ".join(missing),

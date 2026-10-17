@@ -42,6 +42,17 @@ class PackageManagerTests(unittest.TestCase):
     self.assertIn("libwebkit2gtk-4.1-dev", commands[1])
     self.assertIn("libayatana-appindicator3-dev", commands[1])
     self.assertIn("libxdo-dev", commands[1])
+    self.assertNotIn("minisign", commands[1])
+
+  @patch.dict(INIT.os.environ, {INIT.SYSTEM_DEPS_ENV: "1", "TAURIDIUM_NIX_DEV_SHELL": "0"})
+  @patch.object(INIT.platform, "system", return_value="Linux")
+  @patch.object(INIT, "native_prerequisites_missing", side_effect=[["tool:minisign"], []])
+  @patch.object(INIT, "ensure_linux_minisign")
+  @patch.object(INIT, "run_checked")
+  def test_minisign_only_bootstrap_needs_no_privileged_package_install(self, run, ensure, _missing, _platform):
+    INIT.install_linux_system_dependencies()
+    ensure.assert_called_once_with()
+    run.assert_not_called()
 
   def test_non_root_commands_are_prefixed_with_sudo(self) -> None:
     commands = INIT.package_manager_commands(

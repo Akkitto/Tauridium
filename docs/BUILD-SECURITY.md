@@ -84,7 +84,13 @@ never a trust anchor, and missing verification tools fail closed.
 
 Native initialization supplies Minisign through the Linux package manager or,
 on Windows, Scoop with the verified WinGet package as fallback. Nix supplies it
-in the development environment. On macOS install it with brew install minisign.
+in the development environment. On Linux, `just init` can install the archive- and
+executable-checksum-pinned official x64/ARM64 binary into ignored
+`release/tools/minisign-VERSION-ARCH/`; later signature checks independently verify
+that cache before using it. This avoids assuming Ubuntu 22.04 has a Minisign apt
+package, does not require root for this tool, and never downloads signing keys.
+Existing invalid caches are rejected, not overwritten. On macOS install it with
+brew install minisign.
 The verifier also finds normal Windows package-manager links when the parent
 terminal has not yet refreshed PATH. It never executes downloaded application
 artifacts to verify them.

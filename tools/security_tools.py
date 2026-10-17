@@ -6,12 +6,46 @@ import json
 import os
 from pathlib import Path
 import platform
+import stat
 import tarfile
 import tempfile
 from urllib.parse import urlparse
 from urllib.request import build_opener, HTTPRedirectHandler, Request
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def minisign_entry(machine: str | None = None) -> dict:
+  entry = dict(json.loads((ROOT / "data/security-tools.json").read_text(encoding="utf-8"))["minisign"])
+  architecture = (machine or platform.machine()).lower()
+  if architecture in ("aarch64", "arm64"):
+    entry.update(entry["architectures"]["aarch64"])
+  elif architecture not in ("x86_64", "amd64"):
+    raise SystemExit("error: pinned Minisign bootstrap supports Linux x64 and ARM64 only")
+  return entry
+
+
+def minisign_cache() -> Path:
+  entry = minisign_entry()
+  architecture = "aarch64" if platform.machine().lower() in ("aarch64", "arm64") else "x86_64"
+  return ROOT / "release/tools" / f"minisign-{entry['version']}-{architecture}"
+
+
+def cached_minisign() -> str | None:
+  if platform.system() != "Linux" or platform.machine().lower() not in ("x86_64", "amd64", "aarch64", "arm64"):
+    return None
+  path = minisign_cache() / "minisign"
+  try:
+    if any(parent.is_symlink() for parent in (path, *path.parents)):
+      return None
+    metadata = path.lstat()
+    if not stat.S_ISREG(metadata.st_mode) or not 0 < metadata.st_size < 64 * 1024**2:
+      return None
+    if hashlib.sha256(path.read_bytes()).hexdigest() != minisign_entry()["binarySha256"]:
+      return None
+  except OSError:
+    return None
+  return str(path)
 
 
 class HttpsOnlyRedirect(HTTPRedirectHandler):
@@ -22,7 +56,9 @@ class HttpsOnlyRedirect(HTTPRedirectHandler):
 
 
 def install(output: Path, only: str | None = None) -> None:
-  if platform.system() != "Linux" or platform.machine() not in ("x86_64", "amd64"):
+  machine = platform.machine().lower()
+  if platform.system() != "Linux" or (machine not in ("x86_64", "amd64")
+      and not (only == "minisign" and machine in ("aarch64", "arm64"))):
     raise SystemExit("error: isolated public artifact scanning runs on Linux x64")
   if output.exists() or output.is_symlink():
     raise SystemExit("error: scanner installation requires a fresh directory")
@@ -32,6 +68,8 @@ def install(output: Path, only: str | None = None) -> None:
     if only not in policy:
       raise SystemExit("error: unknown security tool")
     policy = {only: policy[only]}
+  if "minisign" in policy:
+    policy["minisign"] = minisign_entry(machine)
   opener = build_opener(HttpsOnlyRedirect())
   with tempfile.TemporaryDirectory(prefix=".tauridium-scanners-", dir=output.parent) as temporary:
     staged = Path(temporary)

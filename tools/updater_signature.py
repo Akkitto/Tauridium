@@ -6,6 +6,7 @@ import base64
 import binascii
 import json
 import os
+import platform
 from pathlib import Path
 import shutil
 import stat
@@ -20,6 +21,11 @@ def find_minisign() -> str | None:
     executable = shutil.which("minisign")
     if executable:
         return executable
+    if platform.system() == "Linux":
+        from security_tools import cached_minisign
+        executable = cached_minisign()
+        if executable:
+            return executable
     # A parent Windows terminal may not yet have refreshed its PATH after init.
     if os.name == "nt":
         for variable, suffix in (("USERPROFILE", "scoop/shims/minisign.exe"),
