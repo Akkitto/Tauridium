@@ -2,6 +2,7 @@
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -21,7 +22,11 @@ class MinisignBootstrapTests(unittest.TestCase):
     self.write_policy()
     for patcher in (mock.patch.object(tools, "ROOT", self.root),
                     mock.patch.object(tools.platform, "system", return_value="Linux"),
-                    mock.patch.object(tools.platform, "machine", return_value="x86_64")):
+                    mock.patch.object(tools.platform, "machine", return_value="x86_64"),
+                    mock.patch.dict(os.environ, {
+                      "USERPROFILE": str(self.root / "absent-windows-profile"),
+                      "LOCALAPPDATA": str(self.root / "absent-windows-appdata"),
+                    })):
       patcher.start()
       self.addCleanup(patcher.stop)
 
