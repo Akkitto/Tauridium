@@ -17,6 +17,8 @@
 
 ### Fixed
 
+- Keep decoder subprocess byte/deadline guards working on Windows anonymous
+  pipes, and parse CRLF Flatpak pins while retaining exact source bytes.
 - Validate the locked local esbuild API with a real native transform on Windows
   and Linux, without requiring npm command shims or enabling dependency scripts.
 - Bootstrap the checksum-pinned official Minisign binary on Linux x64/ARM64
