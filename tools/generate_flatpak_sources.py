@@ -178,7 +178,7 @@ def _check_file(path: Path, generated: list[dict[str, Any]]) -> bool:
 def _tauri_cli_sources() -> list[dict[str, Any]]:
   policy = json.loads(BUILD_POLICY.read_text(encoding="utf-8"))
   if hashlib.sha256(TAURI_CLI_LOCK.read_bytes()).hexdigest() != policy["tauriCliLockSha256"]:
-    raise ValueError("Tauri CLI lock does not match the verified published crate")
+    raise ValueError("Tauri CLI lock does not match the reviewed patched builder identity")
   return generate_cargo_sources(TAURI_CLI_LOCK)
 
 

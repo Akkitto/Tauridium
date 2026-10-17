@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import unittest
+import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -12,11 +13,19 @@ class BuildToolchainTests(unittest.TestCase):
     def test_published_cli_lock_and_crate_identity_are_exact(self):
         policy = json.loads((ROOT / "data/build-toolchain.json").read_text(encoding="utf-8"))
         self.assertRegex(policy["tauriCli"], r"^2\.\d+\.\d+$")
+        self.assertRegex(policy["tauriCliBuild"], r"^2\.\d+\.\d+\+tauridium\.\d+$")
+        lock = tomllib.loads((ROOT / "flatpak/tauri-cli.Cargo.lock").read_text(encoding="utf-8"))
+        self.assertEqual([p["version"] for p in lock["package"] if p["name"] == "zip"], ["9.0.4"])
+        self.assertFalse({"pgp", "ml-dsa"} & {p["name"] for p in lock["package"]})
+        self.assertEqual([p["version"] for p in lock["package"] if p["name"] == "tauri-cli"], [policy["tauriCliBuild"]])
         self.assertEqual(hashlib.sha256((ROOT / "flatpak/tauri-cli.Cargo.lock").read_bytes()).hexdigest(),
                          policy["tauriCliLockSha256"])
         flatpak = (ROOT / "flatpak/dev.brani.tauridium.yml").read_text(encoding="utf-8")
         self.assertIn(f'tauri-cli-{policy["tauriCli"]}.crate', flatpak)
         self.assertIn(policy["tauriCliCrateSha256"], flatpak)
+        self.assertIn(policy["tauriBundlerCrateSha256"], flatpak)
+        for producer in ("tools/init.py", "tools/init.ps1", "packaging/nix/tauri-cli.nix", "flatpak/dev.brani.tauridium.yml"):
+            self.assertIn("prepare-tauri-cli.py", (ROOT / producer).read_text(encoding="utf-8"))
         nix = (ROOT / "packaging/nix/tauri-cli.nix").read_text(encoding="utf-8")
         self.assertIn("sha256-" + base64.b64encode(bytes.fromhex(policy["tauriCliCrateSha256"])).decode("ascii"), nix)
         self.assertNotIn("fakeHash", nix)

@@ -432,13 +432,13 @@ def ensure_tauri_cli() -> None:
   if not shutil.which("cargo"):
     raise InitError("Rust/Cargo is required but cargo was not found in PATH")
   policy = json.loads((ROOT / "data/build-toolchain.json").read_text(encoding="utf-8"))
-  version = policy["tauriCli"]
+  version = policy["tauriCliBuild"]
   if tauri_cli_matches(version):
     print(f"+ Tauri CLI: pinned {version}", flush=True)
     return
   if os.environ.get("TAURIDIUM_NIX_DEV_SHELL") == "1":
     raise InitError(f"Nix development shell requires Tauri CLI {version}; re-enter the updated nix develop environment")
-  run_checked(["cargo", "install", "tauri-cli", "--locked", "--version", version, "--force"])
+  run_checked([sys.executable, str(ROOT / "flatpak/prepare-tauri-cli.py"), "--install"])
   if not tauri_cli_matches(version):
     raise InitError(f"Installed Tauri CLI does not match {version}; check Cargo's bin directory in PATH")
   print(f"+ Tauri CLI: installed pinned {version}", flush=True)

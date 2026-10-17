@@ -24,7 +24,7 @@ class KeyFreeBuildTests(unittest.TestCase):
     self.assertNotIn("RUSTFLAGS", result)
 
   def test_canonical_build_calls_direct_pinned_cli_and_final_unsigned_config(self):
-    responses = [subprocess.CompletedProcess([], 0, "tauri-cli 2.12.3\n", ""), subprocess.CompletedProcess([], 0)]
+    responses = [subprocess.CompletedProcess([], 0, "tauri-cli 2.12.3+tauridium.1\n", ""), subprocess.CompletedProcess([], 0)]
     with (mock.patch.dict(os.environ, {"PATH": "synthetic"}, clear=True),
           mock.patch.object(tauri_build.shutil, "which", return_value="/synthetic/cargo-tauri"),
           mock.patch.object(tauri_build.subprocess, "run", side_effect=responses) as run):

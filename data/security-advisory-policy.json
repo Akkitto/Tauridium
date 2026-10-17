@@ -1,27 +1,7 @@
 {
   "schema": 1,
-  "builderLockSha256": "d98da5271e820521d43eb4df9d62ec7e4846b9a9a5bd579a08acd3c02b5f7786",
+  "builderLockSha256": "db656f71cd8430b4395933c6c39e0471e915f4b07b023716e81e0511004867c4",
   "assessments": [
-    {
-      "lock": "flatpak/tauri-cli.Cargo.lock",
-      "id": null,
-      "package": "zip",
-      "version": "8.0.0",
-      "kind": "yanked",
-      "expires": "2026-11-15",
-      "status": "reviewed-upstream-builder-only-withdrawal",
-      "reason": "All ZIP versions older than 9.0.3 were withdrawn. Application and Windows updater actually migrate to 9.0.4. The exact published current supported CLI lock still selects 8.0.0: only reviewed repository-owned inputs, no untrusted artifact inspection or keys in this builder. Protected signing and publishing never invoke Cargo/Tauri or its ZIP parser. Track the next supported upstream CLI; this is not a parser fix or a runtime exception."
-    },
-    {
-      "lock": "flatpak/tauri-cli.Cargo.lock",
-      "id": "RUSTSEC-2025-0144",
-      "package": "ml-dsa",
-      "version": "0.0.4",
-      "kind": "vulnerability",
-      "expires": "2026-11-15",
-      "status": "not-affected-under-enforced-controls",
-      "reason": "Official pinned builder only: private ML-DSA timing in optional OpenPGP RPM signing, not the application runtime. Canonical builds reject signing keys and produce unsigned RPMs; isolated updater signing uses Minisign Ed25519, not PGP. This is not an upstream patch or permission to use the affected PGP signing API."
-    },
     {
       "lock": "flatpak/tauri-cli.Cargo.lock",
       "id": "RUSTSEC-2023-0071",
@@ -30,7 +10,7 @@
       "kind": "vulnerability",
       "expires": "2026-11-15",
       "status": "not-affected-under-enforced-controls",
-      "reason": "Official pinned builder only: private RSA timing in optional OpenPGP RPM signing. No patched upstream release exists in the reviewed advisory. Canonical build environments reject RPM/updater signing credentials; protected updater signing invokes only Minisign Ed25519. No private RSA operation or key is used by these supported paths."
+      "reason": "The patched builder removes RPM OpenPGP entirely. Remaining RSA is selected only by tauri-macos-sign 2.4.2 (crate SHA256 b2ad3a8236db04071cb4ec8ebebb05dfac392f83d2dbc1cde18afcb8f5af65a2) on macOS. Its sole direct RSA use is ephemeral self-signed certificate key generation, not the RSA decryption affected by the Marvin advisory. Linux/Windows builders do not compile that target dependency. Canonical builds additionally reject signing credentials; isolated updater signing uses Minisign Ed25519. Whole-lock scanning still reports and expires this exact advisory assessment; no upstream RSA patch is claimed."
     },
     {
       "lock": "src-tauri/Cargo.lock",

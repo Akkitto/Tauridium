@@ -45,7 +45,7 @@ class WindowsBootstrapTests(unittest.TestCase):
       'Python.Python.3.13',
       'Git.Git',
       'toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy',
-      'cargo.exe install tauri-cli --locked --version $TauriCliVersion --force',
+      '& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $PythonRunnerPath flatpak/prepare-tauri-cli.py --install',
       'cargo.exe install cargo-audit --locked',
       '& scoop install minisign',
       '--id jedisct1.minisign',

@@ -172,7 +172,7 @@ def snapshot_flatpak(archive: bytes, destination: Path) -> None:
   with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as source:
     for member in source.getmembers():
       path = PurePosixPath(member.name)
-      if not path.parts or path.parts[0] != "flatpak":
+      if not path.parts or path.parts[0] != "flatpak" and member.name != "data/build-toolchain.json":
         continue
       if path.is_absolute() or ".." in path.parts or not (member.isdir() or member.isfile()):
         raise SystemExit("error: Flatpak configuration snapshot contains an unsafe path or non-regular entry")

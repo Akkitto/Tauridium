@@ -765,8 +765,8 @@ try {
     # cargo-tauri
     # -------------------------------------------------------------------------
     $BuildToolchain = Get-Content -LiteralPath (Join-Path $Root "data\build-toolchain.json") -Raw | ConvertFrom-Json
-    $TauriCliVersion = [string]$BuildToolchain.tauriCli
-    if ($TauriCliVersion -notmatch '^2\.\d+\.\d+$') { throw "Invalid pinned Tauri CLI version" }
+    $TauriCliVersion = [string]$BuildToolchain.tauriCliBuild
+    if ($TauriCliVersion -notmatch '^2\.\d+\.\d+\+tauridium\.\d+$') { throw "Invalid pinned Tauri CLI build identity" }
     $SavedErrorActionPreference = $ErrorActionPreference
     try {
       $ErrorActionPreference = "SilentlyContinue"
@@ -776,8 +776,8 @@ try {
       $ErrorActionPreference = $SavedErrorActionPreference
     }
     if ($CargoTauriProbeExitCode -ne 0 -or $CargoTauriVersion -ne "tauri-cli $TauriCliVersion") {
-      Write-Host "+ cargo.exe install tauri-cli --locked --version $TauriCliVersion --force"
-      & cargo.exe install tauri-cli --locked --version $TauriCliVersion --force
+      Write-Host "+ Prepare and install the checksum-verified patched Tauri CLI"
+      & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $PythonRunnerPath flatpak/prepare-tauri-cli.py --install
       if ($LASTEXITCODE -ne 0) {
         throw ("cargo.exe install tauri-cli failed with exit code {0}" -f $LASTEXITCODE)
       }

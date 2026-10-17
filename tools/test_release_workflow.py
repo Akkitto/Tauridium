@@ -274,7 +274,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
     self.assertIn('def ensure_tauri_cli() -> None:', init_py)
     self.assertIn('["cargo", "tauri", "--version"]', init_py)
     self.assertIn(
-      '["cargo", "install", "tauri-cli", "--locked", "--version", version, "--force"]',
+      '[sys.executable, str(ROOT / "flatpak/prepare-tauri-cli.py"), "--install"]',
       init_py,
     )
     self.assertIn('ensure_pinned_rust_toolchain()\n      ensure_tauri_cli()\n      ensure_cargo_audit()\n      install_javascript_dependencies()', init_py)

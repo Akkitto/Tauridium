@@ -237,7 +237,7 @@ class TauriCliTests(unittest.TestCase):
   ) -> None:
     INIT.ensure_tauri_cli()
     run_checked.assert_called_once_with(
-      ["cargo", "install", "tauri-cli", "--locked", "--version", "2.12.3", "--force"]
+      [INIT.sys.executable, str(INIT.ROOT / "flatpak/prepare-tauri-cli.py"), "--install"]
     )
     self.assertEqual(succeeds.call_count, 2)
 

@@ -33,15 +33,24 @@ modules:
         CARGO_HOME: /run/build/tauri-cli/cargo
         CARGO_NET_OFFLINE: 'true'
     build-commands:
+      - python3 prepare-tauri-cli.py --cli tauri-cli.crate --bundler tauri-bundler.crate --policy build-toolchain.json --lock tauri-cli.Cargo.lock --output tauri-cli
       - cargo build --manifest-path tauri-cli/Cargo.toml --release --locked --offline
       - install -Dm755 tauri-cli/target/release/cargo-tauri /app/bin/cargo-tauri
     sources:
-      - type: archive
-        archive-type: tar-gzip
+      - type: file
         url: https://static.crates.io/crates/tauri-cli/tauri-cli-2.12.3.crate
         sha256: 9a6f47e865c7c526880d9e3a0c4bb84255d6e3f45fac2684adf82458ee565a18
-        strip-components: 1
-        dest: tauri-cli
+        dest-filename: tauri-cli.crate
+      - type: file
+        url: https://static.crates.io/crates/tauri-bundler/tauri-bundler-2.10.3.crate
+        sha256: d8d64a12aad47ee51ea5d6326ae90026946866ed64062dd0f4fc04fda6bb1221
+        dest-filename: tauri-bundler.crate
+      - type: file
+        path: prepare-tauri-cli.py
+      - type: file
+        path: tauri-cli.Cargo.lock
+      - type: file
+        path: ../data/build-toolchain.json
       - tauri-cli-cargo-sources.json
 
   - name: tauridium

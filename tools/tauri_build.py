@@ -43,7 +43,7 @@ def build(arguments: list[str]) -> int:
     raise SystemExit("error: key-free build configuration must disable updater signing")
   probe = subprocess.run([executable, "--version"], cwd=ROOT, env=environment,
                          capture_output=True, text=True, check=False, timeout=30)
-  if probe.returncode or probe.stdout.strip() != "tauri-cli " + policy["tauriCli"]:
+  if probe.returncode or probe.stdout.strip() != "tauri-cli " + policy["tauriCliBuild"]:
     raise SystemExit("error: native build requires the exact pinned Tauri CLI; run just init")
   # Invoke the binary directly: no Cargo alias or before-build script runs with a
   # signing credential. The final merge config always disables automatic signing.
