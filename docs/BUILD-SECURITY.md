@@ -118,8 +118,14 @@ A source archive has one Git root and one manifest at that same root. Multiple
 roots, overwritten relative inventories and ambiguous manifests are rejected.
 All approved reachable history is inspected, including deleted containers. A
 bounded traversal of historical trees retains evidence obligations across every
-alias/rename, so a deleted evidence PNG still receives OCR without needing an
-outer archive named evidence. Private full-Git checkpoints are never public input.
+alias/rename, including nested containers: a deleted evidence ZIP/gzip containing
+a renamed PNG still receives OCR without needing an outer archive named evidence.
+Historical private-configuration paths are rejected just like current paths.
+Raw loose/packed Git storage is validated by its own complete format, checksums
+and strict native pack verification before decoded objects are inspected. Literal
+ZIP bytes inside typed Git storage are not mistaken for an executable ZIP
+preamble. Extra data is rejected even when outer storage hashes are recomputed.
+Private full-Git checkpoints are never public input.
 
 Flatpak candidates must satisfy the complete reviewed metadata policy at both
 sealing and consumption. They also reject any `build/usr` entry, including a

@@ -28,6 +28,7 @@ import release_policy as policy
 ROOT = Path(__file__).resolve().parents[1]
 MAX_PAYLOAD = 512 * 1024**2
 MAX_EXPANDED = 16 * 1024**3
+GIT_STORAGE = re.compile(r"objects/(?:[0-9a-f]{2}/[0-9a-f]{38}|pack/pack-[0-9a-f]{40}\.(?:pack|idx))")
 
 
 class ArtifactRejection(RuntimeError):
@@ -207,6 +208,13 @@ def container(data: bytes) -> bool:
           or len(data) > 262 and data[257:262] == b"ustar")
 
 
+def public_path(parts: list[str]) -> None:
+  if any(part.lower() in {".aws", ".ssh", ".gnupg", ".env", "session.json", "app_settings.json"} for part in parts):
+    raise ArtifactRejection("Public archive contains private configuration material")
+  if any(part.lower() == ".git" and part != ".git" for part in parts):
+    raise ArtifactRejection("Public archive contains noncanonical Git directory casing")
+
+
 class Scanner:
   def __init__(self, root: Path, tools: Path):
     self.root, self.tools = root, tools
@@ -225,6 +233,7 @@ class Scanner:
     self.approved = set(json.loads((ROOT / "data/public-crypto-selftests.json").read_text(encoding="utf-8"))["normalizedSha256"])
 
   def save(self, data: bytes, name: str, *, depth=0, decode=True) -> None:
+    public_path(list(Path(name).parts))
     self.records += 1
     self.expanded += len(data)
     if len(data) > MAX_PAYLOAD or self.expanded > MAX_EXPANDED or self.records > 100_000 or depth > 8:
@@ -357,10 +366,7 @@ class Scanner:
         if member.file_size > MAX_PAYLOAD or (member.external_attr >> 16) & 0o170000 not in (0, 0o100000, 0o040000):
           raise ArtifactRejection("ZIP member is too large or is not a regular file/directory")
         parts = member.filename.split("/")
-        if any(part.lower() in {".aws", ".ssh", ".gnupg", ".env", "session.json", "app_settings.json"} for part in parts):
-          raise ArtifactRejection("Public archive contains private configuration material")
-        if any(part.lower() == ".git" and part != ".git" for part in parts):
-          raise ArtifactRejection("Public archive contains noncanonical Git directory casing")
+        public_path(parts)
         if ".git" in parts:
           root = tuple(parts[:parts.index(".git")])
           if parts.count(".git") != 1 or git_root is not None and root != git_root:
@@ -385,7 +391,11 @@ class Scanner:
           manifest = json.loads(payload)
           if not isinstance(manifest, dict):
             raise ArtifactRejection("Public source manifest must be an object")
-        self.save(payload, name + "/" + member.filename, depth=depth + 1)
+        # Git object storage has its own authenticated container grammar. A pack
+        # may contain literal ZIP bytes, but is not itself an executable ZIP.
+        # Validate/decode it completely through the Git boundary below instead.
+        storage = ".git" in parts and GIT_STORAGE.fullmatch(relative) is not None
+        self.save(payload, name + "/" + member.filename, depth=depth + 1, decode=not storage)
     if git_root is not None:
       if git_root != manifest_root:
         raise ArtifactRejection("Source manifest is not bound to its unique Git root")
@@ -398,21 +408,32 @@ class Scanner:
     allowed = re.compile(r"(?:HEAD|config|index|info/exclude|refs/heads/master|refs/tags/v" + re.escape(version)
                          + r"|objects/[0-9a-f]{2}/[0-9a-f]{38}|objects/pack/pack-[0-9a-f]{40}\.(?:pack|idx))")
     expected = {record["path"].removeprefix(".git/"): record["sha256"] for record in manifest["gitFiles"]}
+    if len(expected) != len(manifest["gitFiles"]):
+      raise ArtifactRejection("Source Git inventory contains duplicate paths")
     if set(files) != set(expected) or any(not allowed.fullmatch(name) for name in files):
       raise ArtifactRejection("Source Git contains unapproved local state/refs/hooks/configuration")
     if files.get("config") != b"[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n\tbare = false\n\tlogallrefupdates = false\n":
       raise ArtifactRejection("Source Git configuration is not the fixed inert public configuration")
+    packs = {name[:-5] for name in files if name.endswith(".pack")}
+    indices = {name[:-4] for name in files if name.endswith(".idx")}
+    if packs != indices:
+      raise ArtifactRejection("Source Git pack/index inventories must be exactly paired")
     with tempfile.TemporaryDirectory(prefix="git-objects-", dir=self.root) as temporary:
       git_dir = Path(temporary) / "source.git"
       for name, data in files.items():
         if hashlib.sha256(data).hexdigest() != expected[name]:
           raise ArtifactRejection("Source Git file hash differs from its inventory")
+        self.git_storage(name, data)
         path = git_dir / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
       env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
       env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_NO_REPLACE_OBJECTS="1")
       command = ["git", "--git-dir=" + str(git_dir), "-c", "core.hooksPath=" + os.devnull]
+      for name in files:
+        if name.endswith(".pack"):
+          bounded_command(command + ["index-pack", "--verify", "--strict", str(git_dir / name)],
+                          env=env, limit=16 * 1024**2)
       bounded_command(command + ["fsck", "--full", "--strict", "--no-reflogs"], env=env, limit=16 * 1024**2)
       refs = bounded_command(command + ["for-each-ref", "--format=%(refname)"], env=env).decode().splitlines()
       if set(refs) != {"refs/heads/master", "refs/tags/v" + version}:
@@ -469,6 +490,7 @@ class Scanner:
           separator, end = payload.index(b" ", cursor), payload.index(b"\0", cursor)
           mode = payload[cursor:separator]
           name = payload[separator + 1:end].decode("utf-8")
+          public_path([name])
           child = payload[end + 1:end + 21].hex()
           cursor = end + 21
           if cursor > len(payload):
@@ -480,10 +502,41 @@ class Scanner:
             blob_kind, data = objects[child]
             if blob_kind != "blob":
               raise ArtifactRejection("Historical file refers to an invalid object")
-            if name.lower().endswith(".png") or data.startswith(b"\x89PNG\r\n\x1a\n"):
-              obligations.add(child)
-      for oid in sorted(obligations):
-        self.save(objects[oid][1], context_name + "/GIT-OBJECT/evidence/" + oid + ".png", depth=depth + 1)
+            # Preserve context for containers as well as images. Deleted gzip,
+            # ZIP or renamed archives can contain evidence PNGs several levels
+            # below their historical path, with no PNG signature in this blob.
+            obligations.add((child, name.lower().endswith(".png")))
+      for oid, png in sorted(obligations):
+        self.save(objects[oid][1], context_name + "/GIT-OBJECT/evidence/" + oid + (".png" if png else ""), depth=depth + 1)
+
+  @staticmethod
+  def git_storage(name: str, data: bytes) -> None:
+    """Account for complete object storage bytes before bypassing ZIP probing."""
+    if not GIT_STORAGE.fullmatch(name):
+      return
+    failure = "Source Git object storage checksum, framing or complete consumption failed"
+    if "/pack/" in name:
+      identity = name.rsplit("/", 1)[1][5:-5 if name.endswith(".pack") else -4]
+      if len(data) < (32 if name.endswith(".pack") else 40) or hashlib.sha1(data[:-20], usedforsecurity=False).digest() != data[-20:]:
+        raise ArtifactRejection(failure)
+      if name.endswith(".pack"):
+        if data[:4] != b"PACK" or data[-20:].hex() != identity:
+          raise ArtifactRejection(failure)
+        version, count = struct.unpack_from(">II", data, 4)
+        if version not in (2, 3) or count > 100_000:
+          raise ArtifactRejection(failure)
+      elif data[-40:-20].hex() != identity:
+        raise ArtifactRejection(failure)
+    else:
+      decoder = zlib.decompressobj()
+      content = decoder.decompress(data, MAX_PAYLOAD + 65)
+      header, separator, payload = content.partition(b"\0")
+      match = re.fullmatch(rb"(?:blob|tree|commit|tag) (0|[1-9][0-9]*)", header)
+      if (len(content) > MAX_PAYLOAD + 64 or not decoder.eof or decoder.unused_data or decoder.unconsumed_tail
+          or not separator or not match or len(header) > 64 or int(match[1]) != len(payload)
+          or len(payload) > MAX_PAYLOAD
+          or hashlib.sha1(content, usedforsecurity=False).hexdigest() != name.removeprefix("objects/").replace("/", "")):
+        raise ArtifactRejection(failure)
 
   def add(self, path: Path) -> None:
     policy.inspect_file(path)

@@ -1,6 +1,8 @@
 """Synthetic leak controls and independent NSIS parsing; no real credential fixtures."""
 import base64
+import copy
 import hashlib
+import gzip
 import io
 import json
 import lzma
@@ -36,6 +38,34 @@ def synthetic_nsis(payload: bytes):
 
 
 class ArtifactParserTests(unittest.TestCase):
+  def test_every_decoder_output_obeys_the_same_private_path_policy(self):
+    for name in ("archive/.aws/config", "package/.ssh/config", "package/.ENV", "CAB/session.json"):
+      with self.subTest(name=name), tempfile.TemporaryDirectory() as temporary:
+        scanner = security.Scanner(Path(temporary), Path("/unused-tools"))
+        with self.assertRaisesRegex(RuntimeError, "private configuration material"):
+          scanner.save(b"Harmless private configuration control", name, decode=False)
+        self.assertFalse(any(scanner.corpus.iterdir()))
+
+  def test_git_storage_requires_complete_typed_streams_and_exact_checksums(self):
+    content = b"blob 16\0Harmless control"
+    identity = hashlib.sha1(content, usedforsecurity=False).hexdigest()
+    path = "objects/" + identity[:2] + "/" + identity[2:]
+    valid = zlib.compress(content)
+    security.Scanner.git_storage(path, valid)
+    for data in (valid + b"Trailing control", valid + zlib.compress(b"Hidden control"), valid[:-1],
+                 zlib.compress(b"blob 999\0Harmless control")):
+      with self.subTest(size=len(data)):
+        with self.assertRaisesRegex(RuntimeError, "storage checksum"):
+          security.Scanner.git_storage(path, data)
+    body = b"PACK" + struct.pack(">II", 2, 0)
+    digest = hashlib.sha1(body, usedforsecurity=False).digest()
+    pack = "objects/pack/pack-" + digest.hex() + ".pack"
+    security.Scanner.git_storage(pack, body + digest)
+    with self.assertRaisesRegex(RuntimeError, "storage checksum"):
+      security.Scanner.git_storage(pack, body + digest + b"Trailing control")
+    with self.assertRaisesRegex(RuntimeError, "storage checksum"):
+      security.Scanner.git_storage(pack, body + bytes(20))
+
   def test_git_namespaces_and_source_manifests_cannot_shadow_one_another(self):
     variants = (
       [("first/.git/objects/aa/" + "1" * 38, b"compressed control"), ("second/.git/objects/aa/" + "1" * 38, b"replacement")],
@@ -453,9 +483,16 @@ class RealArtifactScannerTests(unittest.TestCase):
     with tempfile.TemporaryDirectory() as temporary:
       root = Path(temporary)
       token, image = self.rendered_token_png(root)
-      for filename in ("release/evidence/deleted.PNG", "release/evidence/renamed.bin"):
+      stream = io.BytesIO()
+      with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("renamed-image.bin", image)
+      cases = (("release/evidence/deleted.PNG", image), ("release/evidence/renamed.bin", image),
+               ("release/evidence/deleted-container.zip", stream.getvalue()),
+               ("release/evidence/deleted-container.bin", gzip.compress(image, mtime=0)),
+               ("release/evidence/deleted-nested.bin", gzip.compress(gzip.compress(image, mtime=0), mtime=0)))
+      for filename, payload in cases:
         with self.subTest(filename=filename):
-          source = self.historical_source(image, filename)
+          source = self.historical_source(payload, filename)
           state = root / ("state-" + Path(filename).name)
           state.mkdir()
           scanner = self.scanner(state)
@@ -464,6 +501,54 @@ class RealArtifactScannerTests(unittest.TestCase):
           with self.assertRaisesRegex(RuntimeError, "secret scan rejected") as caught:
             scanner.scan()
           self.assertNotIn(token, str(caught.exception))
+
+  def test_git_pack_hidden_suffix_is_rejected_even_with_recomputed_storage_checksums(self):
+    source = self.historical_source(b"Harmless historical control", "deleted.txt", packed=True)
+    with zipfile.ZipFile(source) as archive:
+      entries = [(copy.copy(member), archive.read(member)) for member in archive.infolist()]
+    pack_name, pack = next((member.filename, data) for member, data in entries if member.filename.endswith(".pack"))
+    index_name, index = next((member.filename, data) for member, data in entries if member.filename.endswith(".idx"))
+    token = self.token().encode()
+    hidden = zlib.compress(b"Harmless repeated padding\n" * 100 + b"token = " + token)
+    self.assertNotIn(token, hidden)
+    pack_body = pack[:-20] + hidden
+    pack_digest = hashlib.sha1(pack_body, usedforsecurity=False).digest()
+    new_pack = pack_body + pack_digest
+    index_body = index[:-40] + pack_digest
+    new_index = index_body + hashlib.sha1(index_body, usedforsecurity=False).digest()
+    prefix = pack_name.rsplit("/", 1)[0] + "/pack-" + pack_digest.hex()
+    replacements = {pack_name: (prefix + ".pack", new_pack), index_name: (prefix + ".idx", new_index)}
+    # These outer checksums are deliberately valid. The native strict Git
+    # parser must reject bytes outside its declared object stream, not merely
+    # rely on a digest or on a generic ZIP probe inside opaque pack storage.
+    security.Scanner.git_storage("objects/pack/pack-" + pack_digest.hex() + ".pack", new_pack)
+    security.Scanner.git_storage("objects/pack/pack-" + pack_digest.hex() + ".idx", new_index)
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+      for member, data in entries:
+        if member.filename in replacements:
+          member.filename, data = replacements[member.filename]
+        elif member.filename.endswith(".tauridium-source-manifest.json"):
+          manifest = json.loads(data)
+          for record in manifest["gitFiles"]:
+            for old, (new, payload) in replacements.items():
+              if old.endswith("/" + record["path"]):
+                record["path"] = ".git/" + new.split("/.git/", 1)[1]
+                record["sha256"] = hashlib.sha256(payload).hexdigest()
+          data = json.dumps(manifest).encode()
+        archive.writestr(member, data)
+    with tempfile.TemporaryDirectory() as temporary:
+      scanner = self.scanner(Path(temporary))
+      with self.assertRaises(security.DecoderFailure):
+        scanner.save(stream.getvalue(), "ordinary/source.zip")
+
+  def test_deleted_historical_private_configuration_paths_are_never_public(self):
+    for filename in ("private/.env", "private/.aws/config", "private/app_settings.json"):
+      with self.subTest(filename=filename), tempfile.TemporaryDirectory() as temporary:
+        source = self.historical_source(b"Harmless synthetic private configuration", filename)
+        scanner = self.scanner(Path(temporary))
+        with self.assertRaisesRegex(RuntimeError, "private configuration material"):
+          scanner.save(source.read_bytes(), "ordinary/source.zip")
 
   def scanner(self, root):
     return security.Scanner(root, TOOLS)
@@ -498,7 +583,7 @@ class RealArtifactScannerTests(unittest.TestCase):
       with self.assertRaisesRegex(RuntimeError, "secret scan rejected"):
         scanner.scan()
 
-  def historical_source(self, payload, filename):
+  def historical_source(self, payload, filename, *, packed=False):
     from test_package_release import PackageReleaseTests
     fixture = PackageReleaseTests()
     fixture.setUp()
@@ -509,11 +594,22 @@ class RealArtifactScannerTests(unittest.TestCase):
     path.write_bytes(payload)
     def git(*args):
       subprocess.run(["git", *args], cwd=fixture.root, capture_output=True, check=True)
+    if packed:
+      # The clean export's fetch unpacks small repositories. Exceed Git's normal
+      # 100-object threshold so this is a genuine packed public-history fixture.
+      directory = fixture.root / "synthetic-packed-fixture"
+      directory.mkdir()
+      for index in range(120):
+        (directory / str(index)).write_bytes(("Harmless packed fixture " + str(index)).encode())
+      git("add", "synthetic-packed-fixture")
+      git("commit", "-qm", "Test: Populate harmless packed-history control")
     git("add", "-f", filename)
     git("commit", "-qm", "Test: Add synthetic historical token")
     git("rm", "-q", filename)
     git("commit", "-qm", "Test: Remove synthetic token from current tree")
     git("tag", "-f", "v0.2.0")
+    if packed:
+      git("repack", "-a", "-d")
     source = fixture.root / "source.zip"
     with mock.patch.object(package_release, "ROOT", fixture.root):
       context = package_release.source_context("0.2.0")
