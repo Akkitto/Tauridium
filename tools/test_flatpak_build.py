@@ -64,6 +64,23 @@ class FlatpakSnapshotTests(unittest.TestCase):
     self.assertEqual((output / "configuration/flatpak/node-sources.json").read_bytes(),
                      (self.root / "flatpak/node-sources.json").read_bytes())
 
+  def test_prepare_returns_canonical_paths_even_when_the_parent_has_an_alias(self):
+    # Simulate an OS temp API returning a lexical alias, without requiring
+    # Windows 8.3 names or symlink privilege. Other private temp calls stay real.
+    parent = Path(self.temporary.name) / "candidate"
+    (parent / "alias").mkdir(parents=True)
+    (parent / "created").mkdir()
+    aliased = parent / "alias" / ".." / "created"
+    actual_mkdtemp = build.tempfile.mkdtemp
+    def temporary_path(*args, **kwargs):
+      return str(aliased) if kwargs.get("dir") == parent else actual_mkdtemp(*args, **kwargs)
+    with mock.patch.object(build.tempfile, "mkdtemp", side_effect=temporary_path):
+      output, manifest = build.prepare(False, parent)
+    self.assertEqual(output, output.resolve(strict=True))
+    self.assertEqual(output.parent, parent.resolve(strict=True))
+    self.assertEqual(manifest, output / "configuration" / build.MANIFEST)
+    self.assertIn("path: " + json.dumps(str(output / "source.tar")), manifest.read_text(encoding="utf-8"))
+
   def test_publication_pin_and_its_locks_must_match_new_offline_inputs(self):
     build.prepare(True, Path(self.temporary.name) / "matching")
     lock = self.root / "package-lock.json"

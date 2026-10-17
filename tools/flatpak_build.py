@@ -225,7 +225,9 @@ def prepare(publication: bool, parent: Path) -> tuple[Path, Path]:
   if current["data/build-toolchain.json"] != selected["data/build-toolchain.json"]:
     raise SystemExit("error: Flatpak publication builder policy differs from selected source")
   parent.mkdir(parents=True, exist_ok=True)
-  output = Path(tempfile.mkdtemp(prefix=revision[:12] + "-", dir=parent))
+  # Windows TEMP may use an 8.3 alias while consumers resolve the long path.
+  # Establish one canonical identity before recording or returning any paths.
+  output = Path(tempfile.mkdtemp(prefix=revision[:12] + "-", dir=parent)).resolve(strict=True)
   archive = exact_tree_archive(revision)
   source = output / "source.tar"
   source.write_bytes(archive)
