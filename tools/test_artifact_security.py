@@ -36,6 +36,25 @@ def synthetic_nsis(payload: bytes):
 
 
 class ArtifactParserTests(unittest.TestCase):
+  def test_git_namespaces_and_source_manifests_cannot_shadow_one_another(self):
+    variants = (
+      [("first/.git/objects/aa/" + "1" * 38, b"compressed control"), ("second/.git/objects/aa/" + "1" * 38, b"replacement")],
+      [("first/.git/", b""), ("second/.git/", b"")],
+      [("source/.git/config", b"control"), ("other/.tauridium-source-manifest.json", b"{}")],
+      [("first/.tauridium-source-manifest.json", b"{}"), ("second/.tauridium-source-manifest.json", b"{}")],
+      [("source/.git/nested/.git/config", b"control")],
+      [("source/.GIT/", b"")],
+    )
+    for entries in variants:
+      with self.subTest(entries=[name for name, _ in entries]), tempfile.TemporaryDirectory() as temporary:
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, "w") as archive:
+          for name, data in entries:
+            archive.writestr(name, data)
+        scanner = security.Scanner(Path(temporary), Path("/unused-tools"))
+        with self.assertRaisesRegex(RuntimeError, "Git roots|bound to|multiple source manifests|noncanonical Git"):
+          scanner.save(stream.getvalue(), "ordinary.zip")
+
   def test_noncanonical_windows_git_casing_cannot_skip_approved_history_validation(self):
     for directory in (".Git", ".GIT", ".gIt"):
       with self.subTest(directory=directory), tempfile.TemporaryDirectory() as temporary:
@@ -427,6 +446,25 @@ class RealArtifactScannerTests(unittest.TestCase):
       scanner.scan()
     return token, image.read_bytes()
 
+  @unittest.skipUnless(shutil.which("tesseract") and (shutil.which("magick") or shutil.which("convert"))
+                       and Path("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf").is_file(),
+                       "Real historical OCR control requires Tesseract, ImageMagick and DejaVu Mono")
+  def test_deleted_historical_evidence_retains_ocr_without_an_outer_evidence_alias(self):
+    with tempfile.TemporaryDirectory() as temporary:
+      root = Path(temporary)
+      token, image = self.rendered_token_png(root)
+      for filename in ("release/evidence/deleted.PNG", "release/evidence/renamed.bin"):
+        with self.subTest(filename=filename):
+          source = self.historical_source(image, filename)
+          state = root / ("state-" + Path(filename).name)
+          state.mkdir()
+          scanner = self.scanner(state)
+          scanner.save(source.read_bytes(), "ordinary/source.zip")
+          self.assertEqual(len(scanner.ocr_completed), 1)
+          with self.assertRaisesRegex(RuntimeError, "secret scan rejected") as caught:
+            scanner.scan()
+          self.assertNotIn(token, str(caught.exception))
+
   def scanner(self, root):
     return security.Scanner(root, TOOLS)
 
@@ -467,10 +505,11 @@ class RealArtifactScannerTests(unittest.TestCase):
     self.addCleanup(fixture.tearDown)
     fixture.init_git_repository()
     path = fixture.root / filename
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(payload)
     def git(*args):
       subprocess.run(["git", *args], cwd=fixture.root, capture_output=True, check=True)
-    git("add", filename)
+    git("add", "-f", filename)
     git("commit", "-qm", "Test: Add synthetic historical token")
     git("rm", "-q", filename)
     git("commit", "-qm", "Test: Remove synthetic token from current tree")

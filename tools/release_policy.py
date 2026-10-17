@@ -8,7 +8,9 @@ from pathlib import Path, PurePosixPath
 import re
 import stat
 import struct
+import time
 import zipfile
+import zlib
 
 TARGETS = {
   "x86_64-pc-windows-msvc": ("windows", "x64", "win-x64"),
@@ -160,6 +162,54 @@ def zip_layout(archive: zipfile.ZipFile) -> None:
     stream.seek(original_position)
 
 
+def zip_payload(archive: zipfile.ZipFile, entry: zipfile.ZipInfo, *, limit: int) -> bytes:
+  """Decode the complete physical stream, independently of ZipExtFile's size cap.
+
+  Public producers use only stored/deflate. Reject other codecs rather than let
+  a reader's truncated output or unused compressed suffix escape inspection.
+  """
+  failure = "error: ZIP codec consumption, size or full CRC validation failed"
+  if entry.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
+    raise SystemExit("error: unsupported public ZIP compression method")
+  if entry.flag_bits & 1 or entry.file_size > limit or limit < 0:
+    raise SystemExit("error: ZIP expansion exceeds the actual byte budget")
+  # This verifies the local filename, flags and overlap checks, but its payload
+  # reader is deliberately not trusted to validate the underlying codec stream.
+  with archive.open(entry):
+    pass
+  stream = archive.fp
+  assert stream is not None
+  stream.seek(entry.header_offset + 26)
+  name_size, extra_size = struct.unpack("<HH", stream.read(4))
+  stream.seek(entry.header_offset + 30 + name_size + extra_size)
+  decoder = zlib.decompressobj(-15) if entry.compress_type == zipfile.ZIP_DEFLATED else None
+  output = bytearray()
+  crc, remaining = 0, entry.compress_size
+  deadline = time.monotonic() + 180
+  while remaining:
+    if time.monotonic() > deadline:
+      raise SystemExit("error: ZIP decoder exceeded its time budget")
+    block = stream.read(min(65536, remaining))
+    if not block:
+      raise zipfile.BadZipFile(failure)
+    remaining -= len(block)
+    pending = block
+    while pending:
+      if time.monotonic() > deadline:
+        raise SystemExit("error: ZIP decoder exceeded its time budget")
+      chunk = decoder.decompress(pending, min(65536, entry.file_size - len(output) + 1)) if decoder else pending
+      output.extend(chunk)
+      crc = zlib.crc32(chunk, crc)
+      if len(output) > entry.file_size or len(output) > limit:
+        raise SystemExit("error: ZIP expansion exceeds the actual byte budget")
+      if decoder and (decoder.unused_data or decoder.eof and remaining):
+        raise zipfile.BadZipFile(failure)
+      pending = decoder.unconsumed_tail if decoder else b""
+  if (decoder and not decoder.eof) or len(output) != entry.file_size or crc != entry.CRC:
+    raise zipfile.BadZipFile(failure)
+  return bytes(output)
+
+
 def inspect_file(path: Path) -> None:
   size = regular(path).st_size
   with path.open("rb") as stream:
@@ -181,8 +231,7 @@ def inspect_file(path: Path) -> None:
           total += entry.file_size
           if entry.file_size > MAX_FILE or total > MAX_TOTAL or len(names) > 100_000:
             raise SystemExit("error: ZIP expansion exceeds the public size budget")
-        if archive.testzip() is not None:
-          raise SystemExit("error: ZIP integrity validation failed")
+          zip_payload(archive, entry, limit=min(MAX_FILE, MAX_TOTAL - total + entry.file_size))
     elif suffix == ".exe":
       if header[:2] != b"MZ" or len(header) < 64:
         raise SystemExit("error: installer is not a PE executable")

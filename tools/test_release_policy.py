@@ -7,12 +7,66 @@ import tempfile
 import unittest
 from unittest import mock
 import zipfile
+import zlib
 
 import release_assets
 import release_policy as policy
 
 
 class ReleasePolicyTests(unittest.TestCase):
+  def test_actual_zip_codec_output_and_consumption_are_verified(self):
+    prefix, hidden = b"Harmless visible prefix\n", b"Hidden synthetic payload\n"
+    for method in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
+      stream = io.BytesIO()
+      with zipfile.ZipFile(stream, "w", compression=method) as archive:
+        archive.writestr("visible.txt", prefix + hidden)
+      data = bytearray(stream.getvalue())
+      central = data.index(b"PK\x01\x02")
+      for offset in (14, central + 16):
+        struct.pack_into("<I", data, offset, zlib.crc32(prefix))
+      for offset in (22, central + 24):
+        struct.pack_into("<I", data, offset, len(prefix))
+      with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        self.assertEqual(archive.read("visible.txt"), prefix)
+        self.assertIsNone(archive.testzip())
+        policy.zip_layout(archive)
+        with self.assertRaisesRegex(SystemExit, "actual byte budget"):
+          policy.zip_payload(archive, archive.infolist()[0], limit=1024)
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+      archive.writestr("visible.txt", prefix)
+    normal = stream.getvalue()
+    for suffix in (b"Unconsumed compressed suffix", zlib.compress(hidden), b"PK\x03\x04hidden"):
+      central = normal.index(b"PK\x01\x02")
+      data = bytearray(normal[:central] + suffix + normal[central:])
+      new_central, footer = central + len(suffix), len(data) - 22
+      for offset in (18, new_central + 20):
+        struct.pack_into("<I", data, offset, struct.unpack_from("<I", data, offset)[0] + len(suffix))
+      struct.pack_into("<I", data, footer + 16, new_central)
+      with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        self.assertIsNone(archive.testzip())
+        policy.zip_layout(archive)
+        with self.assertRaisesRegex(zipfile.BadZipFile, "codec consumption"):
+          policy.zip_payload(archive, archive.infolist()[0], limit=1024)
+
+  def test_zip_decoder_support_is_explicit_and_bounded(self):
+    for method in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED, zipfile.ZIP_BZIP2, zipfile.ZIP_LZMA):
+      stream = io.BytesIO()
+      payload = b"Harmless control" * 20000
+      with zipfile.ZipFile(stream, "w", compression=method) as archive:
+        archive.writestr("readme.txt", payload)
+        archive.writestr("empty/", b"")
+      with zipfile.ZipFile(io.BytesIO(stream.getvalue())) as archive:
+        policy.zip_layout(archive)
+        if method not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
+          with self.assertRaisesRegex(SystemExit, "unsupported"):
+            policy.zip_payload(archive, archive.infolist()[0], limit=len(payload))
+          continue
+        with self.assertRaisesRegex(SystemExit, "actual byte budget"):
+          policy.zip_payload(archive, archive.infolist()[0], limit=10)
+        self.assertEqual(policy.zip_payload(archive, archive.infolist()[0], limit=len(payload)), payload)
+        self.assertEqual(policy.zip_payload(archive, archive.infolist()[1], limit=0), b"")
+
   def test_zip_directory_members_cannot_hide_nonempty_payloads(self):
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -36,6 +90,8 @@ class ReleasePolicyTests(unittest.TestCase):
       with zipfile.ZipFile(io.BytesIO(data)) as archive:
         policy.zip_layout(archive)
         self.assertIsNone(archive.testzip())
+        for entry in archive.infolist():
+          self.assertEqual(policy.zip_payload(archive, entry, limit=100000), archive.read(entry))
       # The descriptor signature is optional; sizes/CRC still have to agree.
       descriptor = data.index(b"PK\x07\x08")
       unsigned = bytearray(data[:descriptor] + data[descriptor + 4:])
@@ -44,6 +100,8 @@ class ReleasePolicyTests(unittest.TestCase):
       with zipfile.ZipFile(io.BytesIO(unsigned)) as archive:
         policy.zip_layout(archive)
         self.assertIsNone(archive.testzip())
+        for entry in archive.infolist():
+          self.assertEqual(policy.zip_payload(archive, entry, limit=100000), archive.read(entry))
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, "w") as archive:
       archive.writestr("readme.txt", "Harmless ZIP64 directory control")

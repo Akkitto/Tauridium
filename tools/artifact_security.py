@@ -344,6 +344,8 @@ class Scanner:
     self.decoded["zip"] += 1
     git_files = {}
     manifest = None
+    git_root = None
+    manifest_root = None
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
       policy.zip_layout(archive)
       paths = set()
@@ -354,23 +356,39 @@ class Scanner:
         paths.add(member.filename)
         if member.file_size > MAX_PAYLOAD or (member.external_attr >> 16) & 0o170000 not in (0, 0o100000, 0o040000):
           raise ArtifactRejection("ZIP member is too large or is not a regular file/directory")
-        if member.is_dir():
-          continue
-        payload = archive.read(member)
         parts = member.filename.split("/")
         if any(part.lower() in {".aws", ".ssh", ".gnupg", ".env", "session.json", "app_settings.json"} for part in parts):
           raise ArtifactRejection("Public archive contains private configuration material")
         if any(part.lower() == ".git" and part != ".git" for part in parts):
           raise ArtifactRejection("Public archive contains noncanonical Git directory casing")
         if ".git" in parts:
+          root = tuple(parts[:parts.index(".git")])
+          if parts.count(".git") != 1 or git_root is not None and root != git_root:
+            raise ArtifactRejection("Public archive contains multiple or ambiguous Git roots")
+          git_root = root
+        # Validate even empty directory streams: their metadata is not proof of
+        # empty decompressor output. Charge the scanner's remaining actual budget.
+        if member.file_size > MAX_EXPANDED - self.expanded:
+          raise ArtifactRejection("Artifact expansion exceeded its actual byte budget")
+        payload = policy.zip_payload(archive, member, limit=min(MAX_PAYLOAD, MAX_EXPANDED - self.expanded))
+        if member.is_dir():
+          continue
+        if ".git" in parts:
           relative = "/".join(parts[parts.index(".git") + 1:])
+          if relative in git_files:
+            raise ArtifactRejection("Public archive contains duplicate Git inventory paths")
           git_files[relative] = payload
         if parts[-1] == ".tauridium-source-manifest.json":
+          if manifest is not None:
+            raise ArtifactRejection("Public archive contains multiple source manifests")
+          manifest_root = tuple(parts[:-1])
           manifest = json.loads(payload)
+          if not isinstance(manifest, dict):
+            raise ArtifactRejection("Public source manifest must be an object")
         self.save(payload, name + "/" + member.filename, depth=depth + 1)
-      if archive.testzip() is not None:
-        raise ArtifactRejection("ZIP CRC verification failed")
-    if git_files:
+    if git_root is not None:
+      if git_root != manifest_root:
+        raise ArtifactRejection("Source manifest is not bound to its unique Git root")
       self.git_objects(git_files, manifest, depth=depth + 1, context_name=name)
 
   def git_objects(self, files: dict[str, bytes], manifest: dict | None, *, depth=0, context_name="SOURCE") -> None:
@@ -411,15 +429,61 @@ class Scanner:
       reachable.update(bounded_command(command + ["for-each-ref", "--format=%(objectname)"], env=env).decode().splitlines())
       if any(line.split()[0] not in reachable for line in listing.decode().splitlines()):
         raise ArtifactRejection("Source Git contains unreachable producer objects")
+      objects = {}
       for line in listing.decode("ascii").splitlines():
         oid, kind, size = line.split()
         if not re.fullmatch(r"[0-9a-f]{40}", oid) or kind not in ("blob", "tree", "commit", "tag") or int(size) > MAX_PAYLOAD:
           raise ArtifactRejection("Invalid or oversized source Git object")
         payload = bounded_command(command + ["cat-file", kind, oid], env=env)
+        objects[oid] = (kind, payload)
         # Approved history can retain deleted compressed files. Inspect them just
         # like current-tree assets, without resetting the enclosing depth budget.
         self.save(payload, context_name + "/GIT-OBJECT/" + oid, depth=depth + 1)
         self.decoded["git-" + kind] += 1
+      # A blob can have several names across commits/trees. rev-list's single
+      # display name is not an inventory of those inspection obligations. Walk
+      # the historical tree DAG under both inherited evidence states, bounded
+      # by actual objects and path records, and replay only added OCR contexts.
+      pending = []
+      for kind, payload in objects.values():
+        if kind == "commit":
+          match = re.match(rb"tree ([0-9a-f]{40})\n", payload)
+          if not match:
+            raise ArtifactRejection("Invalid historical commit tree")
+          pending.append((match[1].decode("ascii"), "evidence" in Path(context_name).parts))
+      visited, obligations = set(), set()
+      records = 0
+      while pending:
+        oid, evidence = pending.pop()
+        if (oid, evidence) in visited:
+          continue
+        visited.add((oid, evidence))
+        kind, payload = objects[oid]
+        if kind != "tree":
+          raise ArtifactRejection("Historical tree refers to an invalid object")
+        cursor = 0
+        while cursor < len(payload):
+          records += 1
+          if records > 100_000:
+            raise ArtifactRejection("Historical tree context exceeds its record budget")
+          separator, end = payload.index(b" ", cursor), payload.index(b"\0", cursor)
+          mode = payload[cursor:separator]
+          name = payload[separator + 1:end].decode("utf-8")
+          child = payload[end + 1:end + 21].hex()
+          cursor = end + 21
+          if cursor > len(payload):
+            raise ArtifactRejection("Truncated historical tree record")
+          child_evidence = evidence or name == "evidence"
+          if mode == b"40000":
+            pending.append((child, child_evidence))
+          elif child_evidence and mode != b"160000":
+            blob_kind, data = objects[child]
+            if blob_kind != "blob":
+              raise ArtifactRejection("Historical file refers to an invalid object")
+            if name.lower().endswith(".png") or data.startswith(b"\x89PNG\r\n\x1a\n"):
+              obligations.add(child)
+      for oid in sorted(obligations):
+        self.save(objects[oid][1], context_name + "/GIT-OBJECT/evidence/" + oid + ".png", depth=depth + 1)
 
   def add(self, path: Path) -> None:
     policy.inspect_file(path)
