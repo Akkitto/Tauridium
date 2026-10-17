@@ -56,6 +56,50 @@ class DecoderFailure(RuntimeError):
     self.code, self.output, self.has_diagnostics = code, output, has_diagnostics
 
 
+def decoder_stdout_blocks(stream, deadline: float):
+  """Read bounded chunks without treating Windows anonymous pipes as sockets."""
+  if os.name == "nt":
+    import ctypes
+    from ctypes import wintypes
+    import msvcrt
+    peek = ctypes.WinDLL("kernel32", use_last_error=True).PeekNamedPipe
+    peek.argtypes = (wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD,
+                     ctypes.POINTER(wintypes.DWORD), ctypes.POINTER(wintypes.DWORD),
+                     ctypes.POINTER(wintypes.DWORD))
+    peek.restype = wintypes.BOOL
+    handle = msvcrt.get_osfhandle(stream.fileno())
+    while True:
+      remaining = deadline - time.monotonic()
+      if remaining <= 0:
+        raise ArtifactRejection("Artifact decoder exceeded its time budget")
+      available = wintypes.DWORD()
+      if not peek(handle, None, 0, None, ctypes.byref(available), None):
+        error = ctypes.get_last_error()
+        if error == 109:  # ERROR_BROKEN_PIPE: all buffered bytes have been read.
+          return
+        raise OSError(error, "Artifact decoder pipe inspection failed")
+      if not available.value:
+        time.sleep(min(0.01, remaining))
+        continue
+      block = os.read(stream.fileno(), min(64 * 1024, available.value))
+      if not block:
+        return
+      yield block
+  else:
+    with selectors.DefaultSelector() as selector:
+      selector.register(stream, selectors.EVENT_READ)
+      while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+          raise ArtifactRejection("Artifact decoder exceeded its time budget")
+        if not selector.select(min(1, remaining)):
+          continue
+        block = os.read(stream.fileno(), 64 * 1024)
+        if not block:
+          return
+        yield block
+
+
 def bounded_command(arguments: list[str], *, env=None, limit=MAX_PAYLOAD, timeout=180) -> bytes:
   """Bound both time and actual stdout bytes; never echo potentially private diagnostics."""
   with tempfile.TemporaryDirectory(prefix="tauridium-decoder-cwd-") as work, tempfile.TemporaryFile() as diagnostics:
@@ -65,21 +109,14 @@ def bounded_command(arguments: list[str], *, env=None, limit=MAX_PAYLOAD, timeou
     result = bytearray()
     deadline = time.monotonic() + timeout
     try:
-      with selectors.DefaultSelector() as selector:
-        selector.register(process.stdout, selectors.EVENT_READ)
-        while True:
-          if time.monotonic() >= deadline:
-            raise ArtifactRejection("Artifact decoder exceeded its time budget")
-          events = selector.select(min(1, max(0, deadline - time.monotonic())))
-          if not events:
-            continue
-          block = os.read(process.stdout.fileno(), 64 * 1024)
-          if not block:
-            break
-          result.extend(block)
-          if len(result) > limit:
-            raise ArtifactRejection("Artifact decoder exceeded its actual byte budget")
-      code = process.wait(timeout=max(0.1, deadline - time.monotonic()))
+      for block in decoder_stdout_blocks(process.stdout, deadline):
+        result.extend(block)
+        if len(result) > limit:
+          raise ArtifactRejection("Artifact decoder exceeded its actual byte budget")
+      try:
+        code = process.wait(timeout=max(0.001, deadline - time.monotonic()))
+      except subprocess.TimeoutExpired:
+        raise ArtifactRejection("Artifact decoder exceeded its time budget") from None
       if code:
         raise DecoderFailure(code, bytes(result), bool(diagnostics.seek(0, os.SEEK_END)))
       if any(Path(work).iterdir()):

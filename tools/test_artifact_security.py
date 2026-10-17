@@ -216,6 +216,27 @@ class ArtifactParserTests(unittest.TestCase):
       security.bounded_command([sys.executable, "-c", "from pathlib import Path; Path('synthetic-output').write_text('synthetic')"])
     self.assertFalse(Path("synthetic-output").exists())
 
+  def test_decoder_preserves_exact_output_and_rejects_actual_byte_overflow(self):
+    command = [sys.executable, "-c", "import os; os.write(1, b'x' * 65537)"]
+    self.assertEqual(security.bounded_command(command, limit=65537), b"x" * 65537)
+    with self.assertRaisesRegex(security.ArtifactRejection, "actual byte budget"):
+      security.bounded_command(command, limit=65536)
+
+  def test_decoder_deadline_bounds_silent_and_closed_stdout_children(self):
+    for script in ("import time; time.sleep(30)", "import os,time; os.close(1); time.sleep(30)"):
+      with self.subTest(script=script):
+        with self.assertRaisesRegex(security.ArtifactRejection, "time budget"):
+          security.bounded_command([sys.executable, "-c", script], timeout=0.2)
+
+  def test_decoder_failure_does_not_publish_stderr(self):
+    marker = "synthetic-private-decoder-diagnostic"
+    with self.assertRaises(security.DecoderFailure) as caught:
+      security.bounded_command([sys.executable, "-c", "import sys; sys.stderr.write('" + marker + "'); sys.exit(7)"])
+    self.assertEqual(caught.exception.code, 7)
+    self.assertTrue(caught.exception.has_diagnostics)
+    self.assertNotIn(marker, str(caught.exception))
+    self.assertNotIn(marker, security.public_failure(caught.exception))
+
   def test_empty_msi_table_fallback_requires_proven_non_object_schema(self):
     harmless = security.DecoderFailure(1, b"CREATE TABLE `Empty` (`Name` CHAR(72))\n", False)
     with mock.patch.object(security, "bounded_command", side_effect=[harmless, b"Name\ns72\nEmpty\n"]) as run:
