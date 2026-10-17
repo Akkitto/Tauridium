@@ -15,6 +15,16 @@
   current advisory checks and separated key-free build/signing/publication stages.
   Legacy ad-hoc artifact assembly is not an accepted publication path.
 
+### Fixed
+
+- Bootstrap the checksum-pinned official Minisign binary on Linux x64/ARM64
+  without assuming an Ubuntu 22.04 apt package exists. Verify ignored tool caches
+  independently in later processes and reject damaged caches without overwriting them.
+- Preserve the reviewed builder lock's exact LF bytes in Windows Git checkouts,
+  retaining strict checksum verification and real CRLF-conversion regressions.
+- Bind synthetic Flatpak publication fixtures to their declared release tag, and
+  refresh both measured Nix vendor hashes for the 1.0.0 root lockfile identity.
+
 ### Security
 
 - Confine native command authority and local-origin navigation to app-owned views;
