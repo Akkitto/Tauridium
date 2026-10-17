@@ -23,7 +23,8 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = "flatpak/dev.brani.tauridium.yml"
 LOCKS = ("src-tauri/Cargo.lock", "package-lock.json", "flatpak/tauri-cli.Cargo.lock",
          "data/build-toolchain.json")
-GENERATED = ("flatpak/cargo-sources.json", "flatpak/node-sources.json", "flatpak/tauri-cli-cargo-sources.json")
+GENERATED = ("flatpak/cargo-sources.json", "flatpak/node-sources.json", "flatpak/tauri-cli-cargo-sources.json",
+             "flatpak/tauri-cli-policy.json")
 PIN = re.compile(r"(?m)^      - type: git\n        url: https://github.com/Akkitto/Tauridium.git\n"
                  r"        tag: (?P<tag>v[0-9]+\.[0-9]+\.[0-9]+)\n"
                  r"        commit: (?P<commit>\S+)\n        dest: source\n"
@@ -119,7 +120,7 @@ def verify_inputs(generated: dict[str, bytes], source: dict[str, bytes]) -> None
     for index, name in enumerate(LOCKS[:3]):
       (root / str(index)).write_bytes(source[name])
     expected = (sources.generate_cargo_sources(root / "0"), sources.generate_node_sources(root / "1"),
-                sources.generate_cargo_sources(root / "2"))
+                sources.generate_cargo_sources(root / "2"), json.loads(source["data/build-toolchain.json"]))
     for name, value in zip(GENERATED, expected):
       if json.loads(generated[name]) != value:
         raise SystemExit("error: Flatpak offline inputs do not match selected source; use the local build or synchronize publication inputs with its immutable source")
@@ -172,7 +173,7 @@ def snapshot_flatpak(archive: bytes, destination: Path) -> None:
   with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as source:
     for member in source.getmembers():
       path = PurePosixPath(member.name)
-      if not path.parts or path.parts[0] != "flatpak" and member.name != "data/build-toolchain.json":
+      if not path.parts or path.parts[0] != "flatpak":
         continue
       if path.is_absolute() or ".." in path.parts or not (member.isdir() or member.isfile()):
         raise SystemExit("error: Flatpak configuration snapshot contains an unsafe path or non-regular entry")

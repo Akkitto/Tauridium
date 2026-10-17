@@ -50,7 +50,8 @@ modules:
       - type: file
         path: tauri-cli.Cargo.lock
       - type: file
-        path: ../data/build-toolchain.json
+        path: tauri-cli-policy.json
+        dest-filename: build-toolchain.json
       - tauri-cli-cargo-sources.json
 
   - name: tauridium

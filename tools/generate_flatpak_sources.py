@@ -25,6 +25,7 @@ CARGO_OUTPUT = FLATPAK_DIR / "cargo-sources.json"
 NODE_OUTPUT = FLATPAK_DIR / "node-sources.json"
 TAURI_CLI_OUTPUT = FLATPAK_DIR / "tauri-cli-cargo-sources.json"
 TAURI_CLI_LOCK = FLATPAK_DIR / "tauri-cli.Cargo.lock"
+TAURI_CLI_POLICY_OUTPUT = FLATPAK_DIR / "tauri-cli-policy.json"
 BUILD_POLICY = ROOT / "data/build-toolchain.json"
 
 CARGO_CONFIG = (
@@ -165,7 +166,7 @@ def generate_node_sources(lock_path: Path) -> list[dict[str, Any]]:
   return sources
 
 
-def _check_file(path: Path, generated: list[dict[str, Any]]) -> bool:
+def _check_file(path: Path, generated: list[dict[str, Any]] | dict[str, Any]) -> bool:
   expected = _pretty_json(generated)
   actual = path.read_text(encoding="utf-8") if path.exists() else ""
   if actual == expected:
@@ -202,12 +203,14 @@ def main() -> int:
     ok = _check_file(CARGO_OUTPUT, cargo_sources)
     ok = _check_file(NODE_OUTPUT, node_sources) and ok
     ok = _validate_tauri_cli_sources() and ok
+    ok = _check_file(TAURI_CLI_POLICY_OUTPUT, json.loads(BUILD_POLICY.read_text(encoding="utf-8"))) and ok
     return 0 if ok else 1
 
   FLATPAK_DIR.mkdir(parents=True, exist_ok=True)
   CARGO_OUTPUT.write_text(_pretty_json(cargo_sources), encoding="utf-8", newline="\n")
   NODE_OUTPUT.write_text(_pretty_json(node_sources), encoding="utf-8", newline="\n")
   TAURI_CLI_OUTPUT.write_text(_pretty_json(_tauri_cli_sources()), encoding="utf-8", newline="\n")
+  TAURI_CLI_POLICY_OUTPUT.write_text(_pretty_json(json.loads(BUILD_POLICY.read_text(encoding="utf-8"))), encoding="utf-8", newline="\n")
   if not _validate_tauri_cli_sources():
     return 1
   print(f"Wrote {CARGO_OUTPUT.relative_to(ROOT)} ({len(cargo_sources)} sources)")

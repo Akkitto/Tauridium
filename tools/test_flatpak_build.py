@@ -89,6 +89,15 @@ class FlatpakSnapshotTests(unittest.TestCase):
     with self.assertRaisesRegex(SystemExit, "hidden Git index"):
       build.prepare(False, Path(self.temporary.name) / "hidden")
 
+  def test_sandbox_local_builder_policy_is_exact_and_drift_is_rejected(self):
+    policy = self.root / "flatpak/tauri-cli-policy.json"
+    self.assertEqual(json.loads(policy.read_text(encoding="utf-8")),
+                     json.loads((self.root / "data/build-toolchain.json").read_text(encoding="utf-8")))
+    policy.write_text("{}", encoding="utf-8")
+    self.run_git("commit", "-qam", "Test: Tamper synthetic generated builder policy")
+    with self.assertRaisesRegex(SystemExit, "offline inputs do not match"):
+      build.prepare(False, Path(self.temporary.name) / "drift")
+
   def test_local_and_tracked_export_attributes_cannot_change_source_or_configuration(self):
     source = self.root / "substitution.txt"
     source.write_bytes(b"Literal $Format:%H$ stays unchanged\n")
