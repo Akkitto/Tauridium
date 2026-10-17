@@ -17,6 +17,8 @@
 
 ### Fixed
 
+- Canonicalize Flatpak candidate directories before sealing or returning paths,
+  so Windows short TEMP aliases and long paths have one consistent identity.
 - Keep decoder subprocess byte/deadline guards working on Windows anonymous
   pipes, and parse CRLF Flatpak pins while retaining exact source bytes.
 - Validate the locked local esbuild API with a real native transform on Windows
@@ -33,6 +35,10 @@
 
 ### Security
 
+- Bind application advisory assessments to exact LF lock bytes on every platform.
+  Keep the three reviewed D-Bus standalone-crate maintenance notices visible with
+  a 15 November 2026 deadline for coordinated migration review; no vulnerability
+  ignore or automatic expiry extension is introduced.
 - Validate original ZIP member names before Windows path normalization or NUL
   truncation, retaining strict unsafe-path checks on every host.
 - Confine native command authority and local-origin navigation to app-owned views;
