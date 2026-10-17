@@ -44,6 +44,9 @@ def evaluate(lock: str, report: dict, policy: dict, today: date) -> list[dict]:
 
 
 def verify_controls(policy: dict) -> None:
+  application = ROOT / LOCKS[0]
+  if hashlib.sha256(application.read_bytes()).hexdigest() != policy.get("applicationLockSha256"):
+    raise SystemExit("error: application advisory assessment is not valid for this exact dependency lock")
   sdk = ROOT / LOCKS[1]
   if hashlib.sha256(sdk.read_bytes()).hexdigest() != policy["builderLockSha256"]:
     raise SystemExit("error: builder advisory assessment is not valid for this CLI dependency lock")

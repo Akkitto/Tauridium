@@ -1,7 +1,38 @@
 {
   "schema": 1,
+  "applicationLockSha256": "990492fdf261902c49fd7ea9076ca9a95ffaaf16a6096b1edf0886ca9af1df67",
   "builderLockSha256": "db656f71cd8430b4395933c6c39e0471e915f4b07b023716e81e0511004867c4",
   "assessments": [
+    {
+      "lock": "src-tauri/Cargo.lock",
+      "id": "RUSTSEC-2026-0370",
+      "package": "zvariant",
+      "version": "5.12.0",
+      "kind": "unmaintained",
+      "expires": "2026-11-15",
+      "status": "reviewed-maintenance-warning",
+      "reason": "Reviewed official RustSec RUSTSEC-2026-0370 (informational/unmaintained, dated 2026-10-16): standalone zvariant was merged into zbus 6's wire module; no vulnerability or patched standalone release is asserted. This exact SHA-256-bound application lock uses zvariant 5.12.0 through the same zbus 5.16.0 notification, portal and OS-vault integrations documented in docs/ZBUS-MAINTENANCE-REVIEW.md. A coordinated parent migration is required; a forced direct dependency change does not remove the constrained transitive stack. Keep the finding visible and reassess by 2026-11-15. Different lock bytes, versions, vulnerability/unsound findings or expiry fail closed. This is not an upstream fix. Source: https://github.com/RustSec/advisory-db/blob/999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b/crates/zvariant/RUSTSEC-2026-0370.md"
+    },
+    {
+      "lock": "src-tauri/Cargo.lock",
+      "id": "RUSTSEC-2026-0372",
+      "package": "zvariant_derive",
+      "version": "5.12.0",
+      "kind": "unmaintained",
+      "expires": "2026-11-15",
+      "status": "reviewed-maintenance-warning",
+      "reason": "Reviewed official RustSec RUSTSEC-2026-0372 (informational/unmaintained, dated 2026-10-16): standalone zvariant_derive macros moved into zbus 6; no vulnerability or patched standalone release is asserted. This exact SHA-256-bound application lock requires zvariant_derive 5.12.0 with zvariant 5.12.0 and the zbus 5.16.0 notification, portal and OS-vault parent chain. Review the coordinated migration in docs/ZBUS-MAINTENANCE-REVIEW.md by 2026-11-15 rather than forcing incompatible transitive APIs. The warning remains visible; changed lock bytes, versions, finding kinds and expiry fail closed. This is not an upstream fix. Source: https://github.com/RustSec/advisory-db/blob/999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b/crates/zvariant_derive/RUSTSEC-2026-0372.md"
+    },
+    {
+      "lock": "src-tauri/Cargo.lock",
+      "id": "RUSTSEC-2026-0371",
+      "package": "zbus_names",
+      "version": "4.3.2",
+      "kind": "unmaintained",
+      "expires": "2026-11-15",
+      "status": "reviewed-maintenance-warning",
+      "reason": "Reviewed RustSec RUSTSEC-2026-0371 (informational/unmaintained, dated 2026-10-16): standalone zbus_names was merged into zbus 6; no vulnerability or patched standalone release is asserted. This exact SHA-256-bound application lock requires zbus_names 4.3.2 through zbus/zbus_macros 5.16.0, notify-rust 4.18.2, secret-service 5.2.0, zbus-secret-service-keyring-store 1.0.1 and ashpd 0.11.1/rfd 0.16.0. A complete migration must coordinate notification, portal and OS-vault integrations; forcing only a direct zbus 6 update would retain the transitive zbus 5 dependency and does not resolve this finding. Keep the warning visible and reassess the coordinated upstream migration by 2026-11-15. New versions, warning kinds, lock bytes, vulnerabilities or expiry fail closed. This is a time-limited maintenance assessment, not an upstream fix or a vulnerability exclusion. Source: https://github.com/RustSec/advisory-db/blob/999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b/crates/zbus_names/RUSTSEC-2026-0371.md"
+    },
     {
       "lock": "flatpak/tauri-cli.Cargo.lock",
       "id": "RUSTSEC-2023-0071",

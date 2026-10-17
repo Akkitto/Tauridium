@@ -116,6 +116,15 @@ this is not an upstream RSA fix or a claim of zero findings. New/changed/expired
 findings fail and need review. A supplied offline database
 snapshot is labeled a diagnostic, never the current online gate.
 
+The application lock is also SHA-256-bound. The exact `zbus_names 4.3.2`,
+`zvariant 5.12.0` and `zvariant_derive 5.12.0` maintenance findings have a separate
+short review deadline of **15 November 2026**; they remain visible in every fresh
+audit. Upstream merged them into zbus 6, while
+the current notification, portal and OS-vault parents require zbus 5. The
+[review and coordinated migration plan](ZBUS-MAINTENANCE-REVIEW.md) explains the
+temporary exact-scope decision. It is not a vulnerability exclusion or an upstream
+fix. Lock changes, new versions/kinds and expiry fail closed; do not just extend it.
+
 See [artifact inspection](ARTIFACT-SECURITY.md). Raw logs, profiles, screenshots/OCR,
 scan corpora and full-Git recovery checkpoints stay private. Do not upload ignored
 evidence directories recursively. Static scans and signatures cannot prove absence
@@ -128,7 +137,8 @@ of every secret or vulnerability; retain platform runtime and manual UX checks.
   and investigate failures rather than treating a schedule as an operational proof.
 - Weekly: review dependency update PRs and the pinned Tauri CLI/scanner/toolchain
   upstream releases. Reassess builder findings before their 15 November 2026 expiry;
-  maintenance assessments expire 15 January 2027. Do not extend them without evidence.
+  reassess the three D-Bus maintenance findings by the same date. Other maintenance assessments expire
+  15 January 2027. Do not extend them without evidence.
 - Monthly, and before a security release: review Nix inputs, GNOME SDK/platform,
   WebKitGTK/WebView2, native libraries and vendored compatibility patches. Prepare
   lock updates in a disposable private checkout; inspect the diff, then run actual

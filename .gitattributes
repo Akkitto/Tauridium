@@ -29,6 +29,7 @@ vite-env.d.ts linguist-generated
 # Documentation remains classified separately as documentation.
 docs/** linguist-documentation
 
-# This reviewed builder lock is SHA-256-bound byte-for-byte on every platform.
-# Windows core.autocrlf must not turn its canonical LF bytes into CRLF.
+# Reviewed locks are SHA-256-bound byte-for-byte on every platform.
+# Windows core.autocrlf must not turn their canonical LF bytes into CRLF.
 flatpak/tauri-cli.Cargo.lock text eol=lf
+src-tauri/Cargo.lock text eol=lf

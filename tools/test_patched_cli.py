@@ -26,7 +26,7 @@ def packed(prefix, manifest, extra=()):
 
 
 class PatchedCliTests(unittest.TestCase):
-  def test_windows_git_checkout_keeps_the_reviewed_lock_byte_identical(self):
+  def test_windows_git_checkout_keeps_both_reviewed_locks_byte_identical(self):
     payload = b"Synthetic reviewed builder lock\nSecond line\n"
     with tempfile.TemporaryDirectory() as temporary:
       root = Path(temporary) / "repo"
@@ -43,6 +43,8 @@ class PatchedCliTests(unittest.TestCase):
       git("config", "core.safecrlf", "false")
       (root / "flatpak").mkdir()
       (root / "flatpak/tauri-cli.Cargo.lock").write_bytes(payload)
+      (root / "src-tauri").mkdir()
+      (root / "src-tauri/Cargo.lock").write_bytes(payload)
       attributes = root / ".gitattributes"
       attributes.write_bytes((ROOT / ".gitattributes").read_bytes())
       git("add", ".")
@@ -51,6 +53,7 @@ class PatchedCliTests(unittest.TestCase):
       exported = Path(temporary) / "with-policy"
       git("checkout-index", "--all", "--prefix=" + exported.as_posix() + "/")
       self.assertEqual((exported / "flatpak/tauri-cli.Cargo.lock").read_bytes(), payload)
+      self.assertEqual((exported / "src-tauri/Cargo.lock").read_bytes(), payload)
       # Prove this is a real newline-conversion reproduction, not a no-op export.
       attributes.write_bytes(b"")
       git("add", ".gitattributes")
@@ -58,6 +61,7 @@ class PatchedCliTests(unittest.TestCase):
       negative = Path(temporary) / "without-policy"
       git("checkout-index", "--all", "--prefix=" + negative.as_posix() + "/")
       self.assertEqual((negative / "flatpak/tauri-cli.Cargo.lock").read_bytes(), payload.replace(b"\n", b"\r\n"))
+      self.assertEqual((negative / "src-tauri/Cargo.lock").read_bytes(), payload.replace(b"\n", b"\r\n"))
 
   def setUp(self):
     self.lock = b"Synthetic reviewed lock control\n"
