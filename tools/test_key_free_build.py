@@ -41,6 +41,7 @@ class KeyFreeBuildTests(unittest.TestCase):
 
   def test_previous_builder_revision_cannot_start_a_native_build(self):
     with (mock.patch.dict(os.environ, {"PATH": "synthetic"}, clear=True),
+          mock.patch.object(tauri_build.Path, "home", return_value=tauri_build.ROOT / "synthetic-home"),
           mock.patch.object(tauri_build.shutil, "which", return_value="/synthetic/cargo-tauri"),
           mock.patch.object(tauri_build.subprocess, "run", return_value=
                             subprocess.CompletedProcess([], 0, "tauri-cli 2.12.3+tauridium.1\n", "")) as run):

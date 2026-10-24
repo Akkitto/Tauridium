@@ -166,23 +166,24 @@ class NixIntegrationTests(unittest.TestCase):
 
   @unittest.skipUnless(shutil.which("node"), "Node is required for the release version generator")
   def test_version_generator_ignores_cp1252_default_encoding(self):
-    original_open = Path.open
     original_read_text = Path.read_text
 
-    def cp1252_open(path, mode="r", buffering=-1, encoding=None, errors=None, newline=None):
-      if "b" not in mode and encoding in (None, "locale"):
-        encoding = "cp1252"
-      return original_open(path, mode, buffering, encoding, errors, newline)
+    def cp1252_read_text(path, encoding=None, errors=None, **kwargs):
+      return original_read_text(path,
+        encoding="cp1252" if encoding in (None, "locale") else encoding,
+        errors=errors, **kwargs)
 
     # Reproduce Windows' locale default without changing the real host locale,
     # Python UTF-8 mode, source files or the Node generator's UTF-8 behavior.
+    # Patch the public boundary: newer Python resolves its UTF-8 default before
+    # calling Path.open, so intercepting open alone no longer simulates omission.
     self.assertRaises(UnicodeDecodeError, "”".encode("utf-8").decode, "cp1252")
-    with mock.patch.object(Path, "open", cp1252_open):
+    with mock.patch.object(Path, "read_text", cp1252_read_text):
       # Negative control: omitting the encoding reproduces the reported failure
       # on the actual generated documentation, even on a UTF-8-default host.
       def locale_read_text(path, *args, **kwargs):
         kwargs.pop("encoding", None)
-        return original_read_text(path, *args, **kwargs)
+        return cp1252_read_text(path, *args, **kwargs)
 
       with mock.patch.object(Path, "read_text", locale_read_text):
         self.assertRaises(UnicodeDecodeError, self.test_version_generator_updates_copyable_nix_references)
