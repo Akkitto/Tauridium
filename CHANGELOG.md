@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Security
+
+- Update Vite and Vitest to patched releases, and fix newly reported constant-time,
+  certificate-trust and Tokio I/O-safety issues in the locked dependencies.
+- Use the same revised, checksum-bound builder across native, Flatpak and Nix
+  builds; reject the previous builder before starting production builds.
+
 ## [1.0.0] - 2026-10-17
 
 ### Changed

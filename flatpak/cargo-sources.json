@@ -1042,14 +1042,14 @@
   {
     "type": "archive",
     "archive-type": "tar-gzip",
-    "url": "https://static.crates.io/crates/ctutils/ctutils-0.4.3.crate",
-    "sha256": "03bb0e1cc970d482d121d9a1744999169b69a07470b3d644a7894e53fcaf4574",
-    "dest": "cargo/vendor/ctutils-0.4.3"
+    "url": "https://static.crates.io/crates/ctutils/ctutils-0.4.4.crate",
+    "sha256": "12218662ccac37d9714f2191252553d67585b97df8c839cbe49e0bde278dc865",
+    "dest": "cargo/vendor/ctutils-0.4.4"
   },
   {
     "type": "inline",
-    "contents": "{\"package\":\"03bb0e1cc970d482d121d9a1744999169b69a07470b3d644a7894e53fcaf4574\",\"files\":{}}",
-    "dest": "cargo/vendor/ctutils-0.4.3",
+    "contents": "{\"package\":\"12218662ccac37d9714f2191252553d67585b97df8c839cbe49e0bde278dc865\",\"files\":{}}",
+    "dest": "cargo/vendor/ctutils-0.4.4",
     "dest-filename": ".cargo-checksum.json"
   },
   {
@@ -4305,14 +4305,14 @@
   {
     "type": "archive",
     "archive-type": "tar-gzip",
-    "url": "https://static.crates.io/crates/rustls-webpki/rustls-webpki-0.103.15.crate",
-    "sha256": "f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2",
-    "dest": "cargo/vendor/rustls-webpki-0.103.15"
+    "url": "https://static.crates.io/crates/rustls-webpki/rustls-webpki-0.103.16.crate",
+    "sha256": "4443b1b6d39d7c663139942cc4558262562d2c84123bb6282ef177009ca8b281",
+    "dest": "cargo/vendor/rustls-webpki-0.103.16"
   },
   {
     "type": "inline",
-    "contents": "{\"package\":\"f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2\",\"files\":{}}",
-    "dest": "cargo/vendor/rustls-webpki-0.103.15",
+    "contents": "{\"package\":\"4443b1b6d39d7c663139942cc4558262562d2c84123bb6282ef177009ca8b281\",\"files\":{}}",
+    "dest": "cargo/vendor/rustls-webpki-0.103.16",
     "dest-filename": ".cargo-checksum.json"
   },
   {
@@ -5462,14 +5462,14 @@
   {
     "type": "archive",
     "archive-type": "tar-gzip",
-    "url": "https://static.crates.io/crates/tokio/tokio-1.52.3.crate",
-    "sha256": "8fc7f01b389ac15039e4dc9531aa973a135d7a4135281b12d7c1bc79fd57fffe",
-    "dest": "cargo/vendor/tokio-1.52.3"
+    "url": "https://static.crates.io/crates/tokio/tokio-1.53.3.crate",
+    "sha256": "ce3335fa71841cda333a58d7615b03901380ecf09d59b3296d21f8bbac0dde4e",
+    "dest": "cargo/vendor/tokio-1.53.3"
   },
   {
     "type": "inline",
-    "contents": "{\"package\":\"8fc7f01b389ac15039e4dc9531aa973a135d7a4135281b12d7c1bc79fd57fffe\",\"files\":{}}",
-    "dest": "cargo/vendor/tokio-1.52.3",
+    "contents": "{\"package\":\"ce3335fa71841cda333a58d7615b03901380ecf09d59b3296d21f8bbac0dde4e\",\"files\":{}}",
+    "dest": "cargo/vendor/tokio-1.53.3",
     "dest-filename": ".cargo-checksum.json"
   },
   {
@@ -6216,27 +6216,27 @@
   {
     "type": "archive",
     "archive-type": "tar-gzip",
-    "url": "https://static.crates.io/crates/webpki-root-certs/webpki-root-certs-1.0.8.crate",
-    "sha256": "0d46a5a140e6f7afeccd8eae97eff335163939eac8b929834875168b29b3d267",
-    "dest": "cargo/vendor/webpki-root-certs-1.0.8"
+    "url": "https://static.crates.io/crates/webpki-root-certs/webpki-root-certs-1.0.10.crate",
+    "sha256": "58ec80e73fd8baf57bf0d9615554c75348bda990d6d5bbeab964dd068319fecb",
+    "dest": "cargo/vendor/webpki-root-certs-1.0.10"
   },
   {
     "type": "inline",
-    "contents": "{\"package\":\"0d46a5a140e6f7afeccd8eae97eff335163939eac8b929834875168b29b3d267\",\"files\":{}}",
-    "dest": "cargo/vendor/webpki-root-certs-1.0.8",
+    "contents": "{\"package\":\"58ec80e73fd8baf57bf0d9615554c75348bda990d6d5bbeab964dd068319fecb\",\"files\":{}}",
+    "dest": "cargo/vendor/webpki-root-certs-1.0.10",
     "dest-filename": ".cargo-checksum.json"
   },
   {
     "type": "archive",
     "archive-type": "tar-gzip",
-    "url": "https://static.crates.io/crates/webpki-roots/webpki-roots-1.0.8.crate",
-    "sha256": "bf85cb06032201fa7c6f829d7db5a7e5aa45bcc0655327713065f6f0576731bf",
-    "dest": "cargo/vendor/webpki-roots-1.0.8"
+    "url": "https://static.crates.io/crates/webpki-roots/webpki-roots-1.0.10.crate",
+    "sha256": "1c1c8e20c8a38fc7d65abfe74eb7280e4aa667e8eec8bc84996d2874810748d9",
+    "dest": "cargo/vendor/webpki-roots-1.0.10"
   },
   {
     "type": "inline",
-    "contents": "{\"package\":\"bf85cb06032201fa7c6f829d7db5a7e5aa45bcc0655327713065f6f0576731bf\",\"files\":{}}",
-    "dest": "cargo/vendor/webpki-roots-1.0.8",
+    "contents": "{\"package\":\"1c1c8e20c8a38fc7d65abfe74eb7280e4aa667e8eec8bc84996d2874810748d9\",\"files\":{}}",
+    "dest": "cargo/vendor/webpki-roots-1.0.10",
     "dest-filename": ".cargo-checksum.json"
   },
   {
