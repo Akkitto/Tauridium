@@ -1,4 +1,5 @@
 """No build script receives signing credentials, even on local default recipes."""
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -24,7 +25,8 @@ class KeyFreeBuildTests(unittest.TestCase):
     self.assertNotIn("RUSTFLAGS", result)
 
   def test_canonical_build_calls_direct_pinned_cli_and_final_unsigned_config(self):
-    responses = [subprocess.CompletedProcess([], 0, "tauri-cli 2.12.3+tauridium.1\n", ""), subprocess.CompletedProcess([], 0)]
+    policy = json.loads((tauri_build.ROOT / "data/build-toolchain.json").read_text(encoding="utf-8"))
+    responses = [subprocess.CompletedProcess([], 0, "tauri-cli " + policy["tauriCliBuild"] + "\n", ""), subprocess.CompletedProcess([], 0)]
     with (mock.patch.dict(os.environ, {"PATH": "synthetic"}, clear=True),
           mock.patch.object(tauri_build.Path, "home", return_value=tauri_build.ROOT / "synthetic-home"),
           mock.patch.object(tauri_build.shutil, "which", return_value="/synthetic/cargo-tauri"),
@@ -36,6 +38,16 @@ class KeyFreeBuildTests(unittest.TestCase):
       self.assertEqual(command[-2], "--config")
       self.assertTrue(command[-1].endswith("tauri.no-updater.conf.json"))
       self.assertFalse(any(name.startswith(tauri_build.SIGNING_PREFIXES) for name in run.call_args.kwargs["env"]))
+
+  def test_previous_builder_revision_cannot_start_a_native_build(self):
+    with (mock.patch.dict(os.environ, {"PATH": "synthetic"}, clear=True),
+          mock.patch.object(tauri_build.Path, "home", return_value=tauri_build.ROOT / "synthetic-home"),
+          mock.patch.object(tauri_build.shutil, "which", return_value="/synthetic/cargo-tauri"),
+          mock.patch.object(tauri_build.subprocess, "run", return_value=
+                            subprocess.CompletedProcess([], 0, "tauri-cli 2.12.3+tauridium.1\n", "")) as run):
+      with self.assertRaisesRegex(SystemExit, "exact pinned Tauri CLI"):
+        tauri_build.build(["--no-bundle", "--ci"])
+      run.assert_called_once()
 
 
 if __name__ == "__main__":

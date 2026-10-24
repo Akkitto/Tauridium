@@ -37,6 +37,6 @@ cargo-tauri.overrideAttrs (_old: {
   cargoDeps = rustPlatform.fetchCargoVendor {
     src = source;
     name = "tauri-cli-${policy.tauriCliBuild}";
-    hash = "sha256-bKz9XNLr4rV7OZVMh5boTy1MhrgtInBGEmgkbt9V0+o=";
+    hash = "sha256-KQxsPTWmzD3LpsjG1O5HkGHFydIOGAxmqv4aGHBXXTY=";
   };
 })

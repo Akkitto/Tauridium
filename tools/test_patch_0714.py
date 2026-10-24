@@ -24,10 +24,11 @@ class Patch0714Tests(unittest.TestCase):
       CARGO,
     )
 
-  def test_vitest_is_pinned_to_first_patched_v4_release(self) -> None:
-    self.assertEqual(PACKAGE["devDependencies"]["vitest"], "4.1.11")
-    self.assertEqual(LOCK["packages"]["node_modules/vitest"]["version"], "4.1.11")
-    self.assertEqual(LOCK["packages"]["node_modules/@vitest/mocker"]["version"], "4.1.11")
+  def test_vitest_and_mocker_are_pinned_to_patched_v4_release(self) -> None:
+    # 4.1.12 fixes GHSA-xp26-3454-mjgp and GHSA-qxg6-89mg-rqv8.
+    self.assertEqual(PACKAGE["devDependencies"]["vitest"], "4.1.12")
+    self.assertEqual(LOCK["packages"]["node_modules/vitest"]["version"], "4.1.12")
+    self.assertEqual(LOCK["packages"]["node_modules/@vitest/mocker"]["version"], "4.1.12")
 
   def test_devalue_is_pinned_past_reported_advisory_boundary(self) -> None:
     pinned = PACKAGE["overrides"]["devalue"]
@@ -45,7 +46,7 @@ class Patch0714Tests(unittest.TestCase):
       "obug": "2.1.4",
       "std-env": "4.2.0",
       "tinyexec": "1.3.0",
-      "tinyrainbow": "3.1.1",
+      "tinyrainbow": "3.2.0",
     }
     for package, version in expected.items():
       self.assertEqual(packages[f"node_modules/{package}"]["version"], version)

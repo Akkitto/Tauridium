@@ -24,7 +24,12 @@ inspected; this decision is not based on a scanner severity filter.
 ## Exact current scope
 
 The application lock has SHA-256
-`990492fdf261902c49fd7ea9076ca9a95ffaaf16a6096b1edf0886ca9af1df67`.
+`71eb4340f19ee1e4d2b713342834e5b525d7e398d490294a2e0394b8108b8f60`.
+Revalidated on 24 October after the isolated `ctutils 0.4.4` and
+`rustls-webpki 0.103.16`, `webpki-roots 1.0.10`, `webpki-root-certs 1.0.10`
+and `tokio 1.53.3`
+security updates; the D-Bus dependency chains below are
+unchanged. The assessment expiry remains 15 November.
 It contains `zbus_names 4.3.2`, `zvariant 5.12.0`, `zvariant_derive 5.12.0`,
 `zbus 5.16.0` and `zbus_macros 5.16.0`.
 An actual Linux all-feature reverse dependency inspection shows:
