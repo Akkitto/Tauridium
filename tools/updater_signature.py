@@ -21,7 +21,7 @@ def find_minisign() -> str | None:
     executable = shutil.which("minisign")
     if executable:
         return executable
-    if platform.system() == "Linux":
+    if platform.system() in ("Linux", "Windows"):
         from security_tools import cached_minisign
         executable = cached_minisign()
         if executable:

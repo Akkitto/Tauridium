@@ -56,6 +56,12 @@ Alternatively, download the native installer or x64/ARM64 portable ZIP from [Git
 
 See [Installation](docs/installation.md) for package details, persistence behavior and release integrity, and [Scoop packaging](packaging/scoop/README.md) for the upstream submission fixture and validation flow.
 
+Windows initialization prefers Scoop, then WinGet for Minisign. If neither is
+available, it installs the checksum-verified native x64 or ARM64 verifier in an
+ignored workspace cache. Later commands rediscover and revalidate that cache;
+no persistent PATH change or signing key is required. `-NoSystemChanges` permits
+using a verified existing cache and refuses downloading a missing tool.
+
 ### Linux
 
 For NixOS or Nix profiles, use the source-built flake package rather than an

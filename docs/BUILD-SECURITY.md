@@ -151,3 +151,22 @@ sealing and consumption. They also reject any `build/usr` entry, including a
 dangling symlink: Flatpak would otherwise use that custom runtime instead of the
 GNOME runtime named in metadata. Read-only execution does not establish runtime
 identity. Candidate tests do not install over the owner's application or profile.
+
+## Windows public-signature verification tool
+
+The native Windows initializer checks Minisign before compiling the Tauri CLI.
+Scoop and WinGet remain preferred; runners without them use the official pinned
+portable ZIP with separate native x64 and ARM64 members. The policy binds the
+archive and executable SHA-256 and checks the PE machine type before execution.
+The archive used to establish these pins was verified against the existing
+upstream publisher key. Later cache discovery rechecks regular-file, reparse,
+checksum and architecture constraints; damaged caches are rejected and preserved.
+
+The cache is ignored build tooling, never an application runtime payload.
+`tools/minisign.ps1 -Portable` selects this path explicitly. `-NoSystemChanges`
+forbids fetching a missing tool while allowing an already verified cache.
+Real Windows x64/ARM64 jobs exercise missing-tool refusal, installation, reuse,
+fresh-process discovery and synthetic signature/tampering controls. Their result
+explicitly gates the required Windows native check; a dependency skip cannot make
+the required check pass. Release builders run the same check before compilation.
+The protected Linux signer and owner signing-secret boundaries remain unchanged.

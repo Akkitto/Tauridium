@@ -47,14 +47,25 @@ class WindowsBootstrapTests(unittest.TestCase):
       'toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy',
       '& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $PythonRunnerPath flatpak/prepare-tauri-cli.py --install',
       'cargo.exe install cargo-audit --locked',
-      '& scoop install minisign',
-      '--id jedisct1.minisign',
       'VBSCRIPT',
       '& npm.cmd ci',
       '& npm.cmd audit --audit-level=high',
       '& node.exe tools/check_esbuild.mjs',
     ):
       self.assertIn(marker, self.script)
+
+  def test_verifier_uses_package_managers_then_verified_portable_fallback(self) -> None:
+    helper = (ROOT / "tools/minisign.ps1").read_text(encoding="utf-8")
+    for marker in ('& scoop install minisign', '--id jedisct1.minisign',
+                   'tools/security_tools.py', '--ensure-minisign', '--no-download'):
+      self.assertIn(marker, helper)
+    self.assertLess(helper.index('& scoop install minisign'), helper.index('--id jedisct1.minisign'))
+    self.assertLess(helper.index('--id jedisct1.minisign'), helper.index('--ensure-minisign'))
+    self.assertIn('[switch]$Portable', helper)
+    self.assertIn('if (-not $Portable)', helper)
+    self.assertIn('if ($NoSystemChanges) { $BootstrapArguments += "--no-download" }', helper)
+    self.assertIn('tools\\minisign.ps1', self.script)
+    self.assertLess(self.script.index('tools\\minisign.ps1'), self.script.index('# cargo-tauri'))
 
   def test_bootstrap_avoids_custom_function_and_scriptblock_dispatch(self) -> None:
     # Windows PowerShell 5.1 must execute the initializer linearly. This avoids
@@ -137,6 +148,21 @@ class WindowsCiTests(unittest.TestCase):
     self.assertIn("shell: pwsh", ci)
     for command in ("just init-self-test", "just init", "just ci"):
       self.assertIn(command, ci)
+
+  def test_required_windows_gate_depends_on_both_native_verifier_runners(self) -> None:
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    self.assertIn('windows-verifier:', ci)
+    self.assertIn('os: windows-11-arm', ci)
+    self.assertIn('os: windows-latest', ci)
+    self.assertIn('windows-native:\n    needs: windows-verifier', ci)
+    self.assertIn('if: ${{ always() }}', ci)
+    self.assertIn('needs.windows-verifier.result', ci)
+    self.assertIn('throw "Both native Windows verifier checks must pass"', ci)
+    self.assertIn('tools/test_windows_minisign.ps1', ci)
+    release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    build = release.split('  build:', 1)[1].split('  scoop:', 1)[0]
+    self.assertIn('tools/test_windows_minisign.ps1', build)
+    self.assertLess(build.index('tools/test_windows_minisign.ps1'), build.index('dtolnay/rust-toolchain'))
 
   def test_release_windows_build_uses_native_just_path_without_bash(self) -> None:
     release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")

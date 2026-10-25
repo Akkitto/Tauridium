@@ -11,7 +11,23 @@
         "binarySha256": "cec9f88be8c975af76854a53b4d49c3d257feae38d916edb0d16fb55aacd3000"
       }
     },
-    "publisherPublicKey": "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3"
+    "publisherPublicKey": "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3",
+    "windows": {
+      "url": "https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-win64.zip",
+      "sha256": "37b600344e20c19314b2e82813db2bfdcc408b77b876f7727889dbd46d539479",
+      "architectures": {
+        "x86_64": {
+          "member": "minisign-win64/x86_64/minisign.exe",
+          "binarySha256": "5535be9e4e123831ebe6ef324aafe9dde507015c176191f9e20c3ad60567f9e1",
+          "peMachine": 34404
+        },
+        "aarch64": {
+          "member": "minisign-win64/aarch64/minisign.exe",
+          "binarySha256": "f39e065e649d5ed7075675accfe0ada234175d63479df650654ec4365d7c4513",
+          "peMachine": 43620
+        }
+      }
+    }
   },
   "gitleaks": {
     "version": "8.30.1",
