@@ -8,6 +8,10 @@ before starting project/dependency build code. npm lifecycle hooks stay disabled
 
 ## Owner activation before the next authorized release
 
+For first-time owner key generation, backup, public-key migration and activation,
+follow [the updater signing guide](UPDATER-SIGNING.md). Older installations with
+the previous public key need a manual upgrade when its private key is unavailable.
+
 A local release commit, tag or ZIP does **not** activate remote protections or
 confirm signing-key scope. The owner must review and activate these controls on GitHub:
 
