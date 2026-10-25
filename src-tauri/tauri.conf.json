@@ -67,7 +67,7 @@
   "plugins": {
     "updater": {
       "requireSignedVersion": true,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU0RTU0QzQzODBDQjNCMjcKUldRbk84dUFRMHpsVkFYL09WallsUlhTeUZKWVNWTU5xTlE5K0tQWFJzMm5SUXlwcS8wQk9VUEUK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhCMzg3NjhBODY4QkVGN0UKUldSKzc0dUdpblk0aTkyVWhjMmZaZVNpekZMeG1BV3oxdEpuSEhSZUNxK1FSZlRJeVF6Nm0vRk8K",
       "endpoints": [
         "https://github.com/Akkitto/Tauridium/releases/latest/download/latest.json"
       ]

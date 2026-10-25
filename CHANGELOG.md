@@ -4,6 +4,10 @@
 
 ### Security
 
+- Establish the owner-controlled updater signing identity. Installations containing
+  the previous public key require a manual upgrade to this release before they can
+  accept future updates signed by the new key.
+
 - Update Vite and Vitest to patched releases, and fix newly reported constant-time,
   certificate-trust and Tokio I/O-safety issues in the locked dependencies.
 - Use the same revised, checksum-bound builder across native, Flatpak and Nix
