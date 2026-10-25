@@ -73,12 +73,12 @@ modules:
       - install -Dm644 source/data/dev.brani.tauridium.svg /app/share/icons/hicolor/scalable/apps/dev.brani.tauridium.svg
       - install -Dm644 source/LICENSE /app/share/licenses/dev.brani.tauridium/LICENSE
     sources:
-      # Materialize the exact immutable v1.0.1 commit after tagging.
+      # Materialize the exact immutable v1.0.2 commit after tagging.
       # Local builds use committed HEAD; publication rejects this preparatory placeholder.
       - type: git
         url: https://github.com/Akkitto/Tauridium.git
-        tag: v1.0.1
-        commit: __TAURIDIUM_V101_COMMIT__
+        tag: v1.0.2
+        commit: __TAURIDIUM_V102_COMMIT__
         dest: source
         x-checker-data:
           type: git

@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-25
+
+### Fixed
+
+- Bootstrap native Minisign on Windows x64 and ARM64 without requiring Scoop or
+  WinGet, verify cached tools in fresh processes, and test both clean-machine paths
+  before release compilation.
+
+### Security
+
+- Retain the owner-controlled updater identity. Installations containing the former
+  public key need a manual upgrade to the first successfully published new-key release.
+
 ## [1.0.1] - 2026-10-25
 
 ### Security

@@ -80,9 +80,9 @@ verify that its immutable tag/commit and all three offline source manifests agre
 just flatpak-publication-check
 ```
 
-During 1.0.1 release preparation, the publication reference deliberately uses
-`__TAURIDIUM_V101_COMMIT__`: a release commit cannot embed its own future hash.
-After the authorized immutable `v1.0.1` tag exists, replace that placeholder with
+During 1.0.2 release preparation, the publication reference deliberately uses
+`__TAURIDIUM_V102_COMMIT__`: a release commit cannot embed its own future hash.
+After the authorized immutable `v1.0.2` tag exists, replace that placeholder with
 the tag's exact peeled commit in a separate packaging commit, then run the check
 above. The tagged source archive retains the preparatory placeholder. Use the
 post-tag upstream reference for publication, or `just flatpak-build` for local
