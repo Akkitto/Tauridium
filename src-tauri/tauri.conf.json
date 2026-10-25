@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Tauridium",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "identifier": "dev.brani.tauridium",
   "build": {
     "frontendDist": "../dist",
@@ -67,7 +67,7 @@
   "plugins": {
     "updater": {
       "requireSignedVersion": true,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU0RTU0QzQzODBDQjNCMjcKUldRbk84dUFRMHpsVkFYL09WallsUlhTeUZKWVNWTU5xTlE5K0tQWFJzMm5SUXlwcS8wQk9VUEUK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU1QkVFQkNENjY3RTI1OUEKUldTYUpYNW16ZXUrNVJhSTBLVWtMcyt3ZlFoODU2cnhzNjQ1L2ZVclN5N2tOQkpaWnFicmljOGwK",
       "endpoints": [
         "https://github.com/Akkitto/Tauridium/releases/latest/download/latest.json"
       ]

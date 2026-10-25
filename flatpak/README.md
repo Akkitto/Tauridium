@@ -80,13 +80,15 @@ verify that its immutable tag/commit and all three offline source manifests agre
 just flatpak-publication-check
 ```
 
-The publication reference targets the immutable 1.0.0 source commit. Its pin was
-materialized after tagging to avoid a self-referential commit; the tagged source
-archive therefore retains the preparatory placeholder. Use this post-tag upstream
-reference for publication, or `just flatpak-build` for local tagged-source testing.
-This check rejects unresolved pins or incompatible source/offline inputs; do not
-move an existing published release tag. Verify the matching offline inputs before
-running submission checks. The
+During 1.0.1 release preparation, the publication reference deliberately uses
+`__TAURIDIUM_V101_COMMIT__`: a release commit cannot embed its own future hash.
+After the authorized immutable `v1.0.1` tag exists, replace that placeholder with
+the tag's exact peeled commit in a separate packaging commit, then run the check
+above. The tagged source archive retains the preparatory placeholder. Use the
+post-tag upstream reference for publication, or `just flatpak-build` for local
+tagged-source testing. This check rejects unresolved pins, tag/commit mismatches
+and incompatible source/offline inputs; never move an existing release tag.
+Verify the matching offline inputs before running submission checks. The
 following explicit Flathub command installs an application and is **not** the local
 non-installing QA workflow above:
 

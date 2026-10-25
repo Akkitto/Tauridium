@@ -24,7 +24,7 @@ from updater_signature import find_minisign
 ROOT = Path(__file__).resolve().parents[1]
 OS_RELEASE = Path("/etc/os-release")
 SYSTEM_DEPS_ENV = "TAURIDIUM_INIT_SYSTEM_DEPS"
-INIT_VERSION = "1.0.0"
+INIT_VERSION = "1.0.1"
 
 # Modules that Tauridium's Linux Tauri/WebKitGTK dependency graph needs at build
 # time. Checking modules instead of package names keeps init idempotent across

@@ -10,18 +10,18 @@ or WSL merely to develop Tauridium on Windows.
 After the release tag has been pushed, try the immutable release:
 
 ```sh
-nix --extra-experimental-features 'nix-command flakes' run github:Akkitto/Tauridium/v1.0.0
+nix --extra-experimental-features 'nix-command flakes' run github:Akkitto/Tauridium/v1.0.1
 ```
 
 Install in your profile for a stable desktop launcher and session autostart:
 
 ```sh
-nix --extra-experimental-features 'nix-command flakes' profile add github:Akkitto/Tauridium/v1.0.0#tauridium
+nix --extra-experimental-features 'nix-command flakes' profile add github:Akkitto/Tauridium/v1.0.1#tauridium
 nix profile list
 ```
 
 Tagged references are intentionally immutable: upgrading a profile pinned to
-v1.0.0 cannot discover a newer tag. Replace that reference when choosing the next
+v1.0.1 cannot discover a newer tag. Replace that reference when choosing the next
 release. For automatic tracking of the development branch, use
 `github:Akkitto/Tauridium/master#tauridium` instead, understanding that it follows
 unreleased commits; `nix profile upgrade <name>` then updates it. Obtain the exact
@@ -60,7 +60,7 @@ cross-compilation interface or Windows/macOS packages.
 Add this input to your existing configuration flake:
 
 ```nix
-inputs.tauridium.url = "github:Akkitto/Tauridium/v1.0.0";
+inputs.tauridium.url = "github:Akkitto/Tauridium/v1.0.1";
 ```
 
 Bind it in your existing `outputs` function, for example
