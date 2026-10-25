@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-25
+
 ### Fixed
 
 - Bootstrap native Minisign on Windows x64 and ARM64 without requiring Scoop or
