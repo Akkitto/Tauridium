@@ -50,7 +50,7 @@ keyring-core = "=1.0.1"
 tokio = { version = "=1.53.3", default-features = false, features = ["sync"] }
 dirs = "6"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-sha2 = "0.10"
+sha2 = "0.11"
 base64 = "0.22"
 # zip intentionally disables defaults; select flate2's portable Rust backend explicitly.
 # This must remain unconditional so Windows cannot depend on platform-specific feature unification.
