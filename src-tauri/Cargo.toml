@@ -54,7 +54,7 @@ sha2 = "0.10"
 base64 = "0.22"
 # zip intentionally disables defaults; select flate2's portable Rust backend explicitly.
 # This must remain unconditional so Windows cannot depend on platform-specific feature unification.
-flate2 = { version = "=1.1.9", default-features = false, features = ["rust_backend"] }
+flate2 = { version = "=1.1.10", default-features = false, features = ["rust_backend"] }
 zip = { version = "=9.0.4", default-features = false, features = ["deflate-flate2"] }
 tauri-plugin-notification = { version = "2", optional = true }
 tauri-plugin-autostart = { version = "2", optional = true }
