@@ -91,6 +91,11 @@ The tag workflow uses these separate runners:
    Existing drafts/releases are never overwritten, deleted or repurposed. Interrupted
    uploads leave a private draft for owner review; they are not automatically retried
    over existing assets. No pipeline can make a multi-file GitHub upload transactional.
+   Private drafts are discovered through the authenticated release listing; GitHub's
+   by-tag endpoint returns published releases only. Verification, promotion and the
+   final remote check stay bound to the same numeric release ID. For owner-reviewed
+   recovery, compare the complete draft against the exact approved sealed snapshot
+   and provenance before promoting that ID; do not replace uploaded assets or tags.
 
 Each boundary checks the preceding job's independent output digest against a bounded
 `TRANSFER.json` exact inventory, version and commit. That transport seal and release

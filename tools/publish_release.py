@@ -24,8 +24,29 @@ def api(path: str) -> dict:
   return json.loads(gh("api", path))
 
 
-def remote_release(repository: str, tag: str) -> dict:
-  release = api(f"repos/{repository}/releases/tags/{tag}")
+def list_releases(repository: str) -> list[dict]:
+  pages = json.loads(gh("api", "--paginate", "--slurp", f"repos/{repository}/releases?per_page=100"))
+  return [release for page in pages for release in page]
+
+
+def checked_release_id(value: object) -> int:
+  if type(value) is not int or value <= 0:
+    raise SystemExit("error: release has an invalid numeric identity; refusing publication")
+  return value
+
+
+def remote_release(repository: str, tag: str, *, identifier: int | None = None) -> dict:
+  if identifier is None:
+    # GitHub's by-tag endpoint returns only published releases. Discover our new
+    # draft through a fresh authenticated listing, then bind every check to its ID.
+    matches = [release for release in list_releases(repository) if release.get("tag_name") == tag]
+    if len(matches) != 1:
+      raise SystemExit("error: expected exactly one matching release/draft; refusing publication")
+    identifier = matches[0].get("id")
+  identifier = checked_release_id(identifier)
+  release = api(f"repos/{repository}/releases/{identifier}")
+  if checked_release_id(release.get("id")) != identifier or release.get("tag_name") != tag:
+    raise SystemExit("error: remote release identity differs from the verified draft")
   pages = json.loads(gh("api", "--paginate", "--slurp",
                         f"repos/{repository}/releases/{release['id']}/assets?per_page=100"))
   release["assets"] = [asset for page in pages for asset in page]
@@ -55,20 +76,21 @@ def publish(directory: Path, release_version: str, commit: str, expected: str, r
     remote = api(f"repos/{repository}/git/tags/{remote['sha']}")["object"]
   if remote.get("type") != "commit" or remote.get("sha") != commit:
     raise SystemExit("error: remote release tag does not resolve to the verified release commit")
-  pages = json.loads(gh("api", "--paginate", "--slurp", f"repos/{repository}/releases?per_page=100"))
-  if any(release["tag_name"] == tag for page in pages for release in page):
+  if any(release["tag_name"] == tag for release in list_releases(repository)):
     raise SystemExit("error: a release/draft already exists; refusing to overwrite or replace any assets")
   files = [str(directory / name) for name in sorted(policy.public_names(release_version))]
   gh("release", "create", tag, *files, "--repo", repository, "--verify-tag", "--draft",
-     "--title", f"Tauridium {release_version}", "--notes-file", str(directory / "release-notes.md"))
+     "--target", commit, "--title", f"Tauridium {release_version}",
+     "--notes-file", str(directory / "release-notes.md"))
   staged = remote_release(repository, tag)
-  if not staged["draft"] or staged["tag_name"] != tag:
+  if staged.get("draft") is not True or staged["tag_name"] != tag:
     raise SystemExit("error: expected a private draft before promotion")
   verify_remote_assets(staged, snapshot)
-  gh("release", "edit", tag, "--repo", repository, "--draft=false", "--latest")
-  final = remote_release(repository, tag)
+  gh("api", "--method", "PATCH", f"repos/{repository}/releases/{staged['id']}",
+     "-F", "draft=false", "-f", "make_latest=true")
+  final = remote_release(repository, tag, identifier=staged["id"])
   verify_remote_assets(final, snapshot)
-  if final["draft"]:
+  if final.get("draft") is not False:
     raise SystemExit("error: draft promotion did not complete")
   print(f"Published verified Tauridium {release_version}; {len(files)} exact assets")
 

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Discover private GitHub release drafts and verify/promote them by numeric release
+  ID, avoiding the published-release-only tag lookup.
+
 ## [1.0.2] - 2026-10-25
 
 ### Fixed
