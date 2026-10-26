@@ -3,10 +3,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +20,8 @@ if SPEC is None or SPEC.loader is None:
   raise RuntimeError("unable to load release_assets.py")
 release_assets = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(release_assets)
+
+import publish_release as publisher
 
 
 class Patch0612Tests(unittest.TestCase):
@@ -44,13 +48,21 @@ class Patch0612Tests(unittest.TestCase):
     self.assertIn("python3 -I tools/sign_release.py", self.workflow)
     self.assertIn("TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}", self.workflow)
 
-  def test_publish_only_uploads_updater_manifest_when_one_was_generated(self) -> None:
+  def test_publish_rejects_missing_updater_manifest_before_github_operations(self) -> None:
     self.assertIn("python3 tools/finalize_release.py custody", self.workflow)
-    publish = (ROOT / "tools/publish_release.py").read_text(encoding="utf-8")
-    self.assertIn('policy.public_names(release_version)', publish)
-    self.assertIn('release_snapshot.verify', publish)
-    self.assertIn('"--draft=false"', publish)
     self.assertIn("updater-manifest-if-signed assets_dir=\"release/published-assets\":", self.justfile)
+    release_version = "0.6.12"
+    with tempfile.TemporaryDirectory() as temp_dir:
+      assets = Path(temp_dir)
+      for name in publisher.release_snapshot.names(release_version, "final") - {"latest.json"}:
+        (assets / name).write_bytes(b"synthetic")
+      seal = b"{}"
+      (assets / publisher.release_snapshot.TRANSFER).write_bytes(seal)
+      with mock.patch.object(publisher, "gh") as github:
+        with self.assertRaisesRegex(SystemExit, "latest[.]json"):
+          publisher.publish(assets, release_version, "a" * 40, hashlib.sha256(seal).hexdigest(),
+                            "Akkitto/Tauridium")
+        github.assert_not_called()
 
   def test_unsigned_and_partial_updater_asset_sets_are_distinguished(self) -> None:
     release_version = "0.6.12"
