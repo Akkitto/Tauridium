@@ -36,7 +36,7 @@ data/build-toolchain.json pins the official stable Tauri CLI 2.12.3 and bundler
 RUSTSEC-2026-0367/0368/0369. The shared `flatpak/prepare-tauri-cli.py` helper
 verifies both immutable archives, extracts only bounded regular files, and
 narrowly changes both ZIP requirements to 9.0.4. It binds the bundler as a local
-dependency and assigns the distinct CLI identity `2.12.3+tauridium.2`. The exact
+dependency and assigns the distinct CLI identity `2.12.3+tauridium.3`. The exact
 patched lock is separately hash-pinned; it is not represented as upstream's lock.
 No Cargo registry source is edited. Patch preconditions fail closed on drift.
 
@@ -50,6 +50,16 @@ native, Nix and Flatpak producers all consume the same reviewed lock.
 Both application and builder also use `tokio 1.53.3`, fixing the I/O-safety
 finding [RUSTSEC-2026-0386](https://rustsec.org/advisories/RUSTSEC-2026-0386.html)
 without selecting the separately affected Tokio 1.54.0 release.
+
+The third build revision locks the patched compression stack: `zstd 0.14.3`,
+`zstd-safe 8.2.0` and `zstd-sys 2.1.2+zstd.1.5.7`. These resolve the newly reported
+context-reuse, safe-wrapper soundness and WebAssembly allocator findings in
+[RUSTSEC-2026-0391](https://rustsec.org/advisories/RUSTSEC-2026-0391.html),
+[RUSTSEC-2026-0395 through 0406](https://github.com/RustSec/advisory-db/tree/main/crates/zstd-safe)
+and [RUSTSEC-2026-0410](https://rustsec.org/advisories/RUSTSEC-2026-0410.html).
+The application runtime lock does not contain this compression stack. Whole-lock
+scanning still covers all platforms and warning kinds; no new ignore or advisory
+assessment is added. The new CLI identity prevents reuse of the earlier builder.
 
 The same narrow source preparation disables RPM's OpenPGP feature and replaces
 the unused signing branch with explicit credential rejection plus unsigned RPM

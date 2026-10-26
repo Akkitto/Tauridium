@@ -30,6 +30,16 @@ class BuildToolchainTests(unittest.TestCase):
         self.assertIn("sha256-" + base64.b64encode(bytes.fromhex(policy["tauriCliCrateSha256"])).decode("ascii"), nix)
         self.assertNotIn("fakeHash", nix)
 
+    def test_builder_compression_stack_has_all_reviewed_security_fixes(self):
+        lock = tomllib.loads((ROOT / "flatpak/tauri-cli.Cargo.lock").read_text(encoding="utf-8"))
+        minimums = {"zstd": (0, 14, 3), "zstd-safe": (8, 2, 0), "zstd-sys": (2, 1, 2)}
+        packages = [package for package in lock["package"] if package["name"] in minimums]
+        self.assertEqual({package["name"] for package in packages}, set(minimums))
+        for package in packages:
+            with self.subTest(package=package["name"], version=package["version"]):
+                version = tuple(int(part) for part in package["version"].split("+", 1)[0].split("."))
+                self.assertGreaterEqual(version, minimums[package["name"]])
+
     def test_distribution_and_developer_shell_use_the_same_cli_and_cleanup_builder(self):
         flake = (ROOT / "flake.nix").read_text(encoding="utf-8")
         self.assertEqual(flake.count('pkgs.callPackage ./packaging/nix/tauri-cli.nix'), 2)

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Security
+
+- Patch the build CLI's Zstd compression stack and require the revised verified
+  builder before starting builds. The application dependency lock is unchanged.
+
 ### Fixed
 
 - Discover private GitHub release drafts and verify/promote them by numeric release
