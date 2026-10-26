@@ -2,8 +2,8 @@
 """Prepare the same checksum-verified, explicitly patched CLI on every platform.
 
 Upstream CLI 2.12.3 and bundler 2.10.3 still require vulnerable ZIP 8. Only
-their normalized ZIP dependencies, unused RPM signing stack and the CLI build
-identity are changed. No patch is made in Cargo's shared registry.
+their normalized ZIP dependencies, unused RPM signing stack, reviewed compression
+lock and the CLI build identity are changed. No patch is made in Cargo's shared registry.
 """
 from __future__ import annotations
 

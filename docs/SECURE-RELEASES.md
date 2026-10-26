@@ -91,6 +91,11 @@ The tag workflow uses these separate runners:
    Existing drafts/releases are never overwritten, deleted or repurposed. Interrupted
    uploads leave a private draft for owner review; they are not automatically retried
    over existing assets. No pipeline can make a multi-file GitHub upload transactional.
+   Private drafts are discovered through the authenticated release listing; GitHub's
+   by-tag endpoint returns published releases only. Verification, promotion and the
+   final remote check stay bound to the same numeric release ID. For owner-reviewed
+   recovery, compare the complete draft against the exact approved sealed snapshot
+   and provenance before promoting that ID; do not replace uploaded assets or tags.
 
 Each boundary checks the preceding job's independent output digest against a bounded
 `TRANSFER.json` exact inventory, version and commit. That transport seal and release
@@ -112,7 +117,11 @@ against a fresh RustSec database. Security CI is required by normal CI/release a
 also scheduled daily. Exact version/lock-scoped assessments in
 `data/security-advisory-policy.json` expire and are printed, never silently ignored.
 The application and patched stable builder both use maintained ZIP 9. The shared
-builder preparation removes RPM's unused OpenPGP/ML-DSA stack entirely. Whole-lock
+builder preparation removes RPM's unused OpenPGP/ML-DSA stack entirely. The pinned
+`2.12.3+tauridium.3` builder also uses the patched Zstd stack: `zstd 0.14.3`,
+`zstd-safe 8.2.0` and `zstd-sys 2.1.2+zstd.1.5.7`. These Rust dependencies are
+absent from the application lock. Their builder advisories are fixed through
+locked upgrades, without new exclusions or extended assessments. Whole-lock
 scanning still reports an RSA advisory from the macOS-only certificate generator:
 its reviewed API use generates ephemeral keys, not the affected RSA decryption.
 That precise expiring assessment and upstream maintenance warnings remain visible;
