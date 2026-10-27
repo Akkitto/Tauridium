@@ -43,6 +43,8 @@ class FlatpakRustToolchainTests(unittest.TestCase):
       self.assertEqual(entry["url"], f"https://static.rust-lang.org/dist/2026-07-16/{component}-{version}-{arch}-unknown-linux-gnu.tar.xz")
       self.assertEqual(entry["sha256"], expected[component, arch])
     self.assertEqual(module["cleanup"], ["*"])
+    # Splitting debug info from the prebuilt LLVM shared library damages it.
+    self.assertEqual(module["build-options"], {"no-debuginfo": True, "strip": False})
     self.assertFalse(any("rustup" in command or "curl" in command for command in module["build-commands"]))
 
   def test_private_compiler_path_and_checks_cover_both_producers_before_compilation(self):

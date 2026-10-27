@@ -16,7 +16,9 @@ manifest. Flatpak downloads and verifies these sources before the network-free
 module builds; no rustup installer or network access is used during compilation.
 The effective compiler and Cargo identities are checked before both Tauri CLI and
 application compilation. The complete toolchain is removed during final cleanup;
-it is never an application runtime dependency. Node.js remains the managed Node 24
+it is never an application runtime dependency. Automatic debug splitting/stripping
+is disabled only for this prebuilt tool module, preserving its LLVM shared library;
+the application still uses the normal production stripping policy. Node.js remains the managed Node 24
 SDK extension, and runtime permissions are unchanged.
 
 Reassess this workaround when the matching Rust SDK extension is fixed. A future

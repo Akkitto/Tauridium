@@ -70,5 +70,9 @@
       "type": "file",
       "path": "check-rust-toolchain.py"
     }
-  ]
+  ],
+  "build-options": {
+    "no-debuginfo": true,
+    "strip": false
+  }
 }
