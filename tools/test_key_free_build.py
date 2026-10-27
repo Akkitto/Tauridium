@@ -44,7 +44,7 @@ class KeyFreeBuildTests(unittest.TestCase):
           mock.patch.object(tauri_build.Path, "home", return_value=tauri_build.ROOT / "synthetic-home"),
           mock.patch.object(tauri_build.shutil, "which", return_value="/synthetic/cargo-tauri"),
           mock.patch.object(tauri_build.subprocess, "run", return_value=
-                            subprocess.CompletedProcess([], 0, "tauri-cli 2.12.3+tauridium.1\n", "")) as run):
+                            subprocess.CompletedProcess([], 0, "tauri-cli 2.12.3+tauridium.3\n", "")) as run):
       with self.assertRaisesRegex(SystemExit, "exact pinned Tauri CLI"):
         tauri_build.build(["--no-bundle", "--ci"])
       run.assert_called_once()

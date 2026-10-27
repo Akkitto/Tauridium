@@ -97,6 +97,15 @@ class FlatpakSnapshotTests(unittest.TestCase):
       build.prepare(True, Path(self.temporary.name) / "stale-publication")
     self.assertFalse((Path(self.temporary.name) / "stale-publication").exists())
 
+  def test_publication_compiler_cohort_must_match_the_selected_source(self):
+    toolchain = self.root / "rust-toolchain.toml"
+    original = toolchain.read_text(encoding="utf-8")
+    toolchain.write_text(original.replace('channel = "1.97.1"', 'channel = "1.99.1"'), encoding="utf-8")
+    self.run_git("commit", "-qam", "Test: Change current compiler policy")
+    with self.assertRaisesRegex(SystemExit, "Rust toolchain differs"):
+      build.prepare(True, Path(self.temporary.name) / "compiler-mismatch")
+    self.assertFalse((Path(self.temporary.name) / "compiler-mismatch").exists())
+
   def test_publication_fixture_creates_the_declared_tag_at_its_source_commit(self):
     text = (self.root / build.MANIFEST).read_text(encoding="utf-8")
     match = build.PIN.search(text)

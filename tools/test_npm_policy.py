@@ -67,42 +67,84 @@ class NpmPolicyTests(unittest.TestCase):
 
 
 @unittest.skipUnless(shutil.which("node"), "Requires Node from the initialized development environment")
-class EsbuildProbeTests(unittest.TestCase):
-    def run_probe(self, *, version="0.25.12", failure=False, missing=False):
+class FrontendNativeProbeTests(unittest.TestCase):
+    def run_probe(self, *, version="1.2.15", binding_version="1.2.15", failure=None, missing=None, extra_env=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "tools").mkdir()
-            shutil.copyfile(ROOT / "tools/check_esbuild.mjs", root / "tools/check_esbuild.mjs")
+            shutil.copyfile(ROOT / "tools/check_frontend.mjs", root / "tools/check_frontend.mjs")
+            versions = {"rolldown": "1.2.15", "lightningcss": "1.33.0"}
+            for platform in ("linux-x64-gnu", "linux-x64-musl", "linux-arm64-gnu", "linux-arm64-musl",
+                             "win32-x64-msvc", "win32-arm64-msvc", "darwin-x64", "darwin-arm64"):
+                versions["@rolldown/binding-" + platform] = "1.2.15"
+                versions["lightningcss-" + platform] = "1.33.0"
             (root / "package-lock.json").write_text(json.dumps({
-                "packages": {"node_modules/esbuild": {"version": "0.25.12"}},
+                "packages": {"node_modules/" + name: {"version": value} for name, value in versions.items()},
             }), encoding="utf-8")
-            if not missing:
-                package = root / "node_modules/esbuild"
+            for name, value in versions.items():
+                if missing == name or missing == "native" and "binding-" in name:
+                    continue
+                package = root / "node_modules" / name
                 package.mkdir(parents=True)
-                # Deliberately no bin directory, npm shim or install script.
-                body = "throw new Error('synthetic native transform failure')" if failure else (
-                    "if (options.loader !== 'js') throw new Error('wrong loader'); return {code: input}"
-                )
-                (package / "index.js").write_text(
-                    "exports.version = " + json.dumps(version) + ";\n"
-                    "exports.transformSync = (input, options) => { " + body + " };\n",
-                    encoding="utf-8",
-                )
-            return subprocess.run([shutil.which("node"), str(root / "tools/check_esbuild.mjs")],
-                                  cwd=root, capture_output=True, text=True, timeout=30)
+                actual_version = version if name == "rolldown" else binding_version if "binding-" in name else value
+                (package / "package.json").write_text(json.dumps({
+                    "name": name, "version": actual_version, "main": "index.js",
+                }), encoding="utf-8")
+                (package / "index.js").write_text("module.exports = {};", encoding="utf-8")
+            if missing != "rolldown":
+                dist = root / "node_modules/rolldown/dist"
+                dist.mkdir()
+                (dist / "index.mjs").write_text("export const VERSION = " + json.dumps(version) + ";", encoding="utf-8")
+                transform = ("throw new Error('synthetic JavaScript transform failure');" if failure == "javascript" else
+                             "if (options.lang !== 'ts' || !input.includes(': number')) throw new Error('wrong transform input'); "
+                             "return {errors: [], code: 'const tauridiumCheck = 1 + 2;\\n'};")
+                (dist / "utils-index.mjs").write_text(
+                    "export function transformSync(filename, input, options) { " + transform + " }", encoding="utf-8")
+            if missing != "lightningcss":
+                transform = ("throw new Error('synthetic CSS transform failure');" if failure == "css" else
+                             "if (!options.minify || !options.code.toString().includes('#ff0000')) throw new Error('wrong CSS input'); "
+                             "return {code: Buffer.from('.tauridium-check{color:red}')};")
+                (root / "node_modules/lightningcss/index.js").write_text(
+                    "exports.transform = (options) => { " + transform + " };", encoding="utf-8")
+            env = {key: value for key, value in os.environ.items() if not key.startswith("NAPI_RS_")}
+            return subprocess.run([shutil.which("node"), str(root / "tools/check_frontend.mjs")],
+                                  cwd=root, env=env | (extra_env or {}), capture_output=True, text=True, timeout=30)
 
-    def test_probe_uses_local_api_without_executable_shims(self):
+    def test_probe_uses_local_native_apis_without_executable_shims(self):
         result = self.run_probe()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("native transform validated", result.stdout)
+        self.assertIn("native transforms validated", result.stdout)
 
-    def test_probe_rejects_package_version_mismatch(self):
+    def test_probe_rejects_package_or_native_binding_version_mismatch(self):
         self.assertNotEqual(self.run_probe(version="0.0.0").returncode, 0)
+        self.assertNotEqual(self.run_probe(binding_version="0.0.0").returncode, 0)
 
-    def test_probe_propagates_native_transform_failure(self):
-        result = self.run_probe(failure=True)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("synthetic native transform failure", result.stderr)
+    def test_probe_propagates_javascript_and_css_native_transform_failures(self):
+        for failure in ("javascript", "css"):
+            with self.subTest(failure=failure):
+                result = self.run_probe(failure=failure)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("synthetic", result.stderr)
 
-    def test_probe_cannot_fall_back_to_global_or_registry_package(self):
-        self.assertNotEqual(self.run_probe(missing=True).returncode, 0)
+    def test_probe_cannot_fall_back_to_global_or_registry_packages(self):
+        for missing in ("rolldown", "lightningcss", "native"):
+            with self.subTest(missing=missing):
+                self.assertNotEqual(self.run_probe(missing=missing).returncode, 0)
+
+    def test_probe_refuses_external_native_binding_and_wasm_overrides(self):
+        for name in ("NAPI_RS_NATIVE_LIBRARY_PATH", "NAPI_RS_FORCE_WASI", "NAPI_RS_WASI_FLAVOR"):
+            with self.subTest(name=name):
+                self.assertNotEqual(self.run_probe(extra_env={name: "synthetic-control"}).returncode, 0)
+
+    def test_runtime_check_rejects_unsupported_versions_before_loading_dependencies(self):
+        with tempfile.TemporaryDirectory() as directory:
+            probe = Path(directory) / "check_frontend.mjs"
+            shutil.copyfile(ROOT / "tools/check_frontend.mjs", probe)
+            for version, supported in (("20.19.0", False), ("22.11.0", False), ("22.12.0", True),
+                                       ("23.0.0", False), ("24.0.0", True), ("25.0.0", False), ("26.0.0", True)):
+                with self.subTest(version=version):
+                    source = ("Object.defineProperty(process.versions, 'node', {value: " + json.dumps(version) + "}); "
+                              "process.argv.push('--runtime-only'); await import(" + json.dumps(probe.as_uri()) + ");")
+                    result = subprocess.run([shutil.which("node"), "--input-type=module", "-e", source],
+                                            capture_output=True, text=True, timeout=30)
+                    self.assertEqual(result.returncode == 0, supported, result.stderr)

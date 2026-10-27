@@ -65,10 +65,10 @@ class PatchedCliTests(unittest.TestCase):
 
   def setUp(self):
     self.lock = b"Synthetic reviewed lock control\n"
-    self.manifest = ('[package]\nname = "tauri-cli"\nversion = "2.12.3"\n'
-                     '[dependencies.tauri-bundler]\nversion = "=2.10.3"\n'
-                     '[dependencies.zip]\nversion = "8"\nfeatures = ["deflate"]\n')
-    self.bundler_manifest = ('[package]\nname = "tauri-bundler"\nversion = "2.10.3"\n[dependencies.zip]\nversion = "8"\n'
+    self.manifest = ('[package]\nname = "tauri-cli"\nversion = "2.12.4"\n'
+                     '[dependencies.tauri-bundler]\nversion = "=2.10.4"\n'
+                     '[dependencies.zip]\nversion = "9"\nfeatures = ["deflate"]\n')
+    self.bundler_manifest = ('[package]\nname = "tauri-bundler"\nversion = "2.10.4"\n[dependencies.zip]\nversion = "9"\n'
                              '[target.\'cfg(target_os = "linux")\'.dependencies.rpm]\nversion = "0.30"\nfeatures = ["bzip2-compression"]\n')
     self.rpm = '''use rpm::{self, Dependency, FileOptions, signature::pgp};
   let pkg = if let Ok(raw_secret_key) = env::var("TAURI_SIGNING_RPM_KEY") {
@@ -80,10 +80,10 @@ class PatchedCliTests(unittest.TestCase):
   } else {
     builder.build()?
   };'''
-    self.cli = packed("tauri-cli-2.12.3", self.manifest)
-    self.bundler = packed("tauri-bundler-2.10.3", self.bundler_manifest,
-                          [("tauri-bundler-2.10.3/src/bundle/linux/rpm.rs", self.rpm.encode(), tarfile.REGTYPE)])
-    self.policy = {"tauriCli": "2.12.3", "tauriCliBuild": "2.12.3+tauridium.1", "tauriBundler": "2.10.3",
+    self.cli = packed("tauri-cli-2.12.4", self.manifest)
+    self.bundler = packed("tauri-bundler-2.10.4", self.bundler_manifest,
+                          [("tauri-bundler-2.10.4/src/bundle/linux/rpm.rs", self.rpm.encode(), tarfile.REGTYPE)])
+    self.policy = {"tauriCli": "2.12.4", "tauriCliBuild": "2.12.4+tauridium.1", "tauriBundler": "2.10.4",
                    "tauriCliCrateSha256": hashlib.sha256(self.cli).hexdigest(),
                    "tauriBundlerCrateSha256": hashlib.sha256(self.bundler).hexdigest(),
                    "tauriCliLockSha256": hashlib.sha256(self.lock).hexdigest()}
@@ -93,12 +93,12 @@ class PatchedCliTests(unittest.TestCase):
       output = Path(temporary) / "prepared"
       PREPARE.prepare(output, self.cli, self.bundler, self.policy, self.lock)
       self.assertEqual((output / "Cargo.lock").read_bytes(), self.lock)
-      expected = self.manifest.replace('version = "2.12.3"', 'version = "2.12.3+tauridium.1"')
+      expected = self.manifest.replace('version = "2.12.4"', 'version = "2.12.4+tauridium.1"')
       expected = expected.replace('[dependencies.tauri-bundler]\n', '[dependencies.tauri-bundler]\npath = "tauridium-bundler"\n')
-      expected = expected.replace('[dependencies.zip]\nversion = "8"', '[dependencies.zip]\nversion = "=9.0.4"')
+      expected = expected.replace('[dependencies.zip]\nversion = "9"', '[dependencies.zip]\nversion = "=9.1.2"')
       self.assertEqual((output / "Cargo.toml").read_text(encoding="utf-8"), expected)
       self.assertEqual((output / "tauridium-bundler/Cargo.toml").read_text(encoding="utf-8"),
-                       self.bundler_manifest.replace('[dependencies.zip]\nversion = "8"', '[dependencies.zip]\nversion = "=9.0.4"')
+                       self.bundler_manifest.replace('[dependencies.zip]\nversion = "9"', '[dependencies.zip]\nversion = "=9.1.2"')
                        .replace('features = ["bzip2-compression"]', 'default-features = false\n'
                                 'features = ["payload", "bzip2-compression", "gzip-compression", "zstd-compression", "xz-compression"]'))
       rpm = (output / "tauridium-bundler/src/bundle/linux/rpm.rs").read_text(encoding="utf-8")
@@ -118,16 +118,16 @@ class PatchedCliTests(unittest.TestCase):
           PREPARE.prepare(Path(temporary) / "out", cli, bundler, self.policy, lock)
 
   def test_links_traversal_duplicates_and_nonmatching_upstream_are_rejected(self):
-    for name, kind in (("tauri-cli-2.12.3/../../escape", tarfile.REGTYPE),
-                       ("tauri-cli-2.12.3/link", tarfile.SYMTYPE),
-                       ("tauri-cli-2.12.3/link", tarfile.LNKTYPE),
-                       ("tauri-cli-2.12.3/Cargo.toml", tarfile.REGTYPE)):
-      data = packed("tauri-cli-2.12.3", self.manifest, [(name, b"", kind)])
+    for name, kind in (("tauri-cli-2.12.4/../../escape", tarfile.REGTYPE),
+                       ("tauri-cli-2.12.4/link", tarfile.SYMTYPE),
+                       ("tauri-cli-2.12.4/link", tarfile.LNKTYPE),
+                       ("tauri-cli-2.12.4/Cargo.toml", tarfile.REGTYPE)):
+      data = packed("tauri-cli-2.12.4", self.manifest, [(name, b"", kind)])
       policy = dict(self.policy, tauriCliCrateSha256=hashlib.sha256(data).hexdigest())
       with self.subTest(name=name, kind=kind), tempfile.TemporaryDirectory() as temporary:
         with self.assertRaisesRegex(SystemExit, "unsafe"):
           PREPARE.prepare(Path(temporary) / "out", data, self.bundler, policy, self.lock)
-    changed = packed("tauri-cli-2.12.3", self.manifest.replace('version = "8"', 'version = "9"'))
+    changed = packed("tauri-cli-2.12.4", self.manifest.replace('version = "9"', 'version = "10"'))
     policy = dict(self.policy, tauriCliCrateSha256=hashlib.sha256(changed).hexdigest())
     with tempfile.TemporaryDirectory() as temporary:
       with self.assertRaisesRegex(SystemExit, "no longer matches"):

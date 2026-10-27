@@ -353,26 +353,35 @@ try {
       } finally {
         $ErrorActionPreference = $SavedErrorActionPreference
       }
-      if ($NodeProbeExitCode -eq 0 -and $NodeVersion -match '^v(\d+)\.' -and [int]$Matches[1] -ge 20) {
+      if ($NodeProbeExitCode -eq 0 -and $NodeVersion -match '^v(\d+)\.(\d+)\.' -and (([int]$Matches[1] -eq 22 -and [int]$Matches[2] -ge 12) -or [int]$Matches[1] -eq 24 -or [int]$Matches[1] -ge 26)) {
         $NodeReady = $true
       }
     }
 
     if (-not $NodeReady) {
       if ($NoSystemChanges) {
-        throw "Windows prerequisite Node.js 20 or newer is missing and -NoSystemChanges was requested"
+        throw "Windows prerequisite Node.js 22.12+, 24 or 26+ is missing and -NoSystemChanges was requested"
       }
 
       $NodeScoopAttempted = $false
       if ($ScoopAvailable) {
         $NodeScoopAttempted = $true
-        Write-Host "+ scoop install nodejs-lts"
         $SavedErrorActionPreference = $ErrorActionPreference
         try {
           $ErrorActionPreference = "Continue"
-          & scoop install nodejs-lts
+          # An installed older LTS must be upgraded: scoop install alone
+          # leaves an existing package unchanged and cannot satisfy Node 22.12+.
+          $NodeScoopPrefix = & scoop prefix nodejs-lts 2>$null
+          $NodeScoopPrefixExitCode = $LASTEXITCODE
+          if ($NodeScoopPrefixExitCode -eq 0 -and $NodeScoopPrefix) {
+            Write-Host "+ scoop update nodejs-lts"
+            & scoop update nodejs-lts
+          } else {
+            Write-Host "+ scoop install nodejs-lts"
+            & scoop install nodejs-lts
+          }
         } catch {
-          Write-Warning ("Scoop could not install nodejs-lts: {0}" -f $_.Exception.Message)
+          Write-Warning ("Scoop could not provide a supported nodejs-lts runtime: {0}" -f $_.Exception.Message)
         } finally {
           $ErrorActionPreference = $SavedErrorActionPreference
         }
@@ -402,7 +411,7 @@ try {
           } finally {
             $ErrorActionPreference = $SavedErrorActionPreference
           }
-          if ($NodeProbeExitCode -eq 0 -and $NodeVersion -match '^v(\d+)\.' -and [int]$Matches[1] -ge 20) {
+          if ($NodeProbeExitCode -eq 0 -and $NodeVersion -match '^v(\d+)\.(\d+)\.' -and (([int]$Matches[1] -eq 22 -and [int]$Matches[2] -ge 12) -or [int]$Matches[1] -eq 24 -or [int]$Matches[1] -ge 26)) {
             $NodeReady = $true
           }
         }
@@ -444,7 +453,7 @@ try {
           } finally {
             $ErrorActionPreference = $SavedErrorActionPreference
           }
-          if ($NodeProbeExitCode -eq 0 -and $NodeVersion -match '^v(\d+)\.' -and [int]$Matches[1] -ge 20) {
+          if ($NodeProbeExitCode -eq 0 -and $NodeVersion -match '^v(\d+)\.(\d+)\.' -and (([int]$Matches[1] -eq 22 -and [int]$Matches[2] -ge 12) -or [int]$Matches[1] -eq 24 -or [int]$Matches[1] -ge 26)) {
             $NodeReady = $true
           }
         }
@@ -455,12 +464,12 @@ try {
           throw "Node.js is missing and neither Scoop nor winget is available for installation"
         }
         if ($null -ne $NodeWingetExitCode) {
-          throw ("Node.js installation did not provide a usable Node.js 20+ runtime; winget exit code was {0}" -f $NodeWingetExitCode)
+          throw ("Node.js installation did not provide a usable Node.js 22.12+, 24 or 26+ runtime; winget exit code was {0}" -f $NodeWingetExitCode)
         }
         if ($NodeScoopAttempted) {
-          throw "Scoop did not provide a usable Node.js 20+ runtime and winget fallback was unavailable"
+          throw "Scoop did not provide a usable Node.js 22.12+, 24 or 26+ runtime and winget fallback was unavailable"
         }
-        throw "Node.js installation did not provide a usable Node.js 20+ runtime"
+        throw "Node.js installation did not provide a usable Node.js 22.12+, 24 or 26+ runtime"
       }
     }
     Write-Host ("+ Node.js: {0}" -f $NodeVersion)
@@ -835,6 +844,9 @@ try {
     # -------------------------------------------------------------------------
     # JavaScript dependency policy + installation
     # -------------------------------------------------------------------------
+    & node.exe tools/check_frontend.mjs --runtime-only
+    if ($LASTEXITCODE -ne 0) { throw "unsupported Node.js runtime for locked frontend tools" }
+
     Write-Host "+ Validate the shared script-free npm installation policy"
     & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $PythonRunnerPath tools/npm_policy.py
     if ($LASTEXITCODE -ne 0) { throw "npm lifecycle policy validation failed" }
@@ -849,10 +861,10 @@ try {
     if ($LASTEXITCODE -ne 0) {
       throw ("npm.cmd audit failed with exit code {0}" -f $LASTEXITCODE)
     }
-    Write-Host "+ node.exe tools/check_esbuild.mjs"
-    & node.exe tools/check_esbuild.mjs
+    Write-Host "+ node.exe tools/check_frontend.mjs"
+    & node.exe tools/check_frontend.mjs
     if ($LASTEXITCODE -ne 0) {
-      throw ("local esbuild validation failed with exit code {0}" -f $LASTEXITCODE)
+      throw ("local frontend native validation failed with exit code {0}" -f $LASTEXITCODE)
     }
   }
 

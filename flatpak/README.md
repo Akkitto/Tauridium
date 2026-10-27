@@ -3,6 +3,30 @@
 This directory is the canonical upstream packaging input for `dev.brani.tauridium`.
 The application is built from source with network access disabled during module builds.
 
+## Build-only Rust compiler
+
+The GNOME 51 SDK uses the freedesktop 26.08 extension branch. Its current Rust
+extension contains Rust 1.98.0, which has the upstream vtable miscompilation fixed
+in 1.98.1. Mixing the 25.08 extension into this SDK is not supported.
+
+`rust-toolchain.json` instead fetches the official Rust 1.97.1 compiler, Cargo and
+native standard library for x86_64/aarch64, matching `rust-toolchain.toml`. Each
+component has an immutable dated URL and SHA-256 from the official release
+manifest. Flatpak downloads and verifies these sources before the network-free
+module builds; no rustup installer or network access is used during compilation.
+The effective compiler and Cargo identities are checked before both Tauri CLI and
+application compilation. The complete toolchain is removed during final cleanup;
+it is never an application runtime dependency. Node.js remains the managed Node 24
+SDK extension, and runtime permissions are unchanged.
+
+Reassess this workaround when the matching Rust SDK extension is fixed. A future
+compiler update must review all six component pins and update the canonical
+version together; tests reject a mismatched compiler, Cargo or manifest cohort.
+
+Sources: [official Rust 1.97.1 component manifest](https://static.rust-lang.org/dist/2026-07-16/channel-rust-1.97.1.toml),
+[Rust 1.98.1 regression notice](https://blog.rust-lang.org/2026/09/03/Rust-1.98.1/),
+[reviewed SDK extension manifest](https://github.com/flathub/org.freedesktop.Sdk.Extension.rust-stable/blob/c9fd7fde3fa6181016a6fbae3e26958670389445/org.freedesktop.Sdk.Extension.rust-stable.json).
+
 ## Regenerate dependency sources
 
 Run from the repository root:
@@ -17,7 +41,7 @@ Cargo vendor layout and npm cacache layout used by the current Flatpak builder t
 and `--check` fails when either committed source manifest is stale.
 
 `tauri-cli-cargo-sources.json` is the pinned offline source set for
-`tauri-cli 2.12.3`; regenerate it with `tools/generate_flatpak_sources.py`
+`tauri-cli 2.12.4`; regenerate it with `tools/generate_flatpak_sources.py`
 against the verified `flatpak/tauri-cli.Cargo.lock` shipped in that exact crate before a
 dependency/toolchain change. The exact flatpak-builder-tools revision used for a
 Flathub submission should be recorded in the human-authored submission PR.

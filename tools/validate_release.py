@@ -79,18 +79,20 @@ def validate_just_recipe_platforms(justfile: str) -> None:
       fail(f"duplicate just recipe {name!r} has overlapping platform definitions")
 
 
-def validate_esbuild_probe(init_py: str, init_ps1: str, probe: str) -> None:
+def validate_frontend_probe(init_py: str, init_ps1: str, probe: str) -> None:
   for source, markers in (
-    (init_py, ('["node", "tools/check_esbuild.mjs"]',)),
-    (init_ps1, ('& node.exe tools/check_esbuild.mjs',)),
-    (probe, ('../node_modules/esbuild', 'lock.packages["node_modules/esbuild"].version',
-             'assert.equal(esbuild.version,', 'esbuild.transformSync(input,',
-             'assert.equal(esbuild.transformSync(')),
+    (init_py, ('["node", "tools/check_frontend.mjs"]', '["node", "tools/check_frontend.mjs", "--runtime-only"]')),
+    (init_ps1, ('& node.exe tools/check_frontend.mjs', '& node.exe tools/check_frontend.mjs --runtime-only')),
+    (probe, ('../node_modules/${name}/', 'lock.packages[`node_modules/${name}`].version',
+             'assert.equal(metadata.version,', 'assert.equal(rolldown.VERSION,',
+             'transformSync("tauridium-probe.ts", input,', 'lightningcss.transform(',
+             'require.resolve(fileURLToPath(binding.base))', 'NAPI_RS_NATIVE_LIBRARY_PATH',
+             'NAPI_RS_FORCE_WASI', 'NAPI_RS_ENFORCE_VERSION_CHECK')),
   ):
     if any(marker not in source for marker in markers):
-      fail("initializer must validate the locked local esbuild API with a native transform")
+      fail("initializer must validate the locked local frontend APIs with real native transforms")
   if '"exec", "--offline", "--", "esbuild"' in init_py or 'npm.cmd exec --offline -- esbuild' in init_ps1:
-    fail("initializer must not depend on missing Windows esbuild command shims")
+    fail("initializer must not depend on missing Windows frontend command shims")
 
 
 def main() -> int:
@@ -153,9 +155,10 @@ def main() -> int:
 
   expected_frontend_fixes = {
     "node_modules/source-map-js": "1.2.2",
-    "node_modules/esbuild": "0.25.12",
-    "node_modules/nanoid": "3.3.18",
-    "node_modules/postcss": "8.5.25",
+    "node_modules/rolldown": "1.2.15",
+    "node_modules/lightningcss": "1.33.0",
+    "node_modules/nanoid": "3.3.20",
+    "node_modules/postcss": "8.5.32",
   }
   locked_packages = lock.get("packages", {})
   for package_path, expected_version in expected_frontend_fixes.items():
@@ -206,7 +209,7 @@ def main() -> int:
     fail("initializer does not detect mixed/stale release extraction")
   if "--native-only" not in init_py:
     fail("initializer lacks native-only diagnostic mode")
-  validate_esbuild_probe(init_py, init_ps1, read("tools/check_esbuild.mjs"))
+  validate_frontend_probe(init_py, init_ps1, read("tools/check_frontend.mjs"))
   if '["node", str(esbuild), "--version"]' in init_py:
     fail("initializer still attempts to parse the native esbuild binary with Node.js")
   for marker in (
@@ -469,9 +472,9 @@ def main() -> int:
     fail("Cargo.lock contains the known errno 0.3.13/0.3.14 checksum corruption")
 
   for marker in (
-    'tauri-plugin-window-state = "=2.4.1"',
-    'name = "tauri-plugin-window-state"\nversion = "2.4.1"',
-    'checksum = "73736611e14142408d15353e21e3cca2f12a3cfb523ad0ce85999b6d2ef1a704"',
+    'tauri-plugin-window-state = "=2.5.0"',
+    'name = "tauri-plugin-window-state"\nversion = "2.5.0"',
+    'checksum = "5d6815cab7b212f9cfe16a9d79d8d22f9e14159e4a9460f7dec1467167a008e3"',
   ):
     source = cargo if marker.startswith("tauri-plugin") else cargo_lock
     if marker not in source:
@@ -1616,7 +1619,7 @@ def main() -> int:
   if 'include: ["src/**/*.test.ts"]' not in vite_config:
     fail("Vitest discovery is not confined to canonical frontend sources")
   readme = read("README.md")
-  if "**Vite 6 / Vitest 3** - frontend development/build pipeline and unit tests" not in readme:
+  if "**Vite 8 / Vitest 5** - frontend development/build pipeline and unit tests" not in readme:
     fail("README technology stack does not document the active Vite/Vitest frontend toolchain")
   gitignore = read(".gitignore")
   if len(gitignore.splitlines()) > 60 or "toptal.com/developers/gitignore" in gitignore:

@@ -22,7 +22,7 @@ import tauri_build
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = "flatpak/dev.brani.tauridium.yml"
 LOCKS = ("src-tauri/Cargo.lock", "package-lock.json", "flatpak/tauri-cli.Cargo.lock",
-         "data/build-toolchain.json")
+         "data/build-toolchain.json", "rust-toolchain.toml")
 GENERATED = ("flatpak/cargo-sources.json", "flatpak/node-sources.json", "flatpak/tauri-cli-cargo-sources.json",
              "flatpak/tauri-cli-policy.json")
 PIN = re.compile(r"(?m)^      - type: git\r?\n        url: https://github\.com/Akkitto/Tauridium\.git\r?\n"
@@ -77,6 +77,8 @@ def validate_runtime_layout(output: Path) -> None:
   # with --runtime. No custom SDK/runtime tree is supported by this producer.
   if os.path.lexists(output / "build/usr"):
     raise SystemExit("error: Flatpak candidate contains an unreviewed custom runtime")
+  if os.path.lexists(output / "build/files/lib/tauridium-rust-toolchain"):
+    raise SystemExit("error: Flatpak candidate retains the build-only Rust toolchain")
 
 
 def seal_candidate(output: Path) -> None:
@@ -220,10 +222,12 @@ def prepare(publication: bool, parent: Path) -> tuple[Path, Path]:
     selected = {name: git("show", revision + ":" + name) for name in LOCKS}
   except subprocess.CalledProcessError:
     raise SystemExit("error: selected Flatpak source predates required reviewed build metadata; use just flatpak-build for local HEAD, then synchronize the publication pin after an authorized release") from None
-  current = {name: git("show", head + ":" + name) for name in (*GENERATED, "data/build-toolchain.json")}
+  current = {name: git("show", head + ":" + name) for name in (*GENERATED, *LOCKS[3:])}
   verify_inputs(current, selected)
   if current["data/build-toolchain.json"] != selected["data/build-toolchain.json"]:
     raise SystemExit("error: Flatpak publication builder policy differs from selected source")
+  if current["rust-toolchain.toml"] != selected["rust-toolchain.toml"]:
+    raise SystemExit("error: Flatpak publication Rust toolchain differs from selected source")
   parent.mkdir(parents=True, exist_ok=True)
   # Windows TEMP may use an 8.3 alias while consumers resolve the long path.
   # Establish one canonical identity before recording or returning any paths.

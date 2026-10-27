@@ -16,40 +16,43 @@ LOCK = json.loads((ROOT / "package-lock.json").read_text(encoding="utf-8"))
 class Patch0714Tests(unittest.TestCase):
   def test_flate2_backend_is_explicit_and_cross_platform(self) -> None:
     self.assertIn(
-      'flate2 = { version = "=1.1.9", default-features = false, features = ["rust_backend"] }',
+      'flate2 = { version = "=1.1.10", default-features = false, features = ["rust_backend"] }',
       CARGO,
     )
     self.assertIn(
-      'zip = { version = "=9.0.4", default-features = false, features = ["deflate-flate2"] }',
+      'zip = { version = "=9.1.2", default-features = false, features = ["deflate-flate2"] }',
       CARGO,
     )
 
-  def test_vitest_and_mocker_are_pinned_to_patched_v4_release(self) -> None:
-    # 4.1.12 fixes GHSA-xp26-3454-mjgp and GHSA-qxg6-89mg-rqv8.
-    self.assertEqual(PACKAGE["devDependencies"]["vitest"], "4.1.12")
-    self.assertEqual(LOCK["packages"]["node_modules/vitest"]["version"], "4.1.12")
-    self.assertEqual(LOCK["packages"]["node_modules/@vitest/mocker"]["version"], "4.1.12")
+  def test_vitest_mocker_and_spy_are_pinned_to_the_reviewed_v5_cohort(self) -> None:
+    # These packages share internal APIs and must advance together. The complete
+    # upgraded tree is also checked by the current all-severity npm audit.
+    self.assertEqual(PACKAGE["devDependencies"]["vitest"], "5.0.5")
+    for package in ("vitest", "@vitest/mocker", "@vitest/spy"):
+      self.assertEqual(LOCK["packages"][f"node_modules/{package}"]["version"], "5.0.5")
 
-  def test_devalue_is_pinned_past_reported_advisory_boundary(self) -> None:
-    pinned = PACKAGE["overrides"]["devalue"]
-    self.assertEqual(LOCK["packages"]["node_modules/devalue"]["version"], pinned)
+  def test_devalue_is_locked_past_reported_advisory_boundary_without_an_override(self) -> None:
+    pinned = LOCK["packages"]["node_modules/devalue"]["version"]
+    self.assertEqual(pinned, "5.9.4")
+    self.assertNotIn("devalue", PACKAGE.get("overrides", {}))
     # October 2026 advisories extend the affected range through 5.9.2.
     self.assertGreaterEqual(tuple(int(part) for part in pinned.split(".")), (5, 9, 3))
 
-  def test_vitest_4_lock_tree_contains_required_runtime_packages(self) -> None:
+  def test_vitest_5_lock_tree_contains_reviewed_runtime_packages(self) -> None:
     packages = LOCK["packages"]
     expected = {
-      "@standard-schema/spec": "1.1.0",
-      "chai": "6.2.2",
-      "convert-source-map": "2.0.0",
-      "es-module-lexer": "2.3.2",
-      "obug": "2.1.4",
-      "std-env": "4.2.0",
-      "tinyexec": "1.3.0",
-      "tinyrainbow": "3.2.0",
+      "node_modules/chai": "6.3.0",
+      "node_modules/es-module-lexer": "2.3.2",
+      "node_modules/vitest/node_modules/obug": "3.0.0",
+      "node_modules/std-env": "4.3.0",
+      "node_modules/tinyexec": "1.3.1",
+      "node_modules/tinybench": "6.2.2",
     }
     for package, version in expected.items():
-      self.assertEqual(packages[f"node_modules/{package}"]["version"], version)
+      self.assertEqual(packages[package]["version"], version)
+    # Vitest 5 requires its nested obug 3 even while the Svelte plugin uses
+    # obug 2; a top-level-only check would miss the actual runtime dependency.
+    self.assertEqual(packages["node_modules/vitest"]["dependencies"]["obug"], "^3.0.0")
 
   def test_obsolete_vitest_3_vite_node_is_not_locked(self) -> None:
     self.assertNotIn("node_modules/vite-node", LOCK["packages"])

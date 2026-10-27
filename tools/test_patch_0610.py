@@ -27,7 +27,7 @@ class Patch0610Tests(unittest.TestCase):
     self.assertIn('"dev": "vite"', self.package)
     self.assertIn('"build": "vite build"', self.package)
     self.assertIn('"test": "vitest run"', self.package)
-    self.assertIn("**Vite 6 / Vitest 3**", self.readme)
+    self.assertIn("**Vite 8 / Vitest 5**", self.readme)
 
   def test_proven_dormant_project_files_are_removed(self) -> None:
     self.assertFalse((ROOT / "src-tauri/icons/tauridium_custom.svg").exists())

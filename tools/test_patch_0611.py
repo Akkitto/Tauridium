@@ -19,7 +19,7 @@ class Patch0611Tests(unittest.TestCase):
     regression = (ROOT / "tools" / "test_patch_0505.py").read_text(encoding="utf-8")
     self.assertNotIn("README_SHA256", regression)
     self.assertNotIn("hashlib.sha256", regression)
-    self.assertIn("**Vite 6 / Vitest 3**", regression)
+    self.assertIn("**Vite 8 / Vitest 5**", regression)
     self.assertIn("## Licence", regression)
 
 

@@ -7,6 +7,7 @@ import argparse
 import json
 import re
 import subprocess
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,7 +17,17 @@ HOME_CASES = {"direct", "overlay", "inputs", "closure"}
 NIXOS_CASES = {"direct", "overlay", "closure", "integrated", "integratedOverlay"}
 
 
+def expected_toolchain_version():
+  return tomllib.loads((ROOT / "rust-toolchain.toml").read_text(encoding="utf-8"))["toolchain"]["channel"]
+
+
 def validate_report(report):
+  compiler = report.get("compilerChecks", {})
+  expected_compiler = expected_toolchain_version()
+  if set(compiler) != {"expected", "application", "builder", "hookCargo", "assetPlugin"} or any(
+    value != expected_compiler for value in compiler.values()
+  ):
+    raise RuntimeError("The effective Nix application, Tauri CLI, hook Cargo and asset plugin must use the pinned Rust toolchain")
   if report.get("directAlias") is not True:
     raise RuntimeError("Default and named package aliases must match")
   for group, expected in (("homeChecks", HOME_CASES), ("nixosChecks", NIXOS_CASES)):
@@ -61,7 +72,7 @@ def main():
         raise RuntimeError(f"Expected missing Tauridium argument ({system}/{failure}):\n{result.stdout}\n{result.stderr}")
       report["missingArgumentRegressions"][failure] = {"expectedFailure": True, "diagnostic": result.stderr}
     evidence[system] = report
-    print(f"{system}: 10 consumption checks and 3 missing-argument regressions passed")
+    print(f"{system}: 10 consumption checks, 4 compiler-policy checks and 3 missing-argument regressions passed")
   if args.output:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")

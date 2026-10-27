@@ -38,7 +38,7 @@ class Patch0505Tests(unittest.TestCase):
       "## Technology",
       "**Tauri v2 / Rust**",
       "**Svelte 5 / TypeScript**",
-      "**Vite 6 / Vitest 3**",
+      "**Vite 8 / Vitest 5**",
       "**reqwest + rustls**",
       "**wry**",
       "## Releases",

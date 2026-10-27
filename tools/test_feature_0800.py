@@ -40,7 +40,8 @@ class FlatpakReleaseTests(unittest.TestCase):
     for marker in (
       "runtime: org.gnome.Platform",
       "runtime-version: '51'",
-      "org.freedesktop.Sdk.Extension.rust-stable",
+      "  - rust-toolchain.json",
+      "RUSTC: /app/lib/tauridium-rust-toolchain/bin/rustc",
       "org.freedesktop.Sdk.Extension.node24",
       "shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json",
       "--share=network",

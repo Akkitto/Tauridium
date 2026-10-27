@@ -490,13 +490,14 @@ def install_javascript_dependencies() -> None:
   if not shutil.which("npm"):
     raise InitError("npm is required but was not found in PATH")
 
+  run_checked(["node", "tools/check_frontend.mjs", "--runtime-only"])
   validate_npm_policy()
   run_checked(["npm", "ci", "--ignore-scripts"])
   run_checked(["npm", "audit", "--audit-level=high"])
 
-  # Exercise the locked local API and native optional package without depending
-  # on npm's command shims or running esbuild's deliberately disabled postinstall.
-  run_checked(["node", "tools/check_esbuild.mjs"])
+  # Exercise both locked native toolchain APIs without command shims,
+  # installation hooks, external native overrides or download fallbacks.
+  run_checked(["node", "tools/check_frontend.mjs"])
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:

@@ -50,7 +50,7 @@ class WindowsBootstrapTests(unittest.TestCase):
       'VBSCRIPT',
       '& npm.cmd ci',
       '& npm.cmd audit --audit-level=high',
-      '& node.exe tools/check_esbuild.mjs',
+      '& node.exe tools/check_frontend.mjs',
     ):
       self.assertIn(marker, self.script)
 

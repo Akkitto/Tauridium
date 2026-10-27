@@ -11,7 +11,7 @@ let
   upstream = fetchurl {
     url = "https://static.crates.io/crates/tauri-cli/tauri-cli-${policy.tauriCli}.crate";
     name = "tauri-cli-${policy.tauriCli}.tar.gz";
-    hash = "sha256-mm9H6GXHxSaIDZ46DEu4QlXW4/RfrCaErfgkWO5WWhg=";
+    hash = "sha256-mWZVjalP0clIXQ148SIzvqX9QjWCb7eOkw/nomkQuVY=";
   };
   bundler = fetchurl {
     url = "https://static.crates.io/crates/tauri-bundler/tauri-bundler-${policy.tauriBundler}.crate";
@@ -28,15 +28,26 @@ let
 in
 # Retain nixpkgs' platform dependencies and Tauri build hook, but build the
 # checksum-verified stable CLI with the explicit shared ZIP 9 security migration.
-cargo-tauri.overrideAttrs (_old: {
-  pname = "tauri-cli";
-  version = policy.tauriCliBuild;
-  src = source;
-  patches = [ ];
-  postPatch = "";
-  cargoDeps = rustPlatform.fetchCargoVendor {
+(cargo-tauri.override { inherit rustPlatform; }).overrideAttrs (
+  finalAttrs: oldAttrs: {
+    pname = "tauri-cli";
+    version = policy.tauriCliBuild;
     src = source;
-    name = "tauri-cli-${policy.tauriCliBuild}";
-    hash = "sha256-+BqraldmbKGarE+j/m/2jQpGP8tb9ksr8YDaHxwloOo=";
-  };
-})
+    patches = [ ];
+    postPatch = "";
+    # The upstream hook separately propagates nixpkgs' Cargo. Pin that too so the
+    # production application cannot discover a different toolchain through PATH.
+    passthru = oldAttrs.passthru // {
+      gst-plugin = oldAttrs.passthru.gst-plugin.override { inherit rustPlatform; };
+      hook = oldAttrs.passthru.hook.override {
+        cargo = rustPlatform.rust.cargo;
+        cargo-tauri = finalAttrs.finalPackage;
+      };
+    };
+    cargoDeps = rustPlatform.fetchCargoVendor {
+      src = source;
+      name = "tauri-cli-${policy.tauriCliBuild}";
+      hash = "sha256-vWjSOeqxVg87qOLbcFBaZsdxEjxNPtEwyfLVkL+wUos=";
+    };
+  }
+)

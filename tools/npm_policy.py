@@ -8,7 +8,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 LIFECYCLE_HOOKS = {"preinstall", "install", "postinstall", "prepare", "prepublish", "prepublishOnly"}
-EXPECTED_HOOK_METADATA = {"node_modules/esbuild": "0.25.12", "node_modules/fsevents": "2.3.3"}
+EXPECTED_HOOK_METADATA = {"node_modules/fsevents": "2.3.3"}
 
 
 def validate(root: Path = ROOT) -> None:
@@ -26,8 +26,8 @@ def validate(root: Path = ROOT) -> None:
     hooks = {path for path, entry in packages.items() if entry.get("hasInstallScript")}
     if hooks != set(EXPECTED_HOOK_METADATA) or any(packages[path].get("version") != version for path, version in EXPECTED_HOOK_METADATA.items()):
         raise ValueError("Unexpected dependency lifecycle-hook metadata; review the lockfile before installation")
-    # esbuild's locked optional platform package supplies the native executable.
-    # Its optimization/download postinstall hook is deliberately not executed.
+    # Vite 8's Rolldown and Lightning CSS use locked native platform packages.
+    # The optional macOS fsevents installation hook remains deliberately disabled.
 
 
 def main() -> int:

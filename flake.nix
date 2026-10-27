@@ -27,6 +27,17 @@
           inherit system;
           overlays = [ rust-overlay.overlays.default ];
         };
+      # Pin production builders as well as the development shell. The channel's
+      # default compiler can contain regressions absent from our tested toolchain.
+      rustPlatformFor =
+        pkgs:
+        let
+          toolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+        in
+        pkgs.makeRustPlatform {
+          cargo = toolchain;
+          rustc = toolchain;
+        };
     in
     {
       # Keep the tested compiler/dependency lock even on an older NixOS channel.
@@ -37,10 +48,12 @@
         system:
         let
           pkgs = pkgsFor system;
+          rustPlatform = rustPlatformFor pkgs;
         in
         {
           tauridium = pkgs.callPackage ./packaging/nix/package.nix {
-            cargo-tauri = pkgs.callPackage ./packaging/nix/tauri-cli.nix { };
+            inherit rustPlatform;
+            cargo-tauri = pkgs.callPackage ./packaging/nix/tauri-cli.nix { inherit rustPlatform; };
           };
           default = self.packages.${system}.tauridium;
           smoke = import ./packaging/nix/smoke.nix {
@@ -104,7 +117,9 @@
         let
           pkgs = pkgsFor system;
           toolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
-          pinnedTauriCli = pkgs.callPackage ./packaging/nix/tauri-cli.nix { };
+          pinnedTauriCli = pkgs.callPackage ./packaging/nix/tauri-cli.nix {
+            rustPlatform = rustPlatformFor pkgs;
+          };
           pinnedCargoAudit =
             assert
               pkgs.cargo-audit.version == (builtins.fromJSON (builtins.readFile ./data/build-toolchain.json))
