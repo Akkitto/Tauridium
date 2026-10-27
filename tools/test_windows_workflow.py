@@ -175,7 +175,7 @@ class WindowsCiTests(unittest.TestCase):
     self.assertIn("just bundle-target ${{ matrix.target }}", build)
     self.assertIn("just package-native ${{ matrix.target }}", build)
     self.assertNotIn("secrets.", build)
-    self.assertIn("uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a", build)
+    self.assertIn("uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", build)
     self.assertNotIn("Sync app version to the tag", release)
 
 

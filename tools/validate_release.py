@@ -1658,15 +1658,15 @@ def main() -> int:
       fail(f"Windows CI is missing native workflow gate: {command}")
   for marker in (
     "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
-    "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
-    "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
+    "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+    "actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0",
     "just package-handoff",
     "just bundle-target ${{ matrix.target }}",
     "just package-native ${{ matrix.target }}",
     "python3 -I tools/sign_release.py",
     "python3 tools/finalize_release.py custody",
-    "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
-    "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+    "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+    "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
     'python3 -I tools/publish_release.py',
     "windows-11-arm",
     "ubuntu-22.04-arm",
@@ -2004,8 +2004,8 @@ def main() -> int:
 
   patch_0701 = read("tools/test_patch_0701.py")
   for invariant in (
-    "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
-    "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+    "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+    "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
     "name: release-handoff",
     "name: native-${{ matrix.target }}",
     "python3 tools/assemble_release.py",

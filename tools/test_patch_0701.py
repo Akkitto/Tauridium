@@ -13,10 +13,10 @@ WORKFLOW = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 class Patch0701Tests(unittest.TestCase):
   def test_release_validation_uses_actions_artifacts_not_draft_release_assets(self) -> None:
     self.assertIn("name: Stage release handoff", WORKFLOW)
-    self.assertIn("uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a", WORKFLOW)
+    self.assertIn("uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", WORKFLOW)
     self.assertIn("name: release-handoff", WORKFLOW)
     self.assertIn("name: native-${{ matrix.target }}", WORKFLOW)
-    self.assertIn("uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c", WORKFLOW)
+    self.assertIn("uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333", WORKFLOW)
     self.assertIn("name: native-${{ matrix.target }}", WORKFLOW)
     self.assertNotIn("gh release download", WORKFLOW)
     self.assertNotIn("--draft", WORKFLOW)
