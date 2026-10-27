@@ -15,11 +15,13 @@ component has an immutable dated URL and SHA-256 from the official release
 manifest. Flatpak downloads and verifies these sources before the network-free
 module builds; no rustup installer or network access is used during compilation.
 The effective compiler and Cargo identities are checked before both Tauri CLI and
-application compilation. The complete toolchain is removed during final cleanup;
-it is never an application runtime dependency. Automatic debug splitting/stripping
-is disabled only for this prebuilt tool module, preserving its LLVM shared library;
-the application still uses the normal production stripping policy. Node.js remains the managed Node 24
-SDK extension, and runtime permissions are unchanged.
+application compilation. Automatic debug splitting/stripping is disabled for both
+build-tool stages: Flatpak processes previously installed files again after each
+module, which would otherwise damage the compiler's LLVM library. The application
+removes the compiler and CLI before its own normal production debug splitting.
+Final cleanup and candidate validation additionally enforce that compiler files or
+compiler debug symbols cannot remain in the exported application. Node.js remains
+the managed Node 24 SDK extension, and runtime permissions are unchanged.
 
 Reassess this workaround when the matching Rust SDK extension is fixed. A future
 compiler update must review all six component pins and update the canonical

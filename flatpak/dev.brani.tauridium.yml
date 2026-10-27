@@ -36,6 +36,8 @@ modules:
     cleanup:
       - /bin/cargo-tauri
     build-options:
+      no-debuginfo: true
+      strip: false
       env:
         CARGO_HOME: /run/build/tauri-cli/cargo
         CARGO_NET_OFFLINE: 'true'
@@ -81,6 +83,9 @@ modules:
       - install -Dm644 source/data/dev.brani.tauridium.metainfo.xml /app/share/metainfo/dev.brani.tauridium.metainfo.xml
       - install -Dm644 source/data/dev.brani.tauridium.svg /app/share/icons/hicolor/scalable/apps/dev.brani.tauridium.svg
       - install -Dm644 source/LICENSE /app/share/licenses/dev.brani.tauridium/LICENSE
+      # Remove all build-only binaries before normal application debug splitting.
+      - rm -rf /app/lib/tauridium-rust-toolchain
+      - rm -f /app/bin/cargo-tauri
     sources:
       # Materialize the exact immutable v1.0.2 commit after tagging.
       # Local builds use committed HEAD; publication rejects this preparatory placeholder.

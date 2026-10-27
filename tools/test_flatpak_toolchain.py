@@ -60,6 +60,13 @@ class FlatpakRustToolchainTests(unittest.TestCase):
       module = manifest.split("  - name: " + name + "\n", 1)[1].split("\n  - name:", 1)[0]
       commands = module.split("    build-commands:\n", 1)[1]
       self.assertTrue(commands.startswith("      - python3 /app/lib/tauridium-rust-toolchain/check-rust-toolchain.py\n"))
+      if name == "tauri-cli":
+        self.assertIn("      no-debuginfo: true\n      strip: false\n", module)
+      else:
+        self.assertNotIn("no-debuginfo:", module)
+        self.assertNotIn("strip: false", module)
+        self.assertIn("      - rm -rf /app/lib/tauridium-rust-toolchain\n      - rm -f /app/bin/cargo-tauri\n", commands)
+        self.assertLess(commands.index("cargo tauri build"), commands.index("rm -rf /app/lib/tauridium-rust-toolchain"))
     self.assertIn("rust-toolchain.toml", build.LOCKS)
 
   def run_probe(self, *, versions=None, shadow=False, override=False, failed=False):
@@ -95,10 +102,11 @@ class FlatpakRustToolchainTests(unittest.TestCase):
       self.run_probe(failed=True)
 
   def test_retained_build_toolchain_is_rejected_before_candidate_sealing(self):
-    with tempfile.TemporaryDirectory() as temporary:
-      output = Path(temporary)
-      toolchain = output / "build/files/lib/tauridium-rust-toolchain"
-      toolchain.mkdir(parents=True)
-      (toolchain / "synthetic-rustc").write_text("synthetic-build-tool", encoding="utf-8")
-      with self.assertRaisesRegex(SystemExit, "build-only Rust toolchain"):
-        build.validate_runtime_layout(output)
+    for directory in ("lib/tauridium-rust-toolchain", "lib/debug/lib/tauridium-rust-toolchain"):
+      with self.subTest(directory=directory), tempfile.TemporaryDirectory() as temporary:
+        output = Path(temporary)
+        toolchain = output / "build/files" / directory
+        toolchain.mkdir(parents=True)
+        (toolchain / "synthetic-rustc").write_text("synthetic-build-tool", encoding="utf-8")
+        with self.assertRaisesRegex(SystemExit, "build-only Rust toolchain"):
+          build.validate_runtime_layout(output)

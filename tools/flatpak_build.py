@@ -77,8 +77,9 @@ def validate_runtime_layout(output: Path) -> None:
   # with --runtime. No custom SDK/runtime tree is supported by this producer.
   if os.path.lexists(output / "build/usr"):
     raise SystemExit("error: Flatpak candidate contains an unreviewed custom runtime")
-  if os.path.lexists(output / "build/files/lib/tauridium-rust-toolchain"):
-    raise SystemExit("error: Flatpak candidate retains the build-only Rust toolchain")
+  for directory in ("lib/tauridium-rust-toolchain", "lib/debug/lib/tauridium-rust-toolchain"):
+    if os.path.lexists(output / "build/files" / directory):
+      raise SystemExit("error: Flatpak candidate retains the build-only Rust toolchain")
 
 
 def seal_candidate(output: Path) -> None:
