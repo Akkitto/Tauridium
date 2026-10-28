@@ -3,7 +3,7 @@
 
 This intentionally implements only the lockfile formats used by Tauridium:
 Cargo.lock v4 registry packages and npm package-lock.json v3 packages with
-registry tarball URLs plus sha512 integrity values. It mirrors the source
+registry tarball URLs plus sha512 integrity values and the reviewed in-tree backport. It mirrors the source
 layout consumed by Cargo and npm inside flatpak-builder.
 """
 from __future__ import annotations
@@ -16,6 +16,8 @@ import sys
 import tomllib
 from pathlib import Path
 from typing import Any
+
+from npm_policy import validate_local_lock
 
 ROOT = Path(__file__).resolve().parents[1]
 FLATPAK_DIR = ROOT / "flatpak"
@@ -114,8 +116,12 @@ def generate_node_sources(lock_path: Path) -> list[dict[str, Any]]:
   if not isinstance(packages, dict):
     raise ValueError(f"{lock_path}: missing packages map")
 
+  validate_local_lock(packages)
   sources: list[dict[str, Any]] = []
   for package_path, package in packages.items():
+    if package_path == "node_modules/deepmerge":
+      # The exact reviewed backport travels in the immutable source, not the npm cache.
+      continue
     if not isinstance(package, dict):
       continue
     url = package.get("resolved")

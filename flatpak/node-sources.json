@@ -521,19 +521,6 @@
   },
   {
     "type": "file",
-    "url": "https://registry.npmjs.org/deepmerge/-/deepmerge-4.3.1.tgz",
-    "sha512": "dec52a6cc11cefb5eaa5d34eec547246883e796de987e19809b8feacafae63244cbb0b15cb4acc895b4f9fe40994a16f58fff53d8a5aa6a627d0c7b6927167f8",
-    "dest": "flatpak-node/npm-cache/_cacache/content-v2/sha512/de/c5",
-    "dest-filename": "2a6cc11cefb5eaa5d34eec547246883e796de987e19809b8feacafae63244cbb0b15cb4acc895b4f9fe40994a16f58fff53d8a5aa6a627d0c7b6927167f8"
-  },
-  {
-    "type": "inline",
-    "contents": "c543124a3a4a229a410d8f7fe5fcb2be4922e305\t{\"key\":\"make-fetch-happen:request-cache:https://registry.npmjs.org/deepmerge/-/deepmerge-4.3.1.tgz\",\"integrity\":\"sha512-3sUqbMEc77XqpdNO7FRyRog+eW3ph+GYCbj+rK+uYyRMuwsVy0rMiVtPn+QJlKFvWP/1PYpapqYn0Me2knFn+A==\",\"time\":0,\"metadata\":{\"url\":\"https://registry.npmjs.org/deepmerge/-/deepmerge-4.3.1.tgz\",\"reqHeaders\":{},\"resHeaders\":{}}}",
-    "dest": "flatpak-node/npm-cache/_cacache/index-v5/40/bd",
-    "dest-filename": "7ddee8750b92418d1e0de1ee4c4f648fe00d065b0e4f4641c126b7680fac"
-  },
-  {
-    "type": "file",
     "url": "https://registry.npmjs.org/detect-libc/-/detect-libc-2.1.2.tgz",
     "sha512": "06d8f604e38ef37a375b21f9f5ef0c817b3111055c6ab9143a9118aee6c1d2eaf09cdd74c90dfae2bb22072535d67665a966199b4e62fe87fb8a8e26ce2841b5",
     "dest": "flatpak-node/npm-cache/_cacache/content-v2/sha512/06/d8",

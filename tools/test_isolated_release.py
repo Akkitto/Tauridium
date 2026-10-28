@@ -55,6 +55,40 @@ class IsolatedReleaseTests(unittest.TestCase):
     self.assertTrue(all(entry["scope"] == "optional" for entry in first["components"]))
     self.assertIn("not proof", first["metadata"]["properties"][1]["value"])
 
+  def test_sbom_identifies_one_verified_local_backport_without_registry_identity(self):
+    document = build_input_sbom.generate(build_input_sbom.ROOT, "9.9.9", "a" * 40)
+    candidates = [entry for entry in document["components"] if entry["name"] == "deepmerge"]
+    self.assertEqual(len(candidates), 1)
+    component = candidates[0]
+    self.assertEqual(component["version"], "4.3.1+tauridium.1")
+    self.assertEqual(component["bom-ref"], "frontend:repository-path-patch:vendor/deepmerge@4.3.1+tauridium.1")
+    self.assertNotIn("purl", component)
+    self.assertNotIn("hashes", component)
+    properties = {entry["name"]: entry["value"] for entry in component["properties"]}
+    self.assertEqual(properties["tauridium:source"], "repository-path-patch:vendor/deepmerge")
+    self.assertEqual(properties["tauridium:upstream-version"], "4.3.1")
+    self.assertEqual(properties["tauridium:upstream-url"], "https://registry.npmjs.org/deepmerge/-/deepmerge-4.3.1.tgz")
+    provenance = json.loads((build_input_sbom.ROOT / "vendor/deepmerge/TAURIDIUM-PATCH.json").read_text(encoding="utf-8"))
+    self.assertEqual(properties["tauridium:upstream-integrity"], provenance["upstream"]["sha512"])
+    self.assertNotIn("tauridium:lock-integrity", properties)
+    for filename, digest in provenance["files"].items():
+      self.assertEqual(properties["tauridium:source-file-sha256:" + filename], digest)
+    self.assertFalse(any(entry["name"] == "vendor/deepmerge" for entry in document["components"]))
+
+  def test_sbom_rejects_an_unreviewed_local_link_instead_of_misreporting_it(self):
+    with tempfile.TemporaryDirectory() as temporary:
+      root = Path(temporary)
+      for filename in ("src-tauri/Cargo.lock", "flatpak/tauri-cli.Cargo.lock", "package.json", "package-lock.json"):
+        target = root / filename
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(build_input_sbom.ROOT / filename, target)
+      lockfile = root / "package-lock.json"
+      lock = json.loads(lockfile.read_text(encoding="utf-8"))
+      lock["packages"]["node_modules/deepmerge"]["resolved"] = "../unreviewed-source"
+      lockfile.write_text(json.dumps(lock), encoding="utf-8")
+      with self.assertRaisesRegex(ValueError, "reviewed local security backport"):
+        build_input_sbom.generate(root, "9.9.9", "a" * 40)
+
   @unittest.skipUnless(sys.platform == "linux" and Path("/dev/shm").is_dir(),
                        "Production signing custody requires Linux shared-memory staging")
   def test_failed_signer_never_promotes_output_or_prints_private_diagnostics(self):

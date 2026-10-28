@@ -6,6 +6,7 @@ import tomllib
 from urllib.parse import quote
 
 from package_release import version, git_output
+from npm_policy import LOCAL_PATH, validate_local_sources
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -26,10 +27,38 @@ def generate(root: Path, release_version: str, commit: str) -> dict:
         component["hashes"] = [{"alg": "SHA-256", "content": package["checksum"]}]
       components[ref] = component
   npm = json.loads((root / "package-lock.json").read_text(encoding="utf-8"))
+  manifest = json.loads((root / "package.json").read_text(encoding="utf-8"))
+  validate_local_sources(root, manifest, npm["packages"])
   for path, package in npm["packages"].items():
-    if not path:
+    if not path or path == LOCAL_PATH:
+      # A local link and its lock target describe one package, not two components.
       continue
-    name, ver = path.rsplit("node_modules/", 1)[-1], package["version"]
+    name = path.rsplit("node_modules/", 1)[-1]
+    if package.get("link"):
+      local = package["resolved"]
+      ver = npm["packages"][local]["version"]
+      provenance = json.loads((root / local / "TAURIDIUM-PATCH.json").read_text(encoding="utf-8"))
+      upstream = provenance["upstream"]
+      ref = f"frontend:repository-path-patch:{local}@{ver}"
+      # This modified in-tree source is not the upstream registry package. Keep
+      # its upstream identity and individual source hashes explicitly qualified;
+      # an npm purl or upstream checksum would misidentify the patched component.
+      components[ref] = {
+        "type": "library", "name": name, "version": ver, "bom-ref": ref,
+        "scope": "optional",
+        "properties": [
+          {"name": "tauridium:dependency-set", "value": "frontend-build-input"},
+          {"name": "tauridium:source", "value": "repository-path-patch:" + local},
+          {"name": "tauridium:source-provenance", "value": local + "/TAURIDIUM-PATCH.json"},
+          {"name": "tauridium:upstream-name", "value": upstream["name"]},
+          {"name": "tauridium:upstream-version", "value": upstream["version"]},
+          {"name": "tauridium:upstream-url", "value": upstream["url"]},
+          {"name": "tauridium:upstream-integrity", "value": upstream["sha512"]},
+        ] + [{"name": "tauridium:source-file-sha256:" + filename, "value": digest}
+             for filename, digest in sorted(provenance["files"].items())],
+      }
+      continue
+    ver = package["version"]
     purl = f"pkg:npm/{quote(name, safe='/')}@{quote(ver)}"
     ref = "frontend:" + purl
     components[ref] = {"type": "library", "name": name, "version": ver, "bom-ref": ref,

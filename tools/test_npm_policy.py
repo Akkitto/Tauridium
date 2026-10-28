@@ -37,6 +37,54 @@ class NpmPolicyTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Unexpected dependency"):
                 POLICY.validate(root)
 
+    def test_local_backport_rejects_tampering_or_bypassed_override(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in (".npmrc", "package.json", "package-lock.json"):
+                shutil.copyfile(ROOT / name, root / name)
+            shutil.copytree(ROOT / "vendor/deepmerge", root / "vendor/deepmerge")
+            POLICY.validate(root)
+            runtime = root / "vendor/deepmerge/dist/cjs.js"
+            original = runtime.read_bytes()
+            runtime.write_bytes(original + b"\n// synthetic tampering\n")
+            with self.assertRaisesRegex(ValueError, "integrity mismatch"):
+                POLICY.validate(root)
+            runtime.write_bytes(original)
+            manifest = root / "package.json"
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+            del data["overrides"]["deepmerge"]
+            manifest.write_text(json.dumps(data), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "override is required"):
+                POLICY.validate(root)
+
+    @unittest.skipUnless(shutil.which("git"), "Requires Git checkout conversion")
+    def test_windows_checkout_preserves_integrity_bound_vendor_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shutil.copyfile(ROOT / ".gitattributes", root / ".gitattributes")
+            shutil.copytree(ROOT / "vendor/deepmerge", root / "vendor/deepmerge")
+            manifest = json.loads((root / "vendor/deepmerge/TAURIDIUM-PATCH.json").read_text(encoding="utf-8"))
+            expected = {name: (root / "vendor/deepmerge" / name).read_bytes() for name in manifest["files"]}
+            command = [shutil.which("git"), "-c", "core.autocrlf=true", "-c", "core.safecrlf=false"]
+            for args in (["init", "--quiet"], ["add", "--force", ".gitattributes", "vendor/deepmerge"],
+                         ["checkout-index", "--force", "--all"]):
+                subprocess.run(command + args, cwd=root, check=True, capture_output=True, timeout=30)
+            for name, content in expected.items():
+                with self.subTest(name=name):
+                    self.assertEqual((root / "vendor/deepmerge" / name).read_bytes(), content)
+
+    def test_local_lock_rejects_other_links_and_second_registry_merger(self):
+        original = json.loads((ROOT / "package-lock.json").read_text(encoding="utf-8"))["packages"]
+        for path, entry in (
+            ("node_modules/unknown", {"link": True, "resolved": "../outside"}),
+            ("node_modules/plugin/node_modules/deepmerge", {"version": "4.3.1", "resolved": "https://registry.npmjs.org/deepmerge/-/deepmerge-4.3.1.tgz"}),
+            ("node_modules/deepmerge", {"link": True, "resolved": "../vendor/deepmerge"}),
+        ):
+            with self.subTest(path=path):
+                packages = original | {path: entry}
+                with self.assertRaises(ValueError):
+                    POLICY.validate_local_lock(packages)
+
     @unittest.skipUnless(shutil.which("npm") and shutil.which("node"), "Requires real npm and Node; run inside nix develop or the initialized Windows environment")
     def test_real_npm_never_executes_dependency_installation_hooks(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -73,6 +121,8 @@ class FrontendNativeProbeTests(unittest.TestCase):
             root = Path(directory)
             (root / "tools").mkdir()
             shutil.copyfile(ROOT / "tools/check_frontend.mjs", root / "tools/check_frontend.mjs")
+            # The real merger security suite has its own integration tests.
+            (root / "tools/check_deepmerge.mjs").write_text("export async function checkInstallation() {}", encoding="utf-8")
             versions = {"rolldown": "1.2.15", "lightningcss": "1.33.0"}
             for platform in ("linux-x64-gnu", "linux-x64-musl", "linux-arm64-gnu", "linux-arm64-musl",
                              "win32-x64-msvc", "win32-arm64-msvc", "darwin-x64", "darwin-arm64"):
