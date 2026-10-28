@@ -39,7 +39,11 @@ every production frontend build, during initialization and in security CI.
 **npm does not audit local packages**; a clean registry audit is not evidence that
 this source backport is safe. Its explicit provenance, integrity checks and
 mandatory behavioral regressions provide that separate evidence. No advisory
-ignore, severity downgrade, old-version rollback or purported upstream fix is used.
+ignore, severity downgrade, old-version rollback or purported upstream fix is used. The daily/current
+dependency gate separately scans the original upstream identity against npm.
+Only this concretely verified backport may be assessed, bound to its exact
+implementation and a 15 November 2026 review deadline; new or changed advisories,
+expired assessments and scanner failures block the gate.
 
 Nix includes the backport and mandatory build probe in its explicit source set.
 Flatpak carries them in the immutable source and caches registry packages only;

@@ -6,6 +6,8 @@
 
 - Backport the deepmerge prototype-poisoning fix used by the Svelte build plugin,
   enforcing local-source integrity and exploit regressions without weakening audits.
+- Keep freshly scanning the original npm identity for local security backports,
+  with exact expiring assessments and rejection of new or changed advisories.
 
 - Refresh the shared verified Tauri CLI and bundler, retaining patched compression/
   TLS dependencies, credential isolation and exact expiring advisory assessments.

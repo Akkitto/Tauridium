@@ -47,8 +47,12 @@ Initialization and security CI also enforce the exact root-local override.
 All implicit lifecycle scripts remain disabled, and registry advisory scanning
 still fails at low severity. npm excludes local packages from its advisory
 service; the separately enforced backport checks must not be replaced by a
-clean registry audit. The patched build dependency is not a shipped runtime
-module and does not alter service-webview permissions.
+clean registry audit. The daily/current dependency gate also queries npm for the
+original upstream identity. It accepts only the verified backport assessment,
+bound to the exact patch and a **15 November 2026** review deadline, and rejects
+new or changed advisories and unavailable/malformed results. This preserves
+future advisory detection for the local source. The patched build dependency is
+not a shipped runtime module and does not alter service-webview permissions.
 
 ## Pinned native tooling
 

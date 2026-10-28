@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "upstream": {
+    "name": "deepmerge",
+    "version": "4.3.1"
+  },
+  "localVersion": "4.3.1+tauridium.1",
+  "runtimeSha256": "f52c1deed5fef6181e217aa466fb2ec6936c2b9c22060a8c0cfa9c0f015df992",
+  "expires": "2026-11-15",
+  "reason": "The exact local runtime backports the reserved-key guards and safe own-property writes. Source integrity and actual Svelte resolution, exploit controls and compatibility are executed before this current online query. This assessment covers only the exact known advisory; new findings or changed advisory details require review.",
+  "expectedAdvisory": {
+    "id": 1243505,
+    "url": "https://github.com/advisories/GHSA-gcqx-w48m-w2h4",
+    "title": "deepmerge mergeObject() allows prototype poisoning of returned objects",
+    "severity": "low",
+    "vulnerable_versions": ">=4.2.0 <=4.3.1",
+    "cwe": [
+      "CWE-1321"
+    ],
+    "cvss": {
+      "score": 5.3,
+      "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N"
+    }
+  }
+}
