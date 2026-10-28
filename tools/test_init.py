@@ -282,7 +282,7 @@ class NpmPolicyTests(unittest.TestCase):
   @patch.object(INIT, "validate_npm_policy")
   @patch.object(INIT, "run_checked")
   @patch.object(INIT.shutil, "which", return_value="/usr/bin/tool")
-  def test_esbuild_validation_uses_shared_local_api_probe_without_npm_shims(
+  def test_frontend_validation_uses_shared_local_api_probe_without_npm_shims(
     self,
     _which,
     run_checked,
@@ -291,11 +291,12 @@ class NpmPolicyTests(unittest.TestCase):
     INIT.install_javascript_dependencies()
 
     commands = [call.args[0] for call in run_checked.call_args_list]
-    self.assertEqual(commands[0], ["npm", "ci", "--ignore-scripts"])
-    self.assertEqual(commands[1], ["npm", "audit", "--audit-level=high"])
+    self.assertEqual(commands[0], ["node", "tools/check_frontend.mjs", "--runtime-only"])
+    self.assertEqual(commands[1], ["npm", "ci", "--ignore-scripts"])
+    self.assertEqual(commands[2], ["npm", "audit", "--audit-level=high"])
     self.assertEqual(
-      commands[2],
-      ["node", "tools/check_esbuild.mjs"],
+      commands[3],
+      ["node", "tools/check_frontend.mjs"],
     )
     self.assertNotIn(["node", "node_modules/esbuild/bin/esbuild"], commands)
 

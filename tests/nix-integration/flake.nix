@@ -36,6 +36,21 @@
         system:
         let
           package = tauridium.packages.${system}.default;
+          compilerPkgs = import nixpkgs {
+            inherit system;
+            overlays = [ tauridium.inputs.rust-overlay.overlays.default ];
+          };
+          toolchain = compilerPkgs.rust-bin.fromRustupToolchainFile ../../rust-toolchain.toml;
+          usesPinnedToolchain = inputs: builtins.elem (toString toolchain) (map toString inputs);
+          hook = builtins.head (
+            builtins.filter (input: (input.name or "") == "tauri-hook") package.nativeBuildInputs
+          );
+          builder = builtins.head (
+            builtins.filter (input: (input.pname or "") == "tauri-cli") hook.propagatedBuildInputs
+          );
+          assetPlugin = builtins.head (
+            builtins.filter (input: (input.pname or "") == "tauri-asset-gst-plugin") hook.propagatedBuildInputs
+          );
           configs = examples system;
           contains = packages: builtins.elem package.drvPath (map (p: p.drvPath) packages);
           homeChecks = nixpkgs.lib.mapAttrs (
@@ -71,6 +86,23 @@
         in
         {
           inherit homeChecks nixosChecks;
+          # Inspect the effective application and its actual hook's CLI, not a
+          # parallel helper derivation that could hide a channel-compiler fallback.
+          compilerChecks = {
+            expected = toolchain.version;
+            application =
+              assert usesPinnedToolchain package.nativeBuildInputs;
+              toolchain.version;
+            builder =
+              assert usesPinnedToolchain builder.nativeBuildInputs;
+              toolchain.version;
+            hookCargo =
+              assert usesPinnedToolchain hook.propagatedBuildInputs;
+              toolchain.version;
+            assetPlugin =
+              assert usesPinnedToolchain assetPlugin.nativeBuildInputs;
+              toolchain.version;
+          };
           directAlias =
             assert package.drvPath == tauridium.packages.${system}.tauridium.drvPath;
             true;

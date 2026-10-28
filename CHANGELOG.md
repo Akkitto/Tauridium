@@ -4,13 +4,31 @@
 
 ### Security
 
-- Patch the build CLI's Zstd compression stack and require the revised verified
-  builder before starting builds. The application dependency lock is unchanged.
+- Refresh the shared verified Tauri CLI and bundler, retaining patched compression/
+  TLS dependencies, credential isolation and exact expiring advisory assessments.
+- Update immutable GitHub Actions pins, including the Nix installer certificate
+  security fix and current provenance-attestation dependencies.
+- Update the verified artifact-inspection parser to 7-Zip 26.05.
+- Enforce the tested Rust compiler and Cargo throughout the Nix application and
+  builder hooks, avoiding the upstream Rust 1.99.0 native FFI regression.
+- Build Flatpak packages with the same checksum-pinned Rust toolchain, removing
+  its compiler and Cargo from the exported application.
+
+### Changed
+
+- Refresh compatible native and frontend dependencies, including Vite 8, Vitest 5
+  and TypeScript 6 with the supported Svelte tooling. Preserve the reviewed WebView,
+  platform-integration and TLS compatibility lines.
+- Refresh locked Nix packages, development tools and Home Manager test inputs,
+  with matching Cargo/npm offline sources and measured dependency hashes.
 
 ### Fixed
 
 - Discover private GitHub release drafts and verify/promote them by numeric release
   ID, avoiding the published-release-only tag lookup.
+- Validate the locked Rolldown and Lightning CSS native backends during setup, and
+  upgrade obsolete Scoop Node installations before installing frontend dependencies.
+- Preserve existing audit pagination fingerprints after the SHA-2 API update.
 
 ## [1.0.2] - 2026-10-25
 

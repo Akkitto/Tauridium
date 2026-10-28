@@ -297,7 +297,11 @@ fn audit_file_fingerprint(path: &Path, snapshot_len: u64) -> Result<String, Stri
         hasher.update(&tail);
     }
 
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 fn encode_cursor(cursor: &AuditCursor) -> Result<String, String> {
@@ -936,6 +940,20 @@ mod tests {
         assert!(page.entries.is_empty());
         assert!(!page.has_more);
         assert!(page.next_cursor.is_none());
+    }
+
+    #[test]
+    fn cursor_fingerprint_preserves_lowercase_hex_encoding() {
+        let dir = TestAuditDir::new();
+        let path = dir.path();
+        let payload = b"audit digest encoding\n";
+        fs::write(&path, payload).expect("write fingerprint fixture");
+
+        // Independent SHA-256 vector: little-endian u64 length followed by the bytes.
+        assert_eq!(
+            audit_file_fingerprint(&path, payload.len() as u64).expect("hash audit fixture"),
+            "b3ca8fbb59f72840fae55e58599191f06a19a67453722d74f748f6afa61312ad"
+        );
     }
 
     #[test]

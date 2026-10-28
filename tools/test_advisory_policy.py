@@ -41,15 +41,15 @@ class AdvisoryPolicyTests(unittest.TestCase):
 
   def test_zbus_maintenance_assessment_is_exact_not_a_vulnerability_exemption(self):
     report = copy.deepcopy(self.report)
-    finding = {"advisory": {"id": "RUSTSEC-2026-0371"}, "package": {"name": "zbus_names", "version": "4.3.2"}}
+    finding = {"advisory": {"id": "RUSTSEC-2026-0371"}, "package": {"name": "zbus_names", "version": "4.3.5"}}
     report["vulnerabilities"]["list"] = []
     report["warnings"] = {"unmaintained": [finding]}
     accepted = audit.evaluate("src-tauri/Cargo.lock", report, self.policy, date(2026, 10, 17))
     self.assertEqual(accepted[0]["status"], "reviewed-maintenance-warning")
     self.assertEqual(accepted[0]["expires"], "2026-11-15")
     for advisory, package, version in (
-      ("RUSTSEC-2026-0370", "zvariant", "5.12.0"),
-      ("RUSTSEC-2026-0372", "zvariant_derive", "5.12.0"),
+      ("RUSTSEC-2026-0370", "zvariant", "5.15.1"),
+      ("RUSTSEC-2026-0372", "zvariant_derive", "5.15.1"),
     ):
       with self.subTest(package=package):
         related = copy.deepcopy(report)
@@ -62,10 +62,10 @@ class AdvisoryPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "unassessed"):
           audit.evaluate("src-tauri/Cargo.lock", related, self.policy, date(2026, 10, 17))
     for lock, kind, version in (
-      ("flatpak/tauri-cli.Cargo.lock", "unmaintained", "4.3.2"),
+      ("flatpak/tauri-cli.Cargo.lock", "unmaintained", "4.3.5"),
       ("src-tauri/Cargo.lock", "unmaintained", "4.3.3"),
-      ("src-tauri/Cargo.lock", "vulnerability", "4.3.2"),
-      ("src-tauri/Cargo.lock", "unsound", "4.3.2"),
+      ("src-tauri/Cargo.lock", "vulnerability", "4.3.5"),
+      ("src-tauri/Cargo.lock", "unsound", "4.3.5"),
     ):
       with self.subTest(lock=lock, kind=kind, version=version):
         changed = copy.deepcopy(report)
@@ -80,7 +80,7 @@ class AdvisoryPolicyTests(unittest.TestCase):
     report = copy.deepcopy(self.report)
     report["vulnerabilities"]["list"] = []
     report["warnings"] = {"unmaintained": [{"advisory": {"id": "RUSTSEC-2026-0371"},
-      "package": {"name": "zbus_names", "version": "4.3.2"}}]}
+      "package": {"name": "zbus_names", "version": "4.3.5"}}]}
     with self.assertRaisesRegex(SystemExit, "expired"):
       audit.evaluate("src-tauri/Cargo.lock", report, self.policy, date(2026, 11, 16))
 

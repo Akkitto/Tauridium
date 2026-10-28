@@ -17,12 +17,12 @@ class WindowStateTests(unittest.TestCase):
     self.lock = (ROOT / "src-tauri/Cargo.lock").read_text(encoding="utf-8")
 
   def test_official_window_state_plugin_is_pinned_and_locked(self) -> None:
-    self.assertIn('tauri-plugin-window-state = "=2.4.1"', self.cargo)
+    self.assertIn('tauri-plugin-window-state = "=2.5.0"', self.cargo)
     self.assertRegex(
       self.lock,
       re.compile(
-        r'\[\[package\]\]\nname = "tauri-plugin-window-state"\nversion = "2\.4\.1"'
-        r'.*?checksum = "73736611e14142408d15353e21e3cca2f12a3cfb523ad0ce85999b6d2ef1a704"',
+        r'\[\[package\]\]\nname = "tauri-plugin-window-state"\nversion = "2\.5\.0"'
+        r'.*?checksum = "5d6815cab7b212f9cfe16a9d79d8d22f9e14159e4a9460f7dec1467167a008e3"',
         re.S,
       ),
     )

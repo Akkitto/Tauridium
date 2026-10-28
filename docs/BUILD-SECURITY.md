@@ -10,13 +10,17 @@ unsafe npm_config_ignore_scripts=false cannot override the bootstrap CLI flag.
 
 Unsupported allowScripts metadata is not used as a security boundary. The shared
 tools/npm_policy.py validator rejects root installation hooks and unexpected
-dependency hook metadata before installation. The locked esbuild and optional
-macOS fsevents install hooks are recognized in the lockfile but never executed.
-esbuild uses the native executable in its locked optional platform package; the
-initializer verifies its locked local API and performs a real native transform
-with node tools/check_esbuild.mjs. No npm command shim, installation script or
-registry fallback is required. Missing, mismatched or unsupported local binaries
-fail visibly rather than triggering a downloader.
+dependency hook metadata before installation. Only the locked optional macOS
+fsevents install hook is recognized, and it is never executed. Vite 8 uses locked
+Rolldown/Oxc and Lightning CSS native platform packages instead of esbuild.
+The initializer first checks the supported Node.js runtime (22.12+, 24 or 26+),
+then verifies both locked local native APIs with real TypeScript and CSS
+transforms using node tools/check_frontend.mjs. Both JavaScript package versions
+and the matching native platform-package versions must equal the lockfile.
+External native-library overrides and WebAssembly fallbacks are refused. No npm
+command shim, installation script or registry fallback is required. Missing,
+mismatched or unsupported local binaries fail visibly rather than triggering a
+downloader.
 
 Explicit reviewed npm run build/check/test commands still work. This policy is
 not a claim that a compiler or directly invoked build dependency is harmless:
@@ -31,35 +35,23 @@ code to perform the security scan.
 
 ## Pinned native tooling
 
-data/build-toolchain.json pins the official stable Tauri CLI 2.12.3 and bundler
-2.10.3 crate checksums. Upstream still requires ZIP 8, which is affected by
-RUSTSEC-2026-0367/0368/0369. The shared `flatpak/prepare-tauri-cli.py` helper
-verifies both immutable archives, extracts only bounded regular files, and
-narrowly changes both ZIP requirements to 9.0.4. It binds the bundler as a local
-dependency and assigns the distinct CLI identity `2.12.3+tauridium.3`. The exact
-patched lock is separately hash-pinned; it is not represented as upstream's lock.
-No Cargo registry source is edited. Patch preconditions fail closed on drift.
+data/build-toolchain.json pins the official stable Tauri CLI 2.12.4 and bundler
+2.10.4 crate checksums. Upstream has migrated to ZIP 9; the shared
+`flatpak/prepare-tauri-cli.py` helper verifies both immutable archives, extracts
+only bounded regular files and pins both ZIP dependencies to reviewed 9.1.2.
+It binds the bundler as a local dependency and assigns the distinct CLI identity
+`2.12.4+tauridium.1`. The exact patched lock is separately hash-pinned; it is not
+represented as upstream's lock. No Cargo registry source is edited. Patch
+preconditions fail closed on drift, and initialization rejects older builders.
 
-The second build revision also locks `rustls-webpki 0.103.16`,
-`webpki-roots 1.0.10` and `webpki-root-certs 1.0.10`, fixing
-[RUSTSEC-2026-0382](https://rustsec.org/advisories/RUSTSEC-2026-0382.html),
-[RUSTSEC-2026-0381](https://rustsec.org/advisories/RUSTSEC-2026-0381.html) and
-[RUSTSEC-2026-0383](https://rustsec.org/advisories/RUSTSEC-2026-0383.html).
-Its distinct identity forces initialization to replace the earlier builder;
-native, Nix and Flatpak producers all consume the same reviewed lock.
-Both application and builder also use `tokio 1.53.3`, fixing the I/O-safety
-finding [RUSTSEC-2026-0386](https://rustsec.org/advisories/RUSTSEC-2026-0386.html)
-without selecting the separately affected Tokio 1.54.0 release.
-
-The third build revision locks the patched compression stack: `zstd 0.14.3`,
-`zstd-safe 8.2.0` and `zstd-sys 2.1.2+zstd.1.5.7`. These resolve the newly reported
-context-reuse, safe-wrapper soundness and WebAssembly allocator findings in
-[RUSTSEC-2026-0391](https://rustsec.org/advisories/RUSTSEC-2026-0391.html),
-[RUSTSEC-2026-0395 through 0406](https://github.com/RustSec/advisory-db/tree/main/crates/zstd-safe)
-and [RUSTSEC-2026-0410](https://rustsec.org/advisories/RUSTSEC-2026-0410.html).
-The application runtime lock does not contain this compression stack. Whole-lock
-scanning still covers all platforms and warning kinds; no new ignore or advisory
-assessment is added. The new CLI identity prevents reuse of the earlier builder.
+The reviewed lock retains all prior security fixes while refreshing compatible
+transitive dependencies. It includes `tokio 1.54.1`, the patched Rustls/WebPKI
+stack and `zstd 0.14.3`, `zstd-safe 8.2.0`, `zstd-sys 2.1.2+zstd.1.5.7`.
+These retain the fixes for the previously reviewed ZIP 8, Tokio I/O-safety,
+WebPKI trust and Zstd wrapper/allocator advisories. The installed application
+runtime does not contain the builder's Zstd stack. Whole-lock scanning covers
+all platforms and warning kinds without new ignores or extended assessment
+deadlines; native, Nix and Flatpak producers consume the same reviewed lock.
 
 The same narrow source preparation disables RPM's OpenPGP feature and replaces
 the unused signing branch with explicit credential rejection plus unsigned RPM

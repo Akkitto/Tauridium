@@ -5,7 +5,6 @@ runtime: org.gnome.Platform
 runtime-version: '51'
 sdk: org.gnome.Sdk
 sdk-extensions:
-  - org.freedesktop.Sdk.Extension.rust-stable
   - org.freedesktop.Sdk.Extension.node24
 command: tauridium
 finish-args:
@@ -19,31 +18,42 @@ finish-args:
   # Only the standard OS credential vault; no unrestricted session-bus access.
   - --talk-name=org.freedesktop.secrets
 build-options:
-  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node24/bin
+  prepend-path: /app/lib/tauridium-rust-toolchain/bin
+  append-path: /usr/lib/sdk/node24/bin
+  env:
+    RUSTC: /app/lib/tauridium-rust-toolchain/bin/rustc
+cleanup-commands:
+  - rm -rf /app/lib/tauridium-rust-toolchain
 modules:
   # Vendored from flathub/shared-modules at cb9ec602a1ece1c76d5a4f8aa1d87c4a6bf99c3e.
   - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+
+  # Match the canonical toolchain; the current 26.08 Rust extension uses 1.98.0.
+  - rust-toolchain.json
 
   - name: tauri-cli
     buildsystem: simple
     cleanup:
       - /bin/cargo-tauri
     build-options:
+      no-debuginfo: true
+      strip: false
       env:
         CARGO_HOME: /run/build/tauri-cli/cargo
         CARGO_NET_OFFLINE: 'true'
     build-commands:
+      - python3 /app/lib/tauridium-rust-toolchain/check-rust-toolchain.py
       - python3 prepare-tauri-cli.py --cli tauri-cli.crate --bundler tauri-bundler.crate --policy build-toolchain.json --lock tauri-cli.Cargo.lock --output tauri-cli
       - cargo build --manifest-path tauri-cli/Cargo.toml --release --locked --offline
       - install -Dm755 tauri-cli/target/release/cargo-tauri /app/bin/cargo-tauri
     sources:
       - type: file
-        url: https://static.crates.io/crates/tauri-cli/tauri-cli-2.12.3.crate
-        sha256: 9a6f47e865c7c526880d9e3a0c4bb84255d6e3f45fac2684adf82458ee565a18
+        url: https://static.crates.io/crates/tauri-cli/tauri-cli-2.12.4.crate
+        sha256: 9966558da94fd1c9485d0d78f12233bea5fd4235826fb78e930fe7a26910b956
         dest-filename: tauri-cli.crate
       - type: file
-        url: https://static.crates.io/crates/tauri-bundler/tauri-bundler-2.10.3.crate
-        sha256: d8d64a12aad47ee51ea5d6326ae90026946866ed64062dd0f4fc04fda6bb1221
+        url: https://static.crates.io/crates/tauri-bundler/tauri-bundler-2.10.4.crate
+        sha256: ec436f80e3f9dc5f87e449652cc21fd546760b5ee6b4646cec30e95b68fd9104
         dest-filename: tauri-bundler.crate
       - type: file
         path: prepare-tauri-cli.py
@@ -63,6 +73,7 @@ modules:
         npm_config_cache: /run/build/tauridium/flatpak-node/npm-cache
         npm_config_offline: 'true'
     build-commands:
+      - python3 /app/lib/tauridium-rust-toolchain/check-rust-toolchain.py
       - cd source && npm ci --offline --ignore-scripts --cache=/run/build/tauridium/flatpak-node/npm-cache
       - cd source && npm run build
       - chmod +x source/flatpak/cargo-flatpak-runner.sh
@@ -72,6 +83,9 @@ modules:
       - install -Dm644 source/data/dev.brani.tauridium.metainfo.xml /app/share/metainfo/dev.brani.tauridium.metainfo.xml
       - install -Dm644 source/data/dev.brani.tauridium.svg /app/share/icons/hicolor/scalable/apps/dev.brani.tauridium.svg
       - install -Dm644 source/LICENSE /app/share/licenses/dev.brani.tauridium/LICENSE
+      # Remove all build-only binaries before normal application debug splitting.
+      - rm -rf /app/lib/tauridium-rust-toolchain
+      - rm -f /app/bin/cargo-tauri
     sources:
       # Materialize the exact immutable v1.0.2 commit after tagging.
       # Local builds use committed HEAD; publication rejects this preparatory placeholder.

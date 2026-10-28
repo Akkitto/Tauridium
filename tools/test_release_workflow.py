@@ -33,29 +33,32 @@ def load_clean_checker():
 
 
 class ReleaseWorkflowTests(unittest.TestCase):
-  def test_release_validator_requires_shared_locked_esbuild_native_probe(self) -> None:
+  def test_release_validator_requires_shared_locked_frontend_native_probe(self) -> None:
     validator = load_release_validator()
-    validator.validate_esbuild_probe(*(validator.read(path) for path in (
-      "tools/init.py", "tools/init.ps1", "tools/check_esbuild.mjs",
+    validator.validate_frontend_probe(*(validator.read(path) for path in (
+      "tools/init.py", "tools/init.ps1", "tools/check_frontend.mjs",
     )))
 
-  def test_release_validator_rejects_missing_esbuild_probe_controls(self) -> None:
+  def test_release_validator_rejects_missing_frontend_probe_controls(self) -> None:
     validator = load_release_validator()
     sources = [validator.read(path) for path in (
-      "tools/init.py", "tools/init.ps1", "tools/check_esbuild.mjs",
+      "tools/init.py", "tools/init.ps1", "tools/check_frontend.mjs",
     )]
     for index, marker in (
-      (0, '["node", "tools/check_esbuild.mjs"]'),
-      (1, '& node.exe tools/check_esbuild.mjs'),
-      (2, 'assert.equal(esbuild.version,'),
-      (2, 'esbuild.transformSync(input,'),
-      (2, '../node_modules/esbuild'),
+      (0, '["node", "tools/check_frontend.mjs"]'),
+      (1, '& node.exe tools/check_frontend.mjs'),
+      (2, 'assert.equal(rolldown.VERSION,'),
+      (2, 'transformSync("tauridium-probe.ts", input,'),
+      (2, 'lightningcss.transform('),
+      (2, 'assert.equal(metadata.version,'),
+      (2, 'require.resolve(fileURLToPath(binding.base))'),
+      (2, 'NAPI_RS_NATIVE_LIBRARY_PATH'),
     ):
       with self.subTest(marker=marker):
         broken = list(sources)
         broken[index] = broken[index].replace(marker, "REMOVED-CONTROL")
-        with self.assertRaisesRegex(SystemExit, "locked local esbuild API"):
-          validator.validate_esbuild_probe(*broken)
+        with self.assertRaisesRegex(SystemExit, "locked local frontend APIs"):
+          validator.validate_frontend_probe(*broken)
 
   def test_generate_handler_parser_keeps_commands_after_cfg_attribute(self) -> None:
     validator = load_release_validator()

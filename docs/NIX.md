@@ -355,9 +355,17 @@ See the release validation report for executed results versus pending remote CI.
 
 ## Maintaining or proposing upstream packaging
 
-`packaging/nix/package.nix` is callPackage-compatible. Its default Rust platform
-comes from nixpkgs. The repository flake provides source; an upstream nixpkgs
-submission must use an immutable release source (`fetchFromGitHub` with a real
+The repository flake pins the production application's compiler, the Tauri CLI's
+compiler, the runtime asset plugin and the Tauri hook's propagated Cargo to
+`rust-toolchain.toml`, matching
+the development environment. Updating nixpkgs cannot silently switch these
+builders to its default compiler. `just nix-integration` checks their effective
+derivation inputs on both architectures, alongside the consumer configurations.
+
+`packaging/nix/package.nix` is callPackage-compatible; direct callers choose its
+`rustPlatform` and `cargo-tauri` arguments themselves. The repository flake provides
+source; an upstream nixpkgs submission must use an immutable release source
+(`fetchFromGitHub` with a real
 hash), adapt the fileset/source argument, add a real consenting maintainer and
 follow the contribution process. Preserve local vendor patches and the Nix
 distribution feature. Do not submit placeholder hashes or self-updater behavior.

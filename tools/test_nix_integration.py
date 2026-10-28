@@ -18,6 +18,7 @@ SPEC.loader.exec_module(INTEGRATION)
 def valid_report():
   return {
     "directAlias": True,
+    "compilerChecks": {name: INTEGRATION.expected_toolchain_version() for name in ("expected", "application", "builder", "hookCargo", "assetPlugin")},
     "homeChecks": {name: {"activation": "/nix/store/example.drv"} for name in INTEGRATION.HOME_CASES},
     "nixosChecks": {name: {"activation" if name.startswith("integrated") else "package": "/nix/store/example.drv"} for name in INTEGRATION.NIXOS_CASES},
   }
@@ -26,6 +27,17 @@ def valid_report():
 class NixIntegrationTests(unittest.TestCase):
   def test_complete_report_is_accepted(self):
     INTEGRATION.validate_report(valid_report())
+
+  def test_channel_compiler_fallback_or_unverified_compiler_is_rejected(self):
+    for name in ("expected", "application", "builder", "hookCargo", "assetPlugin"):
+      report = valid_report()
+      report["compilerChecks"][name] = "1.99.0"
+      with self.subTest(component=name), self.assertRaises(RuntimeError):
+        INTEGRATION.validate_report(report)
+    report = valid_report()
+    del report["compilerChecks"]
+    with self.assertRaises(RuntimeError):
+      INTEGRATION.validate_report(report)
 
   def test_missing_or_extra_cases_are_rejected(self):
     for group in ("homeChecks", "nixosChecks"):

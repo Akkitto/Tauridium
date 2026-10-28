@@ -44,23 +44,23 @@ tauri = { version = "=2.12.4", features = ["unstable", "tray-icon", "devtools"] 
 wry = "=0.57.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-regex = "=1.12.4"
+regex = "=1.13.1"
 getrandom = "=0.4.3"
 keyring-core = "=1.0.1"
-tokio = { version = "=1.53.3", default-features = false, features = ["sync"] }
-dirs = "6"
+tokio = { version = "=1.54.1", default-features = false, features = ["sync"] }
+dirs = "7"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-sha2 = "0.10"
-base64 = "0.22"
+sha2 = "0.11"
+base64 = { version = "0.23", default-features = false, features = ["std"] }
 # zip intentionally disables defaults; select flate2's portable Rust backend explicitly.
 # This must remain unconditional so Windows cannot depend on platform-specific feature unification.
-flate2 = { version = "=1.1.9", default-features = false, features = ["rust_backend"] }
-zip = { version = "=9.0.4", default-features = false, features = ["deflate-flate2"] }
+flate2 = { version = "=1.1.10", default-features = false, features = ["rust_backend"] }
+zip = { version = "=9.1.2", default-features = false, features = ["deflate-flate2"] }
 tauri-plugin-notification = { version = "2", optional = true }
 tauri-plugin-autostart = { version = "2", optional = true }
 tauri-plugin-updater = { version = "=2.14.0", optional = true }
 zbus = { version = "5.16.0", optional = true }
-tauri-plugin-window-state = "=2.4.1"
+tauri-plugin-window-state = "=2.5.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus-secret-service-keyring-store = { version = "=1.0.1", features = ["crypto-rust"] }

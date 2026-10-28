@@ -1,37 +1,37 @@
 {
   "schema": 1,
-  "applicationLockSha256": "ccb0a37c3fe3b54374747a9f90bd02bfdd55fd94e7f34026f71314a8c9c77fc6",
-  "builderLockSha256": "0cb07536184612164e95f6e14134feebbf54a182d47de51449b4b505763cb64a",
+  "applicationLockSha256": "ebaed9290a2e514727e2bf09a24d8dd1e87ead651e2abac2671faf3600eda854",
+  "builderLockSha256": "6019075d357d3ff887c4fb0f59584c2720971749d95789dd60cee5f42550a202",
   "assessments": [
     {
       "lock": "src-tauri/Cargo.lock",
       "id": "RUSTSEC-2026-0370",
       "package": "zvariant",
-      "version": "5.12.0",
+      "version": "5.15.1",
       "kind": "unmaintained",
       "expires": "2026-11-15",
       "status": "reviewed-maintenance-warning",
-      "reason": "Reviewed official RustSec RUSTSEC-2026-0370 (informational/unmaintained, dated 2026-10-16): standalone zvariant was merged into zbus 6's wire module; no vulnerability or patched standalone release is asserted. This exact SHA-256-bound application lock uses zvariant 5.12.0 through the same zbus 5.16.0 notification, portal and OS-vault integrations documented in docs/ZBUS-MAINTENANCE-REVIEW.md. A coordinated parent migration is required; a forced direct dependency change does not remove the constrained transitive stack. Keep the finding visible and reassess by 2026-11-15. Different lock bytes, versions, vulnerability/unsound findings or expiry fail closed. This is not an upstream fix. Source: https://github.com/RustSec/advisory-db/blob/999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b/crates/zvariant/RUSTSEC-2026-0370.md"
+      "reason": "Re-reviewed official RustSec RUSTSEC-2026-0370 against database 3279c99911354c400e1d41e47c7d60e39258b147 on 2026-10-27: this is an informational/unmaintained standalone-crate notice, not a vulnerability or patched standalone release. The exact SHA-256-bound application lock uses zvariant 5.15.1 through the updated zbus/zbus_macros 5.19.0 stack. Notification (notify-rust 4.18.2), portal (ashpd 0.11.1/rfd 0.16.1) and OS-vault (secret-service 5.2.0/zbus-secret-service-keyring-store 1.0.1) consumers still independently constrain zbus 5; forcing only a direct zbus 6 update does not remove them. See docs/ZBUS-MAINTENANCE-REVIEW.md. Whole-lock scanning keeps this warning visible; changed lock bytes, versions, vulnerability/unsound findings or expiry fail closed. Reassessment remains due 2026-11-15, without extension. Source: https://github.com/RustSec/advisory-db/blob/3279c99911354c400e1d41e47c7d60e39258b147/crates/zvariant/RUSTSEC-2026-0370.md"
     },
     {
       "lock": "src-tauri/Cargo.lock",
       "id": "RUSTSEC-2026-0372",
       "package": "zvariant_derive",
-      "version": "5.12.0",
+      "version": "5.15.1",
       "kind": "unmaintained",
       "expires": "2026-11-15",
       "status": "reviewed-maintenance-warning",
-      "reason": "Reviewed official RustSec RUSTSEC-2026-0372 (informational/unmaintained, dated 2026-10-16): standalone zvariant_derive macros moved into zbus 6; no vulnerability or patched standalone release is asserted. This exact SHA-256-bound application lock requires zvariant_derive 5.12.0 with zvariant 5.12.0 and the zbus 5.16.0 notification, portal and OS-vault parent chain. Review the coordinated migration in docs/ZBUS-MAINTENANCE-REVIEW.md by 2026-11-15 rather than forcing incompatible transitive APIs. The warning remains visible; changed lock bytes, versions, finding kinds and expiry fail closed. This is not an upstream fix. Source: https://github.com/RustSec/advisory-db/blob/999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b/crates/zvariant_derive/RUSTSEC-2026-0372.md"
+      "reason": "Re-reviewed official RustSec RUSTSEC-2026-0372 against database 3279c99911354c400e1d41e47c7d60e39258b147 on 2026-10-27: this is an informational/unmaintained standalone-crate notice, not a vulnerability or patched standalone release. The exact SHA-256-bound application lock uses zvariant_derive 5.15.1 through the updated zbus/zbus_macros 5.19.0 stack. Notification (notify-rust 4.18.2), portal (ashpd 0.11.1/rfd 0.16.1) and OS-vault (secret-service 5.2.0/zbus-secret-service-keyring-store 1.0.1) consumers still independently constrain zbus 5; forcing only a direct zbus 6 update does not remove them. See docs/ZBUS-MAINTENANCE-REVIEW.md. Whole-lock scanning keeps this warning visible; changed lock bytes, versions, vulnerability/unsound findings or expiry fail closed. Reassessment remains due 2026-11-15, without extension. Source: https://github.com/RustSec/advisory-db/blob/3279c99911354c400e1d41e47c7d60e39258b147/crates/zvariant_derive/RUSTSEC-2026-0372.md"
     },
     {
       "lock": "src-tauri/Cargo.lock",
       "id": "RUSTSEC-2026-0371",
       "package": "zbus_names",
-      "version": "4.3.2",
+      "version": "4.3.5",
       "kind": "unmaintained",
       "expires": "2026-11-15",
       "status": "reviewed-maintenance-warning",
-      "reason": "Reviewed RustSec RUSTSEC-2026-0371 (informational/unmaintained, dated 2026-10-16): standalone zbus_names was merged into zbus 6; no vulnerability or patched standalone release is asserted. This exact SHA-256-bound application lock requires zbus_names 4.3.2 through zbus/zbus_macros 5.16.0, notify-rust 4.18.2, secret-service 5.2.0, zbus-secret-service-keyring-store 1.0.1 and ashpd 0.11.1/rfd 0.16.0. A complete migration must coordinate notification, portal and OS-vault integrations; forcing only a direct zbus 6 update would retain the transitive zbus 5 dependency and does not resolve this finding. Keep the warning visible and reassess the coordinated upstream migration by 2026-11-15. New versions, warning kinds, lock bytes, vulnerabilities or expiry fail closed. This is a time-limited maintenance assessment, not an upstream fix or a vulnerability exclusion. Source: https://github.com/RustSec/advisory-db/blob/999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b/crates/zbus_names/RUSTSEC-2026-0371.md"
+      "reason": "Re-reviewed official RustSec RUSTSEC-2026-0371 against database 3279c99911354c400e1d41e47c7d60e39258b147 on 2026-10-27: this is an informational/unmaintained standalone-crate notice, not a vulnerability or patched standalone release. The exact SHA-256-bound application lock uses zbus_names 4.3.5 through the updated zbus/zbus_macros 5.19.0 stack. Notification (notify-rust 4.18.2), portal (ashpd 0.11.1/rfd 0.16.1) and OS-vault (secret-service 5.2.0/zbus-secret-service-keyring-store 1.0.1) consumers still independently constrain zbus 5; forcing only a direct zbus 6 update does not remove them. See docs/ZBUS-MAINTENANCE-REVIEW.md. Whole-lock scanning keeps this warning visible; changed lock bytes, versions, vulnerability/unsound findings or expiry fail closed. Reassessment remains due 2026-11-15, without extension. Source: https://github.com/RustSec/advisory-db/blob/3279c99911354c400e1d41e47c7d60e39258b147/crates/zbus_names/RUSTSEC-2026-0371.md"
     },
     {
       "lock": "flatpak/tauri-cli.Cargo.lock",
@@ -41,7 +41,7 @@
       "kind": "vulnerability",
       "expires": "2026-11-15",
       "status": "not-affected-under-enforced-controls",
-      "reason": "The patched builder removes RPM OpenPGP entirely. Remaining RSA is selected only by tauri-macos-sign 2.4.2 (crate SHA256 b2ad3a8236db04071cb4ec8ebebb05dfac392f83d2dbc1cde18afcb8f5af65a2) on macOS. Its sole direct RSA use is ephemeral self-signed certificate key generation, not the RSA decryption affected by the Marvin advisory. Linux/Windows builders do not compile that target dependency. Canonical builds additionally reject signing credentials; isolated updater signing uses Minisign Ed25519. Whole-lock scanning still reports and expires this exact advisory assessment; no upstream RSA patch is claimed."
+      "reason": "The patched builder removes RPM OpenPGP entirely. Remaining RSA 0.9.10 has exactly one parent, tauri-macos-sign 2.4.3 (crate SHA256 4478507a7aeee53b73ac780f4f645a584ae07eab599a3d171f8afb258fb02026), gated to macOS in both CLI and bundler manifests. Re-reviewed official source revision 993038c49185307dfc895ab7657d77ca0d5ed7c7 on 2026-10-27: certificate.rs:835-868 only generates a fresh RSA key and serializes it for a local self-signed test certificate; it does not call RSA decryption affected by the Marvin advisory. Linux/Windows builders do not compile that dependency. Canonical builds reject signing credentials and isolated updater signing uses Minisign Ed25519. Whole-lock scanning still reports this exact expiring advisory; no upstream RSA patch or advisory exclusion is claimed. Reassessment remains due 2026-11-15 without extension. Source: https://github.com/tauri-apps/tauri/blob/993038c49185307dfc895ab7657d77ca0d5ed7c7/crates/tauri-macos-sign/src/apple_codesign/certificate.rs"
     },
     {
       "lock": "src-tauri/Cargo.lock",

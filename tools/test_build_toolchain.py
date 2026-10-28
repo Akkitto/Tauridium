@@ -15,7 +15,7 @@ class BuildToolchainTests(unittest.TestCase):
         self.assertRegex(policy["tauriCli"], r"^2\.\d+\.\d+$")
         self.assertRegex(policy["tauriCliBuild"], r"^2\.\d+\.\d+\+tauridium\.\d+$")
         lock = tomllib.loads((ROOT / "flatpak/tauri-cli.Cargo.lock").read_text(encoding="utf-8"))
-        self.assertEqual([p["version"] for p in lock["package"] if p["name"] == "zip"], ["9.0.4"])
+        self.assertEqual([p["version"] for p in lock["package"] if p["name"] == "zip"], ["9.1.2"])
         self.assertFalse({"pgp", "ml-dsa"} & {p["name"] for p in lock["package"]})
         self.assertEqual([p["version"] for p in lock["package"] if p["name"] == "tauri-cli"], [policy["tauriCliBuild"]])
         self.assertEqual(hashlib.sha256((ROOT / "flatpak/tauri-cli.Cargo.lock").read_bytes()).hexdigest(),

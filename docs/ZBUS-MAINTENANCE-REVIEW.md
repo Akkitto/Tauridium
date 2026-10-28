@@ -1,19 +1,19 @@
 # D-Bus standalone-crate maintenance review
 
-Reviewed 17 October 2026; reassessment due **15 November 2026**. This is an
+Re-reviewed 27 October 2026; reassessment due **15 November 2026**. This is an
 explicit temporary maintenance assessment, not a vulnerability fix or a claim
 that the standalone crate has become maintained again.
 
 ## Upstream evidence
 
-[RUSTSEC-2026-0371](https://github.com/RustSec/advisory-db/blob/999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b/crates/zbus_names/RUSTSEC-2026-0371.md)
+[RUSTSEC-2026-0371](https://github.com/RustSec/advisory-db/blob/3279c99911354c400e1d41e47c7d60e39258b147/crates/zbus_names/RUSTSEC-2026-0371.md)
 is dated 16 October 2026 and classified `informational = "unmaintained"`.
 The advisory describes the standalone crate being merged into zbus 6's `names`
 module. It identifies no exploitable vulnerability or patched standalone release.
 The related official notices
-[RUSTSEC-2026-0370](https://github.com/RustSec/advisory-db/blob/999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b/crates/zvariant/RUSTSEC-2026-0370.md)
+[RUSTSEC-2026-0370](https://github.com/RustSec/advisory-db/blob/3279c99911354c400e1d41e47c7d60e39258b147/crates/zvariant/RUSTSEC-2026-0370.md)
 and
-[RUSTSEC-2026-0372](https://github.com/RustSec/advisory-db/blob/999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b/crates/zvariant_derive/RUSTSEC-2026-0372.md)
+[RUSTSEC-2026-0372](https://github.com/RustSec/advisory-db/blob/3279c99911354c400e1d41e47c7d60e39258b147/crates/zvariant_derive/RUSTSEC-2026-0372.md)
 cover standalone `zvariant` and `zvariant_derive` moving into zbus 6's wire
 module/derive support. Both are also maintenance notices, with no vulnerability
 or patched standalone version asserted. Both actual locks were inspected in full,
@@ -24,22 +24,22 @@ inspected; this decision is not based on a scanner severity filter.
 ## Exact current scope
 
 The application lock has SHA-256
-`71eb4340f19ee1e4d2b713342834e5b525d7e398d490294a2e0394b8108b8f60`.
-Revalidated on 24 October after the isolated `ctutils 0.4.4` and
-`rustls-webpki 0.103.16`, `webpki-roots 1.0.10`, `webpki-root-certs 1.0.10`
-and `tokio 1.53.3`
-security updates; the D-Bus dependency chains below are
-unchanged. The assessment expiry remains 15 November.
-It contains `zbus_names 4.3.2`, `zvariant 5.12.0`, `zvariant_derive 5.12.0`,
-`zbus 5.16.0` and `zbus_macros 5.16.0`.
+`ebaed9290a2e514727e2bf09a24d8dd1e87ead651e2abac2671faf3600eda854`.
+Re-reviewed on 27 October against official RustSec database commit
+`3279c99911354c400e1d41e47c7d60e39258b147` after the compatible native dependency
+refresh. Fresh whole-lock scanning reports zero known application vulnerabilities
+and the same four explicitly assessed maintenance notices (including the separate
+GTK tooling notice). The assessment expiry remains 15 November.
+It contains `zbus_names 4.3.5`, `zvariant 5.15.1`, `zvariant_derive 5.15.1`,
+`zbus 5.19.0` and `zbus_macros 5.19.0`.
 An actual Linux all-feature reverse dependency inspection shows:
 
 | Parent | Application integration |
 | --- | --- |
-| `notify-rust 4.18.2` | `tauri-plugin-notification 2.3.3` |
+| `notify-rust 4.18.2` | `tauri-plugin-notification 2.7.0` |
 | `secret-service 5.2.0` | `zbus-secret-service-keyring-store 1.0.1` |
 | `zbus-secret-service-keyring-store 1.0.1` | Native OS-vault storage |
-| `ashpd 0.11.1` | `rfd 0.16.0` and `tauri-plugin-dialog 2.7.1` portal dialogs |
+| `ashpd 0.11.1` | `rfd 0.16.1` and `tauri-plugin-dialog 2.8.3` portal dialogs |
 | Tauridium's optional direct zbus dependency | Flatpak portal integration |
 
 Changing only Tauridium's direct dependency to zbus 6 would not remove the

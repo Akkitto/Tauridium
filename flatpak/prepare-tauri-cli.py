@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Prepare the same checksum-verified, explicitly patched CLI on every platform.
 
-Upstream CLI 2.12.3 and bundler 2.10.3 still require vulnerable ZIP 8. Only
-their normalized ZIP dependencies, unused RPM signing stack, reviewed compression
-lock and the CLI build identity are changed. No patch is made in Cargo's shared registry.
+Upstream CLI 2.12.4 and bundler 2.10.4 use ZIP 9. Their exact reviewed ZIP
+pin, unused RPM signing stack, reviewed dependency lock and CLI build identity
+are changed. No patch is made in Cargo's shared registry.
 """
 from __future__ import annotations
 
@@ -85,7 +85,7 @@ def prepare(output: Path, cli: bytes, bundler: bytes, policy: dict, lock: bytes)
   replace_once(manifest, 'version = "' + policy["tauriCli"] + '"\n', 'version = "' + policy["tauriCliBuild"] + '"\n')
   replace_once(manifest, '[dependencies.tauri-bundler]\n', '[dependencies.tauri-bundler]\npath = "tauridium-bundler"\n')
   for path in (manifest, bundled / "Cargo.toml"):
-    replace_once(path, '[dependencies.zip]\nversion = "8"\n', '[dependencies.zip]\nversion = "=9.0.4"\n')
+    replace_once(path, '[dependencies.zip]\nversion = "9"\n', '[dependencies.zip]\nversion = "=9.1.2"\n')
   replace_once(bundled / "Cargo.toml",
                '[target.\'cfg(target_os = "linux")\'.dependencies.rpm]\nversion = "0.30"\nfeatures = ["bzip2-compression"]\n',
                '[target.\'cfg(target_os = "linux")\'.dependencies.rpm]\nversion = "0.30"\ndefault-features = false\n'
