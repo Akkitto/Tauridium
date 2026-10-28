@@ -30,7 +30,9 @@ jobs:
           toolchain: 1.97.1
       - name: Enforce hook-free install and current npm advisories
         run: |
+          python3 tools/npm_policy.py
           npm ci --ignore-scripts
+          node tools/check_deepmerge.mjs
           npm audit --audit-level=low
       - name: Install exact advisory scanner without signing credentials
         run: |

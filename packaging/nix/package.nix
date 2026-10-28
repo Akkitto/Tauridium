@@ -37,6 +37,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
       ../../vite.config.ts
       ../../svelte.config.js
       ../../tsconfig.json
+      ../../tools/check_deepmerge.mjs
       ../../src
       ../../vendor
       ../../data
@@ -60,7 +61,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
   cargoHash = "sha256-DODOj47Dmis6dlQIBP9CFrKQYGjw+d5Xsi0fAOHmIuU=";
   npmDeps = fetchNpmDeps {
     inherit (finalAttrs) src;
-    hash = "sha256-UxBbjB7RG7OhNc187wdC8OTEZ18zhvDrWVM2CSB784k=";
+    hash = "sha256-KfS/J+Z/bnkT6+X9MoQnsyDZeBUA2ePrz83JiLtKL5M=";
   };
   npmRoot = ".";
   env.npm_config_ignore_scripts = "true";

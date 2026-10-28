@@ -45,3 +45,7 @@ release/
 .flatpak-builder/
 build-dir/
 repo/
+
+# This upstream distribution file is the reviewed local npm security backport.
+!vendor/deepmerge/dist/
+!vendor/deepmerge/dist/cjs.js

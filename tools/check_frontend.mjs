@@ -57,3 +57,5 @@ const css = lightningcss.transform({
 });
 assert.equal(css.code.toString(), ".tauridium-check{color:red}");
 console.log(`Local Rolldown ${rolldownPackage.version} and Lightning CSS ${lightningcssPackage.version}: native transforms validated without installation scripts.`);
+
+await (await import("./check_deepmerge.mjs")).checkInstallation();

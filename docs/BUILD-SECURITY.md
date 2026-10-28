@@ -33,6 +33,23 @@ would run when enabled, then verifies that both the explicit bootstrap flag and
 the project default prevent execution. It does not execute untrusted third-party
 code to perform the security scan.
 
+## Svelte configuration merger
+
+The latest Svelte Vite plugin still depends on vulnerable `deepmerge 4.3.1`.
+The in-tree `4.3.1+tauridium.1` backport rejects prototype-control keys in both
+merge loops and defines own data properties. Its verified upstream archive,
+license, exact file hashes and retirement instructions are documented in
+[`vendor/deepmerge/TAURIDIUM-PATCH.md`](../vendor/deepmerge/TAURIDIUM-PATCH.md).
+
+Every frontend production build verifies the library actually resolved by the
+plugin, its hashes, exploit regressions and normal configuration behavior.
+Initialization and security CI also enforce the exact root-local override.
+All implicit lifecycle scripts remain disabled, and registry advisory scanning
+still fails at low severity. npm excludes local packages from its advisory
+service; the separately enforced backport checks must not be replaced by a
+clean registry audit. The patched build dependency is not a shipped runtime
+module and does not alter service-webview permissions.
+
 ## Pinned native tooling
 
 data/build-toolchain.json pins the official stable Tauri CLI 2.12.4 and bundler

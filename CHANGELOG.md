@@ -4,6 +4,9 @@
 
 ### Security
 
+- Backport the deepmerge prototype-poisoning fix used by the Svelte build plugin,
+  enforcing local-source integrity and exploit regressions without weakening audits.
+
 - Refresh the shared verified Tauri CLI and bundler, retaining patched compression/
   TLS dependencies, credential isolation and exact expiring advisory assessments.
 - Update immutable GitHub Actions pins, including the Nix installer certificate

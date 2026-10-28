@@ -33,3 +33,6 @@ docs/** linguist-documentation
 # Windows core.autocrlf must not turn their canonical LF bytes into CRLF.
 flatpak/tauri-cli.Cargo.lock text eol=lf
 src-tauri/Cargo.lock text eol=lf
+
+# The reviewed local npm backport is integrity-bound on every host.
+vendor/deepmerge/** text eol=lf

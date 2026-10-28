@@ -1,0 +1,22 @@
+{
+  "name": "deepmerge",
+  "version": "4.3.1+tauridium.1",
+  "description": "Tauridium prototype-poisoning security backport of upstream deepmerge 4.3.1",
+  "main": "dist/cjs.js",
+  "types": "index.d.ts",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TehShrike/deepmerge.git"
+  },
+  "engines": {
+    "node": ">=0.10.0"
+  },
+  "files": [
+    "dist/cjs.js",
+    "index.d.ts",
+    "LICENSE",
+    "TAURIDIUM-PATCH.json",
+    "TAURIDIUM-PATCH.md"
+  ]
+}

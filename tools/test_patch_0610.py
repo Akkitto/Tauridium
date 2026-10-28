@@ -25,7 +25,7 @@ class Patch0610Tests(unittest.TestCase):
     self.assertTrue((ROOT / "svelte.config.js").is_file())
     self.assertTrue((ROOT / "vite-env.d.ts").is_file())
     self.assertIn('"dev": "vite"', self.package)
-    self.assertIn('"build": "vite build"', self.package)
+    self.assertIn('"build": "node tools/check_deepmerge.mjs && vite build"', self.package)
     self.assertIn('"test": "vitest run"', self.package)
     self.assertIn("**Vite 8 / Vitest 5**", self.readme)
 
