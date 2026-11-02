@@ -24,10 +24,10 @@ inspected; this decision is not based on a scanner severity filter.
 ## Exact current scope
 
 The application lock has SHA-256
-`ea5bd4b9cc19ea203f9ea33ea5df1e5448f5dcd9f17358b53acc615ce43fb521`.
+`c8c289c99b068aee065184828aabd0f6f3b5dc3fa1574b4420fb4046a8aef54e`.
 Re-reviewed on 2 November against official RustSec database commit
 `263a4d951a0867d4bddc29dddd6d59427c78f9a7` after the compatible native dependency
-refresh. Fresh whole-lock scanning reports zero known application vulnerabilities
+refresh. The 1.0.3 release identity changes no dependency versions in that reviewed graph. Fresh whole-lock scanning reports zero known application vulnerabilities
 and the same four explicitly assessed maintenance notices (including the separate
 GTK tooling notice). The yanked `async-executor 1.14.0` discovered during
 reassessment was replaced by non-yanked `1.14.1`; the final scan has no yanked

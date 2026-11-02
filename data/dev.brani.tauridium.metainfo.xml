@@ -19,11 +19,16 @@
   <url type="vcs-browser">https://github.com/Akkitto/Tauridium</url>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v1.0.2/data/screenshots/tauridium-0.8.0-main.png</image>
+      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v1.0.3/data/screenshots/tauridium-0.8.0-main.png</image>
       <caption>Tauridium sign-in and local accountless start screen</caption>
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.0.3" date="2026-11-02">
+      <description>
+        <p>Updates compatible desktop integrations, synchronized Nix and Flatpak inputs, security backports and isolated release publication. Reassesses exact dependency locks without weakening advisory gates.</p>
+      </description>
+    </release>
     <release version="1.0.2" date="2026-10-25">
       <description>
         <p>Fixes Windows ARM64 release initialization with checksum-verified native Minisign tooling and clean-machine checks on both Windows architectures. Older updater identities require a manual upgrade.</p>

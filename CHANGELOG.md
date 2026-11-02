@@ -2,7 +2,12 @@
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-11-02
+
 ### Security
+
+- Reassess the exact application and builder locks against current upstream evidence,
+  replace the yanked async-executor release, and retain visible short advisory deadlines.
 
 - Backport the deepmerge prototype-poisoning fix used by the Svelte build plugin,
   enforcing local-source integrity and exploit regressions without weakening audits.
@@ -21,6 +26,9 @@
 
 ### Changed
 
+- Coordinate dialog 2.8.4, notification 2.8.0 and rfd 0.17.2 across native, Nix and
+  Flatpak builds, retaining one compatible D-Bus stack for notifications and vault access.
+
 - Refresh compatible native and frontend dependencies, including Vite 8, Vitest 5
   and TypeScript 6 with the supported Svelte tooling. Preserve the reviewed WebView,
   platform-integration and TLS compatibility lines.
@@ -28,6 +36,9 @@
   with matching Cargo/npm offline sources and measured dependency hashes.
 
 ### Fixed
+
+- Synchronize Nix dependency hashes and Flatpak offline inputs with the reviewed locks,
+  and correct stale builder and compatibility documentation.
 
 - Discover private GitHub release drafts and verify/promote them by numeric release
   ID, avoiding the published-release-only tag lookup.
