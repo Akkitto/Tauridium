@@ -61,7 +61,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
   cargoHash = "sha256-dYEsjaKfLRjcJM9sMnmfCC1oDWVLN0+jD0uVMwMD3TU=";
   npmDeps = fetchNpmDeps {
     inherit (finalAttrs) src;
-    hash = "sha256-Ww2b4/8NLIP/sn1rNw8PIiFObEVb/wI6Mm4/YzzPYP0=";
+    hash = "sha256-Tb5VryRPr1ARaXAO4U2gfK+Pkb8mC59DP85MluZxd1Y=";
   };
   npmRoot = ".";
   env.npm_config_ignore_scripts = "true";
