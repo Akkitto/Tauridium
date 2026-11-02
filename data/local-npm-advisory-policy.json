@@ -7,7 +7,7 @@
   "localVersion": "4.3.1+tauridium.1",
   "runtimeSha256": "f52c1deed5fef6181e217aa466fb2ec6936c2b9c22060a8c0cfa9c0f015df992",
   "expires": "2026-11-15",
-  "reason": "The exact local runtime backports the reserved-key guards and safe own-property writes. Source integrity and actual Svelte resolution, exploit controls and compatibility are executed before this current online query. This assessment covers only the exact known advisory; new findings or changed advisory details require review.",
+  "reason": "Re-reviewed official registry/advisory metadata and the exact vendored implementation on 2026-11-02: upstream latest remains 4.3.1 with no patched release, the live npm bulk response exactly matches this known advisory, and the pinned runtime SHA256 is unchanged. The backport rejects reserved keys before value access in both merge loops and defines own data properties. Source integrity, actual Svelte resolution, exploit controls and compatibility are executed before the enforced current online query. This assessment covers only the exact concretely backported advisory; new findings or changed advisory details require review. Reassessment remains due 2026-11-15 without extension.",
   "expectedAdvisory": {
     "id": 1243505,
     "url": "https://github.com/advisories/GHSA-gcqx-w48m-w2h4",

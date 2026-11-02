@@ -27,7 +27,7 @@ class Patch0426Tests(unittest.TestCase):
 
   def test_rfd_features_match_dialog_plugin_and_keep_windows_locked_resolution_stable(self) -> None:
     self.assertIn(
-      'rfd = { version = "0.16", default-features = false, features = ["common-controls-v6"] }',
+      'rfd = { version = "=0.17.2", default-features = false, features = ["common-controls-v6"] }',
       CARGO,
     )
     tauridium = CARGO_LOCK.split('name = "tauridium"', 1)[1].split("[[package]]", 1)[0]

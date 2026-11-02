@@ -28,7 +28,8 @@ class FlatpakReleaseTests(unittest.TestCase):
     self.assertIn('dep:zbus', cargo)
     self.assertIn('rfd/xdg-portal', cargo)
     self.assertIn('rfd/wayland', cargo)
-    self.assertIn('rfd/tokio', cargo)
+    # rfd 0.17 owns portal transport and removed the old runtime-selection feature.
+    self.assertNotIn('rfd/tokio', cargo)
     self.assertIn('cfg!(feature = "flatpak")', distribution)
 
   def test_flatpak_runner_disables_native_default_features(self) -> None:

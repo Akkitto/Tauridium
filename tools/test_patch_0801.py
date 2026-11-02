@@ -31,7 +31,10 @@ class Patch0801Tests(unittest.TestCase):
     body = match.group(1)
     self.assertIn('"dep:zbus"', body)
     self.assertIn('"zbus/tokio"', body)
-    self.assertIn('"rfd/tokio"', body)
+    # rfd 0.17 supplies its portal transport without the removed Tokio selector.
+    self.assertNotIn('"rfd/tokio"', body)
+    self.assertIn('"rfd/xdg-portal"', body)
+    self.assertIn('"rfd/wayland"', body)
 
   def test_windows_check_remains_strict_and_all_features(self) -> None:
     justfile = self.read("justfile")

@@ -27,7 +27,6 @@ flatpak = [
   "tauri-plugin-dialog/xdg-portal",
   "rfd/xdg-portal",
   "rfd/wayland",
-  "rfd/tokio",
 ]
 nix = [
   "dep:tauri-plugin-notification",
@@ -56,25 +55,28 @@ base64 = { version = "0.23", default-features = false, features = ["std"] }
 # This must remain unconditional so Windows cannot depend on platform-specific feature unification.
 flate2 = { version = "=1.1.10", default-features = false, features = ["rust_backend"] }
 zip = { version = "=9.1.2", default-features = false, features = ["deflate-flate2"] }
-tauri-plugin-notification = { version = "2", optional = true }
+tauri-plugin-notification = { version = "=2.8.0", optional = true }
 tauri-plugin-autostart = { version = "2", optional = true }
 tauri-plugin-updater = { version = "=2.14.0", optional = true }
-zbus = { version = "5.16.0", optional = true }
+# Portal calls use the supported blocking API. Notification and OS-vault parents
+# still require zbus 5; migrate those together before adopting zbus 6.
+zbus = { version = "=5.19.0", optional = true }
 tauri-plugin-window-state = "=2.5.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus-secret-service-keyring-store = { version = "=1.0.1", features = ["crypto-rust"] }
 gtk = "=0.18.2"
 # The distribution feature deliberately selects the Linux dialog backend. Native
-# packages retain GTK3; Flatpak enables xdg-portal + Wayland + Tokio explicitly.
+# packages retain GTK3; Flatpak enables xdg-portal + Wayland explicitly.
+# Its independent zbus portal connection selects Tokio; rfd 0.17 owns its runtime.
 # Keeping the dependency itself featureless prevents accidental Cargo feature
 # unification from silently changing either distribution mode.
-tauri-plugin-dialog = { version = "2", default-features = false }
-rfd = { version = "0.16", default-features = false }
+tauri-plugin-dialog = { version = "=2.8.4", default-features = false }
+rfd = { version = "=0.17.2", default-features = false }
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
-tauri-plugin-dialog = "2"
-rfd = { version = "0.16", default-features = false, features = ["common-controls-v6"] }
+tauri-plugin-dialog = "=2.8.4"
+rfd = { version = "=0.17.2", default-features = false, features = ["common-controls-v6"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-native-keyring-store = "=1.1.0"
