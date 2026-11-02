@@ -29,14 +29,16 @@ ACLs, commands, or plugins.
 
 ### Temporary dependency patch
 
-Tauri 2.11.3 normally defines `window.isTauri` as a non-configurable property before application
+Tauri 2.12.4 normally defines `window.isTauri` as a non-configurable property before application
 initialization scripts. Tauridium temporarily vendors that exact Tauri crate and changes only the
 property descriptor so the marker is configurable. Its value remains `true` everywhere by
 default. The Proton-specific initialization script can then delete the marker in the selected
 Proton service WebViews before hosted page JavaScript executes.
 
-The local Tauri dependency is intentionally pinned to exactly 2.11.3 so a dependency update
-cannot silently bypass the compatibility patch.
+The local Tauri dependency is intentionally pinned to exactly 2.12.4 so a dependency update
+cannot silently bypass the compatibility patch. `src-tauri/Cargo.toml` and
+`vendor/tauri/TAURIDIUM-PATCH.md` record the current reviewed version and patch; keep
+this explanation aligned with them when updating the vendored crate.
 
 Upstream references:
 
