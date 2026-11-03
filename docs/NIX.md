@@ -376,12 +376,17 @@ update the corresponding content hash using the hash mismatch from the actual
 fixed-output fetch; both lockfiles and hashes are reviewable together. Do not
 run unconstrained dependency updates during a release build.
 
-Changing only the release version also changes package-lock.json and can change
-the npm cache hash. Recheck it after the final version synchronization. An existing
-fixed-output cache can hide a stale expected hash; force the npm fetch to run with
+Changing only the release version changes both lockfiles and can change both
+fetch hashes. Recheck them after the final version synchronization. An existing
+fixed-output cache can hide a stale expected hash. `nix build --rebuild` forces
+only the selected derivation: rebuilding the outer Cargo vendor derivation can
+still reuse its cached vendor-staging fetch. Force the actual fixed-output fetch
+derivations to run, and require clean hosted builds on both architectures before
+release. For npm, that fetch is
 `nix build --rebuild --no-link .#packages.x86_64-linux.default.npmDeps`
-(use `aarch64-linux` on that host), and require clean hosted builds on both
-architectures before release. Never disable the hash check to accept a cache.
+(use `aarch64-linux` on that host). For Cargo, identify the vendor-staging input
+with `nix derivation show .#packages.x86_64-linux.default.cargoDeps` and rebuild
+that fetch derivation. Never disable a hash check to accept a cache.
 
 Authoritative packaging references: [Nixpkgs manual](https://nixos.org/manual/nixpkgs/unstable/),
 [cargo-tauri hook](https://github.com/NixOS/nixpkgs/tree/nixos-unstable/pkgs/by-name/ca/cargo-tauri),
