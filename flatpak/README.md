@@ -70,8 +70,10 @@ It does not install over the user's existing app. The source is a checksum-bound
 exact Git tree/blob archive, not `git archive` or an ignored-file directory sweep.
 Neither tracked nor producer-local export attributes/filters can omit or rewrite
 committed files. Relative module patches and executable modes are preserved.
-The Nix development shell supplies the native builder; otherwise
-install `flatpak-builder` or the current `org.flatpak.Builder` application.
+The Nix development shell supplies the native builder and AppStream Compose.
+For a native host builder, install `flatpak-builder` and a working AppStream
+Compose addon. Check it with `appstreamcli compose --help`. The current
+`org.flatpak.Builder` application is also supported.
 
 The builder publishes `release/flatpak/latest.json` only after a successful export.
 Test/lint select that exact current-HEAD candidate, reject incomplete/stale/changed
@@ -108,14 +110,12 @@ verify that its immutable tag/commit and all three offline source manifests agre
 just flatpak-publication-check
 ```
 
-During 1.0.3 release preparation, the publication reference deliberately uses
-`__TAURIDIUM_V103_COMMIT__`: a release commit cannot embed its own future hash.
-After the authorized immutable `v1.0.3` tag exists, replace that placeholder with
-the tag's exact peeled commit in a separate packaging commit, then run the check
-above. The tagged source archive retains the preparatory placeholder. Use the
-post-tag upstream reference for publication, or `just flatpak-build` for local
-tagged-source testing. This check rejects unresolved pins, tag/commit mismatches
-and incompatible source/offline inputs; never move an existing release tag.
+The publication manifest pins the exact commit behind `v1.0.3`. For the next
+release, materialize the new tag's peeled commit in a separate packaging commit
+after tagging. A release commit cannot embed its own future hash. Use the
+post-tag reference for publication and `just flatpak-build` for local testing.
+Publication checks reject unresolved pins, tag/commit mismatches and
+incompatible offline inputs. Existing release tags stay fixed.
 Verify the matching offline inputs before running submission checks. The
 following explicit Flathub command installs an application and is **not** the local
 non-installing QA workflow above:
