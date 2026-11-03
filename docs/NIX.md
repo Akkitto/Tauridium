@@ -10,18 +10,18 @@ or WSL merely to develop Tauridium on Windows.
 After the release tag has been pushed, try the immutable release:
 
 ```sh
-nix --extra-experimental-features 'nix-command flakes' run github:Akkitto/Tauridium/v1.0.2
+nix --extra-experimental-features 'nix-command flakes' run github:Akkitto/Tauridium/v1.0.3
 ```
 
 Install in your profile for a stable desktop launcher and session autostart:
 
 ```sh
-nix --extra-experimental-features 'nix-command flakes' profile add github:Akkitto/Tauridium/v1.0.2#tauridium
+nix --extra-experimental-features 'nix-command flakes' profile add github:Akkitto/Tauridium/v1.0.3#tauridium
 nix profile list
 ```
 
 Tagged references are intentionally immutable: upgrading a profile pinned to
-v1.0.2 cannot discover a newer tag. Replace that reference when choosing the next
+v1.0.3 cannot discover a newer tag. Replace that reference when choosing the next
 release. For automatic tracking of the development branch, use
 `github:Akkitto/Tauridium/master#tauridium` instead, understanding that it follows
 unreleased commits; `nix profile upgrade <name>` then updates it. Obtain the exact
@@ -60,7 +60,7 @@ cross-compilation interface or Windows/macOS packages.
 Add this input to your existing configuration flake:
 
 ```nix
-inputs.tauridium.url = "github:Akkitto/Tauridium/v1.0.2";
+inputs.tauridium.url = "github:Akkitto/Tauridium/v1.0.3";
 ```
 
 Bind it in your existing `outputs` function, for example
@@ -375,6 +375,18 @@ then execute all Nix/native gates. After changing Cargo.lock/package-lock.json,
 update the corresponding content hash using the hash mismatch from the actual
 fixed-output fetch; both lockfiles and hashes are reviewable together. Do not
 run unconstrained dependency updates during a release build.
+
+Changing only the release version changes both lockfiles and can change both
+fetch hashes. Recheck them after the final version synchronization. An existing
+fixed-output cache can hide a stale expected hash. `nix build --rebuild` forces
+only the selected derivation: rebuilding the outer Cargo vendor derivation can
+still reuse its cached vendor-staging fetch. Force the actual fixed-output fetch
+derivations to run, and require clean hosted builds on both architectures before
+release. For npm, that fetch is
+`nix build --rebuild --no-link .#packages.x86_64-linux.default.npmDeps`
+(use `aarch64-linux` on that host). For Cargo, identify the vendor-staging input
+with `nix derivation show .#packages.x86_64-linux.default.cargoDeps` and rebuild
+that fetch derivation. Never disable a hash check to accept a cache.
 
 Authoritative packaging references: [Nixpkgs manual](https://nixos.org/manual/nixpkgs/unstable/),
 [cargo-tauri hook](https://github.com/NixOS/nixpkgs/tree/nixos-unstable/pkgs/by-name/ca/cargo-tauri),

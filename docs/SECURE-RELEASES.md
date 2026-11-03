@@ -97,6 +97,12 @@ The tag workflow uses these separate runners:
    recovery, compare the complete draft against the exact approved sealed snapshot
    and provenance before promoting that ID; do not replace uploaded assets or tags.
 
+A workflow conclusion belongs to its original source and run attempt. Fixes merged
+later do not turn an older failed publication run into a successful run. Conversely,
+a public release does not establish that its original workflow passed. A subsequent
+release must pass the complete current chain; never move an existing tag to hide a
+historical failure.
+
 Each boundary checks the preceding job's independent output digest against a bounded
 `TRANSFER.json` exact inventory, version and commit. That transport seal and release
 notes are not extra release assets. `ARTIFACTS.json`, `SHA256SUMS`, version-bound
@@ -117,9 +123,11 @@ against a fresh RustSec database. Security CI is required by normal CI/release a
 also scheduled daily. Exact version/lock-scoped assessments in
 `data/security-advisory-policy.json` expire and are printed, never silently ignored.
 The application and patched stable builder both use maintained ZIP 9. The shared
-builder preparation removes RPM's unused OpenPGP/ML-DSA stack entirely. The pinned
-`2.12.3+tauridium.3` builder also uses the patched Zstd stack: `zstd 0.14.3`,
-`zstd-safe 8.2.0` and `zstd-sys 2.1.2+zstd.1.5.7`. These Rust dependencies are
+builder preparation removes RPM's unused OpenPGP/ML-DSA stack entirely. The exact
+builder identity and checksums are pinned in `data/build-toolchain.json`; native,
+Nix and Flatpak producers must consume that same reviewed identity. Its patched
+Zstd stack uses `zstd 0.14.3`, `zstd-safe 8.2.0` and
+`zstd-sys 2.1.2+zstd.1.5.7`. These Rust dependencies are
 absent from the application lock. Their builder advisories are fixed through
 locked upgrades, without new exclusions or extended assessments. Whole-lock
 scanning still reports an RSA advisory from the macOS-only certificate generator:
@@ -129,14 +137,16 @@ this is not an upstream RSA fix or a claim of zero findings. New/changed/expired
 findings fail and need review. A supplied offline database
 snapshot is labeled a diagnostic, never the current online gate.
 
-The application lock is also SHA-256-bound. The exact `zbus_names 4.3.2`,
-`zvariant 5.12.0` and `zvariant_derive 5.12.0` maintenance findings have a separate
-short review deadline of **15 November 2026**; they remain visible in every fresh
-audit. Upstream merged them into zbus 6, while
-the current notification, portal and OS-vault parents require zbus 5. The
-[review and coordinated migration plan](ZBUS-MAINTENANCE-REVIEW.md) explains the
-temporary exact-scope decision. It is not a vulnerability exclusion or an upstream
-fix. Lock changes, new versions/kinds and expiry fail closed; do not just extend it.
+The application lock is also SHA-256-bound. Any retained standalone D-Bus crate
+maintenance findings must match the exact package versions and lock hash recorded
+in `data/security-advisory-policy.json`. The
+[maintenance review and coordinated migration plan](ZBUS-MAINTENANCE-REVIEW.md)
+records the inspected notification, portal and OS-vault dependency paths and any
+remaining migration work. An update to a direct dependency alone does not establish
+that every transitive consumer has migrated. Remaining assessments keep their
+**15 November 2026** review deadline and stay visible in fresh audits. An assessment
+is not a vulnerability exclusion or an upstream maintenance fix. Lock changes,
+new versions/kinds and expiry fail closed; do not just extend it.
 
 See [artifact inspection](ARTIFACT-SECURITY.md). Raw logs, profiles, screenshots/OCR,
 scan corpora and full-Git recovery checkpoints stay private. Do not upload ignored
@@ -149,9 +159,9 @@ of every secret or vulnerability; retain platform runtime and manual UX checks.
   scanner controls. An unpushed workflow does not run; enable notification delivery
   and investigate failures rather than treating a schedule as an operational proof.
 - Weekly: review dependency update PRs and the pinned Tauri CLI/scanner/toolchain
-  upstream releases. Reassess builder findings before their 15 November 2026 expiry;
-  reassess the three D-Bus maintenance findings by the same date. Other maintenance assessments expire
-  15 January 2027. Do not extend them without evidence.
+  upstream releases. Reassess retained builder and D-Bus findings before their
+  15 November 2026 expiry, using the exact scopes in the current policy. Other
+  maintenance assessments expire 15 January 2027. Do not extend them without evidence.
 - Monthly, and before a security release: review Nix inputs, GNOME SDK/platform,
   WebKitGTK/WebView2, native libraries and vendored compatibility patches. Prepare
   lock updates in a disposable private checkout; inspect the diff, then run actual

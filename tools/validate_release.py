@@ -1491,7 +1491,7 @@ def main() -> int:
     'Enable custom URL placeholders for this service',
     'showToast("Saved", "success")',
     '.toast.success { background: #187a45;',
-    'rfd = { version = "0.16", default-features = false, features = ["common-controls-v6"] }',
+    'rfd = { version = "=0.17.2", default-features = false, features = ["common-controls-v6"] }',
   ):
     if marker not in app + main_rs + cargo + wry_webview2:
       fail(f"0.4.26 service-compatibility/settings invariant is missing: {marker}")
