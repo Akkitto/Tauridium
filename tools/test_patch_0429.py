@@ -51,6 +51,20 @@ class Patch0429Tests(unittest.TestCase):
     self.assertIn("popupNativeServiceContextMenu", APP)
     self.assertIn("await menu.popup(new LogicalPosition(x, y));", APP)
 
+  def test_styled_service_context_menu_is_not_covered_by_service_webview(self) -> None:
+    opener = APP.split("function showStyledServiceContextMenu", 1)[1].split("function runServiceContextAction", 1)[0]
+    self.assertIn('if (view === "service") void hideServices();', opener)
+    closer = APP.split("function closeServiceContextMenu", 1)[1].split("function showStyledServiceContextMenu", 1)[0]
+    self.assertIn("if (restore && wasOpen) restoreActiveServiceView();", closer)
+    # Restoring must not go through selectService, which clears visible errors.
+    self.assertNotIn("selectService(", closer)
+    self.assertIn('if (view !== "service" || !s || serviceContextMenu || quickSwitcherMode) return;', closer)
+    select = APP.split("function selectService(s: Service)", 1)[1].split("showService(s, activeWorkspace)", 1)[0]
+    self.assertIn("serviceContextMenu = null;", select)
+    hide = MAIN.split("fn hide_service_webviews", 1)[1].split("fn hide_all_services", 1)[0]
+    self.assertIn("*state.desired_active.lock().unwrap() = None;", hide)
+    self.assertEqual(APP.count("showStyledServiceContextMenu({"), 2)
+
   def test_native_about_menu_has_project_source_and_author_quick_links(self) -> None:
     builder = MAIN.split("fn build_native_application_menu", 1)[1].split("#[derive(Clone, Copy)]", 1)[0]
     events = MAIN.split("// Native application menu", 1)[1].split("// Request notification", 1)[0]

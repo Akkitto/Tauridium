@@ -44,6 +44,13 @@ class PackageManagerTests(unittest.TestCase):
     self.assertIn("libxdo-dev", commands[1])
     self.assertNotIn("minisign", commands[1])
 
+  def test_appimage_bundles_gstreamer_plugins_from_build_host(self) -> None:
+    # Without bundled plugins WebKitWebProcess aborts on audio (appsrc/autoaudiosink missing).
+    config = json.loads((MODULE_PATH.parents[1] / "src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
+    self.assertIs(config["bundle"]["linux"]["appimage"]["bundleMediaFramework"], True)
+    self.assertIn("gstreamer1.0-plugins-base", INIT.APT_PACKAGES)
+    self.assertIn("gstreamer1.0-plugins-good", INIT.APT_PACKAGES)
+
   @patch.dict(INIT.os.environ, {INIT.SYSTEM_DEPS_ENV: "1", "TAURIDIUM_NIX_DEV_SHELL": "0"})
   @patch.object(INIT.platform, "system", return_value="Linux")
   @patch.object(INIT, "native_prerequisites_missing", side_effect=[["tool:minisign"], []])
