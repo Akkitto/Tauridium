@@ -35,7 +35,12 @@ function Invoke-Native([string]$Command, [string[]]$Arguments, [int]$Timeout = 3
     if (-not $Process.Start()) { throw 'Native command failed to start.' }
     $Output = $Process.StandardOutput.ReadToEndAsync()
     $ErrorOutput = $Process.StandardError.ReadToEndAsync()
-    if (-not $Process.WaitForExit($Timeout)) { $Process.Kill(); throw ('Command timed out: ' + $Command) }
+    if (-not $Process.WaitForExit($Timeout)) {
+      $Process.Kill()
+      if ($Output.Wait(1000)) { Write-Host $Output.Result }
+      if ($ErrorOutput.Wait(1000)) { Write-Host $ErrorOutput.Result }
+      throw ('Command timed out: ' + $Command + ' ' + ($Arguments -join ' '))
+    }
     if (-not $Output.Wait(30000) -or -not $ErrorOutput.Wait(30000)) { throw 'Native output did not close.' }
     return @{ ExitCode=$Process.ExitCode; Output=$Output.Result; ErrorOutput=$ErrorOutput.Result }
   } finally { $Process.Dispose() }
@@ -136,7 +141,7 @@ try {
   foreach ($ReleaseVersion in @($PreviousVersion, $Version)) {
     Invoke-Checked $Winget @('validate', '--manifest', (Join-Path $RunRoot ('manifests/' + $ReleaseVersion)), '--disable-interactivity')
   }
-  $Common = @('--architecture', $Architecture, '--scope', 'user', '--silent', '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity')
+  $Common = @('--architecture', $Architecture, '--scope', 'user', '--silent', '--source', 'winget', '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity')
   Invoke-Checked $Winget (@('install', '--manifest', (Join-Path $RunRoot ('manifests/' + $PreviousVersion))) + $Common)
   Assert-Installation $PreviousVersion
   New-Item -ItemType Directory -Path $Profile | Out-Null
@@ -144,14 +149,14 @@ try {
   'retain synthetic data' | Set-Content -LiteralPath $Marker -Encoding utf8
   Invoke-Checked $Winget (@('upgrade', '--manifest', (Join-Path $RunRoot ('manifests/' + $Version))) + $Common)
   Assert-Installation $Version
-  Invoke-Checked $Winget @('list', '--name', 'Tauridium', '--exact', '--accept-source-agreements', '--disable-interactivity')
-  Invoke-Checked $Winget @('uninstall', '--name', 'Tauridium', '--exact', '--scope', 'user', '--silent', '--accept-source-agreements', '--disable-interactivity')
+  Invoke-Checked $Winget @('list', '--name', 'Tauridium', '--exact', '--source', 'winget', '--accept-source-agreements', '--disable-interactivity')
+  Invoke-Checked $Winget @('uninstall', '--name', 'Tauridium', '--exact', '--source', 'winget', '--scope', 'user', '--silent', '--accept-source-agreements', '--disable-interactivity')
   if (@(Get-Installation).Count -ne 0 -or -not (Test-Path -LiteralPath $Marker)) { throw 'Uninstall did not preserve data or left ARP registration.' }
   Invoke-Checked $Winget (@('install', '--manifest', (Join-Path $RunRoot ('manifests/' + $Version))) + $Common)
   Assert-Installation $Version
   if ((Get-Content -LiteralPath $Marker -Raw).Trim() -ne 'retain synthetic data') { throw 'Reinstall modified application data.' }
   Assert-GuiStartup
-  Invoke-Checked $Winget @('uninstall', '--name', 'Tauridium', '--exact', '--scope', 'user', '--silent', '--accept-source-agreements', '--disable-interactivity')
+  Invoke-Checked $Winget @('uninstall', '--name', 'Tauridium', '--exact', '--source', 'winget', '--scope', 'user', '--silent', '--accept-source-agreements', '--disable-interactivity')
   Invoke-Checked $Winget (@('install', '--manifest', (Join-Path $RunRoot ('manifests/' + $PreviousVersion))) + $Common)
   Assert-Installation $PreviousVersion
   # Exercise the updater's delivered NSIS /UPDATE installer path, without
@@ -159,12 +164,24 @@ try {
   $UpdaterInstaller = Join-Path $RunRoot ('assets-' + $Version + '/tauridium-' + $Version + '-windows-' + $Architecture + '-setup.exe')
   Invoke-Checked $UpdaterInstaller @('/S', '/UPDATE')
   Assert-Installation $Version
-  Invoke-Checked $Winget @('list', '--name', 'Tauridium', '--exact', '--accept-source-agreements', '--disable-interactivity')
+  Invoke-Checked $Winget @('list', '--name', 'Tauridium', '--exact', '--source', 'winget', '--accept-source-agreements', '--disable-interactivity')
   if (-not (Test-Path -LiteralPath $Marker)) { throw 'Native update removed application data.' }
   Write-Host ('WinGet native lifecycle passed on ' + $Architecture)
+} catch {
+  # Bounded diagnostics from an isolated fixture only. Never publish profiles or
+  # recursively collect the runner's logs/environment.
+  Get-Process -Name '*tauridium*', '*setup*', 'winget' -ErrorAction SilentlyContinue | Select-Object Name, Id | Format-Table | Out-Host
+  $LogDirectory = Join-Path $env:LOCALAPPDATA 'Packages/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe/LocalState/DiagOutputDir'
+  if (Test-Path -LiteralPath $LogDirectory) {
+    $Logs = @(Get-ChildItem -LiteralPath $LogDirectory -Filter 'WinGet-*.log' | Sort-Object LastWriteTime -Descending | Select-Object -First 2)
+    foreach ($Log in $Logs) {
+      Get-Content -LiteralPath $Log.FullName -Tail 100 | Where-Object { $_ -match 'Installer|Download|Starting|Executing|Source|Waiting|error|Error' } | Select-Object -Last 25 | Out-Host
+    }
+  }
+  throw
 } finally {
   if ($Winget -and @(Get-Installation).Count -eq 1) {
-    & $Winget uninstall --name Tauridium --exact --scope user --silent --accept-source-agreements --disable-interactivity
+    & $Winget uninstall --name Tauridium --exact --source winget --scope user --silent --accept-source-agreements --disable-interactivity
   }
   # This directory was absent at entry and holds only this disposable user's fixture.
   if (Test-Path -LiteralPath $Profile) { Remove-Item -LiteralPath $Profile -Recurse -Force }

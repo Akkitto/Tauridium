@@ -2,7 +2,11 @@ name: WinGet acceptance
 
 on:
   push:
-    branches: [packaging/winget]
+    branches: [master]
+    paths:
+      - 'packaging/winget/**'
+      - 'tools/*winget*'
+      - '.github/workflows/winget.yml'
   pull_request:
     paths:
       - 'packaging/winget/**'
