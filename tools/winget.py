@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import tempfile
+import sys
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
@@ -24,7 +25,7 @@ REPOSITORY = "Akkitto/Tauridium"
 ARCHES = ("x64", "arm64")
 VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
 HEX = re.compile(r"[0-9a-f]{64}\Z")
-HOSTS = {"github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"}
+HOSTS = {"github.com", "api.github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"}
 
 
 def load_json(path: Path) -> dict:
@@ -80,11 +81,11 @@ def download(url: str, row: dict, output: Path) -> None:
 
 
 def validate_lock(lock: dict) -> None:
-  if set(lock) != {"schema", "version", "commit", "releaseId", "assets"} or lock["schema"] != 1:
+  if set(lock) != {"schema", "version", "commit", "releaseId", "assets"} or type(lock["schema"]) is not int or lock["schema"] != 1:
     raise ValueError("Unsupported release lock")
   if not isinstance(lock["version"], str) or not VERSION.fullmatch(lock["version"]):
     raise ValueError("A stable numeric release version is required")
-  if not re.fullmatch(r"[0-9a-f]{40}", lock["commit"] or "") or type(lock["releaseId"]) is not int or lock["releaseId"] <= 0:
+  if not isinstance(lock["commit"], str) or not re.fullmatch(r"[0-9a-f]{40}", lock["commit"]) or type(lock["releaseId"]) is not int or lock["releaseId"] <= 0:
     raise ValueError("Invalid release identity")
   names = {f"tauridium-{lock['version']}-windows-{arch}-setup.exe{suffix}"
            for arch in ARCHES for suffix in ("", ".sig")}
@@ -92,7 +93,7 @@ def validate_lock(lock: dict) -> None:
     raise ValueError("Release lock must contain the exact two installer/signature pairs")
   for name, row in lock["assets"].items():
     if (not isinstance(row, dict) or set(row) != {"sha256", "size"}
-        or not HEX.fullmatch(row.get("sha256", "")) or type(row.get("size")) is not int
+        or not isinstance(row.get("sha256"), str) or not HEX.fullmatch(row["sha256"]) or type(row.get("size")) is not int
         or not 0 < row["size"] <= (16384 if name.endswith(".sig") else 256 * 1024**2)):
       raise ValueError("Invalid locked asset")
 
@@ -198,9 +199,70 @@ def prepare(lock: dict, assets: Path, output: Path) -> None:
     stage.rename(output)
 
 
+def api(path: str) -> dict:
+  url = 'https://api.github.com/repos/' + REPOSITORY + path
+  with build_opener(ReleaseRedirect()).open(Request(url, headers={"User-Agent": "Tauridium-WinGet/1", "Accept": "application/vnd.github+json"}), timeout=60) as response:
+    payload = response.read(8 * 1024**2 + 1)
+  if len(payload) > 8 * 1024**2:
+    raise ValueError("GitHub metadata exceeds its size limit")
+  result = json.loads(payload)
+  if not isinstance(result, dict):
+    raise ValueError("Invalid GitHub metadata")
+  return result
+
+
+def intake(version: str, commit: str, run_id: int, output: Path) -> None:
+  """Create a review candidate, never silently modify the committed release locks."""
+  if not VERSION.fullmatch(version) or not re.fullmatch(r"[0-9a-f]{40}", commit) or run_id <= 0:
+    raise ValueError("Expected an explicit stable version, commit and successful release run")
+  release = api('/releases/tags/v' + version)
+  if release.get('draft') is not False or release.get('prerelease') is not False or release.get('tag_name') != 'v' + version or not release.get('published_at'):
+    raise ValueError("Expected a published stable release")
+  obj = api('/git/ref/tags/v' + version)['object']
+  for _ in range(4):
+    if obj.get('type') == 'commit':
+      break
+    if obj.get('type') != 'tag' or not re.fullmatch(r'[0-9a-f]{40}', obj.get('sha', '')):
+      raise ValueError('Unexpected release tag object')
+    obj = api('/git/tags/' + obj['sha'])['object']
+  if obj.get('type') != 'commit' or obj.get('sha') != commit:
+    raise ValueError('Tag does not identify the expected commit')
+  run = api('/actions/runs/' + str(run_id))
+  if (run.get('head_sha') != commit or run.get('conclusion') != 'success'
+      or run.get('status') != 'completed' or run.get('event') != 'push'
+      or run.get('path') != '.github/workflows/release.yml'
+      or run.get('repository', {}).get('full_name') != REPOSITORY):
+    raise ValueError('Release workflow did not successfully verify this commit')
+  wanted = {f'tauridium-{version}-windows-{arch}-setup.exe{suffix}' for arch in ARCHES for suffix in ('', '.sig')}
+  assets = {}
+  for row in release.get('assets', []):
+    name = row.get('name')
+    if name not in wanted:
+      continue
+    if name in assets or row.get('state') != 'uploaded' or row.get('browser_download_url') != release_url(version, name):
+      raise ValueError('Duplicate or unexpected published asset')
+    digest = row.get('digest', '')
+    if not isinstance(digest, str) or not digest.startswith('sha256:'):
+      raise ValueError('Published SHA-256 digest is missing')
+    assets[name] = {'size': row.get('size'), 'sha256': digest[7:]}
+  lock = {'schema': 1, 'version': version, 'commit': commit, 'releaseId': release['id'], 'assets': assets}
+  validate_lock(lock)
+  with tempfile.TemporaryDirectory(prefix='tauridium-winget-intake-') as directory:
+    fetch(lock, Path(directory) / 'assets')
+  output.parent.mkdir(parents=True, exist_ok=True)
+  with output.open('x', encoding='utf-8', newline='\n') as destination:
+    destination.write(json.dumps(lock, indent=2) + '\n')
+  print(f'Candidate bound to successful release run {run_id}; review and commit this lock before submission')
+
+
 def main() -> None:
   parser = argparse.ArgumentParser(description=__doc__)
   sub = parser.add_subparsers(dest="command", required=True)
+  p = sub.add_parser('intake')
+  p.add_argument('--version', required=True)
+  p.add_argument('--commit', required=True)
+  p.add_argument('--run-id', required=True, type=int)
+  p.add_argument('--output', required=True, type=Path)
   for command in ("fetch", "prepare"):
     p = sub.add_parser(command)
     p.add_argument("--lock", type=Path, required=True)
@@ -208,6 +270,9 @@ def main() -> None:
     if command == "prepare":
       p.add_argument("--output", type=Path, required=True)
   args = parser.parse_args()
+  if args.command == 'intake':
+    intake(args.version, args.commit, args.run_id, args.output)
+    return
   lock = load_json(args.lock)
   if args.command == "fetch":
     fetch(lock, args.assets_dir)
@@ -219,5 +284,5 @@ def main() -> None:
 if __name__ == "__main__":
   try:
     main()
-  except (ValueError, OSError) as error:
+  except (ValueError, OSError, KeyError) as error:
     raise SystemExit(f"error: {error}") from None

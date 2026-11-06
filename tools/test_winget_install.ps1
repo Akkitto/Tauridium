@@ -4,6 +4,7 @@ param(
   [string]$PreviousVersion = '1.0.2'
 )
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
   throw 'Installer acceptance changes user installation state and is restricted to disposable GitHub-hosted Windows runners.'
@@ -59,6 +60,7 @@ function Get-WinGet {
   foreach ($Kind in @('bundle', 'dependencies')) {
     $Entry = $Policy.$Kind
     $Path = Join-Path $RunRoot $Entry.name
+    Write-Host ('Downloading pinned WinGet ' + $Entry.name)
     Invoke-WebRequest -Uri ("https://github.com/microsoft/winget-cli/releases/download/v" + $Policy.version + '/' + $Entry.name) -OutFile $Path -UseBasicParsing
     if ((Get-Item -LiteralPath $Path).Length -ne $Entry.size -or (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() -ne $Entry.sha256) { throw 'WinGet bootstrap size/hash mismatch.' }
   }
