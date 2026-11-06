@@ -36,6 +36,9 @@ function Invoke-Native([string]$Command, [string[]]$Arguments, [int]$Timeout = 3
     $Output = $Process.StandardOutput.ReadToEndAsync()
     $ErrorOutput = $Process.StandardError.ReadToEndAsync()
     if (-not $Process.WaitForExit($Timeout)) {
+      Write-Host ('Native timeout before termination: ' + $Command)
+      Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $Process.Id -or $_.Name -match 'tauridium|[Ss]etup|[Ss]martscreen|[Cc]onsent|[Aa]pp[Rr]esolver|[Ee]xplorer' } | Select-Object Name, ProcessId, ParentProcessId | Format-Table | Out-Host
+      Get-Process -Name '*tauridium*', '*setup*', 'smartscreen', 'consent', 'AppResolverUX' -ErrorAction SilentlyContinue | Select-Object Name, Id, MainWindowTitle | Format-Table | Out-Host
       $Process.Kill()
       if ($Output.Wait(1000)) { Write-Host $Output.Result }
       if ($ErrorOutput.Wait(1000)) { Write-Host $ErrorOutput.Result }
@@ -136,6 +139,15 @@ try {
     Invoke-Checked $Python @('tools/winget.py', 'fetch', '--lock', $Lock, '--assets-dir', $Assets)
     Invoke-Checked $Python @('tools/winget.py', 'prepare', '--lock', $Lock, '--assets-dir', $Assets, '--output', $Manifest)
   }
+  # Separate signed installer execution from the package manager's ShellExecute
+  # path, so acceptance failures identify the actual boundary.
+  $DirectInstaller = Join-Path $RunRoot ('assets-' + $Version + '/tauridium-' + $Version + '-windows-' + $Architecture + '-setup.exe')
+  Write-Host 'Testing verified installer directly before WinGet lifecycle.'
+  Invoke-Checked $DirectInstaller @('/S')
+  Assert-Installation $Version
+  $DirectUninstaller = Join-Path (Split-Path -Parent $script:InstalledExe) 'uninstall.exe'
+  Invoke-Checked $DirectUninstaller @('/S')
+  if (@(Get-Installation).Count -ne 0) { throw 'Direct installer cleanup left ARP registration.' }
   $Winget = Get-WinGet
   # Local manifests cannot be combined with --source. Keep unrelated catalogues
   # explicit in this disposable user so their REST startup cannot block an
