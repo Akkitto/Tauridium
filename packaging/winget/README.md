@@ -1,9 +1,10 @@
 # WinGet
 
-Tauridium's proposed community package ID is `Akkitto.Tauridium`. It uses the
+Tauridium's WinGet package ID is `dev.brani.tauridium`, matching its original
+application/Flatpak identifier exactly. It uses the
 official per-user NSIS installers for native x64 and ARM64. This directory holds
 reviewed release locks and integration fixtures. Canonical manifests belong in
-`microsoft/winget-pkgs`, under `manifests/a/Akkitto/Tauridium/<version>/`.
+`microsoft/winget-pkgs`, under `manifests/d/dev/brani/tauridium/<version>/`.
 Catalog publication requires the upstream submission and indexing to complete.
 
 ## Prepare a published release
@@ -121,13 +122,13 @@ installer family/scope without independently testing its upgrade paths.
   sparse checkout, never recursively scan the full upstream manifest collection.
 - Follow upstream `AGENTS.md`, contributor guidance, current schema recommendation
   and PR template. One PR contains one version's three manifest files, with no
-  tooling or documentation changes. Use `New package: Akkitto.Tauridium version
+  tooling or documentation changes. Use `New package: dev.brani.tauridium version
   VERSION` initially and the upstream update convention afterward.
 - Use the owner's normal GitHub fork/PR authorization. If Microsoft requests a
   contributor agreement, the accountable owner signs it. Do not claim it is signed
   or check unperformed tests in the PR checklist.
 - Follow validation/review through catalog availability. After publication, verify
-  `winget show --id Akkitto.Tauridium --exact --source winget`, then clean native
+  `winget show --id dev.brani.tauridium --exact --source winget`, then clean native
   `install`, `upgrade` and `uninstall`. Update user documentation only after the
   corresponding availability claim is true.
 - If interrupted, inspect the existing PR/version before retrying. Fix the pending

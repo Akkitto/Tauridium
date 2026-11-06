@@ -18,7 +18,7 @@ from updater_signature import require_regular, verify
 from security_tools import ensure_minisign
 
 ROOT = Path(__file__).resolve().parents[1]
-PACKAGE = "Akkitto.Tauridium"
+PACKAGE = "dev.brani.tauridium"
 SCHEMA = "1.12.0"
 REPOSITORY = "Akkitto/Tauridium"
 ARCHES = ("x64", "arm64")

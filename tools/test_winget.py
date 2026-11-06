@@ -31,6 +31,14 @@ class WinGetTests(unittest.TestCase):
       row.update(size=len(payload), sha256=hashlib.sha256(payload).hexdigest())
     return assets
 
+  def test_package_identity_matches_the_original_application(self):
+    config = json.loads((winget.ROOT / 'src-tauri/tauri.conf.json').read_text(encoding='utf-8'))
+    self.assertEqual(winget.PACKAGE, 'dev.brani.tauridium')
+    self.assertEqual(winget.PACKAGE, config['identifier'])
+    script = (winget.ROOT / 'tools/test_winget_install.ps1').read_text(encoding='utf-8')
+    self.assertNotIn('Akkitto.Tauridium', script)
+    self.assertIn(winget.PACKAGE, script)
+
   def test_checked_in_locks_are_valid(self):
     for path in (winget.ROOT / 'packaging/winget/releases').glob('*.json'):
       lock = winget.load_json(path)

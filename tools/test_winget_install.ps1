@@ -148,7 +148,7 @@ function Assert-GuiStartup {
 
 if (@(Get-Installation).Count -ne 0) { throw 'Refusing to replace an existing Tauridium installation.' }
 $Winget = $null
-$Common = @('--id', 'Akkitto.Tauridium', '--exact', '--source', 'winget', '--architecture', $Architecture, '--scope', 'user', '--silent', '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity')
+$Common = @('--id', 'dev.brani.tauridium', '--exact', '--source', 'winget', '--architecture', $Architecture, '--scope', 'user', '--silent', '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity')
 function Installer-Path([string]$ReleaseVersion) {
   return (Join-Path $RunRoot ('assets-' + $ReleaseVersion + '/tauridium-' + $ReleaseVersion + '-windows-' + $Architecture + '-setup.exe'))
 }
@@ -160,7 +160,7 @@ function Install-Current {
 }
 function Uninstall-TestApplication {
   if ($Mode -eq 'catalog') {
-    Invoke-Checked $Winget @('uninstall', '--id', 'Akkitto.Tauridium', '--exact', '--source', 'winget', '--scope', 'user', '--silent', '--accept-source-agreements', '--disable-interactivity')
+    Invoke-Checked $Winget @('uninstall', '--id', 'dev.brani.tauridium', '--exact', '--source', 'winget', '--scope', 'user', '--silent', '--accept-source-agreements', '--disable-interactivity')
   } else {
     $Uninstaller = Join-Path (Split-Path -Parent $script:InstalledExe) 'uninstall.exe'
     Invoke-Checked $Uninstaller @('/S')
@@ -182,7 +182,7 @@ try {
     Invoke-Checked $Winget @('validate', '--manifest', (Join-Path $RunRoot ('manifests/' + $ReleaseVersion)), '--disable-interactivity')
   }
   if ($Mode -eq 'catalog') {
-    $Details = Invoke-Native $Winget @('show', '--id', 'Akkitto.Tauridium', '--exact', '--source', 'winget', '--version', $Version, '--architecture', $Architecture, '--accept-source-agreements', '--disable-interactivity')
+    $Details = Invoke-Native $Winget @('show', '--id', 'dev.brani.tauridium', '--exact', '--source', 'winget', '--version', $Version, '--architecture', $Architecture, '--accept-source-agreements', '--disable-interactivity')
     if ($Details.ExitCode -ne 0) { throw 'Expected public WinGet catalog version is unavailable; catalog acceptance remains pending.' }
     $Lock = Get-Content -LiteralPath (Join-Path $Root ('packaging/winget/releases/' + $Version + '.json')) -Raw | ConvertFrom-Json
     $Name = 'tauridium-' + $Version + '-windows-' + $Architecture + '-setup.exe'
@@ -215,7 +215,7 @@ try {
   Invoke-Checked (Installer-Path $Version) @('/S', '/UPDATE')
   Assert-Installation $Version
   if ($Mode -eq 'catalog') {
-    $Listed = Invoke-Native $Winget @('list', '--id', 'Akkitto.Tauridium', '--exact', '--source', 'winget', '--accept-source-agreements', '--disable-interactivity')
+    $Listed = Invoke-Native $Winget @('list', '--id', 'dev.brani.tauridium', '--exact', '--source', 'winget', '--accept-source-agreements', '--disable-interactivity')
     if ($Listed.ExitCode -ne 0 -or $Listed.Output -notmatch [regex]::Escape($Version)) { throw 'WinGet lost application identity after native update.' }
   }
   Uninstall-TestApplication
