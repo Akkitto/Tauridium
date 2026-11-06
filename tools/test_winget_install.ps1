@@ -19,17 +19,32 @@ $Python = (Get-Command python.exe -ErrorAction Stop).Source
 $Profile = Join-Path $env:APPDATA 'dev.brani.tauridium'
 if (Test-Path -LiteralPath $Profile) { throw 'Refusing to use an existing application profile.' }
 
-function Invoke-Checked([string]$Command, [string[]]$Arguments) {
-  $Output = Join-Path $RunRoot ([guid]::NewGuid().ToString('N') + '.out')
-  $ErrorOutput = $Output + '.err'
+function Invoke-Native([string]$Command, [string[]]$Arguments, [int]$Timeout = 300000) {
   # All harness arguments are fixed switches, versions and generated runner paths.
   if (@($Arguments | Where-Object { $_ -match '["\r\n]' }).Count -ne 0) { throw 'Unexpected native argument.' }
   $Quoted = @($Arguments | ForEach-Object { '"' + $_ + '"' }) -join ' '
-  $Process = Start-Process -FilePath $Command -ArgumentList $Quoted -PassThru -RedirectStandardOutput $Output -RedirectStandardError $ErrorOutput
-  if (-not $Process.WaitForExit(300000)) { $Process.Kill(); throw ('Command timed out: ' + $Command) }
-  Get-Content -LiteralPath $Output | Out-Host
-  Get-Content -LiteralPath $ErrorOutput | Out-Host
-  if ($Process.ExitCode -ne 0) { throw ('Command failed with exit code ' + $Process.ExitCode + ': ' + $Command) }
+  $Info = New-Object System.Diagnostics.ProcessStartInfo
+  $Info.FileName = $Command
+  $Info.Arguments = $Quoted
+  $Info.UseShellExecute = $false
+  $Info.RedirectStandardOutput = $true
+  $Info.RedirectStandardError = $true
+  $Process = New-Object System.Diagnostics.Process
+  $Process.StartInfo = $Info
+  try {
+    if (-not $Process.Start()) { throw 'Native command failed to start.' }
+    $Output = $Process.StandardOutput.ReadToEndAsync()
+    $ErrorOutput = $Process.StandardError.ReadToEndAsync()
+    if (-not $Process.WaitForExit($Timeout)) { $Process.Kill(); throw ('Command timed out: ' + $Command) }
+    if (-not $Output.Wait(30000) -or -not $ErrorOutput.Wait(30000)) { throw 'Native output did not close.' }
+    return @{ ExitCode=$Process.ExitCode; Output=$Output.Result; ErrorOutput=$ErrorOutput.Result }
+  } finally { $Process.Dispose() }
+}
+function Invoke-Checked([string]$Command, [string[]]$Arguments) {
+  $Result = Invoke-Native $Command $Arguments
+  Write-Host $Result.Output
+  Write-Host $Result.ErrorOutput
+  if ($Result.ExitCode -ne 0) { throw ('Command failed with exit code ' + $Result.ExitCode + ': ' + $Command) }
 }
 function Get-Installation {
   $Rows = @()
@@ -51,9 +66,7 @@ function Assert-Installation([string]$ExpectedVersion) {
   $script:InstalledExe = Join-Path $Row.InstallLocation 'tauridium.exe'
   if (-not (Test-Path -LiteralPath $script:InstalledExe -PathType Leaf)) { throw 'Installed executable is missing.' }
   $Probe = Join-Path $RunRoot ('build-info-' + [guid]::NewGuid().ToString('N') + '.json')
-  $Process = Start-Process -FilePath $script:InstalledExe -ArgumentList @('--build-info-file', ('"' + $Probe + '"')) -PassThru
-  if (-not $Process.WaitForExit(30000)) { $Process.Kill(); throw 'Build-info probe timed out.' }
-  if ($Process.ExitCode -ne 0) { throw 'Installed production build-info probe failed.' }
+  Invoke-Checked $script:InstalledExe @('--build-info-file', $Probe)
   $Info = Get-Content -LiteralPath $Probe -Raw | ConvertFrom-Json
   $Target = if ($Architecture -eq 'x64') { 'x86_64-pc-windows-msvc' } else { 'aarch64-pc-windows-msvc' }
   if ($Info.version -ne $ExpectedVersion -or $Info.target -ne $Target -or $Info.buildMode -ne 'production') { throw 'Installed executable identity differs from its manifest.' }
@@ -62,12 +75,9 @@ function Get-WinGet {
   $Existing = Get-AppxPackage -Name Microsoft.DesktopAppInstaller
   if ($Existing) {
     $Executable = Join-Path $Existing.InstallLocation 'winget.exe'
-    $VersionOutput = Join-Path $RunRoot 'winget-version.txt'
-    $Probe = Start-Process -FilePath $Executable -ArgumentList '--version' -PassThru -RedirectStandardOutput $VersionOutput
-    if ($Probe.WaitForExit(20000)) {
-      $Text = (Get-Content -LiteralPath $VersionOutput -Raw).Trim().TrimStart('v')
-      if ($Probe.ExitCode -eq 0 -and [version]$Text -ge [version]'1.28.0') { return $Executable }
-    } else { $Probe.Kill(); Write-Host 'Existing WinGet failed its bounded startup probe; registering the pinned Microsoft client.' }
+    $Result = Invoke-Native $Executable @('--version') 20000
+    $Text = $Result.Output.Trim().TrimStart('v')
+    if ($Result.ExitCode -eq 0 -and [version]$Text -ge [version]'1.28.0') { return $Executable }
   }
   $Policy = Get-Content -LiteralPath (Join-Path $Root 'packaging/winget/client.json') -Raw | ConvertFrom-Json
   foreach ($Kind in @('bundle', 'dependencies')) {

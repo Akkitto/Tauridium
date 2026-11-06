@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import io
 from pathlib import Path
 import tempfile
 import unittest
@@ -132,6 +133,50 @@ class WinGetTests(unittest.TestCase):
     with mock.patch.object(winget, 'api', side_effect=[release, obj, {'conclusion':'failure'}]), mock.patch.object(winget, 'fetch') as fetch:
       with self.assertRaises(ValueError): winget.intake('1.0.3', self.lock['commit'], 1, self.root/'candidate.json')
     fetch.assert_not_called()
+
+  def test_download_checks_actual_bytes_and_size(self):
+    for payload, digest, size, succeeds in ((b'data', hashlib.sha256(b'data').hexdigest(), 4, True),
+                                           (b'evil', hashlib.sha256(b'data').hexdigest(), 4, False),
+                                           (b'too long', hashlib.sha256(b'data').hexdigest(), 4, False)):
+      with self.subTest(payload=payload):
+        stream = io.BytesIO(payload)
+        stream.url = 'https://release-assets.githubusercontent.com/file'
+        path = self.root / ('download-' + payload.hex())
+        with mock.patch.object(winget, 'build_opener') as opener:
+          opener.return_value.open.return_value = stream
+          if succeeds:
+            winget.download('https://github.com/asset', {'sha256':digest, 'size':size}, path)
+            self.assertEqual(path.read_bytes(), payload)
+          else:
+            with self.assertRaises(ValueError):
+              winget.download('https://github.com/asset', {'sha256':digest, 'size':size}, path)
+
+  def test_intake_binds_public_release_tag_run_and_exact_assets(self):
+    release = {'id': self.lock['releaseId'], 'draft':False, 'prerelease':False,
+               'tag_name':'v1.0.3', 'published_at':'2026-11-03', 'assets':[]}
+    for name, row in self.lock['assets'].items():
+      release['assets'].append({'name':name, 'size':row['size'], 'digest':'sha256:'+row['sha256'],
+                               'state':'uploaded', 'browser_download_url':winget.release_url('1.0.3',name)})
+    ref = {'object':{'type':'tag', 'sha':'a'*40}}
+    tag = {'object':{'type':'commit', 'sha':self.lock['commit']}}
+    run = {'head_sha':self.lock['commit'], 'conclusion':'success', 'status':'completed',
+           'event':'push', 'path':'.github/workflows/release.yml', 'repository':{'full_name':winget.REPOSITORY}}
+    for mutation in ('valid', 'wrong-tag', 'wrong-workflow', 'duplicate-asset', 'draft'):
+      rows = copy.deepcopy([release, ref, tag, run])
+      if mutation == 'wrong-tag': rows[2]['object']['sha'] = 'b'*40
+      elif mutation == 'wrong-workflow': rows[3]['path'] = '.github/workflows/untrusted.yml'
+      elif mutation == 'duplicate-asset': rows[0]['assets'].append(rows[0]['assets'][0])
+      elif mutation == 'draft': rows[0]['draft'] = True
+      output = self.root / (mutation+'.json')
+      with self.subTest(mutation=mutation), mock.patch.object(winget, 'api', side_effect=rows), mock.patch.object(winget, 'fetch') as fetch:
+        if mutation == 'valid':
+          winget.intake('1.0.3', self.lock['commit'], 41613150420, output)
+          self.assertEqual(winget.load_json(output), self.lock)
+          fetch.assert_called_once()
+        else:
+          with self.assertRaises(ValueError): winget.intake('1.0.3', self.lock['commit'], 41613150420, output)
+          fetch.assert_not_called()
+          self.assertFalse(output.exists())
 
 
 if __name__ == '__main__':
