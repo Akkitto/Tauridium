@@ -22,7 +22,7 @@ if (Test-Path -LiteralPath $Profile) { throw 'Refusing to use an existing applic
 function Invoke-Native([string]$Command, [string[]]$Arguments, [int]$Timeout = 300000) {
   # All harness arguments are fixed switches, versions and generated runner paths.
   if (@($Arguments | Where-Object { $_ -match '["\r\n]' }).Count -ne 0) { throw 'Unexpected native argument.' }
-  $Quoted = @($Arguments | ForEach-Object { '"' + $_ + '"' }) -join ' '
+  $Quoted = @($Arguments | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }) -join ' '
   $Info = New-Object System.Diagnostics.ProcessStartInfo
   $Info.FileName = $Command
   $Info.Arguments = $Quoted
@@ -37,6 +37,34 @@ function Invoke-Native([string]$Command, [string[]]$Arguments, [int]$Timeout = 3
     $ErrorOutput = $Process.StandardError.ReadToEndAsync()
     if (-not $Process.WaitForExit($Timeout)) {
       Write-Host ('Native timeout before termination: ' + $Command)
+      if (-not ('TauridiumInstallerWindow' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Text;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+public static class TauridiumInstallerWindow {
+  public delegate bool Callback(IntPtr window, IntPtr parameter);
+  [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr parent, Callback callback, IntPtr parameter);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr window, StringBuilder text, int count);
+  public static string[] Text(IntPtr parent) {
+    var texts = new List<string>();
+    EnumChildWindows(parent, (window, parameter) => {
+      var text = new StringBuilder(512);
+      GetWindowText(window, text, text.Capacity);
+      if (text.Length > 0 && texts.Count < 30) texts.Add(text.ToString());
+      return true;
+    }, IntPtr.Zero);
+    return texts.ToArray();
+  }
+}
+'@
+      }
+      $Process.Refresh()
+      if ($Process.MainWindowHandle -ne [IntPtr]::Zero) {
+        Write-Host 'Blocked test process window text:'
+        [TauridiumInstallerWindow]::Text($Process.MainWindowHandle) | Out-Host
+      }
       Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $Process.Id -or $_.Name -match 'tauridium|[Ss]etup|[Ss]martscreen|[Cc]onsent|[Aa]pp[Rr]esolver|[Ee]xplorer' } | Select-Object Name, ProcessId, ParentProcessId | Format-Table | Out-Host
       Get-Process -Name '*tauridium*', '*setup*', 'smartscreen', 'consent', 'AppResolverUX' -ErrorAction SilentlyContinue | Select-Object Name, Id, MainWindowTitle | Format-Table | Out-Host
       $Process.Kill()
@@ -48,8 +76,8 @@ function Invoke-Native([string]$Command, [string[]]$Arguments, [int]$Timeout = 3
     return @{ ExitCode=$Process.ExitCode; Output=$Output.Result; ErrorOutput=$ErrorOutput.Result }
   } finally { $Process.Dispose() }
 }
-function Invoke-Checked([string]$Command, [string[]]$Arguments) {
-  $Result = Invoke-Native $Command $Arguments
+function Invoke-Checked([string]$Command, [string[]]$Arguments, [int]$Timeout = 300000) {
+  $Result = Invoke-Native $Command $Arguments $Timeout
   Write-Host $Result.Output
   Write-Host $Result.ErrorOutput
   if ($Result.ExitCode -ne 0) { throw ('Command failed with exit code ' + $Result.ExitCode + ': ' + $Command) }
@@ -143,7 +171,7 @@ try {
   # path, so acceptance failures identify the actual boundary.
   $DirectInstaller = Join-Path $RunRoot ('assets-' + $Version + '/tauridium-' + $Version + '-windows-' + $Architecture + '-setup.exe')
   Write-Host 'Testing verified installer directly before WinGet lifecycle.'
-  Invoke-Checked $DirectInstaller @('/S')
+  Invoke-Checked $DirectInstaller @('/S') 45000
   Assert-Installation $Version
   $DirectUninstaller = Join-Path (Split-Path -Parent $script:InstalledExe) 'uninstall.exe'
   Invoke-Checked $DirectUninstaller @('/S')
