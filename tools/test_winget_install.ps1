@@ -137,11 +137,21 @@ try {
     Invoke-Checked $Python @('tools/winget.py', 'prepare', '--lock', $Lock, '--assets-dir', $Assets, '--output', $Manifest)
   }
   $Winget = Get-WinGet
+  # Local manifests cannot be combined with --source. Keep unrelated catalogues
+  # explicit in this disposable user so their REST startup cannot block an
+  # installer test. The community application source remains available.
+  $Sources = Invoke-Native $Winget @('source', 'list', '--disable-interactivity')
+  if ($Sources.ExitCode -ne 0) { throw 'Unable to inspect disposable WinGet sources.' }
+  foreach ($Name in @('msstore', 'winget-font')) {
+    if ($Sources.Output -match ('(?m)^\s*' + [regex]::Escape($Name) + '\s')) {
+      Invoke-Checked $Winget @('source', 'edit', '--name', $Name, '--explicit', 'true', '--disable-interactivity')
+    }
+  }
   Invoke-Checked $Winget @('settings', '--enable', 'LocalManifestFiles', '--disable-interactivity')
   foreach ($ReleaseVersion in @($PreviousVersion, $Version)) {
     Invoke-Checked $Winget @('validate', '--manifest', (Join-Path $RunRoot ('manifests/' + $ReleaseVersion)), '--disable-interactivity')
   }
-  $Common = @('--architecture', $Architecture, '--scope', 'user', '--silent', '--source', 'winget', '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity')
+  $Common = @('--architecture', $Architecture, '--scope', 'user', '--silent', '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity')
   Invoke-Checked $Winget (@('install', '--manifest', (Join-Path $RunRoot ('manifests/' + $PreviousVersion))) + $Common)
   Assert-Installation $PreviousVersion
   New-Item -ItemType Directory -Path $Profile | Out-Null
@@ -181,7 +191,7 @@ try {
   throw
 } finally {
   if ($Winget -and @(Get-Installation).Count -eq 1) {
-    & $Winget uninstall --name Tauridium --exact --source winget --scope user --silent --accept-source-agreements --disable-interactivity
+    Invoke-Checked $Winget @('uninstall', '--name', 'Tauridium', '--exact', '--source', 'winget', '--scope', 'user', '--silent', '--accept-source-agreements', '--disable-interactivity')
   }
   # This directory was absent at entry and holds only this disposable user's fixture.
   if (Test-Path -LiteralPath $Profile) { Remove-Item -LiteralPath $Profile -Recurse -Force }
