@@ -8,11 +8,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import tempfile
-import sys
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
@@ -20,7 +18,7 @@ from updater_signature import require_regular, verify
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = "Akkitto.Tauridium"
-SCHEMA = "1.28.0"
+SCHEMA = "1.12.0"
 REPOSITORY = "Akkitto/Tauridium"
 ARCHES = ("x64", "arm64")
 VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")

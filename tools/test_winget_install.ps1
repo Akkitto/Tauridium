@@ -77,7 +77,7 @@ function Get-WinGet {
     $Executable = Join-Path $Existing.InstallLocation 'winget.exe'
     $Result = Invoke-Native $Executable @('--version') 20000
     $Text = $Result.Output.Trim().TrimStart('v')
-    if ($Result.ExitCode -eq 0 -and [version]$Text -ge [version]'1.28.0') { return $Executable }
+    if ($Result.ExitCode -eq 0 -and [version]$Text -ge [version]'1.12.0') { return $Executable }
   }
   $Policy = Get-Content -LiteralPath (Join-Path $Root 'packaging/winget/client.json') -Raw | ConvertFrom-Json
   foreach ($Kind in @('bundle', 'dependencies')) {
@@ -97,6 +97,26 @@ function Get-WinGet {
   $Command = Join-Path $Package.InstallLocation 'winget.exe'
   Invoke-Checked $Command @('--version')
   return $Command
+}
+
+function Assert-GuiStartup {
+  $Process = [System.Diagnostics.Process]::Start($script:InstalledExe)
+  try {
+    $Deadline = [DateTime]::UtcNow.AddSeconds(45)
+    do {
+      Start-Sleep -Milliseconds 500
+      $Process.Refresh()
+      if ($Process.HasExited) { throw 'Installed application exited during GUI startup.' }
+    } while ($Process.MainWindowHandle -eq [IntPtr]::Zero -and [DateTime]::UtcNow -lt $Deadline)
+    if ($Process.MainWindowHandle -eq [IntPtr]::Zero -or -not $Process.Responding) { throw 'Installed application did not open a responsive window.' }
+    Invoke-Checked -Command $script:InstalledExe -Arguments @()
+    $Process.Refresh()
+    if ($Process.HasExited -or @(Get-Process -Name tauridium -ErrorAction SilentlyContinue).Count -ne 1) { throw 'Second launch failed to preserve one primary application instance.' }
+    Write-Host 'Installed GUI startup and second-instance activation passed.'
+  } finally {
+    if (-not $Process.HasExited) { $Process.Kill(); $Process.WaitForExit() }
+    $Process.Dispose()
+  }
 }
 
 if (@(Get-Installation).Count -ne 0) { throw 'Refusing to replace an existing Tauridium installation.' }
@@ -130,6 +150,17 @@ try {
   Invoke-Checked $Winget (@('install', '--manifest', (Join-Path $RunRoot ('manifests/' + $Version))) + $Common)
   Assert-Installation $Version
   if ((Get-Content -LiteralPath $Marker -Raw).Trim() -ne 'retain synthetic data') { throw 'Reinstall modified application data.' }
+  Assert-GuiStartup
+  Invoke-Checked $Winget @('uninstall', '--name', 'Tauridium', '--exact', '--scope', 'user', '--silent', '--accept-source-agreements', '--disable-interactivity')
+  Invoke-Checked $Winget (@('install', '--manifest', (Join-Path $RunRoot ('manifests/' + $PreviousVersion))) + $Common)
+  Assert-Installation $PreviousVersion
+  # Exercise the updater's delivered NSIS /UPDATE installer path, without
+  # pretending this is a UI-driven end-to-end updater test.
+  $UpdaterInstaller = Join-Path $RunRoot ('assets-' + $Version + '/tauridium-' + $Version + '-windows-' + $Architecture + '-setup.exe')
+  Invoke-Checked $UpdaterInstaller @('/S', '/UPDATE')
+  Assert-Installation $Version
+  Invoke-Checked $Winget @('list', '--name', 'Tauridium', '--exact', '--accept-source-agreements', '--disable-interactivity')
+  if (-not (Test-Path -LiteralPath $Marker)) { throw 'Native update removed application data.' }
   Write-Host ('WinGet native lifecycle passed on ' + $Architecture)
 } finally {
   if ($Winget -and @(Get-Installation).Count -eq 1) {

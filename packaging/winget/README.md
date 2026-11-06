@@ -65,17 +65,25 @@ new credentials into the protected updater signing environment.
 
 ## Native acceptance
 
+The manifest format is 1.12.0, explicitly accepted by the registry and present in
+Microsoft's released client schemas. The registry's current PR template also
+mentions 1.28, while the pinned released client still provides 1.12 schemas.
+Use actual client validation when reassessing the format, rather than blindly
+copying a documentation version number.
+
 The `WinGet acceptance` workflow uses disposable GitHub-hosted x64 and ARM64
 Windows runners. Its installer harness refuses ordinary developer machines.
 It verifies both architectures' artifact pairs, prepares manifests, validates
 them with the real WinGet client and exercises an actual previous-release
 installation, upgrade, uninstall and reinstall. It checks the installed executable's
 production version/target, unique per-user ARP registration and external data
-persistence. Bootstrap packages for a missing/outdated WinGet client are pinned
+persistence, responsive GUI startup and second-instance activation. It also tests
+the native updater's delivered NSIS `/UPDATE` installer path and subsequent WinGet
+recognition, separately from UI-driven updater testing. Bootstrap packages for a missing/outdated WinGet client are pinned
 in `client.json`, verified before registration and signed by Microsoft.
 
 For additional manual testing, use a disposable Windows VM or upstream's
-`Tools/SandboxTest.ps1`. The VM must support WinGet schema 1.28.0 and WebView2.
+`Tools/SandboxTest.ps1`. The VM must support WinGet schema 1.12.0 and WebView2.
 Local manifests require the administrator-controlled `LocalManifestFiles`
 setting. Do not change this setting on an owner's managed workstation merely
 to run a test. Test WebView2-present and clean-runtime bootstrap cases, startup,
