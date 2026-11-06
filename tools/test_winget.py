@@ -124,6 +124,33 @@ class WinGetTests(unittest.TestCase):
       winget.prepare(self.lock, assets, output)
     self.assertEqual((output / 'marker').read_text(encoding='utf-8'), 'keep')
 
+  def test_fetch_reverifies_existing_valid_assets_without_download(self):
+    assets = self.fake_assets()
+    with mock.patch.object(winget, 'verify') as verifier, mock.patch.object(winget, 'download') as download:
+      winget.fetch(self.lock, assets)
+    self.assertEqual(verifier.call_count, 2)
+    download.assert_not_called()
+
+  def test_prepare_repeats_without_replacing_verified_files(self):
+    assets = self.fake_assets()
+    output = self.root / 'manifest'
+    with mock.patch.object(winget, 'verify') as verifier:
+      winget.prepare(self.lock, assets, output)
+      before = {p.name:(p.read_bytes(), p.stat().st_mtime_ns) for p in output.iterdir()}
+      winget.prepare(self.lock, assets, output)
+    self.assertEqual(verifier.call_count, 4)
+    self.assertEqual(before, {p.name:(p.read_bytes(), p.stat().st_mtime_ns) for p in output.iterdir()})
+
+  def test_prepare_refuses_changed_existing_manifest(self):
+    assets = self.fake_assets()
+    output = self.root / 'manifest'
+    with mock.patch.object(winget, 'verify'):
+      winget.prepare(self.lock, assets, output)
+      path = output / (winget.PACKAGE + '.installer.yaml')
+      path.write_bytes(b'review my edits')
+      with self.assertRaises(ValueError): winget.prepare(self.lock, assets, output)
+    self.assertEqual(path.read_bytes(), b'review my edits')
+
   def test_failed_signature_produces_no_manifests(self):
     assets = self.fake_assets()
     with mock.patch.object(winget, 'verify', side_effect=ValueError('signature mismatch')), self.assertRaises(ValueError):

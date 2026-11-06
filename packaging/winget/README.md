@@ -28,8 +28,9 @@ signature is an updater signature, not Windows Authenticode.
 Assets are placed in ignored `release/winget/assets/<version>/`. Manifests are
 generated in ignored `release/winget/manifests/<version>/`, with a schema header,
 stable version URL, deterministic UTF-8/CRLF bytes and no private data. Outputs
-must be new directories. Existing evidence is preserved, and changed bytes fail.
-To regenerate, move the previous manifest directory aside and prepare again.
+are reverified and reused when repeated unchanged. Changed hashes, manifest bytes,
+symlinks or unexpected manifest files fail without replacing the existing evidence.
+To regenerate changed manifests, preserve the previous directory and prepare again.
 
 ## Accept a new version
 

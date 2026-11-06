@@ -118,8 +118,13 @@ def verify_assets(lock: dict, directory: Path) -> None:
 
 def fetch(lock: dict, output: Path) -> None:
   validate_lock(lock)
-  if output.exists() or output.is_symlink():
-    raise ValueError("Asset destination already exists; reuse it with prepare, never overwrite it")
+  if output.is_symlink():
+    raise ValueError("Asset destination must not be a symlink")
+  if output.exists():
+    if not output.is_dir():
+      raise ValueError("Asset destination must be a directory")
+    verify_assets(lock, output)
+    return
   output.parent.mkdir(parents=True, exist_ok=True)
   with tempfile.TemporaryDirectory(prefix=".winget-assets-", dir=output.parent) as temporary:
     stage = Path(temporary)
@@ -190,8 +195,18 @@ def manifests(lock: dict) -> dict[str, bytes]:
 
 def prepare(lock: dict, assets: Path, output: Path) -> None:
   verify_assets(lock, assets)
-  if output.exists() or output.is_symlink():
-    raise ValueError("Manifest output must be a fresh directory")
+  if output.is_symlink():
+    raise ValueError("Manifest output must not be a symlink")
+  expected = manifests(lock)
+  if output.exists():
+    if not output.is_dir() or {path.name for path in output.iterdir()} != set(expected):
+      raise ValueError("Existing manifest output has an unexpected inventory; preserve it for review")
+    for name, payload in expected.items():
+      path = output / name
+      require_regular(path)
+      if path.read_bytes() != payload:
+        raise ValueError("Existing manifest bytes differ; preserve them for review")
+    return
   output.parent.mkdir(parents=True, exist_ok=True)
   with tempfile.TemporaryDirectory(prefix=".winget-manifest-", dir=output.parent) as temporary:
     stage = Path(temporary)
