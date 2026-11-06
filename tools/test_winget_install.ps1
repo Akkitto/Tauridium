@@ -103,7 +103,7 @@ function Assert-Installation([string]$ExpectedVersion) {
   $InstallLocation = [string]$Row.InstallLocation
   if ($InstallLocation.StartsWith('"') -and $InstallLocation.EndsWith('"')) { $InstallLocation = $InstallLocation.Substring(1, $InstallLocation.Length - 2) }
   if ($InstallLocation -ne (Join-Path $env:LOCALAPPDATA 'Tauridium')) { throw 'Unexpected per-user installation directory.' }
-  $script:InstalledExe = Join-Path $InstallLocation 'tauridium.exe' 
+  $script:InstalledExe = Join-Path $InstallLocation 'tauridium.exe'
   if (-not (Test-Path -LiteralPath $script:InstalledExe -PathType Leaf)) { throw 'Installed executable is missing.' }
   $Probe = Join-Path $RunRoot ('build-info-' + [guid]::NewGuid().ToString('N') + '.json')
   Invoke-Checked $script:InstalledExe @('--build-info-file', $Probe)
