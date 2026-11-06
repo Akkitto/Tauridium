@@ -160,6 +160,7 @@ def manifests(lock: dict) -> dict[str, bytes]:
   installer = common | {
     "InstallerType": "nullsoft", "Scope": "user", "UpgradeBehavior": "install",
     "InstallerSwitches": {"Silent": "/S", "SilentWithProgress": "/S"},
+    "AppsAndFeaturesEntries": [{"DisplayName": "Tauridium", "Publisher": "brani", "ProductCode": "Tauridium"}],
     "Installers": [{"Architecture": arch,
                     "InstallerUrl": release_url(version, name := f"tauridium-{version}-windows-{arch}-setup.exe"),
                     "InstallerSha256": lock["assets"][name]["sha256"].upper()}

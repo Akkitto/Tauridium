@@ -99,7 +99,11 @@ function Assert-Installation([string]$ExpectedVersion) {
   if ($Row.PSPath -notlike '*HKEY_CURRENT_USER*') { throw 'Expected a per-user NSIS installation.' }
   if ($Row.DisplayVersion -ne $ExpectedVersion) { throw 'Unexpected ARP version.' }
   if ($Row.Publisher -ne 'brani') { throw ('Unexpected ARP publisher: ' + $Row.Publisher) }
-  $script:InstalledExe = Join-Path $Row.InstallLocation 'tauridium.exe'
+  if ($Row.PSChildName -ne 'Tauridium') { throw 'Unexpected NSIS uninstall identity.' }
+  $InstallLocation = [string]$Row.InstallLocation
+  if ($InstallLocation.StartsWith('"') -and $InstallLocation.EndsWith('"')) { $InstallLocation = $InstallLocation.Substring(1, $InstallLocation.Length - 2) }
+  if ($InstallLocation -ne (Join-Path $env:LOCALAPPDATA 'Tauridium')) { throw 'Unexpected per-user installation directory.' }
+  $script:InstalledExe = Join-Path $InstallLocation 'tauridium.exe' 
   if (-not (Test-Path -LiteralPath $script:InstalledExe -PathType Leaf)) { throw 'Installed executable is missing.' }
   $Probe = Join-Path $RunRoot ('build-info-' + [guid]::NewGuid().ToString('N') + '.json')
   Invoke-Checked $script:InstalledExe @('--build-info-file', $Probe)
@@ -107,6 +111,12 @@ function Assert-Installation([string]$ExpectedVersion) {
   $Target = if ($Architecture -eq 'x64') { 'x86_64-pc-windows-msvc' } else { 'aarch64-pc-windows-msvc' }
   if ($Info.version -ne $ExpectedVersion -or $Info.target -ne $Target -or $Info.buildMode -ne 'production') { throw 'Installed executable identity differs from its manifest.' }
 }
+function Assert-Uninstalled {
+  $Deadline = [DateTime]::UtcNow.AddSeconds(60)
+  while (@(Get-Installation).Count -ne 0 -and [DateTime]::UtcNow -lt $Deadline) { Start-Sleep -Milliseconds 250 }
+  if (@(Get-Installation).Count -ne 0) { throw 'Uninstaller left an application registration.' }
+}
+
 function Get-WinGet {
   $Existing = Get-AppxPackage -Name Microsoft.DesktopAppInstaller
   if ($Existing) {
@@ -171,11 +181,11 @@ try {
   # path, so acceptance failures identify the actual boundary.
   $DirectInstaller = Join-Path $RunRoot ('assets-' + $Version + '/tauridium-' + $Version + '-windows-' + $Architecture + '-setup.exe')
   Write-Host 'Testing verified installer directly before WinGet lifecycle.'
-  Invoke-Checked $DirectInstaller @('/S') 45000
+  Invoke-Checked $DirectInstaller @('/S')
   Assert-Installation $Version
   $DirectUninstaller = Join-Path (Split-Path -Parent $script:InstalledExe) 'uninstall.exe'
   Invoke-Checked $DirectUninstaller @('/S')
-  if (@(Get-Installation).Count -ne 0) { throw 'Direct installer cleanup left ARP registration.' }
+  Assert-Uninstalled
   $Winget = Get-WinGet
   # Local manifests cannot be combined with --source. Keep unrelated catalogues
   # explicit in this disposable user so their REST startup cannot block an
@@ -201,7 +211,8 @@ try {
   Assert-Installation $Version
   Invoke-Checked $Winget @('list', '--name', 'Tauridium', '--exact', '--source', 'winget', '--accept-source-agreements', '--disable-interactivity')
   Invoke-Checked $Winget @('uninstall', '--name', 'Tauridium', '--exact', '--source', 'winget', '--scope', 'user', '--silent', '--accept-source-agreements', '--disable-interactivity')
-  if (@(Get-Installation).Count -ne 0 -or -not (Test-Path -LiteralPath $Marker)) { throw 'Uninstall did not preserve data or left ARP registration.' }
+  Assert-Uninstalled
+  if (-not (Test-Path -LiteralPath $Marker)) { throw 'Uninstall did not preserve data.' }
   Invoke-Checked $Winget (@('install', '--manifest', (Join-Path $RunRoot ('manifests/' + $Version))) + $Common)
   Assert-Installation $Version
   if ((Get-Content -LiteralPath $Marker -Raw).Trim() -ne 'retain synthetic data') { throw 'Reinstall modified application data.' }
