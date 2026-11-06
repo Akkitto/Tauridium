@@ -13,6 +13,13 @@ on:
       - 'tools/*winget*'
       - '.github/workflows/winget.yml'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Native installer checks, or real catalog checks after publication'
+        type: choice
+        required: true
+        default: native
+        options: [native, catalog]
 
 permissions:
   contents: read
@@ -23,7 +30,7 @@ concurrency:
 
 jobs:
   native:
-    name: WinGet native ${{ matrix.arch }}
+    name: WinGet ${{ inputs.mode || 'native' }} ${{ matrix.arch }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -43,4 +50,4 @@ jobs:
           python-version: '3.13'
       - name: Exercise verified release installers through WinGet
         shell: pwsh
-        run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/test_winget_install.ps1 -Architecture '${{ matrix.arch }}'
+        run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/test_winget_install.ps1 -Architecture '${{ matrix.arch }}' -Mode '${{ inputs.mode || 'native' }}'
