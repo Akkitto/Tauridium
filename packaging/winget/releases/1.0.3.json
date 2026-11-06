@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "version": "1.0.3",
+  "commit": "70237e4fd9ddcef0a65ae44de25857c8f03d51f9",
+  "releaseId": 432676051,
+  "assets": {
+    "tauridium-1.0.3-windows-x64-setup.exe": {
+      "sha256": "faf829ece541b87f12e155386af079c3d4b2fc079f1bb5aa6dcc3116c14df49b",
+      "size": 4716319
+    },
+    "tauridium-1.0.3-windows-x64-setup.exe.sig": {
+      "sha256": "a224324e3b8513ad9e99ae6cbd5c95bd568b35e8e880f3ac7f799bfa2109d63e",
+      "size": 452
+    },
+    "tauridium-1.0.3-windows-arm64-setup.exe": {
+      "sha256": "ed895e992b2a22a8933a4cfb678635df15d749987630b92e11e1c08a763ecb69",
+      "size": 4152062
+    },
+    "tauridium-1.0.3-windows-arm64-setup.exe.sig": {
+      "sha256": "b4c1865d700eac12a728c64baebd5613a2e170a7fe6b04c658050dffbdf7206f",
+      "size": 456
+    }
+  }
+}

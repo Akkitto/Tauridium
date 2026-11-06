@@ -337,3 +337,28 @@ clean:
 [windows]
 clean:
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/clean.ps1
+
+# WinGet preparation uses reviewed public-release locks, without registry credentials.
+[unix]
+winget-fetch version:
+  python3 tools/winget.py fetch --lock packaging/winget/releases/{{version}}.json --assets-dir release/winget/assets/{{version}}
+
+[windows]
+winget-fetch version:
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/winget.py fetch --lock packaging/winget/releases/{{version}}.json --assets-dir release/winget/assets/{{version}}
+
+[unix]
+winget-prepare version:
+  python3 tools/winget.py prepare --lock packaging/winget/releases/{{version}}.json --assets-dir release/winget/assets/{{version}} --output release/winget/manifests/{{version}}
+
+[windows]
+winget-prepare version:
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/winget.py prepare --lock packaging/winget/releases/{{version}}.json --assets-dir release/winget/assets/{{version}} --output release/winget/manifests/{{version}}
+
+[unix]
+winget-intake version commit run:
+  python3 tools/winget.py intake --version {{version}} --commit {{commit}} --run-id {{run}} --output release/winget/candidates/{{version}}.json
+
+[windows]
+winget-intake version commit run:
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/winget.py intake --version {{version}} --commit {{commit}} --run-id {{run}} --output release/winget/candidates/{{version}}.json

@@ -12,6 +12,13 @@ Its self-updater is disabled and updates are managed by Nix.
 
 Tauridium publishes native Windows installers and portable ZIP archives for x64 and ARM64.
 
+### WinGet preparation
+
+WinGet support uses the native x64 and ARM64 per-user installers. Catalog
+publication is pending upstream acceptance. Until it is indexed, use the existing
+Scoop bucket or GitHub installers. See [WinGet packaging](../packaging/winget/README.md)
+for verified release intake, native lifecycle tests and the submission procedure.
+
 ### Scoop
 
 The Tauridium repository is prepared for submission to the official
