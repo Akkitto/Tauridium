@@ -119,16 +119,24 @@ function Get-WinGet {
 }
 
 function Assert-GuiStartup {
-  $Process = [System.Diagnostics.Process]::Start($script:InstalledExe)
+  $Process = [System.Diagnostics.Process]::Start($script:InstalledExe, '--startup-diagnostics')
   try {
     $Deadline = [DateTime]::UtcNow.AddSeconds(45)
+    $StartupReady = $false
     do {
       Start-Sleep -Milliseconds 500
       $Process.Refresh()
       if ($Process.HasExited) { throw 'Installed application exited during GUI startup.' }
-    } while ($Process.MainWindowHandle -eq [IntPtr]::Zero -and [DateTime]::UtcNow -lt $Deadline)
-    if ($Process.MainWindowHandle -eq [IntPtr]::Zero -or -not $Process.Responding) { throw 'Installed application did not open a responsive window.' }
-    Invoke-Checked -Command $script:InstalledExe -Arguments @()
+      $Diagnostics = Join-Path $env:LOCALAPPDATA 'Tauridium/diagnostics'
+      if (Test-Path -LiteralPath $Diagnostics) {
+        $Log = Get-ChildItem -LiteralPath $Diagnostics -Filter ('startup-*-' + $Process.Id + '.log') | Select-Object -First 1
+        if ($Log) { $StartupReady = (Get-Content -LiteralPath $Log.FullName -Raw) -match 'event=tauri\.setup\.completed(?:\s|$)' }
+      }
+    } while (($Process.MainWindowHandle -eq [IntPtr]::Zero -or -not $StartupReady) -and [DateTime]::UtcNow -lt $Deadline)
+    if (-not $StartupReady -or $Process.MainWindowHandle -eq [IntPtr]::Zero -or -not $Process.Responding) { throw 'Installed application did not complete startup with a responsive window.' }
+    # Window creation precedes application setup. Test normal second launch only
+    # after the real readiness event; never retry a rejected activation.
+    Invoke-Checked -Command $script:InstalledExe -Arguments @('--startup-diagnostics')
     $Process.Refresh()
     if ($Process.HasExited -or @(Get-Process -Name tauridium -ErrorAction SilentlyContinue).Count -ne 1) { throw 'Second launch failed to preserve one primary application instance.' }
     Write-Host 'Installed GUI startup and second-instance activation passed.'
