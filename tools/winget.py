@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from updater_signature import require_regular, verify
+from security_tools import ensure_minisign
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = "Akkitto.Tauridium"
@@ -107,11 +108,12 @@ def verify_assets(lock: dict, directory: Path) -> None:
     require_regular(path)
     if path.stat().st_size != row["size"] or hashlib.sha256(path.read_bytes()).hexdigest() != row["sha256"]:
       raise ValueError("Installer/signature size or SHA-256 differs from the reviewed lock")
+  executable = ensure_minisign()
   for arch in ARCHES:
     path = directory / f"tauridium-{lock['version']}-windows-{arch}-setup.exe"
     if path.read_bytes()[:2] != b"MZ":
       raise ValueError("Expected a Windows installer")
-    verify(path, path.with_suffix(".exe.sig"), lock["version"])
+    verify(path, path.with_suffix(".exe.sig"), lock["version"], executable=executable)
 
 
 def fetch(lock: dict, output: Path) -> None:

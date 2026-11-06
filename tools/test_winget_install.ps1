@@ -180,7 +180,8 @@ try {
     $Name = 'tauridium-' + $Version + '-windows-' + $Architecture + '-setup.exe'
     $Hash = $Lock.assets.$Name.sha256
     $Url = 'https://github.com/Akkitto/Tauridium/releases/download/v' + $Version + '/' + $Name
-    if ($Details.Output -notmatch [regex]::Escape($Hash) -or $Details.Output -notmatch [regex]::Escape($Url)) { throw 'Catalog installer URL/hash differs from the reviewed release.' }
+    $CompactDetails = [regex]::Replace($Details.Output, '\s', '')
+    if ($CompactDetails -notmatch [regex]::Escape($Hash) -or $CompactDetails -notmatch [regex]::Escape($Url)) { throw 'Catalog installer URL/hash differs from the reviewed release.' }
   }
   # Pre-publication: use explicitly signature-verified bytes directly. Local
   # manifests have Internet-zone SmartScreen prompts for unsigned installers.

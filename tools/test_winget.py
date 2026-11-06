@@ -17,6 +17,9 @@ class WinGetTests(unittest.TestCase):
     self.temp = tempfile.TemporaryDirectory()
     self.addCleanup(self.temp.cleanup)
     self.root = Path(self.temp.name)
+    pinned = mock.patch.object(winget, 'ensure_minisign', return_value='verified-pinned-minisign')
+    self.pinned = pinned.start()
+    self.addCleanup(pinned.stop)
     self.lock = winget.load_json(winget.ROOT / 'packaging/winget/releases/1.0.3.json')
 
   def fake_assets(self):
@@ -88,6 +91,21 @@ class WinGetTests(unittest.TestCase):
       winget.prepare(self.lock, assets, self.root / 'manifest')
     self.assertEqual(verifier.call_count, 2)
     self.assertEqual([c.args[2] for c in verifier.call_args_list], ['1.0.3', '1.0.3'])
+
+  def test_signatures_use_only_the_hash_verified_native_verifier(self):
+    assets = self.fake_assets()
+    with mock.patch.object(winget, 'verify') as verifier:
+      winget.verify_assets(self.lock, assets)
+    self.pinned.assert_called_once_with()
+    self.assertEqual([c.kwargs['executable'] for c in verifier.call_args_list], ['verified-pinned-minisign'] * 2)
+
+  def test_damaged_verifier_cache_stops_manifest_generation(self):
+    assets = self.fake_assets()
+    self.pinned.side_effect = SystemExit('verifier hash mismatch')
+    with mock.patch.object(winget, 'verify') as verifier, self.assertRaises(SystemExit):
+      winget.prepare(self.lock, assets, self.root / 'manifest')
+    verifier.assert_not_called()
+    self.assertFalse((self.root / 'manifest').exists())
 
   def test_tampered_asset_rejected_before_signature_or_manifest_generation(self):
     assets = self.fake_assets()

@@ -9,8 +9,10 @@ Catalog publication requires the upstream submission and indexing to complete.
 ## Prepare a published release
 
 Run from the Tauridium repository. The same `just` commands work on native Windows
-and Linux. A verified Minisign executable is required, as supplied by `just init`.
-No private signing key or registry submission credential is needed.
+and Linux. The adapter revalidates the official hash-pinned Minisign cache and
+bootstraps the verifier if missing. An arbitrary executable on `PATH` is never
+used for WinGet signature verification. No private signing key or registry
+submission credential is needed.
 
 ```text
 just winget-fetch 1.0.3
@@ -53,46 +55,64 @@ To regenerate, move the previous manifest directory aside and prepare again.
    published pair. Keep the previous lock for the real upgrade test. Validate
    native installer identity and self-update/manager coexistence before changing
    publisher, scope or installer family.
-5. Run the native WinGet workflow on both architectures and the Python regression
-   suite. Review the installation results, not only generated YAML.
+5. Run the native acceptance mode on both architectures and the Python regression
+   suite. Review actual installation results, not only generated YAML.
 6. Prepare manifests with the commands above. Re-run native `winget validate`
-   and installation testing for the final exact files. Copy only the three YAML
-   files into the single upstream package/version folder.
+   for the final exact files. Copy only the three YAML files into the single
+   upstream package/version folder. Complete catalog acceptance after indexing.
 
 The adapter deliberately does not automatically push registry changes from a
 release job. It does not add artifacts to the sealed application release or put
 new credentials into the protected updater signing environment.
 
-## Native acceptance
+## Acceptance phases
 
 The manifest format is 1.12.0, explicitly accepted by the registry and present in
 Microsoft's released client schemas. The registry's current PR template also
 mentions 1.28, while the pinned released client still provides 1.12 schemas.
-Use actual client validation when reassessing the format, rather than blindly
-copying a documentation version number.
+Actual client validation determines compatibility.
 
-The `WinGet acceptance` workflow uses disposable GitHub-hosted x64 and ARM64
-Windows runners. Its installer harness refuses ordinary developer machines.
-It verifies both architectures' artifact pairs, prepares manifests, validates
-them with the real WinGet client and exercises an actual previous-release
-installation, upgrade, uninstall and reinstall. It checks the installed executable's
-production version/target, unique per-user ARP registration and external data
-persistence, responsive GUI startup and second-instance activation. It also tests
-the native updater's delivered NSIS `/UPDATE` installer path and subsequent WinGet
-recognition, separately from UI-driven updater testing. Bootstrap packages for a missing/outdated WinGet client are pinned
-in `client.json`, verified before registration and signed by Microsoft.
+The `WinGet acceptance` workflow has two explicit modes on native x64 and ARM64
+Windows. The harness refuses ordinary developer machines and changes installation
+state only on disposable GitHub-hosted runners.
 
-For additional manual testing, use a disposable Windows VM or upstream's
-`Tools/SandboxTest.ps1`. The VM must support WinGet schema 1.12.0 and WebView2.
-Local manifests require the administrator-controlled `LocalManifestFiles`
-setting. Do not change this setting on an owner's managed workstation merely
-to run a test. Test WebView2-present and clean-runtime bootstrap cases, startup,
-tray/second launch and ordinary-user operation. Keep profiles and evidence private.
+- **native** runs on relevant PRs and master updates. It verifies release hashes,
+  both updater signatures using the pinned verifier, and real `winget validate`.
+  It tests direct signed-installer installation, actual previous-release upgrade,
+  unique per-user registration, production version/architecture, data-preserving
+  uninstall/reinstall, responsive GUI startup, second-instance activation and
+  the updater's NSIS `/UPDATE` path. Native checks do not establish catalog availability.
+- **catalog** is required after upstream acceptance/indexing. It fails if the
+  expected public version is unavailable or the selected catalog installer URL/hash
+  differs from the reviewed lock. It exercises actual WinGet upgrade from the
+  older native installation, fresh installation, uninstall/reinstall and recognition
+  after the native updater's installer path. It uses the official community source.
+
+After the implementation is merged and the package is indexed, run:
+
+```text
+gh workflow run winget.yml --repo Akkitto/Tauridium --ref master -f mode=catalog
+```
+
+Unsigned local-manifest installation can stop at a Windows SmartScreen reputation
+prompt in a headless runner. Microsoft's client marks approved trusted-source
+installers differently after repository scans. The harness does not disable
+SmartScreen, change trust zones, remove download security marks, bypass hashes or
+pretend a direct installation is a completed catalog test. See the client's
+[download trust handling](https://github.com/microsoft/winget-cli/blob/v1.29.380/src/AppInstallerCLICore/Workflows/DownloadFlow.cpp).
+
+A missing/outdated WinGet client is registered from checksum-pinned Microsoft
+packages in `client.json`. For manual local-manifest testing use a disposable
+Windows desktop VM or upstream `Tools/SandboxTest.ps1`, retaining normal security
+prompts. `LocalManifestFiles` requires administrator policy approval. Do not change
+it on an owner's managed workstation merely to run a test. Check WebView2-present
+and clean-runtime bootstrap cases, tray/second launch and ordinary-user operation.
+Keep profiles and evidence private.
 
 Tauridium's native updater remains available. NSIS and WinGet must retain the
-same per-user install and installed-version identity. Never add a second MSI
-variant without independently testing scope, ARP correlation and upgrade paths.
-Do not use checksum overrides, ignore-security switches or fabricated GUIDs.
+same per-user installed-version identity. Measured ARP metadata is display name
+`Tauridium`, publisher `brani` and uninstall key `Tauridium`. Never add another
+installer family/scope without independently testing its upgrade paths.
 
 ## Submit and maintain
 
