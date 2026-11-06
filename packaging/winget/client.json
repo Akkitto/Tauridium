@@ -1,0 +1,13 @@
+{
+  "version": "1.29.380",
+  "bundle": {
+    "name": "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle",
+    "sha256": "65dea9c01ce08ee7b763366b27c0e651f97db857c11ca9b9c301826c10092f2e",
+    "size": 217276577
+  },
+  "dependencies": {
+    "name": "DesktopAppInstaller_Dependencies.zip",
+    "sha256": "ba875afe9d190f61218985ac0292a99d1db710bf93e13c68944ca9d89f0d82d1",
+    "size": 97760717
+  }
+}
