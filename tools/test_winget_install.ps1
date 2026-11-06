@@ -20,8 +20,16 @@ $Profile = Join-Path $env:APPDATA 'dev.brani.tauridium'
 if (Test-Path -LiteralPath $Profile) { throw 'Refusing to use an existing application profile.' }
 
 function Invoke-Checked([string]$Command, [string[]]$Arguments) {
-  & $Command @Arguments | Out-Host
-  if ($LASTEXITCODE -ne 0) { throw ('Command failed with exit code ' + $LASTEXITCODE + ': ' + $Command) }
+  $Output = Join-Path $RunRoot ([guid]::NewGuid().ToString('N') + '.out')
+  $ErrorOutput = $Output + '.err'
+  # All harness arguments are fixed switches, versions and generated runner paths.
+  if (@($Arguments | Where-Object { $_ -match '["\r\n]' }).Count -ne 0) { throw 'Unexpected native argument.' }
+  $Quoted = @($Arguments | ForEach-Object { '"' + $_ + '"' }) -join ' '
+  $Process = Start-Process -FilePath $Command -ArgumentList $Quoted -PassThru -RedirectStandardOutput $Output -RedirectStandardError $ErrorOutput
+  if (-not $Process.WaitForExit(300000)) { $Process.Kill(); throw ('Command timed out: ' + $Command) }
+  Get-Content -LiteralPath $Output | Out-Host
+  Get-Content -LiteralPath $ErrorOutput | Out-Host
+  if ($Process.ExitCode -ne 0) { throw ('Command failed with exit code ' + $Process.ExitCode + ': ' + $Command) }
 }
 function Get-Installation {
   $Rows = @()
@@ -51,10 +59,15 @@ function Assert-Installation([string]$ExpectedVersion) {
   if ($Info.version -ne $ExpectedVersion -or $Info.target -ne $Target -or $Info.buildMode -ne 'production') { throw 'Installed executable identity differs from its manifest.' }
 }
 function Get-WinGet {
-  $Existing = Get-Command winget.exe -ErrorAction SilentlyContinue
+  $Existing = Get-AppxPackage -Name Microsoft.DesktopAppInstaller
   if ($Existing) {
-    $Text = (& $Existing.Source --version | Out-String).Trim().TrimStart('v')
-    if ($LASTEXITCODE -eq 0 -and [version]$Text -ge [version]'1.28.0') { return $Existing.Source }
+    $Executable = Join-Path $Existing.InstallLocation 'winget.exe'
+    $VersionOutput = Join-Path $RunRoot 'winget-version.txt'
+    $Probe = Start-Process -FilePath $Executable -ArgumentList '--version' -PassThru -RedirectStandardOutput $VersionOutput
+    if ($Probe.WaitForExit(20000)) {
+      $Text = (Get-Content -LiteralPath $VersionOutput -Raw).Trim().TrimStart('v')
+      if ($Probe.ExitCode -eq 0 -and [version]$Text -ge [version]'1.28.0') { return $Executable }
+    } else { $Probe.Kill(); Write-Host 'Existing WinGet failed its bounded startup probe; registering the pinned Microsoft client.' }
   }
   $Policy = Get-Content -LiteralPath (Join-Path $Root 'packaging/winget/client.json') -Raw | ConvertFrom-Json
   foreach ($Kind in @('bundle', 'dependencies')) {
