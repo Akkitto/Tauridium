@@ -18,7 +18,12 @@ class RecipeSourceTests(unittest.TestCase):
             self.assertNotIn("contents/recipes?ref=main", text)
         native = (ROOT / "src-tauri/src/recipe_source.rs").read_text(encoding="utf-8")
         self.assertIn('include_str!("../../data/recipe-source.json")', native)
-        self.assertIn('app_data.join("recipes").join(revision())', native)
+        self.assertIn('cache_root.join("remote-recipes").join(revision())', native)
+        main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+        cache = main.split("fn recipe_cache_directory", 1)[1].split("fn recipe_catalog_cache_path", 1)[0]
+        self.assertIn(".app_cache_dir()", cache)
+        self.assertNotIn(".app_data_dir()", cache)
+        self.assertEqual(main.count("recipe_source::read_cache_with_legacy("), 3)
 
     def test_response_consumers_do_not_bypass_the_shared_stream_budget(self):
         for file in (ROOT / "src-tauri/src").glob("*.rs"):

@@ -300,21 +300,29 @@ pub(crate) fn custom_recipes_dir(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 pub(crate) fn backup_custom_recipes(app: &AppHandle) -> Result<Vec<CustomRecipeBackup>, String> {
-    let root = custom_recipes_dir(app)?;
-    if !root.exists() {
-        return Ok(Vec::new());
-    }
+    backup_custom_recipes_from(&custom_recipes_dir(app)?)
+}
 
+fn backup_custom_recipes_from(root: &Path) -> Result<Vec<CustomRecipeBackup>, String> {
+    let entries = match fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(format!("Unable to read custom recipe directory: {error}")),
+    };
     let mut backups = Vec::new();
-    let entries = fs::read_dir(&root)
-        .map_err(|error| format!("Unable to read custom recipe directory: {error}"))?;
     for entry in entries {
         let entry =
             entry.map_err(|error| format!("Unable to read custom recipe entry: {error}"))?;
         let file_type = entry
             .file_type()
             .map_err(|error| format!("Unable to inspect custom recipe entry: {error}"))?;
-        if !file_type.is_dir() {
+        if !file_type.is_dir() || file_type.is_symlink() {
+            continue;
+        }
+        let package_path = entry.path().join(PACKAGE_FILE);
+        // package.json is written last when a custom recipe is committed. Windows
+        // also has legacy revision caches here, which have no discovery marker.
+        if !backup_recipe_file_present(&package_path)? {
             continue;
         }
         let id = entry
@@ -328,11 +336,10 @@ pub(crate) fn backup_custom_recipes(app: &AppHandle) -> Result<Vec<CustomRecipeB
                 "Custom recipe folder uses a reserved Tauridium id: {id}"
             ));
         }
-        let mut package = read_package(&entry.path().join(PACKAGE_FILE))?;
-        validate_package(&package)?;
+        let mut package = read_package(&package_path)?;
         package["id"] = Value::String(id.clone());
-        let icon_svg = fs::read_to_string(entry.path().join(ICON_FILE)).unwrap_or_default();
-        let webview_js = fs::read_to_string(entry.path().join(WEBVIEW_FILE)).unwrap_or_default();
+        let icon_svg = read_optional_backup_recipe_file(&entry.path().join(ICON_FILE))?;
+        let webview_js = read_optional_backup_recipe_file(&entry.path().join(WEBVIEW_FILE))?;
         backups.push(CustomRecipeBackup {
             id,
             package,
@@ -342,6 +349,40 @@ pub(crate) fn backup_custom_recipes(app: &AppHandle) -> Result<Vec<CustomRecipeB
     }
     backups.sort_by(|left, right| left.id.cmp(&right.id));
     Ok(backups)
+}
+
+fn backup_recipe_file_present(path: &Path) -> Result<bool, String> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => {
+            return Err(format!(
+                "Unable to inspect recipe {}: {error}",
+                path.display()
+            ))
+        }
+    };
+    let linked = metadata.file_type().is_symlink();
+    #[cfg(windows)]
+    let linked = {
+        use std::os::windows::fs::MetadataExt;
+        linked || metadata.file_attributes() & 0x400 != 0
+    };
+    if !metadata.is_file() || linked {
+        return Err(format!(
+            "Recipe backup requires a regular, unlinked file: {}",
+            path.display()
+        ));
+    }
+    Ok(true)
+}
+
+fn read_optional_backup_recipe_file(path: &Path) -> Result<String, String> {
+    if !backup_recipe_file_present(path)? {
+        return Ok(String::new());
+    }
+    fs::read_to_string(path)
+        .map_err(|error| format!("Unable to read recipe {}: {error}", path.display()))
 }
 
 fn prepared_backup_recipes(
@@ -962,6 +1003,164 @@ mod tests {
             "console.log('ok');"
         );
         fs::remove_dir_all(root).unwrap();
+    }
+
+    struct BackupRecipeFixture(PathBuf);
+
+    impl BackupRecipeFixture {
+        fn new() -> Self {
+            let mut bytes = [0_u8; 16];
+            getrandom::fill(&mut bytes).unwrap();
+            let suffix = bytes
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>();
+            let root = std::env::temp_dir().join(format!("tauridium-recipe-backup-{suffix}"));
+            fs::create_dir(&root).unwrap();
+            Self(root)
+        }
+    }
+
+    impl Drop for BackupRecipeFixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn backup_ignores_legacy_recipe_cache_and_round_trips_committed_recipes() {
+        let fixture = BackupRecipeFixture::new();
+        let root = fixture.0.join("recipes");
+        for revision in [crate::recipe_source::revision(), &"b".repeat(40)] {
+            let cache = root.join(revision);
+            fs::create_dir_all(&cache).unwrap();
+            fs::write(
+                cache.join("catalog.json"),
+                r#"[{"name":"remote-cache-only"}]"#,
+            )
+            .unwrap();
+            fs::write(cache.join("mail.webview.js"), "remote-cache-only").unwrap();
+        }
+        // A valid hash-shaped custom ID is still a real recipe, not a cache.
+        let custom_id = "a".repeat(40);
+        let package = json!({"name": "Personal", "config": {"serviceURL": "https://example.com"}});
+        save_recipe_files(
+            &root,
+            &custom_id,
+            &package,
+            "<svg>personal</svg>",
+            "personal script",
+        )
+        .unwrap();
+        save_recipe_files(&root, "my-mail", &package, "", "").unwrap();
+        let pending = root.join("unfinished-import");
+        fs::create_dir(&pending).unwrap();
+        fs::write(pending.join("icon.svg"), "not committed").unwrap();
+
+        let recipes = backup_custom_recipes_from(&root).unwrap();
+        assert_eq!(recipes.len(), 2);
+        assert_eq!(recipes[0].id, custom_id);
+        assert_eq!(recipes[0].package["id"], custom_id);
+        assert_eq!(recipes[0].icon_svg, "<svg>personal</svg>");
+        assert_eq!(recipes[0].webview_js, "personal script");
+        assert_eq!(recipes[1].id, "my-mail");
+        let document = crate::backup::BackupDocument::new(
+            env!("CARGO_PKG_VERSION"),
+            json!({}),
+            json!({"services": [], "workspaces": []}),
+            recipes,
+        );
+        let path = fixture.0.join("manual-backup.json");
+        let summary = crate::backup::save(&path, &document).unwrap();
+        assert!(summary.integrity_verified);
+        assert_eq!(summary.custom_recipe_count, 2);
+        let loaded = crate::backup::load(&path).unwrap();
+        let restored = prepared_backup_recipes(loaded.custom_recipes()).unwrap();
+        assert_eq!(restored.len(), 2);
+        assert_eq!(restored[0].2, "<svg>personal</svg>");
+        assert_eq!(restored[0].3, "personal script");
+        assert!(!fs::read_to_string(&path)
+            .unwrap()
+            .contains("remote-cache-only"));
+        assert!(root
+            .join(crate::recipe_source::revision())
+            .join("catalog.json")
+            .exists());
+        assert!(pending.join("icon.svg").exists());
+    }
+
+    #[test]
+    fn backup_succeeds_with_only_legacy_caches_or_no_recipes() {
+        let fixture = BackupRecipeFixture::new();
+        let root = fixture.0.join("recipes");
+        assert!(backup_custom_recipes_from(&root).unwrap().is_empty());
+        fs::create_dir_all(root.join(crate::recipe_source::revision())).unwrap();
+        fs::create_dir(root.join(".uncommitted-recipe")).unwrap();
+        assert!(backup_custom_recipes_from(&root).unwrap().is_empty());
+    }
+
+    #[test]
+    fn backup_rejects_corrupt_committed_packages_instead_of_omitting_them() {
+        let fixture = BackupRecipeFixture::new();
+        let recipe = fixture.0.join("my-mail");
+        fs::create_dir(&recipe).unwrap();
+        let package = recipe.join(PACKAGE_FILE);
+        fs::write(&package, "not JSON").unwrap();
+        assert!(backup_custom_recipes_from(&fixture.0)
+            .unwrap_err()
+            .contains("Invalid recipe JSON"));
+        fs::write(&package, r#"{"config":{"serviceURL":"file:///private"}}"#).unwrap();
+        assert!(backup_custom_recipes_from(&fixture.0)
+            .unwrap_err()
+            .contains("http:// or https://"));
+    }
+
+    #[test]
+    fn backup_rejects_nonfiles_and_unreadable_companions() {
+        let fixture = BackupRecipeFixture::new();
+        let package = json!({"config":{"serviceURL":"https://example.com"}});
+        save_recipe_files(&fixture.0, "my-mail", &package, "", "").unwrap();
+        let recipe = fixture.0.join("my-mail");
+        for name in [ICON_FILE, WEBVIEW_FILE] {
+            fs::write(recipe.join(name), [0xff]).unwrap();
+            assert!(backup_custom_recipes_from(&fixture.0)
+                .unwrap_err()
+                .contains("Unable to read recipe"));
+            fs::remove_file(recipe.join(name)).unwrap();
+            fs::create_dir(recipe.join(name)).unwrap();
+            assert!(backup_custom_recipes_from(&fixture.0)
+                .unwrap_err()
+                .contains("regular, unlinked file"));
+            fs::remove_dir(recipe.join(name)).unwrap();
+        }
+        fs::remove_file(recipe.join(PACKAGE_FILE)).unwrap();
+        fs::create_dir(recipe.join(PACKAGE_FILE)).unwrap();
+        assert!(backup_custom_recipes_from(&fixture.0)
+            .unwrap_err()
+            .contains("regular, unlinked file"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn backup_does_not_follow_recipe_file_links() {
+        use std::os::unix::fs::symlink;
+        let fixture = BackupRecipeFixture::new();
+        let root = fixture.0.join("recipes");
+        let package = json!({"config":{"serviceURL":"https://example.com"}});
+        save_recipe_files(&root, "my-mail", &package, "", "").unwrap();
+        let target = fixture.0.join("outside.txt");
+        fs::write(&target, "synthetic outside content").unwrap();
+        for name in [ICON_FILE, WEBVIEW_FILE, PACKAGE_FILE] {
+            let path = root.join("my-mail").join(name);
+            if path.exists() {
+                fs::remove_file(&path).unwrap();
+            }
+            symlink(&target, &path).unwrap();
+            assert!(backup_custom_recipes_from(&root)
+                .unwrap_err()
+                .contains("regular, unlinked file"));
+            fs::remove_file(path).unwrap();
+        }
     }
 
     #[test]

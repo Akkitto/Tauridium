@@ -1042,11 +1042,15 @@ async fn recipe_config(app: &AppHandle, app_data: &Path, recipe_id: &str) -> Res
         return Ok(local);
     }
 
-    let dir = recipe_source::cache_directory(app_data);
+    let dir = recipe_cache_directory(app)?;
     let _ = std::fs::create_dir_all(&dir);
     let cache = dir.join(format!("{recipe_id}.json"));
 
-    if let Some(text) = recipe_source::read_cache(&cache, http_security::MAX_RECIPE_BYTES) {
+    if let Some(text) = recipe_source::read_cache_with_legacy(
+        &cache,
+        &recipe_source::legacy_cache_directory(app_data).join(format!("{recipe_id}.json")),
+        http_security::MAX_RECIPE_BYTES,
+    ) {
         if let Ok(v) = serde_json::from_str::<Value>(&text) {
             return Ok(v);
         }
@@ -1278,10 +1282,14 @@ async fn recipe_webview_js(app: &AppHandle, app_data: &Path, recipe_id: &str) ->
     {
         return None;
     }
-    let dir = recipe_source::cache_directory(app_data);
+    let dir = recipe_cache_directory(app).ok()?;
     let _ = std::fs::create_dir_all(&dir);
     let cache = dir.join(format!("{recipe_id}.webview.js"));
-    if let Some(s) = recipe_source::read_cache(&cache, http_security::MAX_RECIPE_BYTES) {
+    if let Some(s) = recipe_source::read_cache_with_legacy(
+        &cache,
+        &recipe_source::legacy_cache_directory(app_data).join(format!("{recipe_id}.webview.js")),
+        http_security::MAX_RECIPE_BYTES,
+    ) {
         return Some(s);
     }
     let url = recipe_source::asset_url(recipe_id, "webview.js");
@@ -3176,16 +3184,25 @@ fn clear_sandbox(
     Ok(())
 }
 
-fn recipe_catalog_cache_path(app: &AppHandle) -> Result<PathBuf, String> {
+fn recipe_cache_directory(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
-        .app_data_dir()
-        .map(|dir| recipe_source::cache_directory(&dir).join("catalog.json"))
+        .app_cache_dir()
+        .map(|dir| recipe_source::cache_directory(&dir))
         .map_err(|error| format!("Recipe cache directory unavailable: {error}"))
+}
+
+fn recipe_catalog_cache_path(app: &AppHandle) -> Result<PathBuf, String> {
+    recipe_cache_directory(app).map(|dir| dir.join("catalog.json"))
 }
 
 fn cached_recipe_catalog(app: &AppHandle) -> Option<Value> {
     let path = recipe_catalog_cache_path(app).ok()?;
-    let text = recipe_source::read_cache(&path, http_security::MAX_API_BYTES)?;
+    let app_data = app.path().app_data_dir().ok()?;
+    let text = recipe_source::read_cache_with_legacy(
+        &path,
+        &recipe_source::legacy_cache_directory(&app_data).join("catalog.json"),
+        http_security::MAX_API_BYTES,
+    )?;
     let value = serde_json::from_str::<Value>(&text).ok()?;
     value.as_array().filter(|recipes| !recipes.is_empty())?;
     Some(value)

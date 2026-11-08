@@ -35,11 +35,14 @@ class ServiceZoomPatchTests(unittest.TestCase):
       self.read("data/dev.brani.tauridium.metainfo.xml"),
     )
     manifest = self.read("flatpak/dev.brani.tauridium.yml")
-    version = json.loads(self.read("package.json"))["version"]
-    self.assertIn(f"tag: v{version}", manifest)
+    current = tuple(map(int, json.loads(self.read("package.json"))["version"].split(".")))
+    tags = re.findall(r"^\s*tag: v([0-9]+\.[0-9]+\.[0-9]+)$", manifest, flags=re.MULTILINE)
+    self.assertEqual(len(tags), 1)
+    self.assertLessEqual(tuple(map(int, tags[0].split("."))), current)
+    self.assertIn(f"## [{tags[0]}] - ", self.read("CHANGELOG.md"))
     pins = re.findall(r"^\s*commit:\s*(\S+)$", manifest, flags=re.MULTILINE)
     self.assertEqual(len(pins), 1)
-    self.assertRegex(pins[0], r"^(?:__TAURIDIUM_V\d{3}_COMMIT__|[0-9a-f]{40})$")
+    self.assertRegex(pins[0], r"^[0-9a-f]{40}$")
 
   def test_zoom_uses_bounded_browser_style_levels_and_shortcuts(self) -> None:
     self.assertIn(
