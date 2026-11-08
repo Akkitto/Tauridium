@@ -52,11 +52,14 @@ class FlatpakReleaseTests(unittest.TestCase):
       "--device=dri",
       "--socket=pulseaudio",
       "--talk-name=org.kde.StatusNotifierWatcher",
-      f"tag: v{json.loads(self.read('package.json'))['version']}",
       "chmod +x source/flatpak/cargo-flatpak-runner.sh",
       "cargo tauri build --runner ../flatpak/cargo-flatpak-runner.sh --no-bundle --ci",
     ):
       self.assertIn(marker, manifest)
+    # Publication stays pinned to a completed release while the next version is
+    # prepared. Local builds use committed HEAD; publication verifies tag/commit.
+    self.assertRegex(manifest, r"(?m)^        tag: v[0-9]+\.[0-9]+\.[0-9]+$")
+    self.assertRegex(manifest, r"(?m)^        commit: [0-9a-f]{40}$")
     for forbidden in (
       "--filesystem=home",
       "--filesystem=host",
