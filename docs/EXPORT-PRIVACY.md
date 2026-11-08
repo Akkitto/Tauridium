@@ -36,3 +36,12 @@ provenance pin, not a claim that every upstream recipe has been independently
 audited. Downloads remain on demand. Their bounded caches are separated by the
 revision; old unversioned caches are not executed. Existing personal recipes,
 built-in recipes and user-selected service icons remain independent.
+
+Remote recipe caches live under the platform application cache directory in
+`remote-recipes/<revision>/`, separately from personal recipe storage. Existing
+current-revision caches are read and copied on demand during upgrades, so cached
+recipes remain available offline. Legacy cache folders are left in place.
+Backups recognize personal recipes by their committed `package.json` marker;
+cache-only and unfinished folders are excluded without being deleted. A damaged
+package or unreadable companion file in a committed recipe remains an export
+error, rather than silently producing an incomplete recovery backup.

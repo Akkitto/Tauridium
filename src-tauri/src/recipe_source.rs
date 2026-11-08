@@ -30,9 +30,35 @@ pub(crate) fn catalog_url() -> String {
     )
 }
 
-pub(crate) fn cache_directory(app_data: &Path) -> PathBuf {
-    // Never execute an old unversioned cache from a mutable upstream branch.
+pub(crate) fn cache_directory(cache_root: &Path) -> PathBuf {
+    // Keep remote caches separate even when platform config/data/cache roots alias.
+    cache_root.join("remote-recipes").join(revision())
+}
+
+pub(crate) fn legacy_cache_directory(app_data: &Path) -> PathBuf {
     app_data.join("recipes").join(revision())
+}
+
+pub(crate) fn read_cache_with_legacy(
+    primary: &Path,
+    legacy: &Path,
+    limit: usize,
+) -> Option<String> {
+    if let Some(text) = read_cache(primary, limit) {
+        return Some(text);
+    }
+    // Only the pinned revision is eligible. Preserve offline upgrades without
+    // moving/deleting custom recipes or touching unrelated profile data.
+    let text = read_cache(legacy, limit)?;
+    match primary.parent() {
+        Some(parent) if std::fs::create_dir_all(parent).is_ok() => {
+            // Cache persistence is best-effort; a failed copy must not discard
+            // an already-readable legacy recipe while the user is offline.
+            let _ = crate::write_atomic(primary, &text);
+        }
+        _ => {}
+    }
+    Some(text)
 }
 
 pub(crate) fn read_cache(path: &Path, limit: usize) -> Option<String> {
@@ -57,6 +83,38 @@ mod tests {
         assert!(catalog_url().ends_with(revision()));
         assert!(cache_directory(Path::new("profile")).ends_with(revision()));
     }
+    #[test]
+    fn legacy_cache_upgrades_preserve_offline_reads_in_a_separate_namespace() {
+        let mut bytes = [0_u8; 16];
+        getrandom::fill(&mut bytes).unwrap();
+        let suffix = bytes
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        let root = std::env::temp_dir().join(format!("tauridium-cache-upgrade-{suffix}"));
+        let primary = cache_directory(&root).join("mail.json");
+        let legacy = legacy_cache_directory(&root).join("mail.json");
+        assert!(!primary.starts_with(root.join("recipes")));
+        fs_create_legacy_fixture(&legacy);
+        let original = read_cache_with_legacy(&primary, &legacy, 1024).unwrap();
+        assert_eq!(original, r#"{"name":"cached mail"}"#);
+        assert_eq!(std::fs::read_to_string(&primary).unwrap(), original);
+        assert_eq!(std::fs::read_to_string(&legacy).unwrap(), original);
+        std::fs::write(&primary, "new cache").unwrap();
+        assert_eq!(
+            read_cache_with_legacy(&primary, &legacy, 1024).unwrap(),
+            "new cache"
+        );
+        assert!(read_cache_with_legacy(&primary, &legacy, 2).is_none());
+        assert_eq!(std::fs::read_to_string(&primary).unwrap(), "new cache");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    fn fs_create_legacy_fixture(path: &Path) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, r#"{"name":"cached mail"}"#).unwrap();
+    }
+
     #[test]
     fn cache_reads_are_bounded_and_do_not_follow_leaf_links() {
         let path =
