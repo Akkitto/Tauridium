@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-11-08
+
+### Fixed
+
+- Export backups successfully when legacy remote recipe caches share Windows
+  storage with personal recipes. Back up committed recipes and their complete
+  companion files; keep damaged or unreadable recipes visible as export errors.
+- Store new remote recipe caches separately and preserve readable pinned-revision
+  caches during offline upgrades without deleting existing recipe folders.
+
+### Changed
+
+- Add verified WinGet manifest preparation and native x64/ARM64 acceptance tooling
+  using Tauridium's existing `dev.brani.tauridium` identity.
+
 ## [1.0.3] - 2026-11-02
 
 ### Security
