@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Clear sidebar unread badges from explicit browser badge updates, including
+  Telegram Web A's browser path, without granting hosted sites native commands.
+- Honor the indirect-message badge setting for Discord and other recipes instead
+  of retaining a channel badge after direct messages have been read.
+- Start recipe detection after document parsing, preserving Telegram Web K and
+  other metadata-dependent recipes; keep GitHub and custom-recipe fallbacks.
+
 ## [1.0.4] - 2026-11-08
 
 ### Fixed

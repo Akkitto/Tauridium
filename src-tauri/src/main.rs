@@ -30,6 +30,7 @@ mod private_file;
 mod proton_compat;
 mod recipe_source;
 mod recipes;
+mod service_badges;
 mod service_export;
 mod single_instance;
 mod startup_diagnostics;
@@ -650,6 +651,7 @@ struct ServiceFlags {
     notif: bool,
     muted: bool,
     badge: bool,
+    indirect_badge: bool,
 }
 
 impl Default for ServiceFlags {
@@ -659,6 +661,7 @@ impl Default for ServiceFlags {
             notif: true,
             muted: false,
             badge: true,
+            indirect_badge: false,
         }
     }
 }
@@ -1202,9 +1205,9 @@ fn resolve_url(
 // --- Recipe runtime (webview.js -> unread counts) -------------------------
 
 // Minimal `Ferdium` API shim exposed to recipe webview.js files. It executes the
-// recipe DOM-scraping code; `setBadge` updates window.__pakeUnread (read by the
-// poller). injectCSS/notifications can come later; everything is wrapped in try/catch
-// so an incompatible recipe can never break the page.
+// recipe DOM-scraping code after document parsing. `setBadge` preserves direct and
+// indirect counts for the native poller; unsupported optional helpers remain no-ops.
+// Recipe errors are isolated so an incompatible recipe cannot break the page.
 // Dark Reader (vendored standalone UMD build), injected per service when dark mode
 // is enabled so the page is actually darkened (previously the option had no local effect).
 const DARK_READER_JS: &str = include_str!("../assets/darkreader.js");
@@ -1248,13 +1251,14 @@ fn dark_reader_init(o: DarkOpts) -> String {
 }
 
 const RECIPE_PREAMBLE: &str = r#"(function(){
+  function startRecipe(){
   try {
     var module = { exports: {} };
     var exports = module.exports;
     var __dirname = '';
     function require(m){ if(m==='path') return { join: function(){ return Array.prototype.slice.call(arguments).join('/'); } }; return {}; }
     var Ferdium = {
-      setBadge: function(direct, indirect){ var d=parseInt(direct,10)||0, i=parseInt(indirect,10)||0; window.__pakeUnread = Math.max(0, d+i); },
+      setBadge: function(direct, indirect){ window.__pakeSetBadge(direct, indirect); },
       safeParseInt: function(v){ var n=parseInt(v,10); return isNaN(n)?0:n; },
       injectCSS: function(){}, injectJSUnsafe: function(){},
       setDialogTitle: function(){}, handleDarkMode: function(){},
@@ -1265,6 +1269,13 @@ const RECIPE_PREAMBLE: &str = r#"(function(){
 const RECIPE_SUFFIX: &str = r#"
     if (typeof module.exports === 'function') module.exports(Ferdium, {});
   } catch(e){ console.warn('[pakeFerdium] recipe runtime error', e); }
+  }
+  // Initialization scripts run at document start; recipe metadata/DOM do not yet exist.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startRecipe, { once: true });
+  } else {
+    startRecipe();
+  }
 })();"#;
 
 // Retrieve and cache a recipe's webview.js; return None if it has none.
@@ -1646,9 +1657,6 @@ fn service_shortcut_bridge_js(settings: &Value, service_id: &str, nonce: &str) -
 const IPC_SHIM_JS: &str = r#"(function(){
   window.__PAKE_SHIM__ = (window.__PAKE_SHIM__ || 0) + 1;
   window.__pakeUnread = window.__pakeUnread || 0;
-  // Note: Telegram Web A is a Tauri app that calls low-level IPC (fetch ipc:// +
-  // postMessage); it cannot be cleanly disabled from injected JavaScript. Its console errors
-  // are harmless noise (Telegram still works). Telegram badge support is not implemented.
   // Intercept the web Notification API (WKWebView does not fully support it): queue
   // service notifications for the Rust poller to drain into native system notifications.
   (function(){
@@ -1679,10 +1687,12 @@ const IPC_SHIM_JS: &str = r#"(function(){
     try {
       if (channel === 'updateUnread' || channel === 'message-counts' || channel === 'updateBadge') {
         var v = arguments[1];
-        var n = (typeof v === 'number') ? v
-              : (v && typeof v.count === 'number') ? v.count
-              : parseInt(v, 10);
-        if (!isNaN(n)) window.__pakeUnread = Math.max(0, n);
+        if (v && typeof v === 'object' && ('direct' in v || 'indirect' in v)) {
+          window.__pakeSetBadge(v.direct, v.indirect);
+        } else {
+          var n = (v && typeof v.count === 'number') ? v.count : parseInt(v, 10);
+          if (Number.isFinite(n)) window.__pakeSetBadge(n, 0);
+        }
       }
     } catch(e){}
   }
@@ -2227,6 +2237,7 @@ async fn create_service_webview(
             }
             false
         })
+        .initialization_script(include_str!("service_badges.js"))
         .initialization_script(IPC_SHIM_JS)
         .initialization_script(REMOTE_TAURI_COMPAT_JS)
         // Prevent duplicated keystrokes caused by duplicate native WKWebView `textInput` events (see Discord search).
@@ -2269,7 +2280,10 @@ async fn create_service_webview(
     // TEMPORARY Proton web-client workaround. Keep this conditional at the
     // service boundary rather than changing generic remote-webview behavior.
     // The initialization script stays attached across authentication navigation.
-    if proton_compat::requires_tauri_marker_workaround(&host) {
+    // Hosted Telegram also needs its browser branch for standard badge updates.
+    if proton_compat::requires_tauri_marker_workaround(&host)
+        || service_badges::requires_browser_identity(&host)
+    {
         builder = builder.initialization_script(proton_compat::TAURI_MARKER_WORKAROUND_JS);
     }
     if let Some(ua) = ua.as_deref() {
@@ -2842,6 +2856,7 @@ fn set_service_flags(
     notif: bool,
     muted: bool,
     badge: bool,
+    indirect_badge: Option<bool>,
 ) {
     state.flags.lock().unwrap().insert(
         service_id,
@@ -2849,6 +2864,7 @@ fn set_service_flags(
             notif,
             muted,
             badge,
+            indirect_badge: indirect_badge.unwrap_or(false),
         },
     );
 }
@@ -3470,16 +3486,16 @@ fn start_badge_poller(app: AppHandle) {
                 .and_then(|url| url.host_str().map(str::to_string))
                 .unwrap_or_else(|| "Service".into());
             let _ = wv.eval_with_callback(
-                "(function(){var q=window.__pakeNotifQueue;window.__pakeNotifQueue=[];return {u: Math.max(0, parseInt(window.__pakeUnread)||0), n: Array.isArray(q)?q.slice(0,8).map(function(v){return {title:String(v.title||'').slice(0,160),body:String(v.body||'').slice(0,1024)};}):[]};})()",
+                "(function(){var q=window.__pakeNotifQueue;window.__pakeNotifQueue=[];return {u: Math.max(0, parseInt(window.__pakeUnread)||0), b:window.__pakeBadge, a:window.__pakeAppBadge, n: Array.isArray(q)?q.slice(0,8).map(function(v){return {title:String(v.title||'').slice(0,160),body:String(v.body||'').slice(0,1024)};}):[]};})()",
                 move |res| {
                     if res.len() > 64 * 1024 {
                         return;
                     }
                     let v: serde_json::Value =
                         serde_json::from_str(&res).unwrap_or(serde_json::Value::Null);
-                    let unread = v.get("u").and_then(|x| x.as_i64()).unwrap_or(0).clamp(0, 1_000_000);
                     let st = app2.state::<AppState>();
                     let flags = st.flags.lock().unwrap().get(&sid).copied().unwrap_or_default();
+                    let unread = service_badges::unread(&v, flags.indirect_badge).clamp(0, 1_000_000);
 
                     // Notifications: honor mute and disabled-notification settings.
                     if flags.notif && !flags.muted && st.created.lock().unwrap().contains(&sid) {

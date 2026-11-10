@@ -205,6 +205,7 @@ export function setServiceFlags(s: Service): Promise<void> {
     notif: s.isNotificationEnabled !== false,
     muted: s.isMuted === true,
     badge: s.isBadgeEnabled !== false,
+    indirectBadge: s.isIndirectMessageBadgeEnabled === true,
   });
 }
 
