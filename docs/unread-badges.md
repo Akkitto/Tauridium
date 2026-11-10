@@ -32,7 +32,12 @@ metadata after document parsing. No account data or cache migration is needed.
 Discord distinguishes direct mentions from an unread-channel activity indicator.
 Reading mentions clears the badge with indirect activity disabled, even if another
 channel is still unread. With indirect activity enabled, its indicator remains
-until Discord reports that activity read. GitHub continues using its pinned recipe.
+until Discord reports that activity read. GitHub continues using its pinned recipe,
+with a small reviewed adapter for its header indicator: use it as a direct unread
+fallback when no numeric notification count is available, without double-counting
+it alongside a numeric count. This preserves the default GitHub badge on other
+pages even when indirect/group badges are off. Raw pinned cache files and personal
+GitHub recipes are not rewritten.
 
 ## Verification and limits
 
