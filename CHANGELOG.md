@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-11-10
+
 ### Fixed
 
 - Clear sidebar unread badges from explicit browser badge updates, including

@@ -58,10 +58,10 @@ rustPlatform.buildRustPackage (finalAttrs: {
   cargoRoot = "src-tauri";
   buildAndTestSubdir = finalAttrs.cargoRoot;
   cargoDepsName = finalAttrs.pname;
-  cargoHash = "sha256-meZ89PLsIoLmlqTRTrjhfzJ6O5DUdLNLB0iLzoqniEk=";
+  cargoHash = "sha256-O0ri1tuC7ZkLkrUG9hxF2EivbtHSR0jqMgS1o6ThayU=";
   npmDeps = fetchNpmDeps {
     inherit (finalAttrs) src;
-    hash = "sha256-mry5w7Ezx1bVtCqNgN2QymRrOCFVFnwvaMT5BhfhlUw=";
+    hash = "sha256-6ArPyvf6QPurCbTeThGWoA+XH166HSpoC3hDnYmZ7d8=";
   };
   npmRoot = ".";
   env.npm_config_ignore_scripts = "true";
