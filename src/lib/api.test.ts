@@ -278,3 +278,21 @@ describe("audit log commands", () => {
     });
   });
 });
+
+describe("service unread badge preferences", () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    mocks.invoke.mockResolvedValue(undefined);
+  });
+
+  it.each([undefined, false, true])("forwards indirect badge preference %s explicitly", async (indirect) => {
+    const { setServiceFlags } = await import("./api");
+    const service: Service = { id: "badge-test", name: "Badge test", recipeId: "discord",
+      iconUrl: null, isEnabled: true, isIndirectMessageBadgeEnabled: indirect };
+    await setServiceFlags(service);
+    expect(mocks.invoke).toHaveBeenCalledWith("set_service_flags", {
+      serviceId: "badge-test", notif: true, muted: false, badge: true,
+      indirectBadge: indirect === true,
+    });
+  });
+});
