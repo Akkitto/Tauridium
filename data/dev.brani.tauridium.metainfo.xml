@@ -19,14 +19,14 @@
   <url type="vcs-browser">https://github.com/Akkitto/Tauridium</url>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v1.0.5/data/screenshots/tauridium-0.8.0-main.png</image>
+      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v1.0.6/data/screenshots/tauridium-0.8.0-main.png</image>
       <caption>Tauridium sign-in and local accountless start screen</caption>
     </screenshot>
   </screenshots>
   <releases>
-    <release version="1.0.5" date="2026-11-10">
+    <release version="1.0.6" date="2026-11-10">
       <description>
-        <p>Fixes sidebar unread badges with standard browser badge updates, Telegram browser compatibility, Discord indirect-message preferences and document-ready recipe detection.</p>
+        <p>Fixes sidebar unread badges with browser badge updates, Telegram compatibility, Discord indirect-message preferences and preserved GitHub notification fallbacks.</p>
       </description>
     </release>
     <release version="1.0.4" date="2026-11-08">

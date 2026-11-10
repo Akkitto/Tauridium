@@ -2,16 +2,24 @@
 
 ## [Unreleased]
 
-## [1.0.5] - 2026-11-10
+## [1.0.6] - 2026-11-10
 
 ### Fixed
 
+- Preserve GitHub's header-only unread indicator as a direct fallback without
+  double-counting it alongside numeric notifications; leave personal recipes intact.
 - Clear sidebar unread badges from explicit browser badge updates, including
   Telegram Web A's browser path, without granting hosted sites native commands.
 - Honor the indirect-message badge setting for Discord and other recipes instead
   of retaining a channel badge after direct messages have been read.
 - Start recipe detection after document parsing, preserving Telegram Web K and
   other metadata-dependent recipes; keep GitHub and custom-recipe fallbacks.
+
+## [1.0.5] - 2026-11-10
+
+Unpublished candidate withdrawn before signing and publication after an additional
+GitHub indicator-only preservation regression was identified. Superseded by 1.0.6;
+the existing tag is retained unchanged.
 
 ## [1.0.4] - 2026-11-08
 

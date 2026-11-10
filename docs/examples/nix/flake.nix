@@ -6,7 +6,7 @@
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    tauridium.url = "github:Akkitto/Tauridium/v1.0.5";
+    tauridium.url = "github:Akkitto/Tauridium/v1.0.6";
   };
   outputs =
     {
