@@ -146,6 +146,9 @@ test('GitHub indicator-only unread state remains visible with the default direct
   e.counts[indicator] = [{}];
   e.recipe('github');
   assert.deepEqual(e.badge(), { direct: 1, indirect: 0 });
+  e.counts[indicator] = [{}, {}];
+  e.tick();
+  assert.deepEqual(e.badge(), { direct: 1, indirect: 0 }, 'duplicate header indicators are one unread flag');
   e.counts[indicator] = [];
   e.tick();
   assert.deepEqual(e.badge(), { direct: 0, indirect: 0 });

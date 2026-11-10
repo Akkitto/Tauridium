@@ -12,7 +12,7 @@ const GITHUB_BADGE_FALLBACK_JS: &str = r#"
 Ferdium.setBadge = function(direct, indirect){
   var directCount = Ferdium.safeParseInt(direct);
   var indicator = Ferdium.safeParseInt(indirect);
-  window.__pakeSetBadge(directCount > 0 ? directCount : indicator, 0);
+  window.__pakeSetBadge(directCount > 0 ? directCount : (indicator > 0 ? 1 : 0), 0);
 };
 "#;
 
