@@ -3,6 +3,26 @@ use serde_json::Value;
 
 const MAX_COUNT: i64 = 1_000_000;
 
+// The pinned GitHub recipe uses its "indirect" slot for the header's generic
+// notification indicator, not group/channel messages. Keep that indicator as a
+// direct fallback when the notification page's numeric counter is unavailable;
+// never add it to an already numeric count. Only remote pinned scripts receive
+// this adapter; personal recipes return from the loader before this boundary.
+const GITHUB_BADGE_FALLBACK_JS: &str = r#"
+Ferdium.setBadge = function(direct, indirect){
+  var directCount = Ferdium.safeParseInt(direct);
+  var indicator = Ferdium.safeParseInt(indirect);
+  window.__pakeSetBadge(directCount > 0 ? directCount : (indicator > 0 ? 1 : 0), 0);
+};
+"#;
+
+pub(crate) fn pinned_recipe_script(recipe_id: &str, mut script: String) -> String {
+    if recipe_id == "github" {
+        script.insert_str(0, GITHUB_BADGE_FALLBACK_JS);
+    }
+    script
+}
+
 fn bounded(value: Option<&Value>) -> i64 {
     value
         .and_then(Value::as_i64)

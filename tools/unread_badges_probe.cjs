@@ -10,6 +10,8 @@ const native = readFileSync(path.join(root, 'src-tauri/src/main.rs'), 'utf8');
 const raw = name => native.match(new RegExp(`const ${name}: &str = r#"([\\s\\S]*?)"#;`))[1];
 const bridgePath = path.join(root, 'src-tauri/src/service_badges.js');
 const bridge = existsSync(bridgePath) ? readFileSync(bridgePath, 'utf8') : '';
+const badgeNative = readFileSync(path.join(root, 'src-tauri/src/service_badges.rs'), 'utf8');
+const githubFallback = badgeNative.match(/const GITHUB_BADGE_FALLBACK_JS: &str = r#"([\s\S]*?)"#;/)?.[1] ?? '';
 
 function environment({ loading = false, counts = {}, title = '', meta = null, nativeMarker = false } = {}) {
   const intervals = [];
@@ -33,7 +35,7 @@ function environment({ loading = false, counts = {}, title = '', meta = null, na
   run(bridge);
   run(raw('IPC_SHIM_JS'));
   return { window, document, counts, intervals, run,
-    recipe(name) { run(raw('RECIPE_PREAMBLE') + readFileSync(path.join(__dirname, 'fixtures/badges', `${name}.js`), 'utf8') + raw('RECIPE_SUFFIX')); },
+    recipe(name, pinned = true) { run(raw('RECIPE_PREAMBLE') + (pinned && name === 'github' ? githubFallback : '') + readFileSync(path.join(__dirname, 'fixtures/badges', `${name}.js`), 'utf8') + raw('RECIPE_SUFFIX')); },
     ready(value = meta) { meta = value; document.readyState = 'interactive'; listeners.get('DOMContentLoaded')?.(); },
     tick() { intervals.slice().forEach(cb => cb()); },
     badge() { return JSON.parse(JSON.stringify(window.__pakeBadge)); },
@@ -131,11 +133,33 @@ test('GitHub unread/read transitions still use its pinned recipe', () => {
   e.counts[count] = { textContent: '6' };
   e.counts[indicator] = [{}];
   e.recipe('github');
-  assert.deepEqual(e.badge(), { direct: 6, indirect: 1 });
+  assert.deepEqual(e.badge(), { direct: 6, indirect: 0 });
   e.counts[count] = null;
   e.counts[indicator] = [];
   e.tick();
   assert.deepEqual(e.badge(), { direct: 0, indirect: 0 });
+});
+
+test('GitHub indicator-only unread state remains visible with the default direct-only preference', () => {
+  const e = environment();
+  const indicator = '#AppHeader-notifications-button.AppHeader-button--hasIndicator, [data-target="notification-indicator.badge"]:not([hidden])';
+  e.counts[indicator] = [{}];
+  e.recipe('github');
+  assert.deepEqual(e.badge(), { direct: 1, indirect: 0 });
+  e.counts[indicator] = [{}, {}];
+  e.tick();
+  assert.deepEqual(e.badge(), { direct: 1, indirect: 0 }, 'duplicate header indicators are one unread flag');
+  e.counts[indicator] = [];
+  e.tick();
+  assert.deepEqual(e.badge(), { direct: 0, indirect: 0 });
+});
+
+test('personal GitHub recipes keep their own direct/indirect semantics', () => {
+  const e = environment();
+  const indicator = '#AppHeader-notifications-button.AppHeader-button--hasIndicator, [data-target="notification-indicator.badge"]:not([hidden])';
+  e.counts[indicator] = [{}];
+  e.recipe('github', false);
+  assert.deepEqual(e.badge(), { direct: 0, indirect: 1 });
 });
 
 test('Telegram Web K is detected after document parsing, then clears read messages', () => {

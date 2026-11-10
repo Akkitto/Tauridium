@@ -1301,7 +1301,7 @@ async fn recipe_webview_js(app: &AppHandle, app_data: &Path, recipe_id: &str) ->
         &recipe_source::legacy_cache_directory(app_data).join(format!("{recipe_id}.webview.js")),
         http_security::MAX_RECIPE_BYTES,
     ) {
-        return Some(s);
+        return Some(service_badges::pinned_recipe_script(recipe_id, s));
     }
     let url = recipe_source::asset_url(recipe_id, "webview.js");
     let res = HTTP
@@ -1318,7 +1318,7 @@ async fn recipe_webview_js(app: &AppHandle, app_data: &Path, recipe_id: &str) ->
         .await
         .ok()?;
     let _ = write_atomic(&cache, &text);
-    Some(text)
+    Some(service_badges::pinned_recipe_script(recipe_id, text))
 }
 
 // --- Service webviews ----------------------------------------------------

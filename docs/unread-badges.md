@@ -32,7 +32,12 @@ metadata after document parsing. No account data or cache migration is needed.
 Discord distinguishes direct mentions from an unread-channel activity indicator.
 Reading mentions clears the badge with indirect activity disabled, even if another
 channel is still unread. With indirect activity enabled, its indicator remains
-until Discord reports that activity read. GitHub continues using its pinned recipe.
+until Discord reports that activity read. GitHub continues using its pinned recipe,
+with a small reviewed adapter for its header indicator: use it as a direct unread
+fallback when no numeric notification count is available, without double-counting
+it alongside a numeric count. This preserves the default GitHub badge on other
+pages even when indirect/group badges are off. Raw pinned cache files and personal
+GitHub recipes are not rewritten.
 
 ## Verification and limits
 
@@ -48,3 +53,10 @@ service, first check other unread chats/channels and the indirect preference, th
 reload that service. Report the service, Web A/K where relevant, Tauridium version,
 platform and whether all chats were marked read. Do not include private messages,
 sessions, credentials or a personal profile export.
+
+Run `nix run .#unread-badges-smoke` for the account-free production-window tests.
+Both Nix architecture CI jobs require these rendered badge assertions, including
+stock GitHub cache loading and its indicator-only fallback, Discord direct/channel
+preferences, Telegram K metadata detection and explicit browser API clears.
+Synthetic screenshots/logs stay in ignored `release/evidence/unread-badges/`;
+they are not uploaded or included in release artifacts.

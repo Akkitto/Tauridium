@@ -40,6 +40,8 @@ jobs:
         run: nix --extra-experimental-features 'nix-command flakes' run .#smoke
       - name: Exercise real downloads and private completion notifications
         run: nix --extra-experimental-features 'nix-command flakes' run .#download-toast-smoke
+      - name: Exercise actual production service unread badges with pinned recipes
+        run: nix --extra-experimental-features 'nix-command flakes' run .#unread-badges-smoke
       - name: Exercise production Settings navigation and download controls
         run: nix --extra-experimental-features 'nix-command flakes' run .#settings-smoke
       - name: Reject remote native commands and local-origin navigation in production
