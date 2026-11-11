@@ -35,6 +35,7 @@ public static class ChromeNative {
   [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr h);
   [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
   [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h);
+  [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
   [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(Point p);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern IntPtr FindWindowEx(IntPtr p,IntPtr a,string c,string n);
   [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
@@ -78,6 +79,9 @@ $script:Window = [IntPtr]::Zero
 $script:Checks = New-Object 'System.Collections.Generic.List[string]'
 $script:TestPids = New-Object 'System.Collections.Generic.List[int]'
 $TestStarted = [DateTime]::UtcNow
+# Keep Win32 rectangles and UIA bounds in the same physical screen pixels.
+$PreviousDpiContext = [ChromeNative]::SetThreadDpiAwarenessContext([IntPtr](-4))
+if ($PreviousDpiContext -eq [IntPtr]::Zero) { throw 'Unable to enable per-monitor physical-pixel measurements.' }
 function Write-Test-Diagnostics {
   Write-Host 'Fresh test profile diagnostics (no personal accounts or service data):'
   if ($script:Window -ne [IntPtr]::Zero) {
@@ -251,6 +255,7 @@ try {
   Write-Test-Diagnostics
   throw
 } finally {
+  [ChromeNative]::SetThreadDpiAwarenessContext($PreviousDpiContext) | Out-Null
   if ($script:Child -and -not $script:Child.HasExited) {
     [ChromeNative]::PostMessageW($script:Window,0x10,[IntPtr]::Zero,[IntPtr]::Zero) | Out-Null
     if (-not $script:Child.WaitForExit(5000)) { Stop-Process -Id $script:Child.Id -Force }
