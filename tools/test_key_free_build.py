@@ -15,6 +15,7 @@ class KeyFreeBuildTests(unittest.TestCase):
     policy = json.loads((tauri_build.ROOT / "data/build-toolchain.json").read_text(encoding="utf-8"))
     with (mock.patch.dict(os.environ, {"PATH": "synthetic"}, clear=True),
           mock.patch.object(tauri_build.platform, "system", return_value="Linux"),
+          mock.patch.object(tauri_build.Path, "home", return_value=tauri_build.ROOT / "synthetic-home"),
           mock.patch.object(tauri_build.shutil, "which", return_value="/synthetic/cargo-tauri"),
           mock.patch.object(tauri_build.subprocess, "run", return_value=
             subprocess.CompletedProcess([], 0, "tauri-cli " + policy["tauriCliBuild"] + "\n", "")) as run,
