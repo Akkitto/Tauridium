@@ -4,6 +4,10 @@
 from __future__ import annotations
 
 import re
+import shutil
+import tempfile
+import json
+import window_state_policy
 import unittest
 from pathlib import Path
 
@@ -18,14 +22,10 @@ class WindowStateTests(unittest.TestCase):
 
   def test_official_window_state_plugin_is_pinned_and_locked(self) -> None:
     self.assertIn('tauri-plugin-window-state = "=2.5.0"', self.cargo)
-    self.assertRegex(
-      self.lock,
-      re.compile(
-        r'\[\[package\]\]\nname = "tauri-plugin-window-state"\nversion = "2\.5\.0"'
-        r'.*?checksum = "5d6815cab7b212f9cfe16a9d79d8d22f9e14159e4a9460f7dec1467167a008e3"',
-        re.S,
-      ),
-    )
+    import window_state_policy
+    provenance = window_state_policy.validate(ROOT)
+    self.assertEqual(provenance["upstream"]["sha256"], window_state_policy.UPSTREAM_SHA256)
+    self.assertIn(".with_outer_size(cfg!(windows))", self.main)
     tauridium = re.search(
       r'\[\[package\]\]\nname = "tauridium"\n.*?(?=\n\[\[package\]\]|\Z)',
       self.lock,
@@ -100,6 +100,44 @@ class WindowStateTests(unittest.TestCase):
     quit_body = self.main.split('"quit" => {', 1)[1].split("}", 1)[0]
     self.assertIn("save_main_window_state(app);", quit_body)
     self.assertLess(quit_body.index("save_main_window_state(app);"), quit_body.index("app.exit(0);"))
+
+
+class WindowStateRepairIntegrityTests(unittest.TestCase):
+  def fixture(self, temporary):
+    directory = Path(temporary)
+    for name in ("src-tauri/Cargo.toml", "src-tauri/Cargo.lock"):
+      path = directory / name
+      path.parent.mkdir(parents=True, exist_ok=True)
+      shutil.copyfile(ROOT / name, path)
+    shutil.copytree(ROOT / window_state_policy.RELATIVE, directory / window_state_policy.RELATIVE)
+    return directory
+
+  def test_changed_source_fails_without_a_reviewed_hash_update(self):
+    with tempfile.TemporaryDirectory() as temporary:
+      directory = self.fixture(temporary)
+      source = directory / window_state_policy.RELATIVE / "src/lib.rs"
+      source.write_text(source.read_text(encoding="utf-8") + "\n// changed source\n", encoding="utf-8")
+      with self.assertRaisesRegex(ValueError, "integrity"):
+        window_state_policy.validate(directory)
+
+  def test_changing_the_upstream_identity_is_rejected(self):
+    with tempfile.TemporaryDirectory() as temporary:
+      directory = self.fixture(temporary)
+      provenance = directory / window_state_policy.RELATIVE / "TAURIDIUM-PATCH.json"
+      value = json.loads(provenance.read_text(encoding="utf-8"))
+      value["upstream"]["sha256"] = "0" * 64
+      provenance.write_text(json.dumps(value), encoding="utf-8")
+      with self.assertRaisesRegex(ValueError, "upstream provenance"):
+        window_state_policy.validate(directory)
+
+  def test_replacing_the_reviewed_path_with_registry_source_is_rejected(self):
+    with tempfile.TemporaryDirectory() as temporary:
+      directory = self.fixture(temporary)
+      lock = directory / "src-tauri/Cargo.lock"
+      source = lock.read_text(encoding="utf-8").replace('version = "2.5.0+tauridium.1"', 'version = "2.5.0+tauridium.1"\nsource = "registry+https://github.com/rust-lang/crates.io-index"')
+      lock.write_text(source, encoding="utf-8")
+      with self.assertRaisesRegex(ValueError, "lock identity"):
+        window_state_policy.validate(directory)
 
 
 if __name__ == "__main__":

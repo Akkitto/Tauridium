@@ -337,6 +337,7 @@ export interface AppSettings {
   showWorkspaceInWindowTitle: boolean;
   showWorkspaceInTaskbarTitle: boolean;
   customTitleTemplatesEnabled: boolean;
+  unifiedTitleBar: boolean;
   windowTitleTemplate: string;
   taskbarTitleTemplate: string;
   userAgentPref: string;
@@ -543,4 +544,26 @@ export function exportAuditLog(path: string): Promise<number> {
 
 export function clearAuditLog(): Promise<void> {
   return invoke("clear_audit_log");
+}
+
+export interface WindowChrome {
+  enabled: boolean;
+  supported: boolean;
+  requested: boolean;
+  fallback: boolean;
+  title: string;
+  theme: "dark" | "light" | "oled";
+  active: boolean;
+}
+
+export function getWindowChrome(): Promise<WindowChrome> {
+  return invoke("get_window_chrome");
+}
+
+export function openWindowMenu(index: number, x: number): Promise<void> {
+  return invoke("open_window_menu", { index, x });
+}
+
+export function focusWindowContent(): Promise<void> {
+  return invoke("focus_window_content");
 }

@@ -296,3 +296,23 @@ describe("service unread badge preferences", () => {
     });
   });
 });
+
+
+describe("isolated title-bar commands", () => {
+  beforeEach(() => { mocks.invoke.mockReset(); mocks.invoke.mockResolvedValue(undefined); });
+  it("reads only the presentation snapshot", async () => {
+    const { getWindowChrome } = await import("./api");
+    await getWindowChrome();
+    expect(mocks.invoke).toHaveBeenCalledWith("get_window_chrome");
+  });
+  it("opens a fixed native submenu at its logical anchor", async () => {
+    const { openWindowMenu } = await import("./api");
+    await openWindowMenu(4, 200);
+    expect(mocks.invoke).toHaveBeenCalledWith("open_window_menu", { index: 4, x: 200 });
+  });
+  it("can return keyboard focus without a service or arbitrary window target", async () => {
+    const { focusWindowContent } = await import("./api");
+    await focusWindowContent();
+    expect(mocks.invoke).toHaveBeenCalledWith("focus_window_content");
+  });
+});

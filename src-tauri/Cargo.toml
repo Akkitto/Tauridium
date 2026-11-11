@@ -46,7 +46,7 @@ serde_json = "1"
 regex = "=1.13.1"
 getrandom = "=0.4.3"
 keyring-core = "=1.0.1"
-tokio = { version = "=1.54.1", default-features = false, features = ["sync"] }
+tokio = { version = "=1.54.1", default-features = false, features = ["sync", "time"] }
 dirs = "7"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sha2 = "0.11"
@@ -91,6 +91,12 @@ windows-sys = { version = ">=0.59, <=0.61", features = [
   "Win32_System_RemoteDesktop",
   "Win32_System_Threading",
   "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_Controls",
+  "Win32_UI_Accessibility",
+  "Win32_UI_Shell",
+  "Win32_UI_HiDpi",
+  "Win32_Graphics_Dwm",
+  "Win32_Graphics_Gdi",
 ] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -108,7 +114,10 @@ path = "src/main.rs"
 # true everywhere else and no IPC/ACL behavior is changed. Remove this path patch with
 # src/proton_compat.rs once Proton fixes its upstream environment detection.
 [patch.crates-io]
+tauri-plugin-window-state = { path = "../vendor/tauri-plugin-window-state" }
 tauri-plugin-updater = { path = "../vendor/tauri-plugin-updater" }
 glib = { path = "../vendor/glib" }
 tauri = { path = "../vendor/tauri" }
 wry = { path = "../vendor/wry" }
+
+# Frame-aware geometry, retaining legacy inner-size records. See vendor patch provenance.

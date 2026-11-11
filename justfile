@@ -68,6 +68,7 @@ test:
   python3 -m unittest discover -s tools -p 'test_*.py'
   npm test
   cargo test --manifest-path src-tauri/Cargo.toml --locked
+  cargo test --manifest-path src-tauri/Cargo.toml -p tauri-plugin-window-state --lib --locked
   python3 tools/run_preserving_schemas.py cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --features flatpak --locked
   python3 tools/run_preserving_schemas.py cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --features nix --locked
 
@@ -76,6 +77,7 @@ test:
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 -m unittest discover -s tools -p "test_*.py"
   npm test
   cargo test --manifest-path src-tauri/Cargo.toml --locked
+  cargo test --manifest-path src-tauri/Cargo.toml -p tauri-plugin-window-state --lib --locked
   cargo test --manifest-path src-tauri/Cargo.toml --all-features --locked
 
 [unix]

@@ -23,6 +23,19 @@ def generate(root: Path, release_version: str, commit: str) -> dict:
                    "scope": "optional", "purl": f"pkg:cargo/{quote(name)}@{quote(ver)}",
                    "properties": [{"name": "tauridium:dependency-set", "value": group},
                                   {"name": "tauridium:source", "value": package.get("source", "repository-path-patch")}]}
+      if not package.get("source"):
+        component.pop("purl", None)
+        provenance_path = root / "vendor" / name / "TAURIDIUM-PATCH.json"
+        if name == "tauri-plugin-window-state" and provenance_path.is_file():
+          from window_state_policy import validate
+          provenance = validate(root)
+          component["properties"].extend([
+            {"name": "tauridium:source-provenance", "value": "vendor/tauri-plugin-window-state/TAURIDIUM-PATCH.json"},
+            {"name": "tauridium:upstream-version", "value": provenance["upstream"]["version"]},
+            {"name": "tauridium:upstream-url", "value": provenance["upstream"]["url"]},
+            {"name": "tauridium:upstream-sha256", "value": provenance["upstream"]["sha256"]},
+          ] + [{"name": "tauridium:source-file-sha256:" + filename, "value": digest}
+               for filename, digest in sorted(provenance["files"].items())])
       if package.get("checksum"):
         component["hashes"] = [{"alg": "SHA-256", "content": package["checksum"]}]
       components[ref] = component

@@ -35,6 +35,8 @@ mod service_export;
 mod single_instance;
 mod startup_diagnostics;
 mod storage_security;
+mod window_chrome;
+use window_chrome::{focus_window_content, get_window_chrome, open_window_menu};
 #[cfg(windows)]
 mod windows_security;
 
@@ -1436,9 +1438,10 @@ fn service_rect(
     let scale = win.scale_factor().map_err(|e| e.to_string())?;
     let w = phys.width as f64 / scale;
     let h = phys.height as f64 / scale;
+    let top = window_chrome::content_top(win.app_handle());
     Ok((
-        LogicalPosition::new(sidebar_w, 0.0),
-        LogicalSize::new((w - sidebar_w).max(0.0), h),
+        LogicalPosition::new(sidebar_w, top),
+        LogicalSize::new((w - sidebar_w).max(0.0), (h - top).max(0.0)),
     ))
 }
 
@@ -3441,6 +3444,9 @@ async fn logout(app: AppHandle, state: State<'_, AppState>) -> Result<(), String
 
 // Reposition the active webview over the service area (called on resize).
 fn reposition_active(app: &AppHandle) {
+    if let Err(error) = window_chrome::layout(app) {
+        startup_diagnostics::log("primary", "titlebar.layout.error", &error);
+    }
     let st = app.state::<AppState>();
     let active = st.active.lock().unwrap().clone();
     let Some(sid) = active else {
@@ -3635,6 +3641,7 @@ fn default_app_settings_value() -> Value {
     settings.insert("showWorkspaceInWindowTitle".into(), true.into());
     settings.insert("showWorkspaceInTaskbarTitle".into(), false.into());
     settings.insert("customTitleTemplatesEnabled".into(), false.into());
+    settings.insert("unifiedTitleBar".into(), true.into());
     settings.insert("windowTitleTemplate".into(), "{app} ~ {workspace}".into());
     settings.insert("taskbarTitleTemplate".into(), "{app} ~ {workspace}".into());
     settings.insert("userAgentPref".into(), "".into());
@@ -3879,6 +3886,7 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         "showWorkspaceInWindowTitle",
         "showWorkspaceInTaskbarTitle",
         "customTitleTemplatesEnabled",
+        "unifiedTitleBar",
         "grayscaleServices",
         "preloadServices",
         "fetchMissingServiceIcons",
@@ -4527,6 +4535,7 @@ fn sync_services_menu(app: AppHandle, services: Vec<NativeServiceMenuEntry>) -> 
         .map_err(|error| format!("Unable to build native application menu: {error}"))?;
     app.set_menu(menu)
         .map_err(|error| format!("Unable to install native application menu: {error}"))?;
+    window_chrome::keep_menu_unified(&app)?;
     Ok(())
 }
 
@@ -4570,6 +4579,7 @@ fn set_app_settings(
     match operation {
         Ok(value) => {
             download_toast::settings_changed(&app, &previous, &value);
+            window_chrome::refresh(&app);
             let changes = patch
                 .iter()
                 .map(|(key, after)| {
@@ -5422,6 +5432,7 @@ fn set_presentation_titles(
     window
         .set_title(&window_title)
         .map_err(|error| format!("Unable to update Tauridium window title: {error}"))?;
+    window_chrome::refresh(&app);
 
     // Windows taskbar buttons use the native window title, so Windows cannot expose an
     // independent taskbar-button string while retaining the native title bar. Keep the
@@ -5619,6 +5630,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_window_state::Builder::new()
+                .with_outer_size(cfg!(windows))
                 .with_state_flags(persisted_window_state_flags())
                 .with_filter(|label| label == "main")
                 .with_filename("window-state.json")
@@ -5626,6 +5638,7 @@ fn main() {
         )
         .manage(AppState::default())
         .manage(download_toast::DownloadToastState::default())
+        .manage(window_chrome::WindowChromeState::default())
         .setup(move |app| {
             startup_diagnostics::log("primary", "tauri.setup.begin", "Tauri setup callback entered");
 
@@ -5679,8 +5692,13 @@ fn main() {
                     WindowEvent::Focused(true) => {
                         reposition_active(&handle);
                         download_toast::refresh(&handle);
+                        window_chrome::refresh(&handle);
                     },
-                    WindowEvent::Focused(false) => download_toast::refresh(&handle),
+                    WindowEvent::Focused(false) => {
+                        download_toast::refresh(&handle);
+                        window_chrome::refresh(&handle);
+                    },
+                    WindowEvent::ThemeChanged(_) => window_chrome::refresh(&handle),
                     WindowEvent::ScaleFactorChanged { .. } => reposition_active(&handle),
                     WindowEvent::CloseRequested { api, .. } => {
                         // Persist geometry/state before either hiding to tray or allowing a real close.
@@ -5821,6 +5839,7 @@ fn main() {
                 });
             }
             startup_diagnostics::log("primary", "menu.ready", "native application menu installed");
+            window_chrome::install(app.handle())?;
 
             // Native packages retain Tauri's notification permission flow. Flatpak builds
             // use the XDG Notification portal directly and need no plugin permission request.
@@ -5916,6 +5935,9 @@ fn main() {
             clear_audit_log,
             open_external_url,
             get_app_metadata,
+            get_window_chrome,
+            open_window_menu,
+            focus_window_content,
             reload_active_service_command,
             reload_app_command,
             show_service_toast_overlay,
@@ -5943,6 +5965,26 @@ fn main() {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn unified_title_bar_defaults_migrate_and_preserve_the_classic_opt_out() {
+        let migrated = merge_app_settings_value(&serde_json::json!({ "theme": "oled" })).unwrap();
+        assert_eq!(migrated["unifiedTitleBar"], true);
+        assert_eq!(migrated["theme"], "oled");
+        let classic =
+            merge_app_settings_value(&serde_json::json!({ "unifiedTitleBar": false })).unwrap();
+        assert_eq!(classic["unifiedTitleBar"], false);
+        for invalid in [
+            serde_json::json!("false"),
+            serde_json::json!(0),
+            serde_json::Value::Null,
+        ] {
+            assert!(
+                merge_app_settings_value(&serde_json::json!({ "unifiedTitleBar": invalid }))
+                    .is_err()
+            );
+        }
+    }
 
     #[test]
     fn unsafe_and_unknown_services_cannot_reach_cache_deletion() {
