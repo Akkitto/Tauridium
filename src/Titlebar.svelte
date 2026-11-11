@@ -100,13 +100,13 @@
 
 <style>
   :global(body.window-titlebar) { margin: 0; overflow: hidden; user-select: none; background: var(--bg); }
-  header { box-sizing: border-box; display: flex; align-items: center; gap: 8px; height: 100vh; width: 100vw; overflow: hidden; padding-inline: 8px; color: var(--text); background: var(--bg); -webkit-app-region: drag; }
-  .menu-bar { display: flex; align-items: center; flex-shrink: 0; -webkit-app-region: no-drag; }
-  button { display: flex; align-items: center; gap: 6px; box-sizing: border-box; min-height: 30px; padding: 4px 9px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: inherit; font: inherit; font-size: 12px; cursor: default; -webkit-app-region: no-drag; }
+  header { box-sizing: border-box; display: flex; align-items: flex-start; gap: 8px; height: 100vh; width: 100vw; overflow: hidden; padding: max(0px, calc(100vh - 24px)) 6px 0; color: var(--text); background: var(--bg); -webkit-app-region: drag; }
+  .menu-bar { display: flex; align-items: flex-start; height: 24px; flex-shrink: 0; -webkit-app-region: no-drag; }
+  button { display: flex; align-items: flex-start; gap: 6px; box-sizing: border-box; min-height: 24px; height: 24px; padding: 0 9px 6px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: inherit; font: inherit; font-size: 12px; line-height: 16px; cursor: default; -webkit-app-region: no-drag; }
   button:hover, button[aria-expanded="true"] { background: var(--hover); }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   button img { width: 16px; height: 16px; }
-  .window-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 12px; -webkit-app-region: drag; }
+  .window-title { box-sizing: border-box; padding-top: 1px; line-height: 16px; min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 12px; -webkit-app-region: drag; }
   .inactive .window-title { color: var(--muted); }
   .inactive .menu-bar { opacity: 0.65; }
   .drag-clearance { flex: 0 0 48px; height: 100%; -webkit-app-region: drag; }

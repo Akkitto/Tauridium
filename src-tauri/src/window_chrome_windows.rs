@@ -281,10 +281,11 @@ unsafe fn geometry_for(hwnd: HWND, scale: f64) -> Result<Geometry, String> {
     let border = if unsafe { IsZoomed(hwnd) } != 0 {
         0
     } else {
-        // Visible border, not the wider native resize hit area. A standard
-        // 32px title row must align menus with the OS caption glyphs.
-        unsafe { attribute(hwnd, DWMWA_VISIBLE_FRAME_BORDER_THICKNESS as u32) }
-            .unwrap_or_else(|| scale.ceil().max(1.0) as u32)
+        // Keep the entire native resize strip free of child HWNDs. The
+        // renderer aligns its text within the remaining standard title row.
+        (unsafe { GetSystemMetricsForDpi(SM_CYFRAME, dpi) }
+            + unsafe { GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi) })
+        .max(1) as u32
     };
     Ok(Geometry {
         left: left.max(0) as u32,
@@ -535,7 +536,7 @@ unsafe extern "system" fn procedure(
                 return hit;
             }
         }
-        if dwm_handled {
+        if dwm_handled && result != HTCLIENT as LRESULT && result != HTCAPTION as LRESULT {
             return result;
         }
         if unsafe { ScreenToClient(hwnd, &mut point) } != 0 && unsafe { IsZoomed(hwnd) } == 0 {
