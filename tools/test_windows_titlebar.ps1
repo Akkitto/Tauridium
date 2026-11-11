@@ -31,30 +31,41 @@ public static class ChromeNative {
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h,out Rect r);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
-  [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
-  [DllImport("user32.dll")] private static extern bool AttachThreadInput(uint source,uint target,bool attach);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern int GetClassName(IntPtr h,System.Text.StringBuilder name,int length);
   [StructLayout(LayoutKind.Sequential)] private struct MouseInput {
     public int X,Y; public uint Data,Flags,Time; public UIntPtr Extra;
   }
-  [StructLayout(LayoutKind.Sequential)] private struct Input { public uint Type; public MouseInput Mouse; }
+  [StructLayout(LayoutKind.Sequential)] private struct KeyboardInput {
+    public ushort Key,Scan; public uint Flags,Time; public UIntPtr Extra;
+  }
+  [StructLayout(LayoutKind.Explicit)] private struct InputData {
+    [FieldOffset(0)] public MouseInput Mouse;
+    [FieldOffset(0)] public KeyboardInput Keyboard;
+  }
+  [StructLayout(LayoutKind.Sequential)] private struct Input { public uint Type; public InputData Data; }
   [DllImport("user32.dll", SetLastError=true)] private static extern uint SendInput(uint count,Input[] input,int size);
   public static bool Activate(IntPtr h) {
     if (GetForegroundWindow()==h) return true;
     SetForegroundWindow(h);
     if (GetForegroundWindow()==h) return true;
-    // This fresh-host test driver briefly joins the foreground input queue.
-    // Do not change system foreground-lock settings or application focus policy.
-    uint pid, owner=GetWindowThreadProcessId(GetForegroundWindow(),out pid), current=GetCurrentThreadId();
-    if (owner==0 || owner==current || !AttachThreadInput(current,owner,true)) return false;
-    try { SetForegroundWindow(h); }
-    finally { if (!AttachThreadInput(current,owner,false)) throw new InvalidOperationException("Unable to detach test input queue."); }
+    // A foreground CoreWindow on the fresh ARM runner can refuse activation.
+    // Windows documents Alt input as releasing the foreground lock. This is
+    // test-driver input only; never change global settings or app focus policy.
+    Input down=new Input(), up=new Input(); down.Type=1; up.Type=1;
+    down.Data.Keyboard.Key=0x12; up.Data.Keyboard.Key=0x12; up.Data.Keyboard.Flags=2;
+    Input[] input={down,up};
+    if (SendInput(2,input,Marshal.SizeOf(typeof(Input)))!=2) return false;
+    SetForegroundWindow(h);
     return GetForegroundWindow()==h;
   }
   public static string WindowMetadata(IntPtr h) {
     uint pid; uint thread=GetWindowThreadProcessId(h,out pid);
     var name=new System.Text.StringBuilder(128); GetClassName(h,name,name.Capacity);
-    return String.Format("HWND={0}; PID={1}; thread={2}; class={3}; style=0x{4:x}",h,pid,thread,name,WindowStyle(h,-16).ToInt64());
+    string process="unavailable";
+    try { process=System.Diagnostics.Process.GetProcessById((int)pid).ProcessName; }
+    catch (ArgumentException) { }
+    catch (System.ComponentModel.Win32Exception) { }
+    return String.Format("HWND={0}; PID={1}; process={2}; thread={3}; class={4}; style=0x{5:x}",h,pid,process,thread,name,WindowStyle(h,-16).ToInt64());
   }
   public static bool HasCaptionStyles(IntPtr h) {
     const long required=0x00c00000|0x00080000|0x00040000|0x00020000|0x00010000;
@@ -67,7 +78,7 @@ public static class ChromeNative {
     Point p=new Point(); p.X=(r.Left+r.Right)/2; p.Y=(r.Top+r.Bottom)/2;
     if (WindowFromPoint(p)!=h || !SetCursorPos(p.X,p.Y)) throw new InvalidOperationException("Caption button is covered.");
     if (GetForegroundWindow()!=h) throw new InvalidOperationException("Foreground changed before native click.");
-    Input down=new Input(), up=new Input(); down.Mouse.Flags=2; up.Mouse.Flags=4;
+    Input down=new Input(), up=new Input(); down.Data.Mouse.Flags=2; up.Data.Mouse.Flags=4;
     Input[] input={down,up};
     if (SendInput(2,input,Marshal.SizeOf(typeof(Input)))!=2) throw new InvalidOperationException("Native mouse click was blocked.");
   }
