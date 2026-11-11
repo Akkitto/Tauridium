@@ -30,9 +30,10 @@ hit-test fallback. Disabled, invisible and off-screen controls are excluded;
 Windows still handles the actual native controls and system commands.
 
 The row uses the standard 32-pixel logical height, preserves the full native
-resize strip and aligns its text with native caption controls. Opaque buffered GDI
-painting prevents the exposed DWM glass area from tinting the application
-background. Inactive and high-contrast presentation follow system conventions.
+resize strip and aligns its text with native caption controls. Buffered GDI
+painting keeps the body opaque and clears the extended frame to black with zero
+alpha, preserving Windows' own caption glyphs without an additive color tint.
+The local title-bar renderer is transparent over that native background. Inactive and high-contrast presentation follow system conventions.
 
 The startup frame uses documented Win32/DWM APIs rather than experimental
 WebView2 window-controls overlays or synthetic Windows-key shortcuts. It reads

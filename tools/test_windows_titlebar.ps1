@@ -16,7 +16,7 @@ $Utf8 = New-Object Text.UTF8Encoding($false)
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName System.Windows.Forms
-if ($CaptureCaptionPreview) { Add-Type -AssemblyName System.Drawing }
+Add-Type -AssemblyName System.Drawing
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
@@ -189,7 +189,9 @@ function Write-Test-Diagnostics {
   if ($script:Window -ne [IntPtr]::Zero) {
     Write-Host ('Main: {0}; menu={1}' -f [ChromeNative]::WindowMetadata($script:Window),[ChromeNative]::GetMenu($script:Window))
     Write-Host ('Foreground: '+[ChromeNative]::WindowMetadata([ChromeNative]::GetForegroundWindow()))
-    if ([ChromeNative]::IsZoomed($script:Window) -and [ChromeNative]::GetForegroundWindow() -eq $script:Window -and [ChromeNative]::CaptionReady($script:Window,$false)) { Save-Caption-Preview 'maximized' }
+    if ([ChromeNative]::GetForegroundWindow() -eq $script:Window -and [ChromeNative]::CaptionReady($script:Window,$false)) {
+      if ([ChromeNative]::IsZoomed($script:Window)) { Save-Caption-Preview 'maximized' } else { Save-Caption-Preview 'normal' }
+    }
     $Info=[ChromeNative]::Title($script:Window)
     foreach ($Index in @(2,3,5)) {
       $R=$Info.Buttons[$Index]; $P=New-Object ChromeNative+Point
@@ -308,6 +310,29 @@ function Stop-Tauridium {
   if (-not $script:Child.WaitForExit(15000)) { throw 'Normal application close did not exit.' }
   $script:Child.Dispose(); $script:Child = $null
 }
+function Test-Native-Caption-Glyphs {
+  # Independent pixel proof: enabled hit targets alone did not catch an opaque
+  # paint layer hiding Windows' glyphs. Inspect only our own uncovered controls.
+  $Info=[ChromeNative]::Title($script:Window)
+  $Scale=[double][ChromeNative]::GetDpiForWindow($script:Window)/96.0
+  foreach ($Index in @(2,3)) {
+    $R=$Info.Buttons[$Index]; $Inset=[int][Math]::Ceiling(10*$Scale); $Vertical=[int][Math]::Ceiling(4*$Scale)
+    $Width=$R.Right-$R.Left-2*$Inset; $Height=$R.Bottom-$R.Top-2*$Vertical
+    if ($Width -le 0 -or $Height -le 0) { return $false }
+    $Bitmap=New-Object Drawing.Bitmap($Width,$Height)
+    $Graphics=[Drawing.Graphics]::FromImage($Bitmap)
+    try {
+      $Graphics.CopyFromScreen(($R.Left+$Inset),($R.Top+$Vertical),0,0,$Bitmap.Size)
+      $Minimum=255; $Maximum=0
+      for ($X=0; $X -lt $Width; $X++) { for ($Y=0; $Y -lt $Height; $Y++) {
+        $Color=$Bitmap.GetPixel($X,$Y); $Level=([int]$Color.R+[int]$Color.G+[int]$Color.B)/3
+        $Minimum=[Math]::Min($Minimum,$Level); $Maximum=[Math]::Max($Maximum,$Level)
+      } }
+      if (($Maximum-$Minimum) -lt 48) { return $false }
+    } finally { $Graphics.Dispose(); $Bitmap.Dispose() }
+  }
+  return $true
+}
 function Check-Caption([bool]$Unified = $true) {
   Activate-Tauridium
   Check ([ChromeNative]::HasCaptionStyles($script:Window)) 'native caption, sizing, system menu and min/max styles remain present'
@@ -324,6 +349,8 @@ function Check-Caption([bool]$Unified = $true) {
     }
     Check (($Info.State[$Entry[0]] -band 0x8001) -eq 0) "native $($Entry[2]) is visible and enabled"
   }
+  Wait-For { Test-Native-Caption-Glyphs } 'visibly drawn native caption glyphs'
+  Check $true 'native minimize and maximize glyphs are visibly drawn'
 }
 function Save-Caption-Preview([string]$Name) {
   if (-not $CaptureCaptionPreview) { return }
