@@ -37,6 +37,7 @@ public static class ChromeNative {
   [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
   [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(Point p);
+  [DllImport("user32.dll")] private static extern bool SetCursorPos(int x,int y);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern IntPtr FindWindowEx(IntPtr p,IntPtr a,string c,string n);
   [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
   [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr h);
@@ -65,7 +66,20 @@ public static class ChromeNative {
     TitleInfo t=new TitleInfo(); t.Size=Marshal.SizeOf(typeof(TitleInfo)); t.State=new uint[6]; t.Buttons=new Rect[6];
     TitleMessage(h,0x033f,IntPtr.Zero,ref t); return t;
   }
-  public static int Hit(IntPtr h,Point p) { return (int)SendMessage(h,0x84,IntPtr.Zero,new IntPtr(((p.Y&65535)<<16)|(p.X&65535))); }
+  public static int Hit(IntPtr h,Point p) {
+    if (!SetCursorPos(p.X,p.Y)) return int.MinValue;
+    return (int)SendMessage(h,0x84,IntPtr.Zero,new IntPtr(((p.Y&65535)<<16)|(p.X&65535)));
+  }
+  public static bool CaptionReady(IntPtr h) {
+    TitleInfo info=Title(h); int[] indexes={2,3,5}, hits={8,9,20};
+    for (int i=0;i<indexes.Length;i++) {
+      Rect r=info.Buttons[indexes[i]];
+      if (r.Right<=r.Left || r.Bottom<=r.Top) return false;
+      Point p=new Point(); p.X=(r.Left+r.Right)/2; p.Y=(r.Top+r.Bottom)/2;
+      if (WindowFromPoint(p)!=h || Hit(h,p)!=hits[i]) return false;
+    }
+    return true;
+  }
   public static bool HasPopup(int pid) {
     IntPtr h=IntPtr.Zero;
     while ((h=FindWindowEx(IntPtr.Zero,h,"#32768",null)) != IntPtr.Zero) {
@@ -86,6 +100,12 @@ function Write-Test-Diagnostics {
   Write-Host 'Fresh test profile diagnostics (no personal accounts or service data):'
   if ($script:Window -ne [IntPtr]::Zero) {
     Write-Host ('Main HWND={0}; menu={1}; foreground={2}' -f $script:Window,[ChromeNative]::GetMenu($script:Window),[ChromeNative]::GetForegroundWindow())
+    $Info=[ChromeNative]::Title($script:Window)
+    foreach ($Index in @(2,3,5)) {
+      $R=$Info.Buttons[$Index]; $P=New-Object ChromeNative+Point
+      $P.X=[int](($R.Left+$R.Right)/2); $P.Y=[int](($R.Top+$R.Bottom)/2)
+      Write-Host ('Caption {0}: rect={1},{2},{3},{4}; hit={5}; pointWindow={6}' -f $Index,$R.Left,$R.Top,$R.Right,$R.Bottom,[ChromeNative]::Hit($script:Window,$P),[ChromeNative]::WindowFromPoint($P))
+    }
     try {
       $Nodes = (Root).FindAll([Windows.Automation.TreeScope]::Subtree,[Windows.Automation.Condition]::TrueCondition)
       Write-Host ('UIA node count: {0}' -f $Nodes.Count)
@@ -169,6 +189,9 @@ function Start-Tauridium {
   Wait-For { $script:Window = [ChromeNative]::MainWindow($script:Child.Id); $script:Window -ne [IntPtr]::Zero } 'captioned application window'
   [ChromeNative]::SetForegroundWindow($script:Window) | Out-Null
   Wait-For { $null -ne (Find-Control 'Application' ([Windows.Automation.ControlType]::MenuBar)) -or [ChromeNative]::GetMenu($script:Window) -ne [IntPtr]::Zero } 'application menus'
+  Wait-For { $null -ne (Find-Control 'Tauridium' ([Windows.Automation.ControlType]::Document)) } 'local shell document'
+  [ChromeNative]::SetForegroundWindow($script:Window) | Out-Null
+  Wait-For { [ChromeNative]::GetForegroundWindow() -eq $script:Window } 'foreground application window'
 }
 function Stop-Tauridium {
   [ChromeNative]::PostMessageW($script:Window,0x10,[IntPtr]::Zero,[IntPtr]::Zero) | Out-Null
@@ -176,7 +199,7 @@ function Stop-Tauridium {
   $script:Child.Dispose(); $script:Child = $null
 }
 function Check-Caption {
-  Wait-For { ([ChromeNative]::Title($script:Window)).Buttons[3].Right -gt ([ChromeNative]::Title($script:Window)).Buttons[3].Left } 'native caption buttons'
+  Wait-For { [ChromeNative]::CaptionReady($script:Window) } 'settled native caption hit targets'
   $Info = [ChromeNative]::Title($script:Window)
   foreach ($Entry in @(@(2,8,'minimize'),@(3,9,'maximize'),@(5,20,'close'))) {
     $R = $Info.Buttons[$Entry[0]]
@@ -210,8 +233,8 @@ function Toggle-Chrome([bool]$Enabled) {
     $Control=Find-Control 'Unified title bar' ([Windows.Automation.ControlType]::CheckBox)
     $Control.Current.IsEnabled -and $Control.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -eq $Before
   } 'current title-bar checkbox state'
-  # Exercise the user's accessible keyboard action rather than changing a
-  # cached automation state without confirming a real input event.
+  # Exercise the user's keyboard action and confirm the UI transition before
+  # checking durable storage independently.
   (Find-Control 'Unified title bar' ([Windows.Automation.ControlType]::CheckBox)).SetFocus()
   Wait-For { [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Unified title bar' } 'focused title-bar checkbox'
   [Windows.Forms.SendKeys]::SendWait(' ')
