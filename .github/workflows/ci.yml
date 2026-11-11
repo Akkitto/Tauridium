@@ -80,8 +80,16 @@ jobs:
   windows-native:
     needs: windows-verifier
     if: ${{ always() }}
-    name: Windows native x64 full gates
-    runs-on: windows-latest
+    name: Windows native ${{ matrix.label }} full gates
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: x64
+            os: windows-latest
+          - label: ARM64
+            os: windows-11-arm
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 75
     defaults:
       run:
@@ -119,3 +127,5 @@ jobs:
         run: just rust-supply-chain-host
       - name: Run canonical gates
         run: just ci
+      - name: Verify production Windows unified and classic title bars
+        run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/test_windows_titlebar.ps1 -Binary src-tauri/target/release/tauridium.exe
