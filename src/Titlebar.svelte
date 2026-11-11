@@ -99,8 +99,8 @@
 </header>
 
 <style>
-  :global(body.window-titlebar) { margin: 0; overflow: hidden; user-select: none; background: var(--bg); }
-  header { box-sizing: border-box; display: flex; align-items: flex-start; gap: 8px; height: 100vh; width: 100vw; overflow: hidden; padding: max(0px, calc(100vh - 24px)) 6px 0; color: var(--text); background: var(--bg); -webkit-app-region: drag; }
+  :global(body.window-titlebar) { margin: 0; overflow: hidden; user-select: none; background: transparent; }
+  header { box-sizing: border-box; display: flex; align-items: flex-start; gap: 8px; height: 100vh; width: 100vw; overflow: hidden; padding: max(0px, calc(100vh - 24px)) 6px 0; color: var(--text); background: transparent; -webkit-app-region: drag; }
   .menu-bar { display: flex; align-items: flex-start; height: 24px; flex-shrink: 0; -webkit-app-region: no-drag; }
   button { display: flex; align-items: flex-start; gap: 6px; box-sizing: border-box; min-height: 24px; height: 24px; padding: 0 9px 6px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: inherit; font: inherit; font-size: 12px; line-height: 16px; cursor: default; -webkit-app-region: no-drag; }
   button:hover, button[aria-expanded="true"] { background: var(--hover); }

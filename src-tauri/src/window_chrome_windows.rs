@@ -406,7 +406,7 @@ unsafe fn caption_info(hwnd: HWND) -> TITLEBARINFOEX {
     info
 }
 
-unsafe fn paint_background(dc: HDC, rect: &RECT, color: u32) -> Result<(), String> {
+unsafe fn paint_background(dc: HDC, rect: &RECT, color: u32, height: i32) -> Result<(), String> {
     if rect.right <= rect.left || rect.bottom <= rect.top {
         return Ok(());
     }
@@ -415,8 +415,9 @@ unsafe fn paint_background(dc: HDC, rect: &RECT, color: u32) -> Result<(), Strin
         return Err(failure("Unable to create title-bar brush"));
     }
     let mut memory = ptr::null_mut();
-    // GDI FillRect alone clears alpha on extended DWM glass, tinting the
-    // exposed caption area. Paint an explicitly opaque buffer instead.
+    // Keep the body opaque. Extended title-bar glass must be black with zero
+    // alpha: opaque pixels hide DWM's own glyphs, while colored zero-alpha
+    // pixels add an unwanted tint. The transparent renderer shares that frame.
     let buffer = unsafe { BeginBufferedPaint(dc, rect, BPBF_TOPDOWNDIB, ptr::null(), &mut memory) };
     if buffer == 0 {
         unsafe {
@@ -429,9 +430,24 @@ unsafe fn paint_background(dc: HDC, rect: &RECT, color: u32) -> Result<(), Strin
         DeleteObject(brush);
     }
     let alpha = unsafe { BufferedPaintSetAlpha(buffer, ptr::null(), 255) };
-    let result = unsafe { EndBufferedPaint(buffer, i32::from(filled != 0 && alpha >= 0)) };
-    if filled == 0 || alpha < 0 || result < 0 {
-        return Err(format!("Unable to paint opaque title bar (fill={filled}, alpha={alpha:#x}, commit={result:#x})"));
+    let glass = RECT {
+        left: rect.left,
+        top: rect.top.max(0),
+        right: rect.right,
+        bottom: rect.bottom.min(height),
+    };
+    let mut glass_filled = 1;
+    let mut glass_alpha = 0;
+    if glass.bottom > glass.top && glass.right > glass.left {
+        // SAFETY: stock brushes are borrowed, never deleted; this is the exact
+        // intersection of our paint buffer with the extended frame.
+        glass_filled = unsafe { FillRect(memory, &glass, GetStockObject(BLACK_BRUSH)) };
+        glass_alpha = unsafe { BufferedPaintSetAlpha(buffer, &glass, 0) };
+    }
+    let valid = filled != 0 && alpha >= 0 && glass_filled != 0 && glass_alpha >= 0;
+    let result = unsafe { EndBufferedPaint(buffer, i32::from(valid)) };
+    if !valid || result < 0 {
+        return Err(format!("Unable to paint native title bar (fill={filled}, alpha={alpha:#x}, glassFill={glass_filled}, glassAlpha={glass_alpha:#x}, commit={result:#x})"));
     }
     Ok(())
 }
@@ -575,7 +591,9 @@ unsafe extern "system" fn procedure(
         if !dc.is_null() {
             let data = unsafe { &*(reference as *const Frame) };
             let color = data.background.get();
-            if let Err(error) = unsafe { paint_background(dc, &paint.rcPaint, color) } {
+            if let Err(error) =
+                unsafe { paint_background(dc, &paint.rcPaint, color, data.height.get()) }
+            {
                 if !data.paint_error_reported.replace(true) {
                     crate::startup_diagnostics::log("primary", "titlebar.paint.error", &error);
                 }

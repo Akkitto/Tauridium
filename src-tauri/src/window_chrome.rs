@@ -229,6 +229,7 @@ fn install_windows(app: &AppHandle) -> Result<(), String> {
         .join(LABEL);
     std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
     let builder = WebviewBuilder::new(LABEL, WebviewUrl::App("index.html".into()))
+        .transparent(true)
         .focused(false)
         .disable_drag_drop_handler()
         .data_directory(directory)
