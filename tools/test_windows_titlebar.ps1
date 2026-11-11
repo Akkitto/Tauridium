@@ -38,6 +38,25 @@ public static class ChromeNative {
   [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(Point p);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern IntPtr FindWindowEx(IntPtr p,IntPtr a,string c,string n);
   [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
+  [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr h,uint command);
+  [DllImport("user32.dll", EntryPoint="GetWindowLongPtrW")] private static extern IntPtr WindowStyle(IntPtr h,int index);
+  public static IntPtr MainWindow(int pid) {
+    // Process.MainWindowHandle can choose WebView2's visible 16x16 helper.
+    // Select the largest visible, unowned, captioned window of this process.
+    IntPtr h=IntPtr.Zero, best=IntPtr.Zero; long largest=0;
+    while ((h=FindWindowEx(IntPtr.Zero,h,null,null)) != IntPtr.Zero) {
+      uint owner; GetWindowThreadProcessId(h,out owner);
+      if (owner!=(uint)pid || !IsWindowVisible(h) || GetWindow(h,4)!=IntPtr.Zero
+          || (WindowStyle(h,-16).ToInt64() & 0x00c00000)!=0x00c00000) continue;
+      Rect r;
+      if (GetWindowRect(h,out r)) {
+        long width=(long)r.Right-r.Left, height=(long)r.Bottom-r.Top;
+        if (width>64 && height>64 && width*height>largest) { best=h; largest=width*height; }
+      }
+    }
+    return best;
+  }
   [DllImport("user32.dll", EntryPoint="SendMessageW")] public static extern IntPtr SendMessage(IntPtr h,uint m,IntPtr w,IntPtr l);
   [DllImport("user32.dll", EntryPoint="SendMessageW")] private static extern IntPtr TitleMessage(IntPtr h,uint m,IntPtr w,ref TitleInfo info);
   [DllImport("user32.dll")] public static extern bool PostMessageW(IntPtr h,uint m,IntPtr w,IntPtr l);
@@ -59,12 +78,6 @@ $script:Window = [IntPtr]::Zero
 $script:Checks = New-Object 'System.Collections.Generic.List[string]'
 $script:TestPids = New-Object 'System.Collections.Generic.List[int]'
 $TestStarted = [DateTime]::UtcNow
-$PreviousBrowserArguments = $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
-if (-not [string]::IsNullOrWhiteSpace($PreviousBrowserArguments)) { throw 'Unexpected inherited WebView2 arguments in the fresh GUI test.' }
-# UIA is our assistive-technology test client. Request the full renderer tree
-# only in this fresh CI process; production retains on-demand accessibility.
-# https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/webview-features-flags
-$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--force-renderer-accessibility'
 function Write-Test-Diagnostics {
   Write-Host 'Fresh test profile diagnostics (no personal accounts or service data):'
   if ($script:Window -ne [IntPtr]::Zero) {
@@ -119,8 +132,8 @@ function Invoke-Control([string]$Name, [Windows.Automation.ControlType]$Type = [
 function Start-Tauridium {
   $script:Child = Start-Process -FilePath $Binary -ArgumentList '--startup-diagnostics' -PassThru
   $script:TestPids.Add($script:Child.Id)
-  Wait-For { $script:Child.Refresh(); $script:Child.MainWindowHandle -ne [IntPtr]::Zero } 'main window'
-  $script:Window = $script:Child.MainWindowHandle
+  $script:Window = [IntPtr]::Zero
+  Wait-For { $script:Window = [ChromeNative]::MainWindow($script:Child.Id); $script:Window -ne [IntPtr]::Zero } 'captioned application window'
   [ChromeNative]::SetForegroundWindow($script:Window) | Out-Null
   Wait-For { $null -ne (Find-Control 'Application' ([Windows.Automation.ControlType]::MenuBar)) -or [ChromeNative]::GetMenu($script:Window) -ne [IntPtr]::Zero } 'application menus'
 }
@@ -144,7 +157,7 @@ function Check-Caption {
 function Outer-Size {
   $R = New-Object ChromeNative+Rect
   if (-not [ChromeNative]::GetWindowRect($script:Window,[ref]$R)) { throw 'Unable to read the test window rectangle.' }
-  return @($R.Right-$R.Left,$R.Bottom-$R.Top)
+  return @(($R.Right - $R.Left), ($R.Bottom - $R.Top))
 }
 function Open-Advanced {
   [ChromeNative]::SetForegroundWindow($script:Window) | Out-Null
@@ -176,7 +189,9 @@ try {
   Wait-For { -not [ChromeNative]::HasPopup($script:Child.Id) } 'dismissed native popup'
   Invoke-Control 'Use Tauridium without an account'
   Open-Advanced
-  Check ((Find-Control 'Unified title bar' ([Windows.Automation.ControlType]::CheckBox)).Current.BoundingRectangle.Width -le 48) 'Advanced toggle has bounded switch geometry'
+  $Scale = [double][ChromeNative]::GetDpiForWindow($script:Window) / 96.0
+  Check ($Scale -gt 0) 'native window DPI is available'
+  Check ((Find-Control 'Unified title bar' ([Windows.Automation.ControlType]::CheckBox)).Current.BoundingRectangle.Width -le (48 * $Scale)) 'Advanced toggle has bounded switch geometry'
   Toggle-Chrome $false
   Check ([ChromeNative]::GetMenu($script:Window) -eq [IntPtr]::Zero) 'saved classic preference does not reconstruct a live window'
   Stop-Tauridium
@@ -236,7 +251,6 @@ try {
   Write-Test-Diagnostics
   throw
 } finally {
-  $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $PreviousBrowserArguments
   if ($script:Child -and -not $script:Child.HasExited) {
     [ChromeNative]::PostMessageW($script:Window,0x10,[IntPtr]::Zero,[IntPtr]::Zero) | Out-Null
     if (-not $script:Child.WaitForExit(5000)) { Stop-Process -Id $script:Child.Id -Force }
