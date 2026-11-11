@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 from pathlib import Path
 import shutil
 import subprocess
@@ -11,6 +12,23 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 SIGNING_PREFIXES = ("TAURI_SIGNING_", "TAURI_PRIVATE_KEY", "APPLE_CERTIFICATE", "APPLE_API_KEY",
                     "APPLE_API_ISSUER", "APPLE_ID", "APPLE_PASSWORD", "CSC_")
+
+
+def needs_linux_media(arguments: list[str]) -> bool:
+  if platform.system() != "Linux" or "--no-bundle" in arguments:
+    return False
+  bundles = None
+  for index, value in enumerate(arguments):
+    if value == "--target" and index + 1 < len(arguments):
+      if "linux" not in arguments[index + 1]:
+        return False
+    if value.startswith("--target=") and "linux" not in value.split("=", 1)[1]:
+      return False
+    if value == "--bundles" and index + 1 < len(arguments):
+      bundles = arguments[index + 1]
+    elif value.startswith("--bundles="):
+      bundles = value.split("=", 1)[1]
+  return bundles is None or bool({"appimage", "all"} & set(bundles.split(",")))
 
 
 def build_environment(environment: dict[str, str]) -> dict[str, str]:
@@ -45,6 +63,9 @@ def build(arguments: list[str]) -> int:
                          capture_output=True, text=True, check=False, timeout=30)
   if probe.returncode or probe.stdout.strip() != "tauri-cli " + policy["tauriCliBuild"]:
     raise SystemExit("error: native build requires the exact pinned Tauri CLI; run just init")
+  if needs_linux_media(arguments):
+    from linux_audio import require_gstreamer
+    require_gstreamer()
   # Invoke the binary directly: no Cargo alias or before-build script runs with a
   # signing credential. The final merge config always disables automatic signing.
   command = [executable, "build", *arguments, "--config", str(config)]

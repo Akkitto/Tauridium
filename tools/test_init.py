@@ -72,6 +72,19 @@ class PackageManagerTests(unittest.TestCase):
 
 
 class DependencyDetectionTests(unittest.TestCase):
+  def setUp(self):
+    probe = patch.object(INIT, "missing_gstreamer_components", return_value=[])
+    probe.start()
+    self.addCleanup(probe.stop)
+
+  def test_missing_plugins_are_detected_on_an_otherwise_complete_host(self):
+    with (patch.object(INIT, "pkg_config_missing", return_value=[]),
+          patch.object(INIT, "pkg_config_exists", return_value=True),
+          patch.object(INIT.shutil, "which", return_value="/synthetic/tool"),
+          patch.object(INIT, "libxdo_development_available", return_value=True),
+          patch.object(INIT, "missing_gstreamer_components", return_value=["gstreamer:appsrc"])):
+      self.assertEqual(INIT.native_prerequisites_missing(), ["gstreamer:appsrc"])
+
   @patch.object(INIT.subprocess, "run")
   @patch.object(INIT.shutil, "which", return_value="/usr/bin/cc")
   def test_libxdo_probe_compiles_header_and_links_library(self, _which, run) -> None:

@@ -7,9 +7,22 @@ import unittest
 from unittest import mock
 
 import tauri_build
+import linux_audio
 
 
 class KeyFreeBuildTests(unittest.TestCase):
+  def test_partial_media_host_fails_before_the_appimage_build_starts(self):
+    policy = json.loads((tauri_build.ROOT / "data/build-toolchain.json").read_text(encoding="utf-8"))
+    with (mock.patch.dict(os.environ, {"PATH": "synthetic"}, clear=True),
+          mock.patch.object(tauri_build.platform, "system", return_value="Linux"),
+          mock.patch.object(tauri_build.shutil, "which", return_value="/synthetic/cargo-tauri"),
+          mock.patch.object(tauri_build.subprocess, "run", return_value=
+            subprocess.CompletedProcess([], 0, "tauri-cli " + policy["tauriCliBuild"] + "\n", "")) as run,
+          mock.patch.object(linux_audio, "require_gstreamer", side_effect=SystemExit("synthetic missing appsrc"))):
+      with self.assertRaisesRegex(SystemExit, "missing appsrc"):
+        tauri_build.build(["--bundles", "appimage"])
+      run.assert_called_once()
+
   def test_every_signing_credential_prefix_is_rejected_before_starting_build_code(self):
     for prefix in tauri_build.SIGNING_PREFIXES:
       with self.subTest(prefix=prefix):

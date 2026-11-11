@@ -146,6 +146,7 @@
               python3
               just
               pkg-config
+              gst_all_1.gstreamer
               git
               appstream
               desktop-file-utils

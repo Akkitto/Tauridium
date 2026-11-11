@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Sequence
 from npm_policy import validate as validate_script_free_npm
 from updater_signature import find_minisign
+from linux_audio import missing_gstreamer_components
 
 ROOT = Path(__file__).resolve().parents[1]
 OS_RELEASE = Path("/etc/os-release")
@@ -77,6 +78,11 @@ APT_PACKAGES = (
   "libssl-dev",
   "libayatana-appindicator3-dev",
   "librsvg2-dev",
+  "gstreamer1.0-tools",
+  "gstreamer1.0-plugins-base",
+  "gstreamer1.0-plugins-good",
+  "gstreamer1.0-pulseaudio",
+  "gstreamer1.0-alsa",
   "patchelf",
   "rpm",
 )
@@ -93,6 +99,9 @@ DNF_PACKAGES = (
   "libxdo-devel",
   "patchelf",
   "rpm-build",
+  "gstreamer1",
+  "gstreamer1-plugins-base",
+  "gstreamer1-plugins-good",
 )
 PACMAN_PACKAGES = (
   "minisign",
@@ -109,6 +118,9 @@ PACMAN_PACKAGES = (
   "xdotool",
   "patchelf",
   "rpm-tools",
+  "gstreamer",
+  "gst-plugins-base",
+  "gst-plugins-good",
 )
 APK_PACKAGES = (
   "minisign",
@@ -123,6 +135,9 @@ APK_PACKAGES = (
   "librsvg",
   "patchelf",
   "rpm",
+  "gstreamer-tools",
+  "gst-plugins-base",
+  "gst-plugins-good",
 )
 ZYPPER_PACKAGES = (
   "minisign",
@@ -136,6 +151,9 @@ ZYPPER_PACKAGES = (
   "librsvg-devel",
   "patchelf",
   "rpm-build",
+  "gstreamer-utils",
+  "gstreamer-plugins-base",
+  "gstreamer-plugins-good",
 )
 
 
@@ -300,6 +318,7 @@ def native_prerequisites_missing() -> list[str]:
       missing.append(f"tool:{tool}")
   if shutil.which("cc") and not libxdo_development_available():
     missing.append("libxdo-dev")
+  missing.extend(missing_gstreamer_components())
   return missing
 
 
