@@ -108,7 +108,8 @@
   button img { width: 16px; height: 16px; }
   .window-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 12px; -webkit-app-region: drag; }
   .inactive .window-title { color: var(--muted); }
+  .inactive .menu-bar { opacity: 0.65; }
   .drag-clearance { flex: 0 0 48px; height: 100%; -webkit-app-region: drag; }
   @media (max-width: 590px) { button { padding-inline: 6px; } .window-title { text-align: left; } }
-  @media (forced-colors: active) { header { color: CanvasText; background: Canvas; } button:hover { background: Highlight; color: HighlightText; } button:focus-visible { outline-color: Highlight; } }
+  @media (forced-colors: active) { header { color: CanvasText; background: Canvas; } button:hover { background: Highlight; color: HighlightText; } button:focus-visible { outline-color: Highlight; } .inactive .menu-bar { opacity: 1; color: GrayText; } .inactive .window-title { color: GrayText; } }
 </style>

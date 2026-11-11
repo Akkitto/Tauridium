@@ -6,7 +6,7 @@ use tauri::{AppHandle, Emitter, EventTarget, Manager};
 
 pub(crate) const LABEL: &str = "window-titlebar";
 #[cfg(windows)]
-pub(crate) const HEIGHT: f64 = 48.0;
+pub(crate) const HEIGHT: f64 = 32.0;
 pub(crate) const MENUS: [&str; 6] = ["Tauridium", "Edit", "View", "Navigate", "Services", "About"];
 
 #[derive(Default)]

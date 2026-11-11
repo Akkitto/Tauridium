@@ -11,7 +11,10 @@ use windows_sys::Win32::{
     Graphics::{Dwm::*, Gdi::*},
     UI::{
         Accessibility::{HCF_HIGHCONTRASTON, HIGHCONTRASTW},
-        Controls::MARGINS,
+        Controls::{
+            BeginBufferedPaint, BufferedPaintInit, BufferedPaintSetAlpha, BufferedPaintUnInit,
+            EndBufferedPaint, BPBF_TOPDOWNDIB, MARGINS,
+        },
         HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi},
         Shell::{DefSubclassProc, GetWindowSubclass, RemoveWindowSubclass, SetWindowSubclass},
         WindowsAndMessaging::*,
@@ -19,7 +22,30 @@ use windows_sys::Win32::{
 };
 
 const SUBCLASS: usize = 0x54415552;
+struct PaintState;
+impl PaintState {
+    fn new() -> Result<Self, String> {
+        // SAFETY: frame lifetime and all painting stay on this window's UI thread.
+        let result = unsafe { BufferedPaintInit() };
+        if result < 0 {
+            return Err(format!(
+                "Unable to initialize opaque frame painting ({result:#x})"
+            ));
+        }
+        Ok(Self)
+    }
+}
+impl Drop for PaintState {
+    fn drop(&mut self) {
+        // SAFETY: exactly balances the successful init on the same UI thread.
+        unsafe {
+            BufferedPaintUnInit();
+        }
+    }
+}
 struct Frame {
+    _painting: PaintState,
+    paint_error_reported: Cell<bool>,
     app: Option<AppHandle>,
     height: Cell<i32>,
     background: Cell<u32>,
@@ -89,6 +115,8 @@ unsafe fn install_frame(hwnd: HWND, app: Option<AppHandle>) -> Result<(), String
     }
     let dpi = unsafe { GetDpiForWindow(hwnd) }.max(96);
     let data = Box::new(Frame {
+        _painting: PaintState::new()?,
+        paint_error_reported: Cell::new(false),
         app,
         height: Cell::new((HEIGHT * f64::from(dpi) / 96.0).ceil() as i32),
         background: Cell::new(unsafe { GetSysColor(COLOR_WINDOW) }),
@@ -253,9 +281,10 @@ unsafe fn geometry_for(hwnd: HWND, scale: f64) -> Result<Geometry, String> {
     let border = if unsafe { IsZoomed(hwnd) } != 0 {
         0
     } else {
-        (unsafe { GetSystemMetricsForDpi(SM_CYFRAME, dpi) }
-            + unsafe { GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi) })
-        .max(1) as u32
+        // Visible border, not the wider native resize hit area. A standard
+        // 32px title row must align menus with the OS caption glyphs.
+        unsafe { attribute(hwnd, DWMWA_VISIBLE_FRAME_BORDER_THICKNESS as u32) }
+            .unwrap_or_else(|| scale.ceil().max(1.0) as u32)
     };
     Ok(Geometry {
         left: left.max(0) as u32,
@@ -374,6 +403,36 @@ unsafe fn caption_info(hwnd: HWND) -> TITLEBARINFOEX {
         )
     };
     info
+}
+
+unsafe fn paint_background(dc: HDC, rect: &RECT, color: u32) -> Result<(), String> {
+    if rect.right <= rect.left || rect.bottom <= rect.top {
+        return Ok(());
+    }
+    let brush = unsafe { CreateSolidBrush(color) };
+    if brush.is_null() {
+        return Err(failure("Unable to create title-bar brush"));
+    }
+    let mut memory = ptr::null_mut();
+    // GDI FillRect alone clears alpha on extended DWM glass, tinting the
+    // exposed caption area. Paint an explicitly opaque buffer instead.
+    let buffer = unsafe { BeginBufferedPaint(dc, rect, BPBF_TOPDOWNDIB, ptr::null(), &mut memory) };
+    if buffer == 0 {
+        unsafe {
+            DeleteObject(brush);
+        }
+        return Err(failure("Unable to buffer title-bar background"));
+    }
+    let filled = unsafe { FillRect(memory, rect, brush) };
+    unsafe {
+        DeleteObject(brush);
+    }
+    let alpha = unsafe { BufferedPaintSetAlpha(buffer, ptr::null(), 255) };
+    let result = unsafe { EndBufferedPaint(buffer, i32::from(filled != 0 && alpha >= 0)) };
+    if filled == 0 || alpha < 0 || result < 0 {
+        return Err(format!("Unable to paint opaque title bar (fill={filled}, alpha={alpha:#x}, commit={result:#x})"));
+    }
+    Ok(())
 }
 
 unsafe extern "system" fn procedure(
@@ -513,12 +572,19 @@ unsafe extern "system" fn procedure(
         let mut paint: PAINTSTRUCT = unsafe { std::mem::zeroed() };
         let dc = unsafe { BeginPaint(hwnd, &mut paint) };
         if !dc.is_null() {
-            let color = unsafe { (*(reference as *const Frame)).background.get() };
-            let brush = unsafe { CreateSolidBrush(color) };
-            if !brush.is_null() {
-                unsafe {
-                    FillRect(dc, &paint.rcPaint, brush);
-                    DeleteObject(brush);
+            let data = unsafe { &*(reference as *const Frame) };
+            let color = data.background.get();
+            if let Err(error) = unsafe { paint_background(dc, &paint.rcPaint, color) } {
+                if !data.paint_error_reported.replace(true) {
+                    crate::startup_diagnostics::log("primary", "titlebar.paint.error", &error);
+                }
+                // Keep the window painted even under resource exhaustion.
+                let brush = unsafe { CreateSolidBrush(color) };
+                if !brush.is_null() {
+                    unsafe {
+                        FillRect(dc, &paint.rcPaint, brush);
+                        DeleteObject(brush);
+                    }
                 }
             }
             unsafe {
@@ -650,7 +716,7 @@ mod tests {
             GetClientRect(hwnd, &mut after);
             assert!(after.bottom > before.bottom);
             let geometry = geometry_for(hwnd, f64::from(GetDpiForWindow(hwnd)) / 96.0).unwrap();
-            assert!(geometry.height >= 48 && geometry.width > 0);
+            assert!(geometry.height >= 32 && geometry.width > 0);
             assert!(geometry.left > 0 || geometry.left + geometry.width < after.right as u32);
             // Exercise the reported regression against a real maximized native
             // window, before the production mouse-click integration gate.
