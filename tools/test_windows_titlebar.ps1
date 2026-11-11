@@ -97,6 +97,25 @@ function Write-Test-Diagnostics {
       }
     } catch { Write-Host 'UIA diagnostic enumeration was unavailable.' }
   }
+  try {
+    $Control = Find-Control 'Unified title bar' ([Windows.Automation.ControlType]::CheckBox)
+    if ($null -ne $Control) {
+      $Toggle = $Control.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+      Write-Host ('Preference UI: state={0}; enabled={1}; offscreen={2}' -f $Toggle.Current.ToggleState,$Control.Current.IsEnabled,$Control.Current.IsOffscreen)
+    }
+    $Data = Read-Settings
+    $Property = $Data.PSObject.Properties['unifiedTitleBar']
+    Write-Host ('Preference file: present={0}; value={1}' -f ($null -ne $Property),$(if ($Property -and $Property.Value -is [bool]) { $Property.Value } else { 'not a Boolean' }))
+    $TextNodes = (Root).FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition)
+    $Found=0
+    foreach ($Node in $TextNodes) {
+      $Name=$Node.Current.Name
+      if ($Name -match 'Unable to|Saved preference|Saved\.|Error:' -and $Found -lt 15) {
+        if ($Name.Length -gt 240) { $Name=$Name.Substring(0,240) }
+        Write-Host ('Preference status: '+$Name); $Found++
+      }
+    }
+  } catch { Write-Host 'Preference diagnostics were unavailable.' }
   $Diagnostics = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Tauridium\diagnostics'
   foreach ($TestPid in $script:TestPids) {
     foreach ($Log in @(Get-ChildItem -LiteralPath $Diagnostics -Filter ('startup-*-{0}.log' -f $TestPid) -File -ErrorAction SilentlyContinue)) {
@@ -185,9 +204,20 @@ function Read-Settings([string]$Path = $Settings) {
   try { return ($Reader.ReadToEnd() | ConvertFrom-Json) } finally { $Reader.Dispose() }
 }
 function Toggle-Chrome([bool]$Enabled) {
-  $Toggle = (Find-Control 'Unified title bar' ([Windows.Automation.ControlType]::CheckBox)).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+  $Before = if ($Enabled) { [Windows.Automation.ToggleState]::Off } else { [Windows.Automation.ToggleState]::On }
   $Expected = if ($Enabled) { [Windows.Automation.ToggleState]::On } else { [Windows.Automation.ToggleState]::Off }
-  if ($Toggle.Current.ToggleState -ne $Expected) { $Toggle.Toggle() }
+  Wait-For {
+    $Control=Find-Control 'Unified title bar' ([Windows.Automation.ControlType]::CheckBox)
+    $Control.Current.IsEnabled -and $Control.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -eq $Before
+  } 'current title-bar checkbox state'
+  # Exercise the user's accessible keyboard action rather than changing a
+  # cached automation state without confirming a real input event.
+  (Find-Control 'Unified title bar' ([Windows.Automation.ControlType]::CheckBox)).SetFocus()
+  Wait-For { [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Unified title bar' } 'focused title-bar checkbox'
+  [Windows.Forms.SendKeys]::SendWait(' ')
+  Wait-For {
+    (Find-Control 'Unified title bar' ([Windows.Automation.ControlType]::CheckBox)).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -eq $Expected
+  } 'changed title-bar checkbox state'
   Wait-For { $Value=Read-Settings; $Value.PSObject.Properties['unifiedTitleBar'] -and $Value.unifiedTitleBar -is [bool] -and $Value.unifiedTitleBar -eq $Enabled } 'saved title-bar preference'
 }
 try {

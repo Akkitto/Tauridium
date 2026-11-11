@@ -4549,6 +4549,14 @@ fn set_app_settings(
         .as_object()
         .ok_or_else(|| "App settings patch must be a JSON object".to_string())?
         .clone();
+    let chrome_preference = patch.get("unifiedTitleBar").and_then(Value::as_bool);
+    if let Some(enabled) = chrome_preference {
+        startup_diagnostics::log(
+            "primary",
+            "titlebar.preference.request",
+            &format!("unified={enabled}"),
+        );
+    }
     let _settings_write = state.settings_write.lock().unwrap();
     let previous = read_app_settings_value(&app);
     let autostart_changed = patch.contains_key("autostart");
@@ -4572,6 +4580,13 @@ fn set_app_settings(
                 let _ = apply_autostart_setting(&app, &previous);
             }
             return Err(error);
+        }
+        if let Some(enabled) = chrome_preference {
+            startup_diagnostics::log(
+                "primary",
+                "titlebar.preference.persisted",
+                &format!("unified={enabled}"),
+            );
         }
         Ok(value)
     })();
