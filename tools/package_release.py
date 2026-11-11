@@ -754,6 +754,7 @@ def build_docs(
       (ROOT / "docs" / "file-drops.md", "docs/file-drops.md"),
       (ROOT / "docs" / "download-notifications.md", "docs/download-notifications.md"),
       (ROOT / "docs" / "unread-badges.md", "docs/unread-badges.md"),
+      (ROOT / "docs" / "WINDOW-TITLE-BAR.md", "docs/WINDOW-TITLE-BAR.md"),
       (ROOT / "docs" / "releases" / f"{release_version}-validation.md", f"docs/releases/{release_version}-validation.md"),
       (ROOT / "tools" / "fixtures" / "file-drop.html", "tools/fixtures/file-drop.html"),
       (ROOT / "docs" / "github-language-statistics.md", "docs/github-language-statistics.md"),

@@ -90,6 +90,7 @@
     updateWorkspace,
     deleteWorkspace,
     getAppSettings,
+    getWindowChrome,
     getDistributionInfo,
     setAppSettings,
     setServiceOrder,
@@ -297,6 +298,7 @@
     showWorkspaceInWindowTitle: true,
     showWorkspaceInTaskbarTitle: false,
     customTitleTemplatesEnabled: false,
+    unifiedTitleBar: true,
     windowTitleTemplate: DEFAULT_WINDOW_TITLE_TEMPLATE,
     taskbarTitleTemplate: DEFAULT_TASKBAR_TITLE_TEMPLATE,
     userAgentPref: "",
@@ -609,8 +611,28 @@
         ? "when you sign in to Windows"
         : "when you log in";
 
+  let unifiedTitleBarAtStartup = $state<boolean | null>(null);
+  let unifiedTitleBarFallback = $state(false);
+  let unifiedTitleBarBusy = $state(false);
+  async function saveUnifiedTitleBar(value: boolean) {
+    if (unifiedTitleBarBusy) return;
+    const previous = appSettings.unifiedTitleBar;
+    unifiedTitleBarBusy = true;
+    appSettings = { ...appSettings, unifiedTitleBar: value };
+    try {
+      const saved = await setAppSettings({ unifiedTitleBar: value });
+      if (saved.unifiedTitleBar !== value) throw new Error("Unable to verify the title-bar preference");
+      appSettings = saved;
+      showToast("Saved. Quit and reopen Tauridium to apply.", "success");
+    } catch (err) {
+      appSettings = { ...appSettings, unifiedTitleBar: previous };
+      error = `Unable to save the title-bar preference: ${err}`;
+    } finally { unifiedTitleBarBusy = false; }
+  }
+
   let downloadToastSettingsBusy = $state(false);
   let downloadToastHeight = $state(0);
+  let unlistenWindowChrome: (() => void) | null = null;
   let unlistenDownloadToastGeometry: (() => void) | null = null;
   const downloadToastExample = $derived(downloadToastPreview(appSettings.downloadToastLocation, appSettings.downloadToastParentLevels, osKind === "win"));
 
@@ -645,6 +667,7 @@
 
   onDestroy(() => {
     unlistenDownloadToastGeometry?.();
+    unlistenWindowChrome?.();
     if (automaticBackupTimer) clearInterval(automaticBackupTimer);
     if (recordingTimer) clearTimeout(recordingTimer);
     if (toastTimer) clearTimeout(toastTimer);
@@ -654,6 +677,11 @@
   });
 
   onMount(async () => {
+    const unlistenChrome = await listen<{ enabled: boolean; fallback: boolean }>("window-chrome-changed", (event) => {
+      unifiedTitleBarAtStartup = event.payload.enabled;
+      unifiedTitleBarFallback = event.payload.fallback;
+    });
+    unlistenWindowChrome = unlistenChrome;
     unlistenDownloadToastGeometry = await listen<number>("download-toast-geometry", (event) => {
       downloadToastHeight = Number.isFinite(event.payload) ? Math.max(0, event.payload) : 0;
     });
@@ -718,6 +746,15 @@
       syncSidebarWidth();
     } catch {
       /* defaults */
+    }
+    if (osKind === "win") {
+      try {
+        const chrome = await getWindowChrome();
+        unifiedTitleBarAtStartup = chrome.enabled;
+        unifiedTitleBarFallback = chrome.fallback;
+      } catch (err) {
+        error = `Unable to read the current title-bar mode: ${err}`;
+      }
     }
     // Restore the session. If the server is unreachable (Ferdium outage, network issue, etc.),
     // do NOT show login; a reconnect screen retries automatically every 30 seconds.
@@ -5224,6 +5261,24 @@
               </section>
 
             {:else if settingsTab === "advanced"}
+              {#if osKind === "win"}
+                <section class="settings-section" aria-labelledby="settings-advanced-titlebar">
+                  <div class="section-heading"><h3 id="settings-advanced-titlebar">Window title bar</h3><p>Keep application menus and the window title in one row, with Windows' native window controls.</p></div>
+                  <div class="settings-list">
+                    <label class="setting-card setting-card-toggle">
+                      <span class="setting-copy"><span class="setting-label">Unified title bar</span><span class="setting-description">Enabled by default on Windows. Disable to restore the classic title bar with the separate native menu bar used before 1.0.7. Quit and reopen Tauridium to apply this preference; closing to the tray does not restart the app.</span></span>
+                      <span class="switch-control">
+                        <input class="switch-input" type="checkbox" checked={appSettings.unifiedTitleBar} disabled={unifiedTitleBarBusy} aria-label="Unified title bar" onchange={(event) => saveUnifiedTitleBar(event.currentTarget.checked)} />
+                        <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+                      </span>
+                    </label>
+                    {#if unifiedTitleBarAtStartup !== null && appSettings.unifiedTitleBar !== unifiedTitleBarAtStartup}
+                      <p class="settings-note" role="status">Saved preference: {appSettings.unifiedTitleBar ? "unified" : "classic"}. Quit and reopen Tauridium to apply.</p>
+                    {/if}
+                    {#if unifiedTitleBarFallback}<p class="settings-note" role="status">The unified title bar could not be enabled for this session. Tauridium is using the classic layout so all window controls remain available.</p>{/if}
+                  </div>
+                </section>
+              {/if}
               <section class="settings-section" aria-labelledby="settings-advanced-context-menu">
                 <div class="section-heading"><h3 id="settings-advanced-context-menu">Service context menu</h3><p>Choose between Tauridium's original styled menu and the native fallback that always stays above service webviews.</p></div>
                 <div class="settings-list">

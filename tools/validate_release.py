@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from window_state_policy import validate as validate_window_state_patch
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_BRANCH = "master"
@@ -473,12 +474,17 @@ def main() -> int:
 
   for marker in (
     'tauri-plugin-window-state = "=2.5.0"',
-    'name = "tauri-plugin-window-state"\nversion = "2.5.0"',
-    'checksum = "5d6815cab7b212f9cfe16a9d79d8d22f9e14159e4a9460f7dec1467167a008e3"',
+    'name = "tauri-plugin-window-state"\nversion = "2.5.0+tauridium.1"',
   ):
     source = cargo if marker.startswith("tauri-plugin") else cargo_lock
     if marker not in source:
       fail(f"persistent window-state dependency invariant is missing: {marker}")
+  try:
+    validate_window_state_patch(ROOT)
+  except (ValueError, OSError, KeyError) as error:
+    fail(str(error))
+  if ".with_outer_size(cfg!(windows))" not in main_rs:
+    fail("Windows custom frames must persist physical outer dimensions")
   for marker in (
     "StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED | StateFlags::FULLSCREEN",
     ".with_state_flags(persisted_window_state_flags())",

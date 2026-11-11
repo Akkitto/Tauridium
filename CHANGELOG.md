@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [1.0.7] - 2026-11-11
+
+### Fixed
+
+- Use a unified Windows title/menu row by default while retaining native caption
+  controls, resize behavior, system menus and the Snap Layouts maximize target.
+- Add Settings → Advanced → Unified title bar to restore the classic layout on
+  restart, preserving service sessions and verified preference saves.
+- Preserve outside window dimensions across restarts and title-bar mode changes;
+  retain legacy geometry records and existing Linux/macOS layouts.
+
+
 ## [1.0.6] - 2026-11-10
 
 ### Fixed

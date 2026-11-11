@@ -1,0 +1,12 @@
+{
+  "upstream": {
+    "version": "2.5.0",
+    "url": "https://crates.io/api/v1/crates/tauri-plugin-window-state/2.5.0/download",
+    "sha256": "5d6815cab7b212f9cfe16a9d79d8d22f9e14159e4a9460f7dec1467167a008e3"
+  },
+  "purpose": "Persist and restore actual outer window dimensions for native custom Windows frames; retain legacy inner-size records and capture ordinary multi-webview windows.",
+  "files": {
+    "Cargo.toml": "9745d0c5a69d77a94ea86b08ff89c572db9ce9568b10fe3369a3b69aedd12eee",
+    "src/lib.rs": "4f3867fb578a4dbda7b29f8d9e9ba45c3fdceff5fc015e84f52330560e6efa04"
+  }
+}

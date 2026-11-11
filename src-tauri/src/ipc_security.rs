@@ -7,9 +7,19 @@ const TOAST_COMMANDS: &[&str] = &[
     "resize_download_toast",
 ];
 
+const TITLEBAR_COMMANDS: &[&str] = &[
+    "get_window_chrome",
+    "open_window_menu",
+    "focus_window_content",
+];
+
 pub(crate) fn command_allowed(label: &str, command: &str) -> bool {
     match label {
-        "main" => !TOAST_COMMANDS.contains(&command),
+        "main" => {
+            command == "get_window_chrome"
+                || (!TOAST_COMMANDS.contains(&command) && !TITLEBAR_COMMANDS.contains(&command))
+        }
+        "window-titlebar" => TITLEBAR_COMMANDS.contains(&command),
         "download-toast" => TOAST_COMMANDS.contains(&command),
         _ => false,
     }
@@ -47,12 +57,16 @@ mod tests {
             "",
             "main-child",
             "download-toast-child",
+            "window-titlebar-child",
         ] {
             for command in [
                 "get_app_metadata",
                 "clear_service_cache",
                 "export_audit_log",
                 "get_download_toast",
+                "get_window_chrome",
+                "open_window_menu",
+                "focus_window_content",
             ] {
                 assert!(!command_allowed(label, command));
             }
@@ -61,6 +75,20 @@ mod tests {
         assert!(!command_allowed("main", "get_download_toast"));
         assert!(command_allowed("download-toast", "get_download_toast"));
         assert!(!command_allowed("download-toast", "clear_service_cache"));
+        for command in TITLEBAR_COMMANDS {
+            assert!(command_allowed("window-titlebar", command));
+        }
+        for command in [
+            "get_app_settings",
+            "set_app_settings",
+            "clear_service_cache",
+            "get_download_toast",
+            "export_backup",
+        ] {
+            assert!(!command_allowed("window-titlebar", command));
+        }
+        assert!(!command_allowed("main", "open_window_menu"));
+        assert!(command_allowed("main", "get_window_chrome"));
     }
 
     #[test]

@@ -75,6 +75,16 @@ class IsolatedReleaseTests(unittest.TestCase):
       self.assertEqual(properties["tauridium:source-file-sha256:" + filename], digest)
     self.assertFalse(any(entry["name"] == "vendor/deepmerge" for entry in document["components"]))
 
+  def test_sbom_does_not_misidentify_the_local_window_state_repair_as_a_registry_release(self):
+    document = build_input_sbom.generate(build_input_sbom.ROOT, "9.9.9", "a" * 40)
+    component = next(row for row in document["components"] if row["name"] == "tauri-plugin-window-state")
+    self.assertEqual(component["version"], "2.5.0+tauridium.1")
+    self.assertNotIn("purl", component)
+    self.assertNotIn("hashes", component)
+    properties = {row["name"]: row["value"] for row in component["properties"]}
+    self.assertEqual(properties["tauridium:upstream-version"], "2.5.0")
+    self.assertIn("tauridium:source-file-sha256:src/lib.rs", properties)
+
   def test_sbom_rejects_an_unreviewed_local_link_instead_of_misreporting_it(self):
     with tempfile.TemporaryDirectory() as temporary:
       root = Path(temporary)

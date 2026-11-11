@@ -4454,9 +4454,7 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-window-state"
-version = "2.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d6815cab7b212f9cfe16a9d79d8d22f9e14159e4a9460f7dec1467167a008e3"
+version = "2.5.0+tauridium.1"
 dependencies = [
  "bitflags 2.13.2",
  "log",
@@ -4465,6 +4463,7 @@ dependencies = [
  "tauri",
  "tauri-plugin",
  "thiserror 2.0.21",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4579,7 +4578,7 @@ dependencies = [
 
 [[package]]
 name = "tauridium"
-version = "1.0.6"
+version = "1.0.7"
 dependencies = [
  "apple-native-keyring-store",
  "base64 0.23.1",

@@ -80,8 +80,16 @@ jobs:
   windows-native:
     needs: windows-verifier
     if: ${{ always() }}
-    name: Windows native x64 full gates
-    runs-on: windows-latest
+    name: Windows native ${{ matrix.label }} full gates
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: x64
+            os: windows-latest
+          - label: ARM64
+            os: windows-11-arm
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 75
     defaults:
       run:
@@ -109,6 +117,9 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: src-tauri
+          # Key-free PR diagnostics can fail after successful compilation.
+          # Protected release producers never restore these CI caches.
+          cache-on-failure: true
       - name: Install just
         run: cargo install just --locked --version 1.56.0
       - name: Verify native PowerShell initialization path
@@ -119,3 +130,17 @@ jobs:
         run: just rust-supply-chain-host
       - name: Run canonical gates
         run: just ci
+      - name: Verify production Windows unified and classic title bars
+        id: titlebar
+        run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/test_windows_titlebar.ps1 -Binary src-tauri/target/release/tauridium.exe -CaptureCaptionPreview
+      - name: Retain exact account-free caption previews for review
+        if: ${{ always() && (steps.titlebar.outcome == 'success' || steps.titlebar.outcome == 'failure') }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: titlebar-preview-${{ matrix.label }}-${{ github.sha }}
+          retention-days: 3
+          if-no-files-found: ignore
+          path: |
+            release/evidence/windows-titlebar/caption-normal.png
+            release/evidence/windows-titlebar/caption-maximized.png
+            release/evidence/windows-titlebar/caption-manifest.json
