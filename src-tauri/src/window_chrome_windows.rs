@@ -329,6 +329,53 @@ pub(super) fn colors(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// DWM does not supply every hit after maximization with an extended client
+// frame. Use the OS-owned caption rectangles/states for that documented fallback;
+// never invent button geometry, controls, or a synthetic Snap keyboard shortcut.
+fn caption_target(info: &TITLEBARINFOEX, point: POINT, style: u32) -> Option<LRESULT> {
+    if style & WS_CAPTION != WS_CAPTION || style & WS_SYSMENU == 0 || style & WS_DISABLED != 0 {
+        return None;
+    }
+    for (index, hit, required) in [
+        (2, HTMINBUTTON, WS_MINIMIZEBOX),
+        (3, HTMAXBUTTON, WS_MAXIMIZEBOX),
+        (5, HTCLOSE, WS_SYSMENU),
+    ] {
+        let rect = info.rgrect[index];
+        // Documented STATE_SYSTEM_UNAVAILABLE, INVISIBLE and OFFSCREEN flags.
+        if style & required != 0
+            && info.rgstate[index] & 0x0001_8001 == 0
+            && rect.right > rect.left
+            && rect.bottom > rect.top
+            && point.x >= rect.left
+            && point.x < rect.right
+            && point.y >= rect.top
+            && point.y < rect.bottom
+        {
+            return Some(hit as LRESULT);
+        }
+    }
+    None
+}
+
+unsafe fn caption_info(hwnd: HWND) -> TITLEBARINFOEX {
+    let mut info = TITLEBARINFOEX {
+        cbSize: size_of::<TITLEBARINFOEX>() as u32,
+        ..Default::default()
+    };
+    // SAFETY: synchronous same-window query on its owning UI thread; Windows
+    // initializes the fixed-size structure and returns physical screen bounds.
+    unsafe {
+        SendMessageW(
+            hwnd,
+            WM_GETTITLEBARINFOEX,
+            0,
+            (&mut info as *mut TITLEBARINFOEX) as LPARAM,
+        )
+    };
+    info
+}
+
 unsafe extern "system" fn procedure(
     hwnd: HWND,
     message: u32,
@@ -412,9 +459,7 @@ unsafe extern "system" fn procedure(
     let mut result = 0;
     // Native caption hit testing/hover/press goes to DWM first. In particular,
     // HTMAXBUTTON remains a real native hit, so Windows owns Snap Layouts.
-    if unsafe { DwmDefWindowProc(hwnd, message, wp, lp, &mut result) } != 0 {
-        return result;
-    }
+    let dwm_handled = unsafe { DwmDefWindowProc(hwnd, message, wp, lp, &mut result) } != 0;
     if message == WM_NCHITTEST
         && unsafe { GetWindowLongPtrW(hwnd, GWL_STYLE) } as u32 & WS_CAPTION != 0
     {
@@ -422,6 +467,18 @@ unsafe extern "system" fn procedure(
             x: lp as i16 as i32,
             y: (lp >> 16) as i16 as i32,
         };
+        if (!dwm_handled || result == HTCLIENT as LRESULT || result == HTCAPTION as LRESULT)
+            && unsafe { IsIconic(hwnd) } == 0
+        {
+            let info = unsafe { caption_info(hwnd) };
+            let style = unsafe { GetWindowLongPtrW(hwnd, GWL_STYLE) } as u32;
+            if let Some(hit) = caption_target(&info, point, style) {
+                return hit;
+            }
+        }
+        if dwm_handled {
+            return result;
+        }
         if unsafe { ScreenToClient(hwnd, &mut point) } != 0 && unsafe { IsZoomed(hwnd) } == 0 {
             let dpi = unsafe { GetDpiForWindow(hwnd) }.max(96);
             let border = unsafe {
@@ -448,6 +505,9 @@ unsafe extern "system" fn procedure(
                 } as LRESULT;
             }
         }
+    }
+    if dwm_handled {
+        return result;
     }
     if message == WM_PAINT && reference != 0 {
         let mut paint: PAINTSTRUCT = unsafe { std::mem::zeroed() };
@@ -479,6 +539,90 @@ mod tests {
     const TITLE: [u16; 5] = [84, 101, 115, 116, 0];
 
     #[test]
+    fn caption_fallback_respects_native_bounds_states_and_styles() {
+        let mut info = TITLEBARINFOEX::default();
+        info.rgrect[2] = RECT {
+            left: -140,
+            top: 0,
+            right: -94,
+            bottom: 32,
+        };
+        info.rgrect[3] = RECT {
+            left: -94,
+            top: 0,
+            right: -48,
+            bottom: 32,
+        };
+        info.rgrect[5] = RECT {
+            left: -48,
+            top: 0,
+            right: 0,
+            bottom: 32,
+        };
+        for (x, expected) in [(-120, HTMINBUTTON), (-80, HTMAXBUTTON), (-20, HTCLOSE)] {
+            assert_eq!(
+                caption_target(&info, POINT { x, y: 16 }, WS_OVERLAPPEDWINDOW),
+                Some(expected as LRESULT)
+            );
+        }
+        for point in [
+            POINT { x: -141, y: 16 },
+            POINT { x: 0, y: 16 },
+            POINT { x: -80, y: 32 },
+        ] {
+            assert_eq!(caption_target(&info, point, WS_OVERLAPPEDWINDOW), None);
+        }
+        for state in [1, 0x8000, 0x10000] {
+            info.rgstate[3] = state;
+            assert_eq!(
+                caption_target(&info, POINT { x: -80, y: 16 }, WS_OVERLAPPEDWINDOW),
+                None
+            );
+        }
+        info.rgstate[3] = 0;
+        assert_eq!(
+            caption_target(
+                &info,
+                POINT { x: -80, y: 16 },
+                WS_OVERLAPPEDWINDOW | WS_DISABLED
+            ),
+            None
+        );
+        assert_eq!(
+            caption_target(
+                &info,
+                POINT { x: -80, y: 16 },
+                WS_OVERLAPPEDWINDOW & !WS_MAXIMIZEBOX
+            ),
+            None
+        );
+        assert_eq!(
+            caption_target(
+                &info,
+                POINT { x: -120, y: 16 },
+                WS_OVERLAPPEDWINDOW & !WS_MINIMIZEBOX
+            ),
+            None
+        );
+        assert_eq!(
+            caption_target(
+                &info,
+                POINT { x: -20, y: 16 },
+                WS_OVERLAPPEDWINDOW & !WS_SYSMENU
+            ),
+            None
+        );
+        assert_eq!(
+            caption_target(
+                &info,
+                POINT { x: -80, y: 16 },
+                WS_OVERLAPPEDWINDOW & !WS_CAPTION
+            ),
+            None
+        );
+    }
+
+    #[test]
     fn native_frame_retains_system_controls_and_restores_classic_geometry() {
         unsafe {
             let hwnd = CreateWindowExW(
@@ -508,6 +652,24 @@ mod tests {
             let geometry = geometry_for(hwnd, f64::from(GetDpiForWindow(hwnd)) / 96.0).unwrap();
             assert!(geometry.height >= 48 && geometry.width > 0);
             assert!(geometry.left > 0 || geometry.left + geometry.width < after.right as u32);
+            // Exercise the reported regression against a real maximized native
+            // window, before the production mouse-click integration gate.
+            ShowWindow(hwnd, SW_SHOWMAXIMIZED);
+            assert_ne!(IsZoomed(hwnd), 0);
+            let info = caption_info(hwnd);
+            for (index, expected) in [(2, HTMINBUTTON), (3, HTMAXBUTTON), (5, HTCLOSE)] {
+                let rect = info.rgrect[index];
+                assert!(rect.right > rect.left && rect.bottom > rect.top);
+                let x = (rect.left + rect.right) / 2;
+                let y = (rect.top + rect.bottom) / 2;
+                let point = (((y as u32 & 0xffff) << 16) | (x as u32 & 0xffff)) as LPARAM;
+                assert_eq!(
+                    SendMessageW(hwnd, WM_NCHITTEST, 0, point),
+                    expected as LRESULT
+                );
+            }
+            ShowWindow(hwnd, SW_RESTORE);
+            assert_eq!(IsZoomed(hwnd), 0);
             remove_frame(hwnd).unwrap();
             let mut restored: RECT = std::mem::zeroed();
             GetClientRect(hwnd, &mut restored);
