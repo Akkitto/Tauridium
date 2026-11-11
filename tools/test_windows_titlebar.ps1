@@ -333,6 +333,19 @@ function Test-Native-Caption-Glyphs {
   }
   return $true
 }
+function Check-Menu-Mode([bool]$Unified, [string]$Label) {
+  # Startup refreshes can briefly detach and replace an HMENU. Require the
+  # expected mode and handle to settle; a single cross-thread read can catch
+  # that documented-in-diagnostics replacement interval.
+  $Probe=@{ Since=$null; Menu=[IntPtr]::Zero }
+  Wait-For {
+    $Menu=[ChromeNative]::GetMenu($script:Window)
+    if (($Menu -eq [IntPtr]::Zero) -ne $Unified) { $Probe.Since=$null; return $false }
+    if ($null -eq $Probe.Since -or $Probe.Menu -ne $Menu) { $Probe.Since=[DateTime]::UtcNow; $Probe.Menu=$Menu }
+    return ([DateTime]::UtcNow-$Probe.Since).TotalMilliseconds -ge 300
+  } $Label
+  Check $true $Label
+}
 function Check-Caption([bool]$Unified = $true) {
   Activate-Tauridium
   Check ([ChromeNative]::HasCaptionStyles($script:Window)) 'native caption, sizing, system menu and min/max styles remain present'
@@ -354,6 +367,7 @@ function Check-Caption([bool]$Unified = $true) {
 }
 function Save-Caption-Preview([string]$Name) {
   if (-not $CaptureCaptionPreview) { return }
+  if (Test-Path -LiteralPath (Join-Path $Output ('caption-'+$Name+'.png'))) { return }
   # Only the empty, account-free test window's title row; never the desktop,
   # service content, settings, or a personal profile. Exact files are staged.
   $R=New-Object ChromeNative+Rect
@@ -362,12 +376,22 @@ function Save-Caption-Preview([string]$Name) {
   $Left=[Math]::Max($R.Left,$Screen.Left); $Top=[Math]::Max($R.Top,$Screen.Top)
   $Width=[Math]::Min($R.Right,$Screen.Right)-$Left
   $Height=[int][Math]::Ceiling(32.0*[ChromeNative]::GetDpiForWindow($script:Window)/96.0)
-  $Bitmap=New-Object Drawing.Bitmap($Width,$Height)
-  $Graphics=[Drawing.Graphics]::FromImage($Bitmap)
-  try {
-    $Graphics.CopyFromScreen($Left,$Top,0,0,$Bitmap.Size)
-    $Bitmap.Save((Join-Path $Output ('caption-'+$Name+'.png')),[Drawing.Imaging.ImageFormat]::Png)
-  } finally { $Graphics.Dispose(); $Bitmap.Dispose() }
+  $Probe=@{ Hash=$null; Since=$null; Bytes=$null }
+  Wait-For {
+    $Bitmap=New-Object Drawing.Bitmap($Width,$Height)
+    $Graphics=[Drawing.Graphics]::FromImage($Bitmap)
+    $Stream=New-Object IO.MemoryStream
+    $Digest=[Security.Cryptography.SHA256]::Create()
+    try {
+      $Graphics.CopyFromScreen($Left,$Top,0,0,$Bitmap.Size)
+      $Bitmap.Save($Stream,[Drawing.Imaging.ImageFormat]::Png)
+      $Bytes=$Stream.ToArray(); $Hash=[Convert]::ToBase64String($Digest.ComputeHash($Bytes))
+      if ($Probe.Hash -ne $Hash) { $Probe.Hash=$Hash; $Probe.Since=[DateTime]::UtcNow }
+      $Probe.Bytes=$Bytes
+      return ([DateTime]::UtcNow-$Probe.Since).TotalMilliseconds -ge 300
+    } finally { $Digest.Dispose(); $Stream.Dispose(); $Graphics.Dispose(); $Bitmap.Dispose() }
+  } 'stable caption preview after native animation'
+  [IO.File]::WriteAllBytes((Join-Path $Output ('caption-'+$Name+'.png')),$Probe.Bytes)
   $Files=@('caption-normal.png','caption-maximized.png') | Where-Object { Test-Path -LiteralPath (Join-Path $Output $_) -PathType Leaf } | ForEach-Object {
     @{ path=$_; sha256=(Get-FileHash -LiteralPath (Join-Path $Output $_) -Algorithm SHA256).Hash.ToLowerInvariant() }
   }
@@ -431,7 +455,7 @@ function Toggle-Chrome([bool]$Enabled) {
 }
 try {
   Start-Tauridium
-  Check ([ChromeNative]::GetMenu($script:Window) -eq [IntPtr]::Zero) 'older settings default to a unified title bar'
+  Check-Menu-Mode $true 'older settings default to a unified title bar'
   Check-Caption
   Save-Caption-Preview 'normal'
   Check ([ChromeNative]::TopResizeTarget($script:Window)) 'top resize border stays native beside title-bar menus'
@@ -454,22 +478,22 @@ try {
   Check ($Scale -gt 0) 'native window DPI is available'
   Check ((Find-Control 'Unified title bar' ([Windows.Automation.ControlType]::CheckBox)).Current.BoundingRectangle.Width -le (48 * $Scale)) 'Advanced toggle has bounded switch geometry'
   Toggle-Chrome $false
-  Check ([ChromeNative]::GetMenu($script:Window) -eq [IntPtr]::Zero) 'saved classic preference does not reconstruct a live window'
+  Check-Menu-Mode $true 'saved classic preference does not reconstruct a live window'
   Stop-Tauridium
   $SavedWindow = (Read-Settings (Join-Path $ProfileRoot 'window-state.json')).main
   Check ($SavedWindow.outer_size -eq $true -and $SavedWindow.width -eq $OriginalOuter[0] -and $SavedWindow.height -eq $OriginalOuter[1]) 'physical outer size is stored with an explicit format marker'
   Start-Tauridium
-  Check ([ChromeNative]::GetMenu($script:Window) -ne [IntPtr]::Zero) 'restart restores the classic native menu bar'
+  Check-Menu-Mode $false 'restart restores the classic native menu bar'
   $RestoredOuter = Outer-Size
   Check ($RestoredOuter[0] -eq $OriginalOuter[0] -and $RestoredOuter[1] -eq $OriginalOuter[1]) 'classic restart preserves outside dimensions'
   Check-Caption $false
   Check-Caption-Interaction $false
   Open-Advanced
   Toggle-Chrome $true
-  Check ([ChromeNative]::GetMenu($script:Window) -ne [IntPtr]::Zero) 'saved unified preference waits for restart'
+  Check-Menu-Mode $false 'saved unified preference waits for restart'
   Stop-Tauridium
   Start-Tauridium
-  Check ([ChromeNative]::GetMenu($script:Window) -eq [IntPtr]::Zero) 'restart restores unified chrome'
+  Check-Menu-Mode $true 'restart restores unified chrome'
   $RestoredOuter = Outer-Size
   Check ($RestoredOuter[0] -eq $OriginalOuter[0] -and $RestoredOuter[1] -eq $OriginalOuter[1]) 'unified restart preserves outside dimensions'
   Check-Caption
