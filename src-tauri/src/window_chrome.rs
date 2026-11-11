@@ -244,6 +244,11 @@ fn install_windows(app: &AppHandle) -> Result<(), String> {
         .on_new_window(|_, _| NewWindowResponse::Deny);
     // Construct while the startup window is hidden. No hosted page or service
     // profile is ever loaded into this app-owned renderer.
+    crate::startup_diagnostics::log(
+        "primary",
+        "titlebar.create.begin",
+        "Creating local title-bar renderer",
+    );
     window
         .add_child(
             builder,
@@ -251,7 +256,17 @@ fn install_windows(app: &AppHandle) -> Result<(), String> {
             LogicalSize::new(1.0, HEIGHT),
         )
         .map_err(|e| format!("Unable to create unified title bar: {e}"))?;
+    crate::startup_diagnostics::log(
+        "primary",
+        "titlebar.create.ready",
+        "Local title-bar renderer created",
+    );
     platform::install(app)?;
+    crate::startup_diagnostics::log(
+        "primary",
+        "titlebar.frame.ready",
+        "Native title-bar frame installed",
+    );
     app.state::<WindowChromeState>()
         .enabled
         .store(true, Ordering::Release);
@@ -259,6 +274,11 @@ fn install_windows(app: &AppHandle) -> Result<(), String> {
     window.hide_menu().map_err(|e| e.to_string())?;
     layout(app)?;
     platform::colors(app)?;
+    crate::startup_diagnostics::log(
+        "primary",
+        "titlebar.layout.ready",
+        "Unified title-bar layout installed",
+    );
     Ok(())
 }
 

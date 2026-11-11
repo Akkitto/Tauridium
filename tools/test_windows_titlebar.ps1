@@ -57,6 +57,38 @@ public static class ChromeNative {
 $script:Child = $null
 $script:Window = [IntPtr]::Zero
 $script:Checks = New-Object 'System.Collections.Generic.List[string]'
+$script:TestPids = New-Object 'System.Collections.Generic.List[int]'
+$TestStarted = [DateTime]::UtcNow
+$PreviousBrowserArguments = $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
+if (-not [string]::IsNullOrWhiteSpace($PreviousBrowserArguments)) { throw 'Unexpected inherited WebView2 arguments in the fresh GUI test.' }
+# UIA is our assistive-technology test client. Request the full renderer tree
+# only in this fresh CI process; production retains on-demand accessibility.
+# https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/webview-features-flags
+$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--force-renderer-accessibility'
+function Write-Test-Diagnostics {
+  Write-Host 'Fresh test profile diagnostics (no personal accounts or service data):'
+  if ($script:Window -ne [IntPtr]::Zero) {
+    Write-Host ('Main HWND={0}; menu={1}; foreground={2}' -f $script:Window,[ChromeNative]::GetMenu($script:Window),[ChromeNative]::GetForegroundWindow())
+    try {
+      $Nodes = (Root).FindAll([Windows.Automation.TreeScope]::Subtree,[Windows.Automation.Condition]::TrueCondition)
+      Write-Host ('UIA node count: {0}' -f $Nodes.Count)
+      for ($Index=0; $Index -lt [Math]::Min($Nodes.Count,120); $Index++) {
+        $Current = $Nodes[$Index].Current
+        $Name = $Current.Name -replace '[\r\n\t]',' '
+        if ($Name.Length -gt 160) { $Name=$Name.Substring(0,160) }
+        Write-Host ('UIA {0}: {1}; {2}; {3}' -f $Index,$Current.ControlType.ProgrammaticName,$Name,$Current.BoundingRectangle)
+      }
+    } catch { Write-Host 'UIA diagnostic enumeration was unavailable.' }
+  }
+  $Diagnostics = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Tauridium\diagnostics'
+  foreach ($TestPid in $script:TestPids) {
+    foreach ($Log in @(Get-ChildItem -LiteralPath $Diagnostics -Filter ('startup-*-{0}.log' -f $TestPid) -File -ErrorAction SilentlyContinue)) {
+      if ($Log.LastWriteTimeUtc -ge $TestStarted) {
+        Get-Content -LiteralPath $Log.FullName -Tail 40 | ForEach-Object { Write-Host $_ }
+      }
+    }
+  }
+}
 function Wait-For([scriptblock]$Condition, [string]$Label, [int]$Seconds = 45) {
   $Deadline = [DateTime]::UtcNow.AddSeconds($Seconds)
   do {
@@ -85,7 +117,8 @@ function Invoke-Control([string]$Name, [Windows.Automation.ControlType]$Type = [
   $Pattern.Invoke()
 }
 function Start-Tauridium {
-  $script:Child = Start-Process -FilePath $Binary -PassThru
+  $script:Child = Start-Process -FilePath $Binary -ArgumentList '--startup-diagnostics' -PassThru
+  $script:TestPids.Add($script:Child.Id)
   Wait-For { $script:Child.Refresh(); $script:Child.MainWindowHandle -ne [IntPtr]::Zero } 'main window'
   $script:Window = $script:Child.MainWindowHandle
   [ChromeNative]::SetForegroundWindow($script:Window) | Out-Null
@@ -199,7 +232,11 @@ try {
   $Result = @{ passed=$true; checks=$script:Checks.ToArray(); privateAccountsUsed=$false; titleBarModes=@('unified-default','classic-restarted','unified-restarted') }
   [IO.File]::WriteAllText((Join-Path $Output 'result.json'),($Result | ConvertTo-Json -Depth 6),$Utf8)
   Write-Host 'Native production Windows title-bar smoke passed.'
+} catch {
+  Write-Test-Diagnostics
+  throw
 } finally {
+  $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $PreviousBrowserArguments
   if ($script:Child -and -not $script:Child.HasExited) {
     [ChromeNative]::PostMessageW($script:Window,0x10,[IntPtr]::Zero,[IntPtr]::Zero) | Out-Null
     if (-not $script:Child.WaitForExit(5000)) { Stop-Process -Id $script:Child.Id -Force }
