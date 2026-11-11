@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import re
+import os
+import subprocess
 import shutil
 import tempfile
 import json
@@ -111,6 +113,28 @@ class WindowStateRepairIntegrityTests(unittest.TestCase):
       shutil.copyfile(ROOT / name, path)
     shutil.copytree(ROOT / window_state_policy.RELATIVE, directory / window_state_policy.RELATIVE)
     return directory
+
+  def test_windows_autocrlf_checkout_preserves_exact_reviewed_source(self):
+    with tempfile.TemporaryDirectory() as temporary:
+      parent = Path(temporary)
+      original = self.fixture(parent / "original")
+      shutil.copyfile(ROOT / ".gitattributes", original / ".gitattributes")
+      environment = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+      environment.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+      def git(*arguments, cwd=original):
+        subprocess.run(["git", "-c", "core.hooksPath=" + os.devnull,
+                        "-c", "commit.gpgsign=false", *arguments], cwd=cwd,
+                       env=environment, capture_output=True, check=True, timeout=60)
+      git("init", "-q")
+      git("add", ".")
+      git("-c", "user.name=Synthetic Test", "-c", "user.email=synthetic@example.invalid",
+          "commit", "-qm", "Test: Record reviewed source")
+      checkout = parent / "windows-checkout"
+      git("-c", "core.autocrlf=true", "clone", "--no-hardlinks", "--quiet",
+          str(original), str(checkout), cwd=parent)
+      provenance = window_state_policy.validate(checkout)
+      for name in provenance["files"]:
+        self.assertNotIn(b"\r\n", (checkout / window_state_policy.RELATIVE / name).read_bytes())
 
   def test_changed_source_fails_without_a_reviewed_hash_update(self):
     with tempfile.TemporaryDirectory() as temporary:

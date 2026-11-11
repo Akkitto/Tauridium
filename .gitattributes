@@ -36,3 +36,6 @@ src-tauri/Cargo.lock text eol=lf
 
 # The reviewed local npm backport is integrity-bound on every host.
 vendor/deepmerge/** text eol=lf
+
+# The reviewed native window-state repair is also byte-bound across platforms.
+vendor/tauri-plugin-window-state/** text eol=lf
