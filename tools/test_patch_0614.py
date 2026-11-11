@@ -14,8 +14,8 @@ class Patch0614Tests(unittest.TestCase):
   def test_pretty_context_actions_capture_service_before_closing_menu(self) -> None:
     helper = APP.split("function runServiceContextAction", 1)[1].split("function openContextServiceSettings", 1)[0]
     self.assertIn("service: Service", helper)
-    self.assertIn("closeServiceContextMenu();", helper)
-    self.assertIn("void action(service);", helper)
+    self.assertIn("closeServiceContextMenu(false);", helper)
+    self.assertIn("void action(service).finally(restoreActiveServiceView);", helper)
 
     menu = APP.split('{#if serviceContextMenu}', 1)[1].split('{#if toastMessage}', 1)[0]
     self.assertIn(

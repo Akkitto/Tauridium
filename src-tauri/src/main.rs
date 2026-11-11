@@ -2794,6 +2794,8 @@ fn hide_service_webviews(app: &AppHandle, state: &AppState) {
         }
     }
     *state.active.lock().unwrap() = None;
+    // Cancel any in-flight show_service/preload activation so it cannot reappear over the panel.
+    *state.desired_active.lock().unwrap() = None;
     // A hidden child webview can retain keyboard focus on Windows. Explicitly focus the
     // shell webview so Esc and shortcut toggles immediately work in quick switchers and
     // every other full-screen Tauridium panel opened from a focused service.

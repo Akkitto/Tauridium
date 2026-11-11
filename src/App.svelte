@@ -1169,13 +1169,33 @@
     }
   }
 
-  function closeServiceContextMenu() {
+  function closeServiceContextMenu(restore = true) {
+    const wasOpen = serviceContextMenu !== null;
     serviceContextMenu = null;
+    if (restore && wasOpen) restoreActiveServiceView();
+  }
+
+  // Re-show the active service without selectService's side effects (it clears visible errors).
+  function restoreActiveServiceView() {
+    const s = activeService;
+    // Another shell overlay may have opened while a menu action was running.
+    if (view !== "service" || !s || serviceContextMenu || quickSwitcherMode) return;
+    showService(s, activeWorkspace).catch((err) => {
+      if (activeId === s.id) serviceLoadError = `${err}`;
+    });
+  }
+
+  // Native service webviews are composited above the shell, so hide them while the styled menu is open.
+  function showStyledServiceContextMenu(menu: { serviceId: string; x: number; y: number }) {
+    serviceContextMenu = menu;
+    if (view === "service") void hideServices();
+    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".service-context-menu button:not(:disabled)")?.focus());
   }
 
   function runServiceContextAction(service: Service, action: (selectedService: Service) => Promise<void>) {
-    closeServiceContextMenu();
-    void action(service);
+    // Restore after the action so disabling or reloading the active service does not flash it first.
+    closeServiceContextMenu(false);
+    void action(service).finally(restoreActiveServiceView);
   }
 
   function openContextServiceSettings(service: Service) {
@@ -1216,12 +1236,11 @@
     }
     const width = 226;
     const height = 330;
-    serviceContextMenu = {
+    showStyledServiceContextMenu({
       serviceId: service.id,
       x: Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)),
       y: Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8)),
-    };
-    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".service-context-menu button:not(:disabled)")?.focus());
+    });
   }
 
   function openServiceContextMenuFromKeyboard(event: KeyboardEvent, service: Service) {
@@ -1234,12 +1253,11 @@
       });
       return;
     }
-    serviceContextMenu = {
+    showStyledServiceContextMenu({
       serviceId: service.id,
       x: rect ? Math.min(rect.left + 28, window.innerWidth - 234) : 12,
       y: rect ? Math.min(rect.bottom, window.innerHeight - 338) : 12,
-    };
-    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".service-context-menu button:not(:disabled)")?.focus());
+    });
   }
 
   function handleServiceContextMenuKeydown(event: KeyboardEvent) {
@@ -1546,6 +1564,8 @@
 
   function selectService(s: Service) {
     if (s.isEnabled === false) return;
+    // Shortcuts, tray and native menu switches show a webview that would cover the styled menu.
+    serviceContextMenu = null;
     clearServiceDragSelection();
     const prev = activeId;
     error = null;
@@ -5282,7 +5302,7 @@
               <section class="settings-section" aria-labelledby="settings-advanced-context-menu">
                 <div class="section-heading"><h3 id="settings-advanced-context-menu">Service context menu</h3><p>Choose between Tauridium's original styled menu and the native fallback that always stays above service webviews.</p></div>
                 <div class="settings-list">
-                  {@render appToggle("Use original service context menu", "Enabled by default. Uses Tauridium's original styled right-click menu. Embedded service webviews can cover the part of this shell menu that extends over them. Disable this to use the native system menu, which always stays in front.", "prettyServiceContextMenu", appSettings.prettyServiceContextMenu)}
+                  {@render appToggle("Use original service context menu", "Enabled by default. Uses Tauridium's original styled right-click menu. The active service is hidden while this menu is open so its webview cannot cover the menu. Disable this to use the native system menu, which stays in front without hiding the service.", "prettyServiceContextMenu", appSettings.prettyServiceContextMenu)}
                 </div>
               </section>
               <section class="settings-section" aria-labelledby="settings-advanced-sidebar-order">

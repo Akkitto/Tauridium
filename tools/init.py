@@ -77,6 +77,9 @@ APT_PACKAGES = (
   "libssl-dev",
   "libayatana-appindicator3-dev",
   "librsvg2-dev",
+  # GStreamer plugins copied into the AppImage; WebKitGTK aborts without them.
+  "gstreamer1.0-plugins-base",
+  "gstreamer1.0-plugins-good",
   "patchelf",
   "rpm",
 )
