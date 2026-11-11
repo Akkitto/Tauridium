@@ -130,8 +130,18 @@ function Find-Control([string]$Name, [Windows.Automation.ControlType]$Type = $nu
 }
 function Invoke-Control([string]$Name, [Windows.Automation.ControlType]$Type = [Windows.Automation.ControlType]::Button) {
   Wait-For { $null -ne (Find-Control $Name $Type) } $Name
-  $Pattern = (Find-Control $Name $Type).GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)
-  $Pattern.Invoke()
+  $Control = Find-Control $Name $Type
+  $Pattern = $null
+  # Menu items with a submenu expose ExpandCollapse, while ordinary buttons
+  # expose Invoke. Use the provider's actual semantic action.
+  if ($Control.TryGetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern,[ref]$Pattern)) {
+    $Pattern.Expand()
+  } elseif ($Control.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern,[ref]$Pattern)) {
+    $Pattern.Invoke()
+  } else {
+    $Available = ($Control.GetSupportedPatterns() | ForEach-Object { $_.ProgrammaticName }) -join ', '
+    throw "Control $Name exposes neither menu expansion nor button invocation: $Available"
+  }
 }
 function Start-Tauridium {
   $script:Child = Start-Process -FilePath $Binary -ArgumentList '--startup-diagnostics' -PassThru
