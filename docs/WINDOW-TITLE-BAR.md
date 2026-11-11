@@ -1,6 +1,6 @@
 # Windows unified title bar
 
-Starting with 1.0.7, Windows uses one title-bar row for Tauridium's application
+Starting with 1.0.7, Windows uses one standard 32-logical-pixel title-bar row for Tauridium's application
 menus and window title. Windows continues to draw and handle the native
 minimize, maximize/restore and close buttons. The service area starts below this
 row; hosted websites cannot cover it.
@@ -28,6 +28,11 @@ When DWM supplies only a generic client/title hit after maximization, Tauridium
 uses Windows' own per-button screen rectangles and availability states as the
 hit-test fallback. Disabled, invisible and off-screen controls are excluded;
 Windows still handles the actual native controls and system commands.
+
+The row uses the standard 32-pixel logical height and Windows' visible border
+metrics to align its menus with native caption controls. Opaque buffered GDI
+painting prevents the exposed DWM glass area from tinting the application
+background. Inactive and high-contrast presentation follow system conventions.
 
 The startup frame uses documented Win32/DWM APIs rather than experimental
 WebView2 window-controls overlays or synthetic Windows-key shortcuts. It reads
@@ -71,3 +76,5 @@ future WebView2 runtime behavior.
 
 - [Extended native title-bar information](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-titlebarinfoex)
 - [DWM hit-test fallback](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/nf-dwmapi-dwmdefwindowproc)
+
+- [Opaque drawing on DWM glass](https://learn.microsoft.com/en-us/windows/win32/api/uxtheme/nf-uxtheme-bufferedpaintsetalpha)
