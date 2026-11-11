@@ -1,4 +1,4 @@
-param([Parameter(Mandatory = $true)][string]$Binary, [string]$Output = "release/evidence/windows-titlebar")
+param([Parameter(Mandatory = $true)][string]$Binary, [string]$Output = "release/evidence/windows-titlebar", [switch]$CaptureCaptionPreview)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'This GUI gate requires a fresh GitHub-hosted Windows CI user profile.' }
@@ -16,6 +16,7 @@ $Utf8 = New-Object Text.UTF8Encoding($false)
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName System.Windows.Forms
+if ($CaptureCaptionPreview) { Add-Type -AssemblyName System.Drawing }
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
@@ -91,6 +92,7 @@ public static class ChromeNative {
   [DllImport("user32.dll")] private static extern bool SetCursorPos(int x,int y);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern IntPtr FindWindowEx(IntPtr p,IntPtr a,string c,string n);
   [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
+  public static int ProcessId(IntPtr h) { uint pid; GetWindowThreadProcessId(h,out pid); return (int)pid; }
   [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr h);
   [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr h,uint command);
   [DllImport("user32.dll", EntryPoint="GetWindowLongPtrW")] private static extern IntPtr WindowStyle(IntPtr h,int index);
@@ -153,6 +155,7 @@ function Write-Test-Diagnostics {
   if ($script:Window -ne [IntPtr]::Zero) {
     Write-Host ('Main: {0}; menu={1}' -f [ChromeNative]::WindowMetadata($script:Window),[ChromeNative]::GetMenu($script:Window))
     Write-Host ('Foreground: '+[ChromeNative]::WindowMetadata([ChromeNative]::GetForegroundWindow()))
+    if ([ChromeNative]::IsZoomed($script:Window) -and [ChromeNative]::GetForegroundWindow() -eq $script:Window -and [ChromeNative]::CaptionReady($script:Window,$false)) { Save-Caption-Preview 'maximized' }
     $Info=[ChromeNative]::Title($script:Window)
     foreach ($Index in @(2,3,5)) {
       $R=$Info.Buttons[$Index]; $P=New-Object ChromeNative+Point
@@ -235,7 +238,24 @@ function Invoke-Control([string]$Name, [Windows.Automation.ControlType]$Type = [
     throw "Control $Name exposes neither menu expansion nor button invocation: $Available"
   }
 }
+function Prepare-Hosted-Desktop {
+  # A fresh windows-11-arm image can leave a full-screen WWAHost onboarding
+  # window above desktop apps. This disposable-host fixture must be interactive;
+  # close only that observed foreground host, never arbitrary running processes.
+  $Foreground = [ChromeNative]::GetForegroundWindow()
+  $Owner = Get-Process -Id ([ChromeNative]::ProcessId($Foreground)) -ErrorAction SilentlyContinue
+  if ($Owner -and $Owner.ProcessName -eq 'WWAHost') {
+    [ChromeNative]::PostMessageW($Foreground,0x10,[IntPtr]::Zero,[IntPtr]::Zero) | Out-Null
+    if (-not $Owner.WaitForExit(5000)) {
+      $Owner.Kill()
+      if (-not $Owner.WaitForExit(5000)) { throw 'Fresh-host WWAHost overlay did not close.' }
+    }
+    $Owner.Dispose()
+    Write-Host 'Closed the foreground fresh-host WWAHost overlay for isolated native GUI validation.'
+  }
+}
 function Start-Tauridium {
+  Prepare-Hosted-Desktop
   $script:Child = Start-Process -FilePath $Binary -ArgumentList '--startup-diagnostics' -PassThru
   $script:TestPids.Add($script:Child.Id)
   $script:Window = [IntPtr]::Zero
@@ -270,16 +290,42 @@ function Check-Caption([bool]$Unified = $true) {
     Check (($Info.State[$Entry[0]] -band 0x8001) -eq 0) "native $($Entry[2]) is visible and enabled"
   }
 }
-function Check-Caption-Interaction {
+function Save-Caption-Preview([string]$Name) {
+  if (-not $CaptureCaptionPreview) { return }
+  # Only the empty, account-free test window's title row; never the desktop,
+  # service content, settings, or a personal profile. Exact files are staged.
+  $R=New-Object ChromeNative+Rect
+  if (-not [ChromeNative]::GetWindowRect($script:Window,[ref]$R)) { throw 'Unable to measure the caption preview.' }
+  $Screen=[Windows.Forms.Screen]::FromHandle($script:Window).Bounds
+  $Left=[Math]::Max($R.Left,$Screen.Left); $Top=[Math]::Max($R.Top,$Screen.Top)
+  $Width=[Math]::Min($R.Right,$Screen.Right)-$Left
+  $Height=[int][Math]::Ceiling(56.0*[ChromeNative]::GetDpiForWindow($script:Window)/96.0)
+  $Bitmap=New-Object Drawing.Bitmap($Width,$Height)
+  $Graphics=[Drawing.Graphics]::FromImage($Bitmap)
+  try {
+    $Graphics.CopyFromScreen($Left,$Top,0,0,$Bitmap.Size)
+    $Bitmap.Save((Join-Path $Output ('caption-'+$Name+'.png')),[Drawing.Imaging.ImageFormat]::Png)
+  } finally { $Graphics.Dispose(); $Bitmap.Dispose() }
+  $Files=@('caption-normal.png','caption-maximized.png') | Where-Object { Test-Path -LiteralPath (Join-Path $Output $_) -PathType Leaf } | ForEach-Object {
+    @{ path=$_; sha256=(Get-FileHash -LiteralPath (Join-Path $Output $_) -Algorithm SHA256).Hash.ToLowerInvariant() }
+  }
+  $Version=(Get-Content -LiteralPath (Join-Path $PSScriptRoot '../src-tauri/tauri.conf.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version
+  $Manifest=@{ version=$Version; scope='fresh-account-free-caption-only'; files=@($Files) }
+  [IO.File]::WriteAllText((Join-Path $Output 'caption-manifest.json'),($Manifest | ConvertTo-Json -Depth 5),$Utf8)
+}
+function Check-Caption-Interaction([bool]$Unified = $true) {
   # Real input reaches DWM's standard-frame routing; manually sending
   # WM_NCHITTEST alone does not exercise that path. Keep exact 8/9/20
   # assertions for our custom frame and verify actual controls in both modes.
   Activate-Tauridium
   [ChromeNative]::ClickCaption($script:Window,3)
   Wait-For { [ChromeNative]::IsZoomed($script:Window) } 'native maximize button'
+  Wait-For { [ChromeNative]::CaptionReady($script:Window,$Unified) } 'maximized native caption targets'
+  if (-not (Test-Path -LiteralPath (Join-Path $Output 'caption-maximized.png'))) { Save-Caption-Preview 'maximized' }
   Activate-Tauridium
   [ChromeNative]::ClickCaption($script:Window,3)
   Wait-For { -not [ChromeNative]::IsZoomed($script:Window) } 'native restore button'
+  Wait-For { [ChromeNative]::CaptionReady($script:Window,$Unified) } 'restored native caption targets'
   Activate-Tauridium
   [ChromeNative]::ClickCaption($script:Window,2)
   Wait-For { [ChromeNative]::IsIconic($script:Window) } 'native minimize button'
@@ -325,6 +371,7 @@ try {
   Start-Tauridium
   Check ([ChromeNative]::GetMenu($script:Window) -eq [IntPtr]::Zero) 'older settings default to a unified title bar'
   Check-Caption
+  Save-Caption-Preview 'normal'
   Check-Caption-Interaction
   $OriginalOuter = Outer-Size
   Check ($null -ne (Find-Control 'Application' ([Windows.Automation.ControlType]::MenuBar))) 'accessible application menu bar exists'
@@ -348,7 +395,7 @@ try {
   $RestoredOuter = Outer-Size
   Check ($RestoredOuter[0] -eq $OriginalOuter[0] -and $RestoredOuter[1] -eq $OriginalOuter[1]) 'classic restart preserves outside dimensions'
   Check-Caption $false
-  Check-Caption-Interaction
+  Check-Caption-Interaction $false
   Open-Advanced
   Toggle-Chrome $true
   Check ([ChromeNative]::GetMenu($script:Window) -ne [IntPtr]::Zero) 'saved unified preference waits for restart'
