@@ -19,11 +19,14 @@
   <url type="vcs-browser">https://github.com/Akkitto/Tauridium</url>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v1.0.6/data/screenshots/tauridium-0.8.0-main.png</image>
+      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v1.0.7/data/screenshots/tauridium-0.8.0-main.png</image>
       <caption>Tauridium sign-in and local accountless start screen</caption>
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.0.7" date="2026-11-11">
+      <description><p>Unify Windows title bars with native window controls and a classic-layout preference, preserving saved window geometry.</p></description>
+    </release>
     <release version="1.0.6" date="2026-11-10">
       <description>
         <p>Fixes sidebar unread badges with browser badge updates, Telegram compatibility, Discord indirect-message preferences and preserved GitHub notification fallbacks.</p>
