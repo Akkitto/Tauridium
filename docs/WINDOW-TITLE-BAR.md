@@ -24,6 +24,11 @@ restore. Native non-client regions also retain Windows' system menu. The native
 caption buttons keep Windows' maximize-hover hit target for Snap Layouts. Which
 flyout Windows displays still depends on the OS version and Snap settings.
 
+When DWM supplies only a generic client/title hit after maximization, Tauridium
+uses Windows' own per-button screen rectangles and availability states as the
+hit-test fallback. Disabled, invisible and off-screen controls are excluded;
+Windows still handles the actual native controls and system commands.
+
 The startup frame uses documented Win32/DWM APIs rather than experimental
 WebView2 window-controls overlays or synthetic Windows-key shortcuts. It reads
 native caption-button bounds and reserves a conservative system-scaled clearance
@@ -63,3 +68,6 @@ future WebView2 runtime behavior.
 - [Support Snap Layouts](https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/ui/apply-snap-layout-menu)
 - [Native caption-button bounds](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute)
 - [Tauri window customization](https://v2.tauri.app/learn/window-customization/)
+
+- [Extended native title-bar information](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-titlebarinfoex)
+- [DWM hit-test fallback](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/nf-dwmapi-dwmdefwindowproc)
