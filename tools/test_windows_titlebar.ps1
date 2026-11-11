@@ -31,6 +31,46 @@ public static class ChromeNative {
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h,out Rect r);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+  [DllImport("user32.dll")] private static extern bool AttachThreadInput(uint source,uint target,bool attach);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern int GetClassName(IntPtr h,System.Text.StringBuilder name,int length);
+  [StructLayout(LayoutKind.Sequential)] private struct MouseInput {
+    public int X,Y; public uint Data,Flags,Time; public UIntPtr Extra;
+  }
+  [StructLayout(LayoutKind.Sequential)] private struct Input { public uint Type; public MouseInput Mouse; }
+  [DllImport("user32.dll", SetLastError=true)] private static extern uint SendInput(uint count,Input[] input,int size);
+  public static bool Activate(IntPtr h) {
+    if (GetForegroundWindow()==h) return true;
+    SetForegroundWindow(h);
+    if (GetForegroundWindow()==h) return true;
+    // This fresh-host test driver briefly joins the foreground input queue.
+    // Do not change system foreground-lock settings or application focus policy.
+    uint pid, owner=GetWindowThreadProcessId(GetForegroundWindow(),out pid), current=GetCurrentThreadId();
+    if (owner==0 || owner==current || !AttachThreadInput(current,owner,true)) return false;
+    try { SetForegroundWindow(h); }
+    finally { if (!AttachThreadInput(current,owner,false)) throw new InvalidOperationException("Unable to detach test input queue."); }
+    return GetForegroundWindow()==h;
+  }
+  public static string WindowMetadata(IntPtr h) {
+    uint pid; uint thread=GetWindowThreadProcessId(h,out pid);
+    var name=new System.Text.StringBuilder(128); GetClassName(h,name,name.Capacity);
+    return String.Format("HWND={0}; PID={1}; thread={2}; class={3}; style=0x{4:x}",h,pid,thread,name,WindowStyle(h,-16).ToInt64());
+  }
+  public static bool HasCaptionStyles(IntPtr h) {
+    const long required=0x00c00000|0x00080000|0x00040000|0x00020000|0x00010000;
+    return (WindowStyle(h,-16).ToInt64() & required)==required;
+  }
+  public static void ClickCaption(IntPtr h,int index) {
+    if (GetForegroundWindow()!=h) throw new InvalidOperationException("Refusing to click a background window.");
+    Rect r=Title(h).Buttons[index];
+    if (r.Right<=r.Left || r.Bottom<=r.Top) throw new InvalidOperationException("Caption button has no rectangle.");
+    Point p=new Point(); p.X=(r.Left+r.Right)/2; p.Y=(r.Top+r.Bottom)/2;
+    if (WindowFromPoint(p)!=h || !SetCursorPos(p.X,p.Y)) throw new InvalidOperationException("Caption button is covered.");
+    if (GetForegroundWindow()!=h) throw new InvalidOperationException("Foreground changed before native click.");
+    Input down=new Input(), up=new Input(); down.Mouse.Flags=2; up.Mouse.Flags=4;
+    Input[] input={down,up};
+    if (SendInput(2,input,Marshal.SizeOf(typeof(Input)))!=2) throw new InvalidOperationException("Native mouse click was blocked.");
+  }
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h,int n);
   [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr h);
   [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
@@ -70,13 +110,14 @@ public static class ChromeNative {
     if (!SetCursorPos(p.X,p.Y)) return int.MinValue;
     return (int)SendMessage(h,0x84,IntPtr.Zero,new IntPtr(((p.Y&65535)<<16)|(p.X&65535)));
   }
-  public static bool CaptionReady(IntPtr h) {
+  public static bool CaptionReady(IntPtr h,bool unified) {
     TitleInfo info=Title(h); int[] indexes={2,3,5}, hits={8,9,20};
     for (int i=0;i<indexes.Length;i++) {
       Rect r=info.Buttons[indexes[i]];
       if (r.Right<=r.Left || r.Bottom<=r.Top) return false;
       Point p=new Point(); p.X=(r.Left+r.Right)/2; p.Y=(r.Top+r.Bottom)/2;
-      if (WindowFromPoint(p)!=h || Hit(h,p)!=hits[i]) return false;
+      if ((info.State[indexes[i]] & 0x8001)!=0 || WindowFromPoint(p)!=h) return false;
+      if (unified && Hit(h,p)!=hits[i]) return false;
     }
     return true;
   }
@@ -99,12 +140,13 @@ if ($PreviousDpiContext -eq [IntPtr]::Zero) { throw 'Unable to enable per-monito
 function Write-Test-Diagnostics {
   Write-Host 'Fresh test profile diagnostics (no personal accounts or service data):'
   if ($script:Window -ne [IntPtr]::Zero) {
-    Write-Host ('Main HWND={0}; menu={1}; foreground={2}' -f $script:Window,[ChromeNative]::GetMenu($script:Window),[ChromeNative]::GetForegroundWindow())
+    Write-Host ('Main: {0}; menu={1}' -f [ChromeNative]::WindowMetadata($script:Window),[ChromeNative]::GetMenu($script:Window))
+    Write-Host ('Foreground: '+[ChromeNative]::WindowMetadata([ChromeNative]::GetForegroundWindow()))
     $Info=[ChromeNative]::Title($script:Window)
     foreach ($Index in @(2,3,5)) {
       $R=$Info.Buttons[$Index]; $P=New-Object ChromeNative+Point
       $P.X=[int](($R.Left+$R.Right)/2); $P.Y=[int](($R.Top+$R.Bottom)/2)
-      Write-Host ('Caption {0}: rect={1},{2},{3},{4}; hit={5}; pointWindow={6}' -f $Index,$R.Left,$R.Top,$R.Right,$R.Bottom,[ChromeNative]::Hit($script:Window,$P),[ChromeNative]::WindowFromPoint($P))
+      Write-Host ('Caption {0}: rect={1},{2},{3},{4}; hit={5}; pointWindow={6}; state=0x{7:x}' -f $Index,$R.Left,$R.Top,$R.Right,$R.Bottom,[ChromeNative]::Hit($script:Window,$P),[ChromeNative]::WindowFromPoint($P),$Info.State[$Index])
     }
     try {
       $Nodes = (Root).FindAll([Windows.Automation.TreeScope]::Subtree,[Windows.Automation.Condition]::TrueCondition)
@@ -187,19 +229,22 @@ function Start-Tauridium {
   $script:TestPids.Add($script:Child.Id)
   $script:Window = [IntPtr]::Zero
   Wait-For { $script:Window = [ChromeNative]::MainWindow($script:Child.Id); $script:Window -ne [IntPtr]::Zero } 'captioned application window'
-  [ChromeNative]::SetForegroundWindow($script:Window) | Out-Null
   Wait-For { $null -ne (Find-Control 'Application' ([Windows.Automation.ControlType]::MenuBar)) -or [ChromeNative]::GetMenu($script:Window) -ne [IntPtr]::Zero } 'application menus'
   Wait-For { $null -ne (Find-Control 'Tauridium' ([Windows.Automation.ControlType]::Document)) } 'local shell document'
-  [ChromeNative]::SetForegroundWindow($script:Window) | Out-Null
-  Wait-For { [ChromeNative]::GetForegroundWindow() -eq $script:Window } 'foreground application window'
+  Activate-Tauridium
+}
+function Activate-Tauridium {
+  Wait-For { [ChromeNative]::Activate($script:Window) } 'foreground application window'
 }
 function Stop-Tauridium {
   [ChromeNative]::PostMessageW($script:Window,0x10,[IntPtr]::Zero,[IntPtr]::Zero) | Out-Null
   if (-not $script:Child.WaitForExit(15000)) { throw 'Normal application close did not exit.' }
   $script:Child.Dispose(); $script:Child = $null
 }
-function Check-Caption {
-  Wait-For { [ChromeNative]::CaptionReady($script:Window) } 'settled native caption hit targets'
+function Check-Caption([bool]$Unified = $true) {
+  Activate-Tauridium
+  Check ([ChromeNative]::HasCaptionStyles($script:Window)) 'native caption, sizing, system menu and min/max styles remain present'
+  Wait-For { [ChromeNative]::CaptionReady($script:Window,$Unified) } 'settled and enabled native caption targets'
   $Info = [ChromeNative]::Title($script:Window)
   foreach ($Entry in @(@(2,8,'minimize'),@(3,9,'maximize'),@(5,20,'close'))) {
     $R = $Info.Buttons[$Entry[0]]
@@ -207,8 +252,29 @@ function Check-Caption {
     $P = New-Object ChromeNative+Point
     $P.X = [int](($R.Left+$R.Right)/2); $P.Y = [int](($R.Top+$R.Bottom)/2)
     Check ([ChromeNative]::WindowFromPoint($P) -eq $script:Window) "native $($Entry[2]) is not covered by a WebView"
-    Check ([ChromeNative]::Hit($script:Window,$P) -eq $Entry[1]) "native $($Entry[2]) hit test"
+    if ($Unified) {
+      Check ([ChromeNative]::Hit($script:Window,$P) -eq $Entry[1]) "unified native $($Entry[2]) hit test"
+    }
+    Check (($Info.State[$Entry[0]] -band 0x8001) -eq 0) "native $($Entry[2]) is visible and enabled"
   }
+}
+function Check-Caption-Interaction {
+  # Real input reaches DWM's standard-frame routing; manually sending
+  # WM_NCHITTEST alone does not exercise that path. Keep exact 8/9/20
+  # assertions for our custom frame and verify actual controls in both modes.
+  Activate-Tauridium
+  [ChromeNative]::ClickCaption($script:Window,3)
+  Wait-For { [ChromeNative]::IsZoomed($script:Window) } 'native maximize button'
+  Activate-Tauridium
+  [ChromeNative]::ClickCaption($script:Window,3)
+  Wait-For { -not [ChromeNative]::IsZoomed($script:Window) } 'native restore button'
+  Activate-Tauridium
+  [ChromeNative]::ClickCaption($script:Window,2)
+  Wait-For { [ChromeNative]::IsIconic($script:Window) } 'native minimize button'
+  [ChromeNative]::ShowWindow($script:Window,9) | Out-Null
+  Wait-For { -not [ChromeNative]::IsIconic($script:Window) } 'restored minimized window'
+  Activate-Tauridium
+  Check $true 'native caption buttons maximize, restore and minimize through real mouse input'
 }
 function Outer-Size {
   $R = New-Object ChromeNative+Rect
@@ -216,7 +282,7 @@ function Outer-Size {
   return @(($R.Right - $R.Left), ($R.Bottom - $R.Top))
 }
 function Open-Advanced {
-  [ChromeNative]::SetForegroundWindow($script:Window) | Out-Null
+  Activate-Tauridium
   [Windows.Forms.SendKeys]::SendWait('^,')
   Invoke-Control 'Advanced'
   Wait-For { $null -ne (Find-Control 'Unified title bar' ([Windows.Automation.ControlType]::CheckBox)) } 'title-bar setting'
@@ -247,6 +313,7 @@ try {
   Start-Tauridium
   Check ([ChromeNative]::GetMenu($script:Window) -eq [IntPtr]::Zero) 'older settings default to a unified title bar'
   Check-Caption
+  Check-Caption-Interaction
   $OriginalOuter = Outer-Size
   Check ($null -ne (Find-Control 'Application' ([Windows.Automation.ControlType]::MenuBar))) 'accessible application menu bar exists'
   Invoke-Control 'Tauridium' ([Windows.Automation.ControlType]::MenuItem)
@@ -268,7 +335,8 @@ try {
   Check ([ChromeNative]::GetMenu($script:Window) -ne [IntPtr]::Zero) 'restart restores the classic native menu bar'
   $RestoredOuter = Outer-Size
   Check ($RestoredOuter[0] -eq $OriginalOuter[0] -and $RestoredOuter[1] -eq $OriginalOuter[1]) 'classic restart preserves outside dimensions'
-  Check-Caption
+  Check-Caption $false
+  Check-Caption-Interaction
   Open-Advanced
   Toggle-Chrome $true
   Check ([ChromeNative]::GetMenu($script:Window) -ne [IntPtr]::Zero) 'saved unified preference waits for restart'
@@ -278,6 +346,7 @@ try {
   $RestoredOuter = Outer-Size
   Check ($RestoredOuter[0] -eq $OriginalOuter[0] -and $RestoredOuter[1] -eq $OriginalOuter[1]) 'unified restart preserves outside dimensions'
   Check-Caption
+  Check-Caption-Interaction
   [ChromeNative]::ShowWindow($script:Window,3) | Out-Null
   Wait-For { [ChromeNative]::IsZoomed($script:Window) } 'maximized window'
   Check-Caption
@@ -288,8 +357,7 @@ try {
   [ChromeNative]::ShowWindow($script:Window,9) | Out-Null
   Wait-For { -not [ChromeNative]::IsIconic($script:Window) } 'restored minimized window'
   Check-Caption
-  [ChromeNative]::SetForegroundWindow($script:Window) | Out-Null
-  Wait-For { [ChromeNative]::GetForegroundWindow() -eq $script:Window } 'foreground test window'
+  Activate-Tauridium
   [Windows.Forms.SendKeys]::SendWait('{F10}')
   Wait-For { [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Tauridium' } 'F10 menu access'
   [Windows.Forms.SendKeys]::SendWait('{RIGHT}')
