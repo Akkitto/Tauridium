@@ -54,7 +54,7 @@ class Patch0610Tests(unittest.TestCase):
     self.assertIn('[sys.executable, "tools/check_rust_supply_chain.py"]', self.packager)
 
   def test_ci_scans_restored_cargo_cache_before_building(self) -> None:
-    self.assertEqual(self.ci.count("run: just rust-supply-chain-host"), 2)
+    self.assertEqual(self.ci.count("run: just rust-supply-chain-host"), 3)
     self.assertEqual(self.release.count("run: just rust-supply-chain-host"), 2)
 
 

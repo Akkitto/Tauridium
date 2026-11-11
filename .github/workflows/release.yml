@@ -164,6 +164,14 @@ jobs:
         run: just quality
       - name: Build native bundles without any signing credentials
         run: just bundle-target ${{ matrix.target }}
+      - name: Install private headless audio test tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb xauth pulseaudio pulseaudio-utils dbus
+      - name: Verify actual AppImage notification audio without host plugins or real speakers
+        if: runner.os == 'Linux'
+        run: just appimage-audio ${{ matrix.target }}
       - name: Verify production Windows unified and classic title bars
         if: runner.os == 'Windows'
         shell: pwsh
