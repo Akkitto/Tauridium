@@ -229,6 +229,7 @@ function Start-Tauridium {
   $script:TestPids.Add($script:Child.Id)
   $script:Window = [IntPtr]::Zero
   Wait-For { $script:Window = [ChromeNative]::MainWindow($script:Child.Id); $script:Window -ne [IntPtr]::Zero } 'captioned application window'
+  Activate-Tauridium
   Wait-For { $null -ne (Find-Control 'Application' ([Windows.Automation.ControlType]::MenuBar)) -or [ChromeNative]::GetMenu($script:Window) -ne [IntPtr]::Zero } 'application menus'
   Wait-For { $null -ne (Find-Control 'Tauridium' ([Windows.Automation.ControlType]::Document)) } 'local shell document'
   Activate-Tauridium
