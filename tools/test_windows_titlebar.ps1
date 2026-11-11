@@ -32,6 +32,24 @@ public static class ChromeNative {
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h,out Rect r);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll", SetLastError=true)] private static extern bool SetWindowPos(IntPtr h,IntPtr after,int x,int y,int width,int height,uint flags);
+  [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr h,uint flags);
+  [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+  [DllImport("user32.dll")] private static extern IntPtr GetThreadDesktop(uint thread);
+  [DllImport("user32.dll", SetLastError=true)] private static extern IntPtr OpenInputDesktop(uint flags,bool inherit,uint access);
+  [DllImport("user32.dll")] private static extern bool CloseDesktop(IntPtr desktop);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode,SetLastError=true)] private static extern bool GetUserObjectInformation(IntPtr h,int index,System.Text.StringBuilder name,uint length,out uint needed);
+  private static uint LastInputCount; private static int LastInputError;
+  private static string DesktopName(IntPtr h) {
+    if (h==IntPtr.Zero) return "unavailable";
+    uint needed; var name=new System.Text.StringBuilder(160);
+    return GetUserObjectInformation(h,2,name,320,out needed)?name.ToString():"unavailable";
+  }
+  public static string DesktopMetadata() {
+    IntPtr input=OpenInputDesktop(0,false,1); int error=Marshal.GetLastWin32Error();
+    try { return String.Format("session={0}; pointerBytes={1}; threadDesktop={2}; inputDesktop={3}; openError={4}; lastInputCount={5}; lastInputError={6}",System.Diagnostics.Process.GetCurrentProcess().SessionId,IntPtr.Size,DesktopName(GetThreadDesktop(GetCurrentThreadId())),DesktopName(input),input==IntPtr.Zero?error:0,LastInputCount,LastInputError); }
+    finally { if (input!=IntPtr.Zero) CloseDesktop(input); }
+  }
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern int GetClassName(IntPtr h,System.Text.StringBuilder name,int length);
   [StructLayout(LayoutKind.Sequential)] private struct MouseInput {
     public int X,Y; public uint Data,Flags,Time; public UIntPtr Extra;
@@ -49,15 +67,25 @@ public static class ChromeNative {
     if (GetForegroundWindow()==h) return true;
     SetForegroundWindow(h);
     if (GetForegroundWindow()==h) return true;
-    // A foreground CoreWindow on the fresh ARM runner can refuse activation.
-    // Windows documents Alt input as releasing the foreground lock. This is
-    // test-driver input only; never change global settings or app focus policy.
-    Input down=new Input(), up=new Input(); down.Type=1; up.Type=1;
-    down.Data.Keyboard.Key=0x12; up.Data.Keyboard.Key=0x12; up.Data.Keyboard.Flags=2;
-    Input[] input={down,up};
-    if (SendInput(2,input,Marshal.SizeOf(typeof(Input)))!=2) return false;
-    SetForegroundWindow(h);
-    return GetForegroundWindow()==h;
+    // Simulate clicking the test window's empty drag area. Briefly raising
+    // only our own window avoids clicking a shell popup that covers it.
+    Rect rect=Title(h).Buttons[2];
+    if (rect.Right<=rect.Left || rect.Bottom<=rect.Top) return false;
+    Point point=new Point(); point.X=rect.Left-(int)Math.Ceiling(24.0*GetDpiForWindow(h)/96.0); point.Y=(rect.Top+rect.Bottom)/2;
+    bool topmost=(WindowStyle(h,-20).ToInt64() & 8)!=0;
+    if (!topmost && !SetWindowPos(h,new IntPtr(-1),0,0,0,0,0x213)) return false;
+    try {
+      if (GetAncestor(WindowFromPoint(point),2)!=h || !SetCursorPos(point.X,point.Y)) return false;
+      Input down=new Input(), up=new Input(); down.Data.Mouse.Flags=2; up.Data.Mouse.Flags=4;
+      LastInputCount=SendInput(2,new Input[]{down,up},Marshal.SizeOf(typeof(Input)));
+      LastInputError=Marshal.GetLastWin32Error();
+      if (LastInputCount!=2) return false;
+      DateTime deadline=DateTime.UtcNow.AddSeconds(1);
+      do { SetForegroundWindow(h); if (GetForegroundWindow()==h) return true; System.Threading.Thread.Sleep(10); } while (DateTime.UtcNow<deadline);
+      return false;
+    } finally {
+      if (!topmost && !SetWindowPos(h,new IntPtr(-2),0,0,0,0,0x213)) throw new InvalidOperationException("Unable to restore the test window's normal Z order.");
+    }
   }
   public static string WindowMetadata(IntPtr h) {
     uint pid; uint thread=GetWindowThreadProcessId(h,out pid);
@@ -134,6 +162,11 @@ public static class ChromeNative {
     }
     return true;
   }
+  public static bool TopResizeTarget(IntPtr h) {
+    Rect outer; if (!GetWindowRect(h,out outer)) return false;
+    Point point=new Point(); point.X=Title(h).Buttons[2].Left-24; point.Y=outer.Top+1;
+    return WindowFromPoint(point)==h && Hit(h,point)==12;
+  }
   public static bool HasPopup(int pid) {
     IntPtr h=IntPtr.Zero;
     while ((h=FindWindowEx(IntPtr.Zero,h,"#32768",null)) != IntPtr.Zero) {
@@ -152,6 +185,7 @@ $PreviousDpiContext = [ChromeNative]::SetThreadDpiAwarenessContext([IntPtr](-4))
 if ($PreviousDpiContext -eq [IntPtr]::Zero) { throw 'Unable to enable per-monitor physical-pixel measurements.' }
 function Write-Test-Diagnostics {
   Write-Host 'Fresh test profile diagnostics (no personal accounts or service data):'
+  Write-Host ([ChromeNative]::DesktopMetadata())
   if ($script:Window -ne [IntPtr]::Zero) {
     Write-Host ('Main: {0}; menu={1}' -f [ChromeNative]::WindowMetadata($script:Window),[ChromeNative]::GetMenu($script:Window))
     Write-Host ('Foreground: '+[ChromeNative]::WindowMetadata([ChromeNative]::GetForegroundWindow()))
@@ -239,6 +273,7 @@ function Invoke-Control([string]$Name, [Windows.Automation.ControlType]$Type = [
   }
 }
 function Prepare-Hosted-Desktop {
+  Write-Host ('Hosted desktop: '+[ChromeNative]::DesktopMetadata())
   # A fresh windows-11-arm image can leave a full-screen WWAHost onboarding
   # window above desktop apps. This disposable-host fixture must be interactive;
   # close only that observed foreground host, never arbitrary running processes.
@@ -299,7 +334,7 @@ function Save-Caption-Preview([string]$Name) {
   $Screen=[Windows.Forms.Screen]::FromHandle($script:Window).Bounds
   $Left=[Math]::Max($R.Left,$Screen.Left); $Top=[Math]::Max($R.Top,$Screen.Top)
   $Width=[Math]::Min($R.Right,$Screen.Right)-$Left
-  $Height=[int][Math]::Ceiling(56.0*[ChromeNative]::GetDpiForWindow($script:Window)/96.0)
+  $Height=[int][Math]::Ceiling(32.0*[ChromeNative]::GetDpiForWindow($script:Window)/96.0)
   $Bitmap=New-Object Drawing.Bitmap($Width,$Height)
   $Graphics=[Drawing.Graphics]::FromImage($Bitmap)
   try {
@@ -371,6 +406,11 @@ try {
   Start-Tauridium
   Check ([ChromeNative]::GetMenu($script:Window) -eq [IntPtr]::Zero) 'older settings default to a unified title bar'
   Check-Caption
+  Check ([ChromeNative]::TopResizeTarget($script:Window)) 'top resize border stays native beside title-bar menus'
+  $MenuBounds=(Find-Control 'Application' ([Windows.Automation.ControlType]::MenuBar)).Current.BoundingRectangle
+  $ButtonBounds=[ChromeNative]::Title($script:Window).Buttons[3]
+  $Alignment=[Math]::Abs(($MenuBounds.Top+$MenuBounds.Height/2)-(($ButtonBounds.Top+$ButtonBounds.Bottom)/2.0))
+  Check ($Alignment -le (3.0*[ChromeNative]::GetDpiForWindow($script:Window)/96.0)) 'application menus align vertically with native caption controls'
   Save-Caption-Preview 'normal'
   Check-Caption-Interaction
   $OriginalOuter = Outer-Size
