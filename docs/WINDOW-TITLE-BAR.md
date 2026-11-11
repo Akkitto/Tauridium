@@ -29,8 +29,8 @@ uses Windows' own per-button screen rectangles and availability states as the
 hit-test fallback. Disabled, invisible and off-screen controls are excluded;
 Windows still handles the actual native controls and system commands.
 
-The row uses the standard 32-pixel logical height and Windows' visible border
-metrics to align its menus with native caption controls. Opaque buffered GDI
+The row uses the standard 32-pixel logical height, preserves the full native
+resize strip and aligns its text with native caption controls. Opaque buffered GDI
 painting prevents the exposed DWM glass area from tinting the application
 background. Inactive and high-contrast presentation follow system conventions.
 

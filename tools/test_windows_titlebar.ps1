@@ -406,12 +406,13 @@ try {
   Start-Tauridium
   Check ([ChromeNative]::GetMenu($script:Window) -eq [IntPtr]::Zero) 'older settings default to a unified title bar'
   Check-Caption
-  Check ([ChromeNative]::TopResizeTarget($script:Window)) 'top resize border stays native beside title-bar menus'
-  $MenuBounds=(Find-Control 'Application' ([Windows.Automation.ControlType]::MenuBar)).Current.BoundingRectangle
-  $ButtonBounds=[ChromeNative]::Title($script:Window).Buttons[3]
-  $Alignment=[Math]::Abs(($MenuBounds.Top+$MenuBounds.Height/2)-(($ButtonBounds.Top+$ButtonBounds.Bottom)/2.0))
-  Check ($Alignment -le (3.0*[ChromeNative]::GetDpiForWindow($script:Window)/96.0)) 'application menus align vertically with native caption controls'
   Save-Caption-Preview 'normal'
+  Check ([ChromeNative]::TopResizeTarget($script:Window)) 'top resize border stays native beside title-bar menus'
+  Wait-For { $null -ne (Find-Control (Root).Current.Name ([Windows.Automation.ControlType]::Text)) } 'current title text'
+  $TitleBounds=(Find-Control (Root).Current.Name ([Windows.Automation.ControlType]::Text)).Current.BoundingRectangle
+  $ButtonBounds=[ChromeNative]::Title($script:Window).Buttons[3]
+  $Alignment=[Math]::Abs(($TitleBounds.Top+$TitleBounds.Height/2)-(($ButtonBounds.Top+$ButtonBounds.Bottom)/2.0))
+  Check ($Alignment -le (3.0*[ChromeNative]::GetDpiForWindow($script:Window)/96.0)) 'application title aligns vertically with native caption controls'
   Check-Caption-Interaction
   $OriginalOuter = Outer-Size
   Check ($null -ne (Find-Control 'Application' ([Windows.Automation.ControlType]::MenuBar))) 'accessible application menu bar exists'
