@@ -4,6 +4,7 @@
   import { downloadToastPreview } from "./lib/downloadToast";
   import { browserProfileNamespace, retainedTrackingExceptions } from "./lib/browserPrivacy";
   import { ownValue, setOwnValue, copyOwnEntry, downloadOverride, downloadDirectoryLabel } from "./lib/settingsMaps";
+  import { resolveEffectiveSpellcheck, withServiceSpellcheckPatch, toggleLanguage, type ServiceSpellcheckOverride, type ServiceSpellcheckPatch } from "./lib/spelling";
   import tauridiumLogo from "./assets/tauridium.svg";
   import { listen } from "@tauri-apps/api/event";
   import { LogicalPosition } from "@tauri-apps/api/dpi";
@@ -93,6 +94,9 @@
     getWindowChrome,
     getDistributionInfo,
     setAppSettings,
+    getSpellingState,
+    addSpellingWord,
+    removeSpellingWord,
     setServiceOrder,
     setWorkspaceOrder,
     syncServicesMenu,
@@ -120,6 +124,7 @@
     type RecipeDraft,
     type RecipeStorageInfo,
     type AppSettings,
+    type SpellingState,
     type DistributionInfo,
     type BackupSummary,
     type SandboxDefinition,
@@ -194,7 +199,7 @@
   let serviceIconUrlBusy = $state(false);
   let newWorkspaceName = $state("");
 
-  type Tab = "general" | "services" | "workspaces" | "appearance" | "keybindings" | "sandbox" | "privacy" | "backup" | "audit" | "advanced" | "updates" | "about";
+  type Tab = "general" | "services" | "workspaces" | "appearance" | "spelling" | "keybindings" | "sandbox" | "privacy" | "backup" | "audit" | "advanced" | "updates" | "about";
   let settingsTab = $state<Tab>("general");
 
   let managedServiceQuery = $state("");
@@ -328,6 +333,9 @@
     serviceIconInversions: {},
     trackingPreventionExceptions: {},
     serviceZoomLevels: {},
+    spellcheckEnabled: true,
+    spellcheckLanguages: [],
+    serviceSpellcheck: {},
     serviceOrder: [],
     workspaceOrder: [],
     workspaceQuickSwitchOrder: "custom",
@@ -1762,6 +1770,7 @@
     settingsSvc = { ...s }; // Editable copy; applied to the server on Save.
     serviceTemplateDraft = { ...(ownValue(appSettings.serviceCustomUrlTemplates, s.id) ?? { enabled: false, customId1: "", customId2: "" }) };
     serviceTemplateDirty = false;
+    void refreshSpelling();
     serviceWorkspaceQuery = "";
     serviceWorkspaceNewName = "";
     serviceWorkspaceFilter = "all";
@@ -2019,6 +2028,7 @@
     const previousDownloadSettings = { ...appSettings.serviceDownloadSettings };
     const previousIconInversions = { ...appSettings.serviceIconInversions };
     const previousZoomLevels = { ...appSettings.serviceZoomLevels };
+    const previousSpellcheck = { ...appSettings.serviceSpellcheck };
     let copiedAppSettings = false;
     try {
       const result = await createDuplicateService(service, name);
@@ -2050,13 +2060,15 @@
       const serviceDownloadSettings = { ...appSettings.serviceDownloadSettings };
       const serviceIconInversions = { ...appSettings.serviceIconInversions };
       const serviceZoomLevels = { ...appSettings.serviceZoomLevels };
+      const serviceSpellcheck = { ...appSettings.serviceSpellcheck };
       copyOwnEntry(serviceCustomUrlTemplates, service.id, newId);
       copyOwnEntry(serviceSandboxes, service.id, newId);
       copyOwnEntry(serviceShortcutCaptureOverrides, service.id, newId);
       copyOwnEntry(serviceDownloadSettings, service.id, newId);
       copyOwnEntry(serviceIconInversions, service.id, newId);
       copyOwnEntry(serviceZoomLevels, service.id, newId);
-      if (ownValue(serviceCustomUrlTemplates, newId) || ownValue(serviceSandboxes, newId) || Object.hasOwn(serviceShortcutCaptureOverrides, newId) || ownValue(serviceDownloadSettings, newId) || ownValue(serviceIconInversions, newId) === true || ownValue(serviceZoomLevels, newId)) {
+      copyOwnEntry(serviceSpellcheck, service.id, newId);
+      if (ownValue(serviceCustomUrlTemplates, newId) || ownValue(serviceSandboxes, newId) || Object.hasOwn(serviceShortcutCaptureOverrides, newId) || ownValue(serviceDownloadSettings, newId) || ownValue(serviceIconInversions, newId) === true || ownValue(serviceZoomLevels, newId) || ownValue(serviceSpellcheck, newId)) {
         appSettings = await setAppSettings({
           serviceCustomUrlTemplates,
           serviceSandboxes,
@@ -2064,6 +2076,7 @@
           serviceDownloadSettings,
           serviceIconInversions,
           serviceZoomLevels,
+          serviceSpellcheck,
         });
         copiedAppSettings = true;
       }
@@ -2092,6 +2105,7 @@
           serviceDownloadSettings: previousDownloadSettings,
           serviceIconInversions: previousIconInversions,
           serviceZoomLevels: previousZoomLevels,
+          serviceSpellcheck: previousSpellcheck,
         }).catch(() => appSettings);
       }
       if (newId) await deleteService(newId).catch(() => {});
@@ -2163,7 +2177,8 @@
         Object.hasOwn(appSettings.serviceShortcutCaptureOverrides, s.id) ||
         ownValue(appSettings.serviceDownloadSettings, s.id) ||
         ownValue(appSettings.serviceIconInversions, s.id) === true ||
-        ownValue(appSettings.serviceZoomLevels, s.id)
+        ownValue(appSettings.serviceZoomLevels, s.id) ||
+        ownValue(appSettings.serviceSpellcheck, s.id)
       ) {
         const serviceSandboxes = { ...appSettings.serviceSandboxes };
         const serviceCustomUrlTemplates = { ...appSettings.serviceCustomUrlTemplates };
@@ -2171,12 +2186,14 @@
         const serviceDownloadSettings = { ...appSettings.serviceDownloadSettings };
         const serviceIconInversions = { ...appSettings.serviceIconInversions };
         const serviceZoomLevels = { ...appSettings.serviceZoomLevels };
+        const serviceSpellcheck = { ...appSettings.serviceSpellcheck };
         delete serviceSandboxes[s.id];
         delete serviceCustomUrlTemplates[s.id];
         delete serviceShortcutCaptureOverrides[s.id];
         delete serviceDownloadSettings[s.id];
         delete serviceIconInversions[s.id];
         delete serviceZoomLevels[s.id];
+        delete serviceSpellcheck[s.id];
         appSettings = await setAppSettings({
           serviceSandboxes,
           serviceCustomUrlTemplates,
@@ -2184,6 +2201,7 @@
           serviceDownloadSettings,
           serviceIconInversions,
           serviceZoomLevels,
+          serviceSpellcheck,
         });
       }
       await reconcileSavedOrders();
@@ -3031,6 +3049,51 @@
     settingsTab = id as Tab;
     if (settingsTab === "audit" && !auditInitialized) void refreshAuditLog();
     if (settingsTab === "services" && allRecipes.length === 0) void refreshRecipes();
+    if (settingsTab === "spelling") void refreshSpelling();
+  }
+
+  let spellingState = $state<SpellingState | null>(null);
+  let spellingBusy = $state(false);
+  let spellingNewWord = $state("");
+
+  async function refreshSpelling() {
+    try {
+      spellingState = await getSpellingState();
+    } catch (err) {
+      error = `Unable to load spelling settings: ${err}`;
+    }
+  }
+
+  async function changeSpellingWord(action: "add" | "remove", word: string) {
+    if (spellingBusy) return;
+    spellingBusy = true;
+    try {
+      const words = action === "add" ? await addSpellingWord(word) : await removeSpellingWord(word);
+      if (spellingState) spellingState = { ...spellingState, words };
+      if (action === "add") spellingNewWord = "";
+      showToast("Saved", "success");
+    } catch (err) {
+      error = String(err);
+    } finally {
+      spellingBusy = false;
+    }
+  }
+
+  function setGlobalSpellingLanguage(tag: string, selected: boolean) {
+    const languages = toggleLanguage(appSettings.spellcheckLanguages, tag, selected);
+    if (languages.length > 8) {
+      error = "Choose at most 8 spelling languages.";
+      return;
+    }
+    void saveAppSetting("spellcheckLanguages", languages);
+  }
+
+  function serviceSpellcheckOverride(serviceId: string): ServiceSpellcheckOverride {
+    return ownValue(appSettings.serviceSpellcheck, serviceId) ?? {};
+  }
+
+  function saveServiceSpellcheck(serviceId: string, patch: ServiceSpellcheckPatch) {
+    void saveAppSetting("serviceSpellcheck", withServiceSpellcheckPatch(appSettings.serviceSpellcheck, serviceId, patch));
   }
 
   async function doExportBackup() {
@@ -3903,6 +3966,8 @@
         {@const settingsServiceId = settingsSvc.id}
         {@const settingsServiceDownload = serviceDownloadOverride(settingsServiceId)}
         {@const settingsServiceZoom = serviceZoomPercent(settingsServiceId)}
+        {@const spellingOverride = serviceSpellcheckOverride(settingsServiceId)}
+        {@const spellingEffective = resolveEffectiveSpellcheck(appSettings, settingsServiceId)}
         <div class="panel">
           <div class="panel-head">
             <h2>Settings — {serviceLabel(settingsSvc)}</h2>
@@ -3971,6 +4036,60 @@
               </select>
             </label>
             <p class="desc">Scale this service's website without changing Tauridium's interface. Saved immediately and restored whenever the service webview is created.</p>
+          </div>
+
+          <div class="set-title">Spelling</div>
+          <div class="setrow">
+            <label class="block">
+              Spell checking
+              <select
+                class="select"
+                aria-label={`Spell checking for ${serviceLabel(settingsSvc)}`}
+                value={spellingOverride.enabled === undefined ? "inherit" : spellingOverride.enabled ? "on" : "off"}
+                onchange={(event) => {
+                  const choice = event.currentTarget.value;
+                  saveServiceSpellcheck(settingsServiceId, { enabled: choice === "inherit" ? null : choice === "on" });
+                }}
+              >
+                <option value="inherit">Use global setting ({appSettings.spellcheckEnabled ? "On" : "Off"})</option>
+                <option value="on">On</option>
+                <option value="off">Off</option>
+              </select>
+            </label>
+            {#if spellingState?.controls.languages !== false}
+            <label class="block">
+              Languages
+              <select
+                class="select"
+                aria-label={`Spelling languages for ${serviceLabel(settingsSvc)}`}
+                value={spellingOverride.languages === undefined ? "inherit" : "custom"}
+                onchange={(event) => {
+                  const custom = event.currentTarget.value === "custom";
+                  saveServiceSpellcheck(settingsServiceId, { languages: custom ? [...spellingEffective.languages] : null });
+                }}
+              >
+                <option value="inherit">Use global languages</option>
+                <option value="custom">Choose languages for this service</option>
+              </select>
+            </label>
+            {#if spellingOverride.languages !== undefined}
+              <div class="spelling-language-grid" role="group" aria-label={`Spelling languages for ${serviceLabel(settingsSvc)}`}>
+                {#each spellingState?.languages ?? [] as language (language.tag)}
+                  {@const checked = spellingOverride.languages.includes(language.tag)}
+                  <label class="spelling-language" title={language.reason ?? undefined}>
+                    <input
+                      type="checkbox"
+                      {checked}
+                      disabled={!language.available && !checked}
+                      onchange={(event) => saveServiceSpellcheck(settingsServiceId, { languages: toggleLanguage(spellingOverride.languages ?? [], language.tag, event.currentTarget.checked) })}
+                    />
+                    <span>{language.displayName}{language.available ? "" : " (not installed)"}</span>
+                  </label>
+                {/each}
+              </div>
+            {/if}
+            {/if}
+            <p class="desc">Overrides the global spelling settings for this service only.{spellingState?.controls.languages === false ? " Languages are managed by your system." : " Services that share a sandbox share one spell checker, so the most recent change applies to all of them."} Saved immediately.</p>
           </div>
 
           <div class="set-title">Keyboard shortcuts</div>
@@ -4414,7 +4533,7 @@
           </div>
 
           <nav class="settings-tabs" aria-label="Settings sections">
-            {#each [["general", "General"], ["services", "Services"], ["workspaces", "Workspaces"], ["appearance", "Appearance"], ["keybindings", "Keybinds"], ["sandbox", "Sandbox"], ["privacy", "Privacy"], ["backup", "Backup"], ["audit", "Audit log"], ["advanced", "Advanced"], ["updates", "Updates"], ["about", "About"]] as [id, label] (id)}
+            {#each [["general", "General"], ["services", "Services"], ["workspaces", "Workspaces"], ["appearance", "Appearance"], ["spelling", "Spelling"], ["keybindings", "Keybinds"], ["sandbox", "Sandbox"], ["privacy", "Privacy"], ["backup", "Backup"], ["audit", "Audit log"], ["advanced", "Advanced"], ["updates", "Updates"], ["about", "About"]] as [id, label] (id)}
               <button
                 class="setting-tab"
                 class:on={settingsTab === id}
@@ -5084,6 +5203,65 @@
                       <div class="setting-copy"><span class="setting-label">Inactive icon dimming</span><span class="setting-description">Control how strongly inactive grayscale icons are dimmed.</span></div>
                       <div class="range-control"><input class="range" type="range" min="0" max="100" value={appSettings.grayscaleDim} aria-label="Inactive icon dimming" onchange={(e) => saveAppSetting("grayscaleDim", Number(e.currentTarget.value))} /><span>{appSettings.grayscaleDim}%</span></div>
                     </div>
+                  {/if}
+                </div>
+              </section>
+            {:else if settingsTab === "spelling"}
+              <section class="settings-section" aria-labelledby="settings-spelling-check">
+                <div class="section-heading"><h3 id="settings-spelling-check">Spell checking</h3><p>Misspelled words are underlined in text fields on websites, and the right-click menu offers corrections. Checking happens on this device only; typed text is never sent anywhere.</p></div>
+                <div class="settings-list">
+                  {@render appToggle("Check spelling", "Underline misspelled words while you type. Each service can override this in its own settings.", "spellcheckEnabled", appSettings.spellcheckEnabled)}
+                </div>
+              </section>
+              <section class="settings-section" aria-labelledby="settings-spelling-languages">
+                <div class="section-heading"><h3 id="settings-spelling-languages">Languages</h3><p>{#if spellingState && !spellingState.controls.languages}{spellingState.controls.platform} chooses the spelling languages.{:else}A word is accepted if it is correct in any selected language. With none selected, your system language{spellingState ? ` (${spellingState.systemLanguage})` : ""} is used.{/if}</p></div>
+                <div class="settings-list">
+                  {#if spellingState && !spellingState.controls.languages}
+                    <div class="setting-card info-card">
+                      <div class="setting-copy"><span class="setting-label">Managed by {spellingState.controls.platform}</span><span class="setting-description">{spellingState.controls.platform === "Windows" ? "Spelling follows your Windows language settings and cannot be set per app or per service." : "Spelling follows your macOS language and keyboard settings (System Settings, Keyboard, Text Input) and cannot be set per app or per service."}</span></div>
+                      <span class="status-badge">System</span>
+                    </div>
+                  {:else}
+                  <div class="setting-card setting-card-stack">
+                    <div class="spelling-language-grid" role="group" aria-label="Spelling languages">
+                      {#each spellingState?.languages ?? [] as language (language.tag)}
+                        {@const checked = appSettings.spellcheckLanguages.includes(language.tag)}
+                        <label class="spelling-language" title={language.reason ?? undefined}>
+                          <input type="checkbox" {checked} disabled={!language.available && !checked} onchange={(event) => setGlobalSpellingLanguage(language.tag, event.currentTarget.checked)} />
+                          <span>{language.displayName}{language.available ? "" : " (not installed)"}</span>
+                        </label>
+                      {:else}
+                        <p class="desc">No spelling dictionaries were found. Install a Hunspell dictionary package for your language (for example hunspell-en-us) and reopen this page.</p>
+                      {/each}
+                    </div>
+                  </div>
+                  {/if}
+                </div>
+              </section>
+              <section class="settings-section" aria-labelledby="settings-spelling-dictionary">
+                <div class="section-heading"><h3 id="settings-spelling-dictionary">Personal dictionary</h3><p>{#if spellingState && !spellingState.controls.dictionary}{spellingState.controls.platform} keeps your personal dictionary.{:else}Words you add are never flagged, in every service and language. They are included in backups.{/if}</p></div>
+                <div class="settings-list">
+                  {#if spellingState && !spellingState.controls.dictionary}
+                    <div class="setting-card info-card">
+                      <div class="setting-copy"><span class="setting-label">Managed by {spellingState.controls.platform}</span><span class="setting-description">Right-click a flagged word on a website and choose the option to add it to the dictionary. {spellingState.controls.platform} keeps that list, so it is not shown here or included in Tauridium backups.</span></div>
+                      <span class="status-badge">System</span>
+                    </div>
+                  {:else}
+                  <div class="setting-card setting-card-stack">
+                    <form class="spelling-add" onsubmit={(event) => { event.preventDefault(); void changeSpellingWord("add", spellingNewWord); }}>
+                      <input class="input" type="text" aria-label="Word to add" placeholder="Add a word" maxlength="64" bind:value={spellingNewWord} />
+                      <button class="secondary sm" type="submit" disabled={spellingBusy || !spellingNewWord.trim()}>Add word</button>
+                    </form>
+                    {#if spellingState && spellingState.words.length}
+                      <ul class="spelling-words" aria-label="Personal dictionary words">
+                        {#each spellingState.words as word (word)}
+                          <li><span>{word}</span><button class="secondary sm" disabled={spellingBusy} aria-label={`Remove ${word} from the dictionary`} onclick={() => void changeSpellingWord("remove", word)}>Remove</button></li>
+                        {/each}
+                      </ul>
+                    {:else}
+                      <p class="desc">No words yet. Right-click a flagged word on a website and choose to add it, or type one above.</p>
+                    {/if}
+                  </div>
                   {/if}
                 </div>
               </section>
@@ -6050,6 +6228,12 @@
   .service-sandbox-help { margin: 0; }
   .service-download-manager { gap: 10px; }
   .download-override-toggle { width: fit-content; max-width: 100%; }
+  .spelling-language-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px 14px; max-height: 260px; overflow-y: auto; }
+  .spelling-language { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .spelling-add { display: flex; flex-wrap: wrap; gap: 8px; }
+  .spelling-add .input { flex: 1 1 180px; min-width: 0; }
+  .spelling-words { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 320px; overflow-y: auto; }
+  .spelling-words li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0; border-top: 1px solid var(--border); }
   .download-setting-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; box-sizing: border-box; padding: 10px 0 0; border-top: 1px solid var(--border); }
   label.download-setting-row { cursor: pointer; }
   .download-setting-row .desc { margin-left: 0; }

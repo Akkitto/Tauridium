@@ -4603,6 +4603,7 @@ dependencies = [
  "tauri-plugin-window-state",
  "tempfile",
  "tokio",
+ "webkit2gtk",
  "windows-native-keyring-store",
  "windows-sys 0.61.2",
  "wry",

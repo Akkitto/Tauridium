@@ -188,6 +188,9 @@ struct IntegrityMaterial<'a> {
     app_settings: &'a Value,
     local_profile: &'a Value,
     custom_recipes: &'a [CustomRecipeBackup],
+    // Absent in backups made before spelling support so their digest is unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    spelling_words: Option<&'a [String]>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -202,6 +205,10 @@ pub(crate) struct BackupDocument {
     app_settings: Value,
     local_profile: Value,
     custom_recipes: Vec<CustomRecipeBackup>,
+    /// Personal spelling dictionary. `None` for backups made before spelling
+    /// support, which must not clear an existing dictionary on restore.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    spelling_words: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     integrity: Option<BackupIntegrity>,
     #[serde(skip)]
@@ -250,6 +257,7 @@ impl BackupDocument {
             app_settings,
             local_profile,
             custom_recipes,
+            spelling_words: None,
             integrity: None,
             source_schema: BACKUP_SCHEMA_CURRENT,
         };
@@ -298,6 +306,7 @@ impl BackupDocument {
             app_settings: &self.app_settings,
             local_profile: &self.local_profile,
             custom_recipes: &self.custom_recipes,
+            spelling_words: self.spelling_words.as_deref(),
         }
     }
 
@@ -352,6 +361,15 @@ impl BackupDocument {
         if !self.app_settings.is_object() {
             return Err("Backup appSettings must be a JSON object".into());
         }
+        if let Some(words) = &self.spelling_words {
+            if words.len() > crate::spelling::MAX_WORDS {
+                return Err("Backup spellingWords exceeds the dictionary limit".into());
+            }
+            for word in words {
+                crate::spelling::validate_word(word)
+                    .map_err(|error| format!("Backup spellingWords is invalid: {error}"))?;
+            }
+        }
         if !self.local_profile.is_object() {
             return Err("Backup localProfile must be a JSON object".into());
         }
@@ -368,6 +386,17 @@ impl BackupDocument {
 
     pub(crate) fn custom_recipes(&self) -> &[CustomRecipeBackup] {
         &self.custom_recipes
+    }
+
+    /// Records the personal dictionary and refreshes the integrity digest.
+    pub(crate) fn with_spelling_words(mut self, words: Vec<String>) -> Self {
+        self.spelling_words = Some(words);
+        self.refresh_integrity();
+        self
+    }
+
+    pub(crate) fn spelling_words(&self) -> Option<&[String]> {
+        self.spelling_words.as_deref()
     }
 
     pub(crate) fn summary(&self, path: &Path) -> BackupSummary {
@@ -500,6 +529,44 @@ mod tests {
         assert_eq!(loaded.custom_recipes().len(), 1);
         assert_eq!(loaded.app_settings()["theme"], "dark");
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn backup_carries_spelling_words_with_integrity() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("backup.json");
+        let document = sample().with_spelling_words(vec!["Alpha".into(), "Beta".into()]);
+        save(&path, &document).unwrap();
+        let loaded = load(&path).unwrap();
+        assert_eq!(loaded.spelling_words().unwrap(), ["Alpha", "Beta"]);
+
+        // An empty dictionary is still recorded so restore can clear words.
+        let empty = sample().with_spelling_words(Vec::new());
+        save(&path, &empty).unwrap();
+        assert_eq!(load(&path).unwrap().spelling_words().unwrap().len(), 0);
+
+        // Tampering with the words breaks the digest.
+        let mut value = serde_json::to_value(&document).unwrap();
+        value["spellingWords"] = serde_json::json!(["Alpha", "Evil"]);
+        assert!(BackupDocument::from_value(value).is_err());
+    }
+
+    #[test]
+    fn backup_without_spelling_words_keeps_its_digest_and_does_not_clear_dictionary() {
+        let document = sample();
+        assert!(document.spelling_words().is_none());
+        let value = serde_json::to_value(&document).unwrap();
+        assert!(value.get("spellingWords").is_none());
+        let restored = BackupDocument::from_value(value).unwrap();
+        assert!(restored.spelling_words().is_none());
+    }
+
+    #[test]
+    fn backup_rejects_invalid_spelling_words() {
+        let mut value =
+            serde_json::to_value(sample().with_spelling_words(vec!["ok".into()])).unwrap();
+        value["spellingWords"] = serde_json::json!(["two words"]);
+        assert!(BackupDocument::from_value(value).is_err());
     }
 
     #[test]

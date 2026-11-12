@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { ServiceSpellcheckOverride } from "./spelling";
 
 // Models mirror the Ferdium server API (/v1).
 export interface MeUser {
@@ -367,6 +368,9 @@ export interface AppSettings {
   serviceIconInversions: Record<string, boolean>;
   trackingPreventionExceptions: Record<string, boolean>;
   serviceZoomLevels: Record<string, number>;
+  spellcheckEnabled: boolean;
+  spellcheckLanguages: string[];
+  serviceSpellcheck: Record<string, ServiceSpellcheckOverride>;
   serviceOrder: string[];
   workspaceOrder: string[];
   workspaceQuickSwitchOrder: "custom" | "customReverse" | "alphabetical" | "alphabeticalReverse" | "recent" | "recentReverse";
@@ -437,6 +441,40 @@ export function setAppSettings(
   patch: Partial<AppSettings>,
 ): Promise<AppSettings> {
   return invoke("set_app_settings", { patch });
+}
+
+export interface SpellingLanguage {
+  tag: string;
+  displayName: string;
+  available: boolean;
+  reason: string | null;
+}
+
+export interface SpellingState {
+  languages: SpellingLanguage[];
+  systemLanguage: string;
+  words: string[];
+  controls: SpellingControls;
+}
+
+/** Which spelling controls this platform's engine honours. */
+export interface SpellingControls {
+  toggle: boolean;
+  languages: boolean;
+  dictionary: boolean;
+  platform: string;
+}
+
+export function getSpellingState(): Promise<SpellingState> {
+  return invoke("spelling_get_state");
+}
+
+export function addSpellingWord(word: string): Promise<string[]> {
+  return invoke("spelling_add_word", { word });
+}
+
+export function removeSpellingWord(word: string): Promise<string[]> {
+  return invoke("spelling_remove_word", { word });
 }
 
 export interface BackupSummary {

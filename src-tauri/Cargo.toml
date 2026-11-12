@@ -67,6 +67,8 @@ tauri-plugin-window-state = "=2.5.0"
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus-secret-service-keyring-store = { version = "=1.0.1", features = ["crypto-rust"] }
 gtk = "=0.18.2"
+# Same locked version Tauri/Wry already use; needed for the spell-checking context API.
+webkit2gtk = { version = "=2.0.2", default-features = false, features = ["v2_40"] }
 # The distribution feature deliberately selects the Linux dialog backend. Native
 # packages retain GTK3; Flatpak enables xdg-portal + Wayland explicitly.
 # Its independent zbus portal connection selects Tokio; rfd 0.17 owns its runtime.
