@@ -519,6 +519,39 @@ fn open(app: &AppHandle, request: OpenRequest) -> Result<u64, String> {
 
 /// Hides the menu. The renderer stays alive so the next right-click does not pay for a new
 /// WebView. `restore_focus` returns keyboard focus to the shell, as a native menu would.
+/// Closes the menu when the main window loses focus to another application. On Windows the
+/// overlay is a child HWND, so focusing it also reports the main window as unfocused; that
+/// must not dismiss the menu, hence the foreground-process check.
+pub(crate) fn window_focus_lost(app: &AppHandle) {
+    if foreground_is_this_process() {
+        return;
+    }
+    close(app, false, "window-focus-lost");
+}
+
+#[cfg(windows)]
+fn foreground_is_this_process() -> bool {
+    use windows_sys::Win32::System::Threading::GetCurrentProcessId;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetForegroundWindow, GetWindowThreadProcessId,
+    };
+    // SAFETY: both calls only read process state; a null foreground window yields pid 0.
+    unsafe {
+        let foreground = GetForegroundWindow();
+        if foreground.is_null() {
+            return false;
+        }
+        let mut pid = 0_u32;
+        GetWindowThreadProcessId(foreground, &mut pid);
+        pid == GetCurrentProcessId()
+    }
+}
+
+#[cfg(not(windows))]
+fn foreground_is_this_process() -> bool {
+    false
+}
+
 pub(crate) fn close(app: &AppHandle, restore_focus: bool, reason: &str) {
     close_menu(app, restore_focus, None, reason);
 }

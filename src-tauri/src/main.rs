@@ -5717,7 +5717,7 @@ fn main() {
                         window_chrome::refresh(&handle);
                     },
                     WindowEvent::Focused(false) => {
-                        service_menu::close(&handle, false, "window-focus-lost");
+                        service_menu::window_focus_lost(&handle);
                         download_toast::refresh(&handle);
                         window_chrome::refresh(&handle);
                     },
