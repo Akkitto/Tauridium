@@ -97,6 +97,28 @@ def safe_loader_summary(text: str) -> dict:
   }
 
 
+def media_response(body: bytes, range_header: str | None) -> tuple[int, bytes, str | None]:
+  """Serve media seek requests as a real web server would, including suffixes."""
+  if not range_header or not range_header.startswith('bytes=') or ',' in range_header:
+    return 200, body, None
+  match = re.fullmatch(r'bytes=(\d*)-(\d*)', range_header) if len(range_header) <= 128 else None
+  size = len(body)
+  if not match or not size or not any(match.groups()):
+    return 416, b'', f'bytes */{size}'
+  first, last = match.groups()
+  if first:
+    start = int(first)
+    end = min(int(last) if last else size - 1, size - 1)
+  else:
+    count = int(last)
+    if not count:
+      return 416, b'', f'bytes */{size}'
+    start, end = max(0, size - count), size - 1
+  if start > end or start >= size:
+    return 416, b'', f'bytes */{size}'
+  return 206, body[start:end + 1], f'bytes {start}-{end}/{size}'
+
+
 def producer_media_diagnostics(appdir: Path, profile: Path, environment: dict[str, str], ogg: Path):
   # A producer's native gst tools have the same ABI as the libraries it bundled.
   # This is diagnostic only; the real WebView/PCM assertions remain mandatory.
@@ -161,6 +183,7 @@ def capture_audio(environment: dict[str, str], seconds=1.0) -> tuple[int, float]
 def run(image: Path, output: Path) -> dict:
   state = {'step': 0, 'phase': 'silent'}
   reports = []
+  media_requests = []
   lock = threading.Lock()
   app = pulse = server = None
   completed = []
@@ -216,6 +239,8 @@ def run(image: Path, output: Path) -> dict:
       check=True, timeout=30, stdout=subprocess.DEVNULL)
 
     class Handler(BaseHTTPRequestHandler):
+      protocol_version = 'HTTP/1.1'
+
       def log_message(self, *_args):
         pass
 
@@ -229,12 +254,28 @@ def run(image: Path, output: Path) -> dict:
           self.send_error(404)
           return
         body, mime = bodies[self.path]
-        self.send_response(200)
+        status, content_range = 200, None
+        is_media = self.path.startswith('/tone.')
+        if is_media:
+          requested = self.headers.get('Range')
+          status, body, content_range = media_response(body, requested)
+          with lock:
+            if len(media_requests) < 32:
+              media_requests.append({'format': self.path.removeprefix('/tone.'),
+                'rangeRequested': requested is not None, 'status': status, 'bytes': len(body)})
+        self.send_response(status)
         self.send_header('Content-Type', mime)
         self.send_header('Content-Length', str(len(body)))
         self.send_header('Cache-Control', 'no-store')
+        if is_media:
+          self.send_header('Accept-Ranges', 'bytes')
+        if content_range is not None:
+          self.send_header('Content-Range', content_range)
         self.end_headers()
-        self.wfile.write(body)
+        if self.command != 'HEAD':
+          self.wfile.write(body)
+
+      do_HEAD = do_GET
 
       def do_POST(self):
         try:
@@ -316,6 +357,7 @@ def run(image: Path, output: Path) -> dict:
                 if key in ('audio/wav', 'audio/ogg', 'audio/ogg; codecs="vorbis"',
                   'audio/ogg; codecs="opus"', 'audio/mpeg') and value in ('', 'maybe', 'probably')}), flush=True)
               if matches[-1].get('error') or matches[-1].get('started') is not True:
+                print('Synthetic media delivery: ' + json.dumps(media_requests), flush=True)
                 app_log.flush()
                 with (output / 'application.log').open(encoding='utf-8', errors='replace') as diagnostic:
                   print('WebKit loader summary: ' + json.dumps(safe_loader_summary(diagnostic.read(2 * 1024**2))), flush=True)

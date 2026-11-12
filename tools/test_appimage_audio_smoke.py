@@ -7,6 +7,23 @@ import appimage_audio_smoke as smoke
 
 
 class AppImageAudioSmokeTests(unittest.TestCase):
+  def test_media_fixture_supports_real_byte_range_and_suffix_requests(self):
+    payload = b'0123456789'
+    for requested, expected in (
+      (None, (200, payload, None)),
+      ('bytes=2-4', (206, b'234', 'bytes 2-4/10')),
+      ('bytes=7-', (206, b'789', 'bytes 7-9/10')),
+      ('bytes=-3', (206, b'789', 'bytes 7-9/10')),
+      ('bytes=8-200', (206, b'89', 'bytes 8-9/10')),
+      ('bytes=10-', (416, b'', 'bytes */10')),
+      ('bytes=5-2', (416, b'', 'bytes */10')),
+      ('bytes=-0', (416, b'', 'bytes */10')),
+      ('bytes=-', (416, b'', 'bytes */10')),
+      ('bytes=0-1,4-5', (200, payload, None)),
+    ):
+      with self.subTest(requested=requested):
+        self.assertEqual(smoke.media_response(payload, requested), expected)
+
   def test_loader_diagnostics_do_not_publish_raw_paths(self):
     text = "Failed loading /private/synthetic-home/libgstvorbis.so: libvorbis.so.0: undefined symbol: synthetic_symbol\nGStreamer element appsrc not found"
     result = smoke.safe_loader_summary(text)
