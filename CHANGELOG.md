@@ -4,6 +4,10 @@
 
 ## [1.0.9] - 2026-11-12
 
+### Fixed
+
+- Forward the selected display and declared network context when running a private Flatpak development candidate.
+
 ### Changed
 
 - Update Vite to 8.3.6, Vitest to 5.1.0 and svelte-check to 4.7.8 with synchronized locked tooling and packaging inputs.
@@ -1546,6 +1550,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ## [1.0.9] - 2026-11-12
+
+### Fixed
+
+- Forward the selected display and declared network context when running a private Flatpak development candidate.
 
 ### Changed
 

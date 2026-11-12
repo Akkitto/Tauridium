@@ -116,6 +116,19 @@ class FlatpakCandidateTests(unittest.TestCase):
     self.assertNotIn("--with-appdir", command)
     self.assertNotIn("install", command)
 
+  def test_runtime_preserves_the_selected_x11_display_and_declared_network(self):
+    profile = self.root / "display-profile"
+    profile.mkdir()
+    with mock.patch.dict(os.environ, {"DISPLAY": ":91", "GDK_BACKEND": "x11"}, clear=True), mock.patch.object(candidate, "flatpak", return_value="flatpak"):
+      command = candidate.runtime_command(self.output, profile)
+    self.assertIn("--env=DISPLAY=:91", command)
+    self.assertIn("--share=network", command)
+    self.assertIn("--socket=x11", command)
+    self.assertIn("--nosocket=wayland", command)
+    self.assertIn("--nofilesystem=host", command)
+    self.assertIn("--nofilesystem=home", command)
+    self.assertIn("--no-talk-name=org.freedesktop.secrets", command)
+
   def test_unreviewed_permission_addition_is_rejected(self):
     path = self.output / "build/metadata"
     path.write_text(METADATA.replace("devices=dri;", "devices=dri;\nfilesystems=host;"), encoding="utf-8")

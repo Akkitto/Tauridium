@@ -81,7 +81,7 @@ def flatpak() -> str:
 
 
 def runtime_command(output: Path, profile: Path) -> list[str]:
-  arguments = [flatpak(), "build", "--runtime", "--readonly", "--die-with-parent",
+  arguments = [flatpak(), "build", "--runtime", "--readonly", "--die-with-parent", "--share=network",
                "--nofilesystem=host", "--nofilesystem=home", f"--filesystem={profile}",
                "--no-talk-name=org.freedesktop.secrets"]
   for key, child in (("XDG_DATA_HOME", "data"), ("XDG_CONFIG_HOME", "config"),
@@ -95,6 +95,8 @@ def runtime_command(output: Path, profile: Path) -> list[str]:
   for key in ("GDK_BACKEND", "LIBGL_ALWAYS_SOFTWARE", "WEBKIT_DISABLE_DMABUF_RENDERER"):
     if os.environ.get(key):
       arguments.append(f"--env={key}={os.environ[key]}")
+  if os.environ.get("DISPLAY"):
+    arguments.append(f"--env=DISPLAY={os.environ['DISPLAY']}")
   if os.environ.get("GDK_BACKEND") == "x11":
     arguments.extend(["--nosocket=wayland", "--socket=x11"])
   return [*arguments, str(output / "build"), "/app/bin/tauridium"]
