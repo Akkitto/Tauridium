@@ -86,6 +86,9 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: src-tauri
+          # Keep key-free compilation when a playback diagnostic fails.
+          # Protected release producers never restore these CI caches.
+          cache-on-failure: true
       - name: Install just
         run: cargo install just --locked --version 1.56.0
       - name: Initialize media-complete build environment
