@@ -84,7 +84,10 @@ def pcm_rms(payload: bytes) -> float:
   return math.sqrt(sum(value * value for value in samples) / len(samples)) if samples else 0.0
 
 
-def capture_audio(environment: dict[str, str], seconds=1.5) -> tuple[int, float]:
+def capture_audio(environment: dict[str, str], seconds=1.0) -> tuple[int, float]:
+  if not 0 < seconds <= 5:
+    raise ValueError('Invalid private audio sample duration')
+  required_bytes = round(16000 * seconds) * 2
   process = subprocess.Popen(['parec', '--device=tauridium_audio.monitor', '--format=s16le',
     '--rate=16000', '--channels=1', '--latency-msec=30'], env=environment,
     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
@@ -92,8 +95,10 @@ def capture_audio(environment: dict[str, str], seconds=1.5) -> tuple[int, float]
   try:
     with selectors.DefaultSelector() as selector:
       selector.register(process.stdout, selectors.EVENT_READ)
-      deadline = time.monotonic() + seconds
-      while time.monotonic() < deadline:
+      # A null sink may need to resume after the last playback stream closes.
+      # Count actual PCM frames; startup latency must not masquerade as silence.
+      deadline = time.monotonic() + 10
+      while len(payload) < required_bytes and time.monotonic() < deadline:
         if process.poll() is not None:
           raise RuntimeError('Private null-sink monitor exited')
         if selector.select(timeout=min(0.1, max(0, deadline - time.monotonic()))):
@@ -103,9 +108,9 @@ def capture_audio(environment: dict[str, str], seconds=1.5) -> tuple[int, float]
           payload.extend(block)
           if len(payload) > 256 * 1024:
             raise RuntimeError('Private audio monitor exceeded its sample budget')
-    if len(payload) < 6400:
+    if len(payload) < required_bytes:
       raise RuntimeError('Insufficient PCM samples from the private audio sink')
-    return len(payload) // 2, pcm_rms(payload)
+    return required_bytes // 2, pcm_rms(payload[:required_bytes])
   finally:
     stop(process)
     process.stdout.close()
