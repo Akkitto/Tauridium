@@ -24,7 +24,7 @@
     </screenshot>
   </screenshots>
   <releases>
-    <release version="1.0.8" date="2026-11-11">
+    <release version="1.0.8" date="2026-11-12">
       <description><p>Bundle the Linux media plugins required by service notification audio, detect incomplete build hosts and verify actual isolated AppImage playback on both architectures.</p></description>
     </release>
     <release version="1.0.7" date="2026-11-11">
