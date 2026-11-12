@@ -7,6 +7,12 @@ const TOAST_COMMANDS: &[&str] = &[
     "resize_download_toast",
 ];
 
+const SERVICE_MENU_COMMANDS: &[&str] = &[
+    "get_service_menu",
+    "dismiss_service_menu",
+    "service_menu_action",
+];
+
 const TITLEBAR_COMMANDS: &[&str] = &[
     "get_window_chrome",
     "open_window_menu",
@@ -17,10 +23,13 @@ pub(crate) fn command_allowed(label: &str, command: &str) -> bool {
     match label {
         "main" => {
             command == "get_window_chrome"
-                || (!TOAST_COMMANDS.contains(&command) && !TITLEBAR_COMMANDS.contains(&command))
+                || (!TOAST_COMMANDS.contains(&command)
+                    && !TITLEBAR_COMMANDS.contains(&command)
+                    && !SERVICE_MENU_COMMANDS.contains(&command))
         }
         "window-titlebar" => TITLEBAR_COMMANDS.contains(&command),
         "download-toast" => TOAST_COMMANDS.contains(&command),
+        "service-menu" => SERVICE_MENU_COMMANDS.contains(&command),
         _ => false,
     }
 }
@@ -58,6 +67,7 @@ mod tests {
             "main-child",
             "download-toast-child",
             "window-titlebar-child",
+            "service-menu-child",
         ] {
             for command in [
                 "get_app_metadata",
@@ -67,6 +77,8 @@ mod tests {
                 "get_window_chrome",
                 "open_window_menu",
                 "focus_window_content",
+                "open_service_menu",
+                "service_menu_action",
             ] {
                 assert!(!command_allowed(label, command));
             }
@@ -74,6 +86,16 @@ mod tests {
         assert!(command_allowed("main", "get_app_metadata"));
         assert!(!command_allowed("main", "get_download_toast"));
         assert!(command_allowed("download-toast", "get_download_toast"));
+        assert!(command_allowed("service-menu", "service_menu_action"));
+        assert!(!command_allowed("main", "service_menu_action"));
+        assert!(!command_allowed("main", "get_service_menu"));
+        assert!(command_allowed("main", "open_service_menu"));
+        assert!(command_allowed("main", "settle_service_menu"));
+        assert!(!command_allowed("service-menu", "settle_service_menu"));
+        assert!(!command_allowed("service-menu", "open_service_menu"));
+        assert!(!command_allowed("service-menu", "clear_service_cache"));
+        assert!(!command_allowed("download-toast", "service_menu_action"));
+        assert!(!command_allowed("window-titlebar", "service_menu_action"));
         assert!(!command_allowed("download-toast", "clear_service_cache"));
         for command in TITLEBAR_COMMANDS {
             assert!(command_allowed("window-titlebar", command));

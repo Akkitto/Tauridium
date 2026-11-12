@@ -32,6 +32,7 @@ mod recipe_source;
 mod recipes;
 mod service_badges;
 mod service_export;
+mod service_menu;
 mod single_instance;
 mod startup_diagnostics;
 mod storage_security;
@@ -2430,6 +2431,7 @@ async fn create_service_webview(
     }
     state.created.lock().unwrap().insert(service_id.to_string());
     download_toast::restack(win.app_handle());
+    service_menu::restack(win.app_handle());
     Ok(())
 }
 
@@ -2476,6 +2478,7 @@ fn activate_service_webview(
         state.preloading.lock().unwrap().remove(service_id);
         *state.active.lock().unwrap() = Some(service_id.to_string());
         download_toast::restack(app);
+        service_menu::restack(app);
     }
     activated
 }
@@ -5653,6 +5656,7 @@ fn main() {
         )
         .manage(AppState::default())
         .manage(download_toast::DownloadToastState::default())
+        .manage(service_menu::ServiceMenuState::default())
         .manage(window_chrome::WindowChromeState::default())
         .setup(move |app| {
             startup_diagnostics::log("primary", "tauri.setup.begin", "Tauri setup callback entered");
@@ -5700,7 +5704,10 @@ fn main() {
             if let Some(win) = app.get_window("main") {
                 startup_diagnostics::log("primary", "window.events", "main window event handler registered");
                 win.on_window_event(move |event| match event {
-                    WindowEvent::Resized(_) => reposition_active(&handle),
+                    WindowEvent::Resized(_) => {
+                        service_menu::close(&handle, false, "window-resized");
+                        reposition_active(&handle)
+                    },
                     // When focus returns (for example after closing devtools), reapply the
                     // layout because the service webview may have been resized and
                     // overlapped the sidebar.
@@ -5710,11 +5717,15 @@ fn main() {
                         window_chrome::refresh(&handle);
                     },
                     WindowEvent::Focused(false) => {
+                        service_menu::close(&handle, false, "window-focus-lost");
                         download_toast::refresh(&handle);
                         window_chrome::refresh(&handle);
                     },
                     WindowEvent::ThemeChanged(_) => window_chrome::refresh(&handle),
-                    WindowEvent::ScaleFactorChanged { .. } => reposition_active(&handle),
+                    WindowEvent::ScaleFactorChanged { .. } => {
+                        service_menu::close(&handle, false, "scale-factor-changed");
+                        reposition_active(&handle)
+                    },
                     WindowEvent::CloseRequested { api, .. } => {
                         // Persist geometry/state before either hiding to tray or allowing a real close.
                         save_main_window_state(&handle);
@@ -5959,6 +5970,12 @@ fn main() {
             download_toast::get_download_toast,
             download_toast::dismiss_download_toast,
             download_toast::resize_download_toast,
+            service_menu::open_service_menu,
+            service_menu::close_service_menu,
+            service_menu::settle_service_menu,
+            service_menu::get_service_menu,
+            service_menu::dismiss_service_menu,
+            service_menu::service_menu_action,
             set_service_zoom,
             toggle_devtools_command
             ];

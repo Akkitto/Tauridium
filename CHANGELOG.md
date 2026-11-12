@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Draw the styled service context menu above embedded service webviews so it is no longer cut off where it extends over the service area. It uses a native overlay on Linux, Windows and macOS and falls back to the in-window menu if the overlay cannot open.
+
 ## [1.0.9] - 2026-11-12
 
 ### Fixed
