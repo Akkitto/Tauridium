@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-11-12
+
+### Fixed
+
+- Include GStreamer audio plugins and the scanner in Linux AppImages, preventing
+  missing-element renderer crashes when services play notification sounds.
+- Detect missing media plugins on otherwise initialized Linux build hosts and
+  reject incomplete AppImage prerequisites before starting a bundle build.
+- Require actual WAV, Ogg and WebAudio output through isolated account-free
+  x64/ARM64 production AppImage tests before signing and publication.
+
 ## [1.0.7] - 2026-11-11
 
 ### Fixed

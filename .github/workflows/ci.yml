@@ -54,6 +54,56 @@ jobs:
       - name: Run canonical gates
         run: just ci
 
+  linux-appimage:
+    name: Linux AppImage audio ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: x64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - label: ARM64
+            os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # 1.97.1
+        with:
+          toolchain: 1.97.1
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src-tauri
+          # Keep key-free compilation when a playback diagnostic fails.
+          # Protected release producers never restore these CI caches.
+          cache-on-failure: true
+      - name: Install just
+        run: cargo install just --locked --version 1.56.0
+      - name: Initialize media-complete build environment
+        run: just init
+      - name: Scan Cargo cache for known malicious crates
+        run: just rust-supply-chain-host
+      - name: Install private headless audio test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb xauth pulseaudio pulseaudio-utils dbus
+      - name: Build actual native AppImage
+        run: just bundle-appimage ${{ matrix.target }}
+      - name: Verify actual AppImage notification audio without host plugins or real speakers
+        run: just appimage-audio ${{ matrix.target }}
+
   windows-verifier:
     name: Windows verifier ${{ matrix.label }}
     strategy:

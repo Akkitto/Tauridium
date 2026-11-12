@@ -1359,6 +1359,8 @@ def main() -> int:
 
   patch_0421 = read("tools/test_patch_0421.py")
   tauri_config = json.loads(read("src-tauri/tauri.conf.json"))
+  if tauri_config.get("bundle", {}).get("linux", {}).get("appimage", {}).get("bundleMediaFramework") is not True:
+    fail("Linux AppImages must include the media framework required by WebKit audio")
   main_window = next(
     (window for window in tauri_config.get("app", {}).get("windows", []) if window.get("label") == "main"),
     None,
@@ -1656,8 +1658,8 @@ def main() -> int:
     fail("tagged release workflow does not pin Rust 1.97.1 in all Rust jobs")
   if "run: just ci" not in ci or "run: just ci" not in release_workflow:
     fail("CI and release workflow must execute the canonical just ci gate")
-  if ci.count("run: just rust-supply-chain-host") != 2:
-    fail("CI must scan both restored Cargo caches for known malicious crates")
+  if ci.count("run: just rust-supply-chain-host") != 3:
+    fail("CI must scan all three restored Cargo cache jobs for known malicious crates")
   if release_workflow.count("run: just rust-supply-chain-host") != 2:
     fail("release workflow must scan build/gate Cargo caches for known malicious crates")
   if "windows-native:" not in ci or "shell: pwsh" not in ci:

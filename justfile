@@ -107,6 +107,14 @@ bundle-target target:
 bundle-target-no-updater target:
   just bundle-target {{target}}
 
+[linux]
+bundle-appimage target:
+  python3 tools/tauri_build.py --ci --target {{target}} --bundles appimage
+
+[linux]
+appimage-audio target:
+  python3 tools/appimage_audio_smoke.py --target {{target}}
+
 run:
   cargo tauri dev
 
