@@ -27,9 +27,9 @@ class Patch0714Tests(unittest.TestCase):
   def test_vitest_mocker_and_spy_are_pinned_to_the_reviewed_v5_cohort(self) -> None:
     # These packages share internal APIs and must advance together. The complete
     # upgraded tree is also checked by the current all-severity npm audit.
-    self.assertEqual(PACKAGE["devDependencies"]["vitest"], "5.0.5")
+    self.assertEqual(PACKAGE["devDependencies"]["vitest"], "5.1.0")
     for package in ("vitest", "@vitest/mocker", "@vitest/spy"):
-      self.assertEqual(LOCK["packages"][f"node_modules/{package}"]["version"], "5.0.5")
+      self.assertEqual(LOCK["packages"][f"node_modules/{package}"]["version"], "5.1.0")
 
   def test_devalue_is_locked_past_reported_advisory_boundary_without_an_override(self) -> None:
     pinned = LOCK["packages"]["node_modules/devalue"]["version"]

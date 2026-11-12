@@ -19,11 +19,14 @@
   <url type="vcs-browser">https://github.com/Akkitto/Tauridium</url>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v1.0.8/data/screenshots/tauridium-0.8.0-main.png</image>
+      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v1.0.9/data/screenshots/tauridium-0.8.0-main.png</image>
       <caption>Tauridium sign-in and local accountless start screen</caption>
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.0.9" date="2026-11-12">
+      <description><p>Refresh locked frontend tooling and migrate Flatpak portal integration to zbus 6 while preserving notification and credential-store compatibility.</p></description>
+    </release>
     <release version="1.0.8" date="2026-11-12">
       <description><p>Bundle the Linux media plugins required by service notification audio, detect incomplete build hosts and verify actual isolated AppImage playback on both architectures.</p></description>
     </release>

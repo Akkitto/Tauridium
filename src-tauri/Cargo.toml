@@ -1,6 +1,6 @@
 [package]
 name = "tauridium"
-version = "1.0.8"
+version = "1.0.9"
 edition = "2021"
 rust-version = "1.97.1"
 description = "Tauridium — lightweight Tauri client for Ferdium"
@@ -23,7 +23,7 @@ native-distribution = [
 ]
 flatpak = [
   "dep:zbus",
-  "zbus/tokio",
+  "dep:futures-lite",
   "tauri-plugin-dialog/xdg-portal",
   "rfd/xdg-portal",
   "rfd/wayland",
@@ -58,9 +58,10 @@ zip = { version = "=9.1.2", default-features = false, features = ["deflate-flate
 tauri-plugin-notification = { version = "=2.8.0", optional = true }
 tauri-plugin-autostart = { version = "2", optional = true }
 tauri-plugin-updater = { version = "=2.14.0", optional = true }
-# Portal calls use the supported blocking API. Notification and OS-vault parents
-# still require zbus 5; migrate those together before adopting zbus 6.
-zbus = { version = "=5.19.0", optional = true }
+# Portal operations use zbus 6 async APIs on its private default runtime.
+# OS-vault/notification parents retain their independently required zbus 5 APIs.
+zbus = { version = "=6.2.1", default-features = false, features = ["proxy", "default-rt"], optional = true }
+futures-lite = { version = "=2.6.1", optional = true }
 tauri-plugin-window-state = "=2.5.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -121,3 +122,8 @@ tauri = { path = "../vendor/tauri" }
 wry = { path = "../vendor/wry" }
 
 # Frame-aware geometry, retaining legacy inner-size records. See vendor patch provenance.
+
+[dev-dependencies]
+# Real private-bus portal regression service; never part of shipped native builds.
+zbus = { version = "=6.2.1", default-features = false, features = ["service", "default-rt"] }
+tempfile = "=3.27.0"

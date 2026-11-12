@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "applicationLockSha256": "b8989acdff7158ed36bc7ec1cd2f01920249260b7c254785e5aee2e4fd741c1f",
+  "applicationLockSha256": "8aae56d5a8d6cb3d17d80e90113c12f46956d353d1f75605b47af263b56aa2cd",
   "builderLockSha256": "6019075d357d3ff887c4fb0f59584c2720971749d95789dd60cee5f42550a202",
   "assessments": [
     {
@@ -11,7 +11,7 @@
       "kind": "unmaintained",
       "expires": "2026-11-15",
       "status": "reviewed-maintenance-warning",
-      "reason": "Re-reviewed official RustSec RUSTSEC-2026-0370 against database 263a4d951a0867d4bddc29dddd6d59427c78f9a7 on 2026-11-02: this remains an informational/unmaintained standalone-crate notice, not a vulnerability or patched standalone release. The exact SHA-256-bound application lock retains zvariant/derive 5.15.1 and zbus_names 4.3.5 through zbus/zbus_macros 5.19.0. Updated tauri-plugin-notification 2.8.0, notify-rust 4.18.2, secret-service 5.2.0 and zbus-secret-service-keyring-store 1.0.1 still independently constrain zbus 5. The rfd 0.17.2/dialog 2.8.4 update removes ashpd, but upgrading only the direct portal dependency to zbus 6 would add another stack without retiring the notification/vault consumers. The previously yanked async-executor 1.14.0 is replaced by non-yanked 1.14.1; a fresh complete lock scan has only the separately assessed maintenance notices and no application vulnerabilities or yanked findings. See docs/ZBUS-MAINTENANCE-REVIEW.md. Whole-lock scanning keeps this exact finding visible; changed lock bytes, versions, vulnerability/unsound kinds or expiry fail closed. Reassessment remains due 2026-11-15 without extension. Source: https://github.com/RustSec/advisory-db/blob/263a4d951a0867d4bddc29dddd6d59427c78f9a7/crates/zvariant/RUSTSEC-2026-0370.md"
+      "reason": "Reviewed 12 November 2026 for the 1.0.9 migration: direct Flatpak portal calls use zbus 6.2.1 with its default runtime, new wire types and real private-bus response regression coverage. Current notification and OS-vault parents independently require zbus 5.19.0 and these standalone wire/name crates. Retaining their required versions preserves notifications and encrypted vault access. No alpha upgrade or forced dependency replacement. This informational maintenance assessment remains limited to the exact package/version and SHA-256-bound complete application lock; vulnerabilities, unsoundness, changed bytes and expiry fail closed. No expiry extension. See docs/ZBUS-MAINTENANCE-REVIEW.md."
     },
     {
       "lock": "src-tauri/Cargo.lock",
@@ -21,7 +21,7 @@
       "kind": "unmaintained",
       "expires": "2026-11-15",
       "status": "reviewed-maintenance-warning",
-      "reason": "Re-reviewed official RustSec RUSTSEC-2026-0372 against database 263a4d951a0867d4bddc29dddd6d59427c78f9a7 on 2026-11-02: this remains an informational/unmaintained standalone-crate notice, not a vulnerability or patched standalone release. The exact SHA-256-bound application lock retains zvariant/derive 5.15.1 and zbus_names 4.3.5 through zbus/zbus_macros 5.19.0. Updated tauri-plugin-notification 2.8.0, notify-rust 4.18.2, secret-service 5.2.0 and zbus-secret-service-keyring-store 1.0.1 still independently constrain zbus 5. The rfd 0.17.2/dialog 2.8.4 update removes ashpd, but upgrading only the direct portal dependency to zbus 6 would add another stack without retiring the notification/vault consumers. The previously yanked async-executor 1.14.0 is replaced by non-yanked 1.14.1; a fresh complete lock scan has only the separately assessed maintenance notices and no application vulnerabilities or yanked findings. See docs/ZBUS-MAINTENANCE-REVIEW.md. Whole-lock scanning keeps this exact finding visible; changed lock bytes, versions, vulnerability/unsound kinds or expiry fail closed. Reassessment remains due 2026-11-15 without extension. Source: https://github.com/RustSec/advisory-db/blob/263a4d951a0867d4bddc29dddd6d59427c78f9a7/crates/zvariant_derive/RUSTSEC-2026-0372.md"
+      "reason": "Reviewed 12 November 2026 for the 1.0.9 migration: direct Flatpak portal calls use zbus 6.2.1 with its default runtime, new wire types and real private-bus response regression coverage. Current notification and OS-vault parents independently require zbus 5.19.0 and these standalone wire/name crates. Retaining their required versions preserves notifications and encrypted vault access. No alpha upgrade or forced dependency replacement. This informational maintenance assessment remains limited to the exact package/version and SHA-256-bound complete application lock; vulnerabilities, unsoundness, changed bytes and expiry fail closed. No expiry extension. See docs/ZBUS-MAINTENANCE-REVIEW.md."
     },
     {
       "lock": "src-tauri/Cargo.lock",
@@ -31,7 +31,7 @@
       "kind": "unmaintained",
       "expires": "2026-11-15",
       "status": "reviewed-maintenance-warning",
-      "reason": "Re-reviewed official RustSec RUSTSEC-2026-0371 against database 263a4d951a0867d4bddc29dddd6d59427c78f9a7 on 2026-11-02: this remains an informational/unmaintained standalone-crate notice, not a vulnerability or patched standalone release. The exact SHA-256-bound application lock retains zvariant/derive 5.15.1 and zbus_names 4.3.5 through zbus/zbus_macros 5.19.0. Updated tauri-plugin-notification 2.8.0, notify-rust 4.18.2, secret-service 5.2.0 and zbus-secret-service-keyring-store 1.0.1 still independently constrain zbus 5. The rfd 0.17.2/dialog 2.8.4 update removes ashpd, but upgrading only the direct portal dependency to zbus 6 would add another stack without retiring the notification/vault consumers. The previously yanked async-executor 1.14.0 is replaced by non-yanked 1.14.1; a fresh complete lock scan has only the separately assessed maintenance notices and no application vulnerabilities or yanked findings. See docs/ZBUS-MAINTENANCE-REVIEW.md. Whole-lock scanning keeps this exact finding visible; changed lock bytes, versions, vulnerability/unsound kinds or expiry fail closed. Reassessment remains due 2026-11-15 without extension. Source: https://github.com/RustSec/advisory-db/blob/263a4d951a0867d4bddc29dddd6d59427c78f9a7/crates/zbus_names/RUSTSEC-2026-0371.md"
+      "reason": "Reviewed 12 November 2026 for the 1.0.9 migration: direct Flatpak portal calls use zbus 6.2.1 with its default runtime, new wire types and real private-bus response regression coverage. Current notification and OS-vault parents independently require zbus 5.19.0 and these standalone wire/name crates. Retaining their required versions preserves notifications and encrypted vault access. No alpha upgrade or forced dependency replacement. This informational maintenance assessment remains limited to the exact package/version and SHA-256-bound complete application lock; vulnerabilities, unsoundness, changed bytes and expiry fail closed. No expiry extension. See docs/ZBUS-MAINTENANCE-REVIEW.md."
     },
     {
       "lock": "flatpak/tauri-cli.Cargo.lock",

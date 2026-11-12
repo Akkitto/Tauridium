@@ -156,7 +156,7 @@ def main() -> int:
 
   expected_frontend_fixes = {
     "node_modules/source-map-js": "1.2.2",
-    "node_modules/rolldown": "1.2.15",
+    "node_modules/rolldown": "1.2.19",
     "node_modules/lightningcss": "1.33.0",
     "node_modules/nanoid": "3.3.20",
     "node_modules/postcss": "8.5.32",
