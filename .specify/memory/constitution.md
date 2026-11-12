@@ -1,50 +1,96 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+Sync Impact Report
+Version change: (unfilled template) -> 1.0.0
+Modified principles: none (all new; derived from AGENTS.md)
+Added sections: Core Principles I-VI, Platform and Release Constraints,
+  Development Workflow and Quality Gates, Governance
+Removed sections: none
+Templates:
+  - .specify/templates/plan-template.md: OK (Constitution Check reads this file)
+  - .specify/templates/spec-template.md: OK (no change needed)
+  - .specify/templates/tasks-template.md: OK (no change needed)
+Follow-up TODOs: none
+Source of truth for detail: AGENTS.md. If they conflict, AGENTS.md is
+amended to match this file, or this file is amended through Governance.
+-->
+# Tauridium Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Correctness and Data Safety First
+Correctness, reliability, data safety, performance and coherent UX outrank shortcuts.
+Features MUST be implemented completely: persistence, validation, backup/export
+implications, cleanup/migration, UI feedback and regression coverage where applicable.
+Local data, service and workspace order, sessions, backups, exports and upgrade
+compatibility MUST be preserved. Failures MUST NOT be hidden by lint suppressions,
+unsafe casts, swallowed errors or weakened assertions; diagnostics MUST be actionable
+and non-spammy.
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### II. Rust Owns Privileged Work
+Rust MUST own privileged filesystem, network and secret-sensitive operations. The
+Svelte shell MUST orchestrate through typed commands (`src/lib/api.ts`). Durable
+concerns (persistence, validation) belong in dedicated Rust domain modules, not
+scattered through the UI. `vendor/wry/` is intentionally patched and MUST NOT be
+replaced or updated casually.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### III. Isolation by Default, Local First
+Service webviews MUST be isolated and persistent by default; shared sandboxes are
+explicit opt-in. Local, accountless use is first-class; Ferdium server integration
+is optional. Nothing a user types or stores in one service may leak to another or to
+an external party without explicit user action.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### IV. Visible, Persistent Settings
+Immediate per-service settings MUST visibly confirm successful persistence (for
+example the green `Saved` toast) and MUST survive restart when designed to persist.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### V. Lean and Native
+Tauridium MUST stay lighter and more reliable than Electron alternatives. Follow
+existing UI patterns and native/platform abstractions; avoid unnecessary visual
+churn, large margins, blocking work on interaction paths and platform-specific
+flashes. Dependencies MUST be locked and minimal.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+### VI. Tested and Reproducible (NON-NEGOTIABLE)
+Bugs and features MUST ship with focused regressions; historical tests MUST NOT be
+weakened. Clippy warnings are errors; Rust formatting is exact `rustfmt` from the
+pinned toolchain; Svelte/TypeScript MUST be clean under `svelte-check` and Vitest.
+The Rust supply-chain guard MUST run on every quality pass and blocked crate/version
+indicators MUST NOT be bypassed. Gates that cannot run MUST be reported exactly,
+never claimed as passed.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+## Platform and Release Constraints
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+- Platform priority: Windows 11 first, Linux second, macOS best-effort. Unix shells,
+  WSL and Nushell MUST NOT be prerequisites for Windows development.
+- Windows workflows MUST work in Windows PowerShell 5.1 and PowerShell 7; prefer Scoop,
+  then WinGet.
+- Customer-facing documentation and changelog entries MUST be English.
+- Releases use SemVer, a concise `CHANGELOG.md`, `node tools/sync_version.mjs`, an
+  annotated `vX.Y.Z` tag, and packaging only from the clean tagged commit. A full
+  release delivers the source, run and doc archives; never fabricate a runtime, ship a
+  dirty tree or release with formatter drift.
+- Network-dependent bootstrap/build steps MUST fail clearly rather than silently
+  change quality gates.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+## Development Workflow and Quality Gates
+
+- Default branch is `master`; existing history and other contributors' identity MUST
+  NOT be rewritten. Agent identity is set repository-locally, never globally.
+- Commits use Capitalized Conventional Commits Dialect v1.3.2 (`Feat`, `Fix`, `Sec`,
+  `Opt`, `Struct`, `Op`, `Build`, `CI`, `Dep`, `Test`, `Doc`, `Fmt`, `Proj`, `Prog`,
+  `Gen`, `Release`, `Revert`), imperative, capitalized, no final period.
+- Before shipping, run: `just fmt-check`, `just lint`, `just check`, `just test`,
+  `just build`, plus `tools/validate_release.py`, a clean Git status and
+  `git diff --check`.
+- Prefer extending `tools/` workflows over parallel ad-hoc scripts.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This constitution supersedes other practices for Spec Kit work. Plans MUST pass the
+Constitution Check against it; violations require an entry in Complexity Tracking
+with justification. Amendments require a documented change to this file, a version
+bump (MAJOR for removed or redefined principles, MINOR for added or materially
+expanded guidance, PATCH for clarifications), and an updated Sync Impact Report.
+AGENTS.md remains the detailed runtime guidance; the two MUST be kept consistent.
+Compliance is reviewed in `/speckit-analyze` and during code review.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2026-11-13 | **Last Amended**: 2026-11-13
