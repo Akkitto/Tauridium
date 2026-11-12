@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [1.0.9] - 2026-11-12
+
+### Fixed
+
+- Forward the selected display and declared network context when running a private Flatpak development candidate.
+
+### Changed
+
+- Update Vite to 8.3.6, Vitest to 5.1.0 and svelte-check to 4.7.8 with synchronized locked tooling and packaging inputs.
+- Migrate Flatpak portal calls to zbus 6.2.1, preserving fast responses, consent handling and encrypted OS-vault compatibility.
+
 ## [1.0.8] - 2026-11-12
 
 ### Fixed
@@ -1537,6 +1548,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 > history, so they are more terse than the process going forward.
 
 ## [Unreleased]
+
+## [1.0.9] - 2026-11-12
+
+### Fixed
+
+- Forward the selected display and declared network context when running a private Flatpak development candidate.
+
+### Changed
+
+- Update Vite to 8.3.6, Vitest to 5.1.0 and svelte-check to 4.7.8 with synchronized locked tooling and packaging inputs.
+- Migrate Flatpak portal calls to zbus 6.2.1, preserving fast responses, consent handling and encrypted OS-vault compatibility.
 
 ## [0.3.14] - 2026-08-18
 

@@ -24,13 +24,15 @@ class Patch0801Tests(unittest.TestCase):
     self.assertIn(f'INIT_VERSION = "{version}"', self.read("tools/init.py"))
     self.assertIn(f'$InitVersion = "{version}"', self.read("tools/init.ps1"))
 
-  def test_flatpak_explicitly_enables_zbus_tokio(self) -> None:
+  def test_flatpak_explicitly_selects_the_zbus6_runtime(self) -> None:
     cargo = self.read("src-tauri/Cargo.toml")
     match = re.search(r"flatpak = \[(.*?)\n\]", cargo, flags=re.DOTALL)
     self.assertIsNotNone(match)
     body = match.group(1)
     self.assertIn('"dep:zbus"', body)
-    self.assertIn('"zbus/tokio"', body)
+    self.assertNotIn('"zbus/tokio"', body)
+    self.assertIn('"dep:futures-lite"', body)
+    self.assertIn('zbus = { version = "=6.2.1", default-features = false, features = ["proxy", "default-rt"], optional = true }', cargo)
     # rfd 0.17 supplies its portal transport without the removed Tokio selector.
     self.assertNotIn('"rfd/tokio"', body)
     self.assertIn('"rfd/xdg-portal"', body)

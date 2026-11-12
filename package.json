@@ -1,6 +1,6 @@
 {
   "name": "tauridium",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Tauridium - lightweight Tauri client for Ferdium",
   "author": "Daniel Braniewski",
   "homepage": "https://github.com/Akkitto/Tauridium",
@@ -31,10 +31,10 @@
     "@tsconfig/svelte": "5.0.8",
     "deepmerge": "file:vendor/deepmerge",
     "svelte": "5.57.3",
-    "svelte-check": "4.7.7",
+    "svelte-check": "4.7.8",
     "typescript": "6.0.3",
-    "vite": "8.3.5",
-    "vitest": "5.0.5"
+    "vite": "8.3.6",
+    "vitest": "5.1.0"
   },
   "engines": {
     "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
