@@ -14,6 +14,7 @@ import math
 import os
 from pathlib import Path
 import platform
+import re
 import selectors
 import shutil
 import signal
@@ -24,7 +25,7 @@ import threading
 import time
 import wave
 
-from linux_audio import validate_appdir
+from linux_audio import REQUIRED_FACTORIES, validate_appdir
 from nix_smoke import isolated_environment
 from tauri_build import build_environment
 
@@ -34,6 +35,9 @@ PAGE = br'''<!doctype html><meta charset="utf-8"><title>Synthetic audio fixture<
 <h1>Account-free audio regression</h1><script>
 let previous = -1, audio, context;
 async function report(value) {
+  const probe = new Audio();
+  value.support = Object.fromEntries(['audio/wav','audio/ogg','audio/ogg; codecs="vorbis"',
+    'audio/ogg; codecs="opus"','audio/mpeg'].map(mime=>[mime,probe.canPlayType(mime)]));
   await fetch('/report', {method:'POST',body:JSON.stringify(value)});
 }
 async function tick() {
@@ -82,6 +86,44 @@ def pcm_rms(payload: bytes) -> float:
   samples = array.array('h')
   samples.frombytes(payload[:len(payload) // 2 * 2])
   return math.sqrt(sum(value * value for value in samples) / len(samples)) if samples else 0.0
+
+
+def safe_loader_summary(text: str) -> dict:
+  """Expose only bounded library/symbol names, never raw profile paths or logs."""
+  return {
+    'libraries': sorted(set(re.findall(r'\b(lib[A-Za-z0-9_+.\-]+\.so(?:\.\d+)*)\b', text)))[:40],
+    'undefinedSymbols': sorted(set(re.findall(r'undefined symbol: ([A-Za-z0-9_]{1,120})', text)))[:20],
+    'missingFactories': sorted(set(re.findall(r'GStreamer element ([A-Za-z0-9_-]{1,64}) not found', text)))[:20],
+  }
+
+
+def producer_media_diagnostics(appdir: Path, profile: Path, environment: dict[str, str], ogg: Path):
+  # A producer's native gst tools have the same ABI as the libraries it bundled.
+  # This is diagnostic only; the real WebView/PCM assertions remain mandatory.
+  # Use a separate registry so this cannot seed/mask WebKit's own plugin scan.
+  if os.environ.get('GITHUB_ACTIONS') != 'true':
+    return
+  env = dict(environment, LD_LIBRARY_PATH=str(appdir / 'usr/lib'),
+    GST_PLUGIN_PATH_1_0=str(appdir / 'usr/lib/gstreamer-1.0'),
+    GST_PLUGIN_SYSTEM_PATH_1_0=str(appdir / 'usr/lib/gstreamer-1.0'),
+    GST_PLUGIN_SCANNER_1_0=str(appdir / 'usr/lib/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner'),
+    GST_REGISTRY=str(profile / 'diagnostic-registry.bin'),
+    GST_REGISTRY_1_0=str(profile / 'diagnostic-registry.bin'))
+  factories = []
+  loader_text = ''
+  for factory in (*REQUIRED_FACTORIES, 'vorbisparse', 'pulsesink'):
+    result = subprocess.run(['gst-inspect-1.0', factory], env=env, capture_output=True,
+                            text=True, errors='replace', check=False, timeout=20)
+    match = re.search(r'^\s*Filename\s+(.+)$', result.stdout, re.MULTILINE)
+    factories.append({'factory': factory, 'code': result.returncode,
+      'plugin': Path(match.group(1).strip()).name if match else None})
+    loader_text += result.stderr[:32768]
+  decoder = subprocess.run(['gst-launch-1.0', '-q', 'filesrc', 'location=' + str(ogg),
+    '!', 'decodebin', '!', 'audioconvert', '!', 'fakesink'], env=env,
+    capture_output=True, text=True, errors='replace', check=False, timeout=30)
+  loader_text += decoder.stderr[:32768]
+  print('Bundled media diagnostics: ' + json.dumps({'factories': factories,
+    'oggDecodeCode': decoder.returncode, **safe_loader_summary(loader_text)}), flush=True)
 
 
 def capture_audio(environment: dict[str, str], seconds=1.0) -> tuple[int, float]:
@@ -168,6 +210,10 @@ def run(image: Path, output: Path) -> dict:
       '!', 'audioconvert', '!', 'vorbisenc', '!', 'oggmux', '!', 'filesink', 'location=' + str(ogg)],
       env=environment, check=True, timeout=30, stdout=subprocess.DEVNULL)
     ogg_bytes = ogg.read_bytes()
+    # Validate the generated fixture independently before blaming a decoder.
+    subprocess.run(['gst-launch-1.0', '-q', 'filesrc', 'location=' + str(ogg),
+      '!', 'decodebin', '!', 'audioconvert', '!', 'fakesink'], env=environment,
+      check=True, timeout=30, stdout=subprocess.DEVNULL)
 
     class Handler(BaseHTTPRequestHandler):
       def log_message(self, *_args):
@@ -230,6 +276,7 @@ def run(image: Path, output: Path) -> dict:
         application_env.pop(name)
     application_env.update(APPDIR=str(appdir), APPIMAGE=str(image),
       GST_REGISTRY=str(profile / 'application-registry.bin'), GST_DEBUG='2')
+    producer_media_diagnostics(appdir, profile, application_env, ogg)
     try:
       with (output / 'pulse.log').open('w', encoding='utf-8') as pulse_log, (output / 'application.log').open('w', encoding='utf-8') as app_log:
         pulse = subprocess.Popen(['pulseaudio', '-n', '--daemonize=no', '--use-pid-file=no',
@@ -264,7 +311,14 @@ def run(image: Path, output: Path) -> dict:
             with lock:
               matches = [r for r in reports if r.get('step') == step]
             if matches:
+              support = matches[-1].get('support', {})
+              print('WebKit media support: ' + json.dumps({key: value for key, value in support.items()
+                if key in ('audio/wav', 'audio/ogg', 'audio/ogg; codecs="vorbis"',
+                  'audio/ogg; codecs="opus"', 'audio/mpeg') and value in ('', 'maybe', 'probably')}), flush=True)
               if matches[-1].get('error') or matches[-1].get('started') is not True:
+                app_log.flush()
+                with (output / 'application.log').open(encoding='utf-8', errors='replace') as diagnostic:
+                  print('WebKit loader summary: ' + json.dumps(safe_loader_summary(diagnostic.read(2 * 1024**2))), flush=True)
                 raise RuntimeError('WebView audio failed: ' + str(matches[-1].get('error')))
               break
             if time.monotonic() > deadline:

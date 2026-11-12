@@ -7,6 +7,14 @@ import appimage_audio_smoke as smoke
 
 
 class AppImageAudioSmokeTests(unittest.TestCase):
+  def test_loader_diagnostics_do_not_publish_raw_paths(self):
+    text = "Failed loading /private/synthetic-home/libgstvorbis.so: libvorbis.so.0: undefined symbol: synthetic_symbol\nGStreamer element appsrc not found"
+    result = smoke.safe_loader_summary(text)
+    self.assertEqual(result['libraries'], ['libgstvorbis.so', 'libvorbis.so.0'])
+    self.assertEqual(result['undefinedSymbols'], ['synthetic_symbol'])
+    self.assertEqual(result['missingFactories'], ['appsrc'])
+    self.assertNotIn('/private/', str(result))
+
   def test_sampler_waits_for_real_pcm_after_delayed_sink_startup(self):
     process = MagicMock()
     process.poll.return_value = None
