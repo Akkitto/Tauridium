@@ -46,6 +46,7 @@
     sameDownloadPreference,
     type KeybindingAction,
   } from "./lib/ui";
+  import type { ServiceMenuAction, ServiceMenuActionEvent } from "./lib/serviceMenu";
   import {
     DEFAULT_TASKBAR_TITLE_TEMPLATE,
     DEFAULT_WINDOW_TITLE_TEMPLATE,
@@ -110,6 +111,9 @@
     openExternalUrl,
     reloadTauridium,
     showServiceToastOverlay,
+    openServiceMenu,
+    closeServiceMenu,
+    settleServiceMenu,
     setServiceZoom,
     toggleDeveloperTools,
     DEFAULT_SERVER,
@@ -634,6 +638,13 @@
   let downloadToastHeight = $state(0);
   let unlistenWindowChrome: (() => void) | null = null;
   let unlistenDownloadToastGeometry: (() => void) | null = null;
+  let unlistenServiceMenuAction: (() => void) | null = null;
+  // Opening id of the native overlay menu while it is shown, so a stale close can never
+  // dismiss a newer menu.
+  let serviceMenuOverlayId: number | null = null;
+  // Whether the pointer press that opened the overlay menu is still held. Releasing it moves focus
+  // back to this shell, which must not dismiss the menu, so the native layer is told when it ends.
+  let serviceMenuGesture: "none" | "held" | "released" = "none";
   const downloadToastExample = $derived(downloadToastPreview(appSettings.downloadToastLocation, appSettings.downloadToastParentLevels, osKind === "win"));
 
   async function saveDownloadToastSetting<K extends "downloadToasts" | "downloadToastLocation" | "downloadToastParentLevels" | "downloadToastDuration">(key: K, value: AppSettings[K]) {
@@ -667,12 +678,16 @@
 
   onDestroy(() => {
     unlistenDownloadToastGeometry?.();
+    unlistenServiceMenuAction?.();
     unlistenWindowChrome?.();
     if (automaticBackupTimer) clearInterval(automaticBackupTimer);
     if (recordingTimer) clearTimeout(recordingTimer);
     if (toastTimer) clearTimeout(toastTimer);
     if (sidebarResizeFrame !== null) cancelAnimationFrame(sidebarResizeFrame);
     window.removeEventListener("keydown", handleGlobalKeydown, true);
+    window.removeEventListener("pointerdown", dismissServiceMenuOverlay, true);
+    window.removeEventListener("pointerup", handleServiceMenuPointerRelease, true);
+    window.removeEventListener("pointercancel", handleServiceMenuPointerRelease, true);
     window.removeEventListener("resize", handleWindowResize);
   });
 
@@ -684,6 +699,10 @@
     unlistenWindowChrome = unlistenChrome;
     unlistenDownloadToastGeometry = await listen<number>("download-toast-geometry", (event) => {
       downloadToastHeight = Number.isFinite(event.payload) ? Math.max(0, event.payload) : 0;
+    });
+    unlistenServiceMenuAction = await listen<ServiceMenuActionEvent>("service-menu-action", (event) => {
+      serviceMenuOverlayId = null;
+      runServiceMenuAction(event.payload);
     });
     darkMq?.addEventListener("change", () => {
       if (appSettings.theme === "system") applyTheme();
@@ -719,6 +738,9 @@
     listen("sign-out", handleLogout);
     listen<string>("shortcut-action", (event) => executeShortcutAction(event.payload as KeybindingAction));
     window.addEventListener("keydown", handleGlobalKeydown, true);
+    window.addEventListener("pointerdown", dismissServiceMenuOverlay, true);
+    window.addEventListener("pointerup", handleServiceMenuPointerRelease, true);
+    window.addEventListener("pointercancel", handleServiceMenuPointerRelease, true);
     window.addEventListener("resize", handleWindowResize);
     try {
       distributionInfo = await getDistributionInfo();
@@ -1205,6 +1227,65 @@
     }
   }
 
+  // Service webviews are native siblings of this shell and always paint above its DOM, so the
+  // styled menu is drawn by a native overlay. The in-window menu further below is only the
+  // fallback when that overlay cannot be opened.
+  function settleServiceMenuGesture(id: number) {
+    serviceMenuGesture = "none";
+    settleServiceMenu(id).catch((err) => console.warn(`Unable to settle the service menu: ${err}`));
+  }
+
+  function handleServiceMenuPointerRelease() {
+    if (serviceMenuGesture !== "held") return;
+    serviceMenuGesture = "released";
+    if (serviceMenuOverlayId !== null) settleServiceMenuGesture(serviceMenuOverlayId);
+  }
+
+  function openStyledServiceContextMenu(service: Service, x: number, y: number, fallback: { x: number; y: number }, pointer: boolean) {
+    serviceMenuGesture = pointer ? "held" : "none";
+    openServiceMenu({
+      serviceId: service.id,
+      label: serviceLabel(service),
+      x,
+      y,
+      zoomPercent: serviceZoomPercent(service.id),
+      enabled: service.isEnabled !== false,
+      pointer,
+    }).then((id) => {
+      serviceMenuOverlayId = id;
+      // The button may already have been released while the menu was opening.
+      if (serviceMenuGesture === "released") settleServiceMenuGesture(id);
+    }).catch((err) => {
+      serviceMenuGesture = "none";
+      console.warn(`The service menu overlay is unavailable; using the in-window menu: ${err}`);
+      serviceContextMenu = { serviceId: service.id, ...fallback };
+      requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".service-context-menu button:not(:disabled)")?.focus());
+    });
+  }
+
+  function dismissServiceMenuOverlay() {
+    const id = serviceMenuOverlayId;
+    if (id === null) return;
+    serviceMenuOverlayId = null;
+    serviceMenuGesture = "none";
+    closeServiceMenu(id).catch((err) => console.warn(`Unable to close the service menu: ${err}`));
+  }
+
+  function runServiceMenuAction({ serviceId, action }: ServiceMenuActionEvent) {
+    const service = services.find((candidate) => candidate.id === serviceId);
+    if (!service) return;
+    const actions: Record<ServiceMenuAction, (selectedService: Service) => void | Promise<void>> = {
+      settings: openServiceSettings,
+      reload: reloadServiceFromUi,
+      "zoom-in": increaseServiceZoom,
+      "zoom-out": decreaseServiceZoom,
+      "zoom-reset": resetServiceZoom,
+      duplicate: duplicateServiceFromUi,
+      toggle: toggleServiceEnabled,
+    };
+    void actions[action](service);
+  }
+
   function openServiceContextMenu(event: MouseEvent, service: Service) {
     event.preventDefault();
     event.stopPropagation();
@@ -1216,12 +1297,10 @@
     }
     const width = 226;
     const height = 330;
-    serviceContextMenu = {
-      serviceId: service.id,
+    openStyledServiceContextMenu(service, event.clientX, event.clientY, {
       x: Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)),
       y: Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8)),
-    };
-    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".service-context-menu button:not(:disabled)")?.focus());
+    }, true);
   }
 
   function openServiceContextMenuFromKeyboard(event: KeyboardEvent, service: Service) {
@@ -1234,12 +1313,10 @@
       });
       return;
     }
-    serviceContextMenu = {
-      serviceId: service.id,
+    openStyledServiceContextMenu(service, rect ? rect.left + 28 : 12, rect ? rect.bottom : 12, {
       x: rect ? Math.min(rect.left + 28, window.innerWidth - 234) : 12,
       y: rect ? Math.min(rect.bottom, window.innerHeight - 338) : 12,
-    };
-    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".service-context-menu button:not(:disabled)")?.focus());
+    }, false);
   }
 
   function handleServiceContextMenuKeydown(event: KeyboardEvent) {
@@ -5280,9 +5357,9 @@
                 </section>
               {/if}
               <section class="settings-section" aria-labelledby="settings-advanced-context-menu">
-                <div class="section-heading"><h3 id="settings-advanced-context-menu">Service context menu</h3><p>Choose between Tauridium's original styled menu and the native fallback that always stays above service webviews.</p></div>
+                <div class="section-heading"><h3 id="settings-advanced-context-menu">Service context menu</h3><p>Choose between Tauridium's original styled menu and the plain system menu.</p></div>
                 <div class="settings-list">
-                  {@render appToggle("Use original service context menu", "Enabled by default. Uses Tauridium's original styled right-click menu. Embedded service webviews can cover the part of this shell menu that extends over them. Disable this to use the native system menu, which always stays in front.", "prettyServiceContextMenu", appSettings.prettyServiceContextMenu)}
+                  {@render appToggle("Use original service context menu", "Enabled by default. Uses Tauridium's original styled right-click menu, drawn above the embedded service webviews. Disable this to use the native system menu instead.", "prettyServiceContextMenu", appSettings.prettyServiceContextMenu)}
                 </div>
               </section>
               <section class="settings-section" aria-labelledby="settings-advanced-sidebar-order">
