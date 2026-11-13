@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- Add spell checking on Linux using the system WebKitGTK checker: misspellings are underlined in service text fields and the right-click menu offers corrections. Checking happens on the device only.
+- Add a Spelling settings tab with a global on/off switch, multi-language selection from installed Hunspell dictionaries, and a personal dictionary. Each service can override the on/off state and languages.
+- Add the per-service spell checking switch on Windows and macOS. Languages and the personal dictionary there stay managed by the operating system, and the Spelling tab says so. macOS now underlines misspellings by registering WebKit's spelling default before the first window is created.
+- Include the personal spelling dictionary in full backups. Older backups still restore and leave the current dictionary unchanged.
+
 ### Fixed
 
 - Draw the styled service context menu above embedded service webviews so it is no longer cut off where it extends over the service area. It uses a native overlay on Linux, Windows and macOS and falls back to the in-window menu if the overlay cannot open.

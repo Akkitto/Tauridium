@@ -63,6 +63,9 @@ commands.allow = [
   "close_service_menu",
   "settle_service_menu",
   "set_service_zoom",
+  "spelling_get_state",
+  "spelling_add_word",
+  "spelling_remove_word",
   "toggle_devtools_command"
 ]
 
