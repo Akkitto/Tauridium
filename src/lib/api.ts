@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { ServiceAdblockOverride } from "./adblock";
 import type { ServiceSpellcheckOverride } from "./spelling";
 
 // Models mirror the Ferdium server API (/v1).
@@ -397,6 +398,11 @@ export interface AppSettings {
   spellcheckEnabled: boolean;
   spellcheckLanguages: string[];
   serviceSpellcheck: Record<string, ServiceSpellcheckOverride>;
+  adblockEnabled: boolean;
+  adblockLists: string[];
+  adblockCustomLists: string[];
+  adblockAllowlist: string[];
+  serviceAdblock: Record<string, ServiceAdblockOverride>;
   serviceOrder: string[];
   workspaceOrder: string[];
   workspaceQuickSwitchOrder: "custom" | "customReverse" | "alphabetical" | "alphabeticalReverse" | "recent" | "recentReverse";
@@ -501,6 +507,46 @@ export function addSpellingWord(word: string): Promise<string[]> {
 
 export function removeSpellingWord(word: string): Promise<string[]> {
   return invoke("spelling_remove_word", { word });
+}
+
+export interface AdblockListStatus {
+  id: string;
+  name: string;
+  url: string;
+  custom: boolean;
+  status: "active" | "waiting" | "error";
+  lastUpdated: number | null;
+  ruleCount: number;
+  lastError: string | null;
+}
+
+export interface AdblockState {
+  engine: { platform: string; supported: boolean; supportsCounters: boolean; coverageNote: string };
+  phase: "unsupported" | "off" | "waiting" | "compiling" | "ready" | "error";
+  error: string | null;
+  catalog: { id: string; name: string }[];
+  lists: AdblockListStatus[];
+}
+
+export interface AdblockSites {
+  accepted: string[];
+  rejected: { input: string; reason: string }[];
+}
+
+export function getAdblockState(): Promise<AdblockState> {
+  return invoke("adblock_get_state");
+}
+
+export function updateAdblockLists(): Promise<AdblockState> {
+  return invoke("adblock_update_lists");
+}
+
+export function checkAdblockList(url: string): Promise<{ networkRules: number; cosmeticRules: number }> {
+  return invoke("adblock_check_list", { url });
+}
+
+export function normalizeAdblockSites(inputs: string[]): Promise<AdblockSites> {
+  return invoke("adblock_normalize_sites", { inputs });
 }
 
 export interface BackupSummary {

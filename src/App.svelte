@@ -4,6 +4,7 @@
   import { downloadToastPreview } from "./lib/downloadToast";
   import { browserProfileNamespace, retainedTrackingExceptions } from "./lib/browserPrivacy";
   import { ownValue, setOwnValue, copyOwnEntry, downloadOverride, downloadDirectoryLabel } from "./lib/settingsMaps";
+  import { describeListStatus, resolveEffectiveAdblock, splitSiteInput, toggleListId, withServiceAdblockPatch, type ServiceAdblockOverride, type ServiceAdblockPatch } from "./lib/adblock";
   import { resolveEffectiveSpellcheck, withServiceSpellcheckPatch, toggleLanguage, type ServiceSpellcheckOverride, type ServiceSpellcheckPatch } from "./lib/spelling";
   import tauridiumLogo from "./assets/tauridium.svg";
   import { listen } from "@tauri-apps/api/event";
@@ -98,6 +99,10 @@
     getSpellingState,
     addSpellingWord,
     removeSpellingWord,
+    getAdblockState,
+    updateAdblockLists,
+    checkAdblockList,
+    normalizeAdblockSites,
     setServiceOrder,
     setWorkspaceOrder,
     syncServicesMenu,
@@ -129,6 +134,7 @@
     type RecipeStorageInfo,
     type AppSettings,
     type SpellingState,
+    type AdblockState,
     type DistributionInfo,
     type BackupSummary,
     type SandboxDefinition,
@@ -203,7 +209,7 @@
   let serviceIconUrlBusy = $state(false);
   let newWorkspaceName = $state("");
 
-  type Tab = "general" | "services" | "workspaces" | "appearance" | "spelling" | "keybindings" | "sandbox" | "privacy" | "backup" | "audit" | "advanced" | "updates" | "about";
+  type Tab = "general" | "services" | "workspaces" | "appearance" | "spelling" | "adblock" | "keybindings" | "sandbox" | "privacy" | "backup" | "audit" | "advanced" | "updates" | "about";
   let settingsTab = $state<Tab>("general");
 
   let managedServiceQuery = $state("");
@@ -340,6 +346,11 @@
     spellcheckEnabled: true,
     spellcheckLanguages: [],
     serviceSpellcheck: {},
+    adblockEnabled: false,
+    adblockLists: ["easylist", "easyprivacy"],
+    adblockCustomLists: [],
+    adblockAllowlist: [],
+    serviceAdblock: {},
     serviceOrder: [],
     workspaceOrder: [],
     workspaceQuickSwitchOrder: "custom",
@@ -744,6 +755,8 @@
     listen("open-add-workspace", openAddWorkspace);
     listen("open-about", openAbout);
     listen("sign-out", handleLogout);
+    listen("adblock-lists-updated", () => { if (adblockState) void refreshAdblock(); });
+    listen<string>("adblock-error", (event) => { error = event.payload; });
     listen<string>("shortcut-action", (event) => executeShortcutAction(event.payload as KeybindingAction));
     window.addEventListener("keydown", handleGlobalKeydown, true);
     window.addEventListener("pointerdown", dismissServiceMenuOverlay, true);
@@ -1848,6 +1861,8 @@
     serviceTemplateDraft = { ...(ownValue(appSettings.serviceCustomUrlTemplates, s.id) ?? { enabled: false, customId1: "", customId2: "" }) };
     serviceTemplateDirty = false;
     void refreshSpelling();
+    void refreshAdblock();
+    adblockFeedback = null;
     serviceWorkspaceQuery = "";
     serviceWorkspaceNewName = "";
     serviceWorkspaceFilter = "all";
@@ -2106,6 +2121,7 @@
     const previousIconInversions = { ...appSettings.serviceIconInversions };
     const previousZoomLevels = { ...appSettings.serviceZoomLevels };
     const previousSpellcheck = { ...appSettings.serviceSpellcheck };
+    const previousAdblock = { ...appSettings.serviceAdblock };
     let copiedAppSettings = false;
     try {
       const result = await createDuplicateService(service, name);
@@ -2138,6 +2154,7 @@
       const serviceIconInversions = { ...appSettings.serviceIconInversions };
       const serviceZoomLevels = { ...appSettings.serviceZoomLevels };
       const serviceSpellcheck = { ...appSettings.serviceSpellcheck };
+      const serviceAdblock = { ...appSettings.serviceAdblock };
       copyOwnEntry(serviceCustomUrlTemplates, service.id, newId);
       copyOwnEntry(serviceSandboxes, service.id, newId);
       copyOwnEntry(serviceShortcutCaptureOverrides, service.id, newId);
@@ -2145,7 +2162,8 @@
       copyOwnEntry(serviceIconInversions, service.id, newId);
       copyOwnEntry(serviceZoomLevels, service.id, newId);
       copyOwnEntry(serviceSpellcheck, service.id, newId);
-      if (ownValue(serviceCustomUrlTemplates, newId) || ownValue(serviceSandboxes, newId) || Object.hasOwn(serviceShortcutCaptureOverrides, newId) || ownValue(serviceDownloadSettings, newId) || ownValue(serviceIconInversions, newId) === true || ownValue(serviceZoomLevels, newId) || ownValue(serviceSpellcheck, newId)) {
+      copyOwnEntry(serviceAdblock, service.id, newId);
+      if (ownValue(serviceCustomUrlTemplates, newId) || ownValue(serviceSandboxes, newId) || Object.hasOwn(serviceShortcutCaptureOverrides, newId) || ownValue(serviceDownloadSettings, newId) || ownValue(serviceIconInversions, newId) === true || ownValue(serviceZoomLevels, newId) || ownValue(serviceSpellcheck, newId) || ownValue(serviceAdblock, newId)) {
         appSettings = await setAppSettings({
           serviceCustomUrlTemplates,
           serviceSandboxes,
@@ -2154,6 +2172,7 @@
           serviceIconInversions,
           serviceZoomLevels,
           serviceSpellcheck,
+          serviceAdblock,
         });
         copiedAppSettings = true;
       }
@@ -2183,6 +2202,7 @@
           serviceIconInversions: previousIconInversions,
           serviceZoomLevels: previousZoomLevels,
           serviceSpellcheck: previousSpellcheck,
+          serviceAdblock: previousAdblock,
         }).catch(() => appSettings);
       }
       if (newId) await deleteService(newId).catch(() => {});
@@ -2255,7 +2275,8 @@
         ownValue(appSettings.serviceDownloadSettings, s.id) ||
         ownValue(appSettings.serviceIconInversions, s.id) === true ||
         ownValue(appSettings.serviceZoomLevels, s.id) ||
-        ownValue(appSettings.serviceSpellcheck, s.id)
+        ownValue(appSettings.serviceSpellcheck, s.id) ||
+        ownValue(appSettings.serviceAdblock, s.id)
       ) {
         const serviceSandboxes = { ...appSettings.serviceSandboxes };
         const serviceCustomUrlTemplates = { ...appSettings.serviceCustomUrlTemplates };
@@ -2264,6 +2285,7 @@
         const serviceIconInversions = { ...appSettings.serviceIconInversions };
         const serviceZoomLevels = { ...appSettings.serviceZoomLevels };
         const serviceSpellcheck = { ...appSettings.serviceSpellcheck };
+        const serviceAdblock = { ...appSettings.serviceAdblock };
         delete serviceSandboxes[s.id];
         delete serviceCustomUrlTemplates[s.id];
         delete serviceShortcutCaptureOverrides[s.id];
@@ -2271,6 +2293,7 @@
         delete serviceIconInversions[s.id];
         delete serviceZoomLevels[s.id];
         delete serviceSpellcheck[s.id];
+        delete serviceAdblock[s.id];
         appSettings = await setAppSettings({
           serviceSandboxes,
           serviceCustomUrlTemplates,
@@ -2279,6 +2302,7 @@
           serviceIconInversions,
           serviceZoomLevels,
           serviceSpellcheck,
+          serviceAdblock,
         });
       }
       await reconcileSavedOrders();
@@ -3127,6 +3151,7 @@
     if (settingsTab === "audit" && !auditInitialized) void refreshAuditLog();
     if (settingsTab === "services" && allRecipes.length === 0) void refreshRecipes();
     if (settingsTab === "spelling") void refreshSpelling();
+    if (settingsTab === "adblock") void refreshAdblock();
   }
 
   let spellingState = $state<SpellingState | null>(null);
@@ -3163,6 +3188,122 @@
       return;
     }
     void saveAppSetting("spellcheckLanguages", languages);
+  }
+
+  let adblockState = $state<AdblockState | null>(null);
+  let adblockBusy = $state(false);
+  let adblockListInput = $state("");
+  let adblockSiteInput = $state("");
+  let adblockServiceSiteInput = $state("");
+  let adblockFeedback = $state<string | null>(null);
+
+  async function refreshAdblock() {
+    try {
+      adblockState = await getAdblockState();
+    } catch (err) {
+      error = `Unable to load ad blocking settings: ${err}`;
+    }
+  }
+
+  function setAdblockList(id: string, selected: boolean) {
+    void saveAppSetting("adblockLists", toggleListId(appSettings.adblockLists, id, selected));
+  }
+
+  async function addAdblockCustomList() {
+    const url = adblockListInput.trim();
+    if (!url || adblockBusy) return;
+    if (appSettings.adblockCustomLists.includes(url)) {
+      adblockFeedback = "That list is already added.";
+      return;
+    }
+    adblockBusy = true;
+    adblockFeedback = null;
+    try {
+      const stats = await checkAdblockList(url);
+      await saveAppSetting("adblockCustomLists", [...appSettings.adblockCustomLists, url]);
+      adblockListInput = "";
+      adblockFeedback = `Added a list with ${stats.networkRules.toLocaleString("en-US")} blocking rules.`;
+      await refreshAdblock();
+    } catch (err) {
+      adblockFeedback = String(err);
+    } finally {
+      adblockBusy = false;
+    }
+  }
+
+  function removeAdblockCustomList(url: string) {
+    void saveAppSetting("adblockCustomLists", appSettings.adblockCustomLists.filter((candidate) => candidate !== url));
+  }
+
+  async function updateAdblockListsNow() {
+    if (adblockBusy) return;
+    adblockBusy = true;
+    adblockFeedback = null;
+    try {
+      adblockState = await updateAdblockLists();
+      showToast("Filter lists updated", "success");
+    } catch (err) {
+      adblockFeedback = String(err);
+    } finally {
+      adblockBusy = false;
+    }
+  }
+
+  /** Normalises typed sites on the backend so the shell saves exactly what the engine will use. */
+  async function normalizedSites(existing: string[], text: string): Promise<string[] | null> {
+    const inputs = splitSiteInput(text);
+    if (inputs.length === 0) return null;
+    const result = await normalizeAdblockSites([...existing, ...inputs]);
+    if (result.rejected.length > 0) {
+      adblockFeedback = result.rejected.map((entry) => entry.reason).join(" ");
+      return null;
+    }
+    adblockFeedback = null;
+    return result.accepted;
+  }
+
+  async function addAdblockSites() {
+    if (adblockBusy) return;
+    adblockBusy = true;
+    try {
+      const sites = await normalizedSites(appSettings.adblockAllowlist, adblockSiteInput);
+      if (sites) {
+        await saveAppSetting("adblockAllowlist", sites);
+        adblockSiteInput = "";
+      }
+    } catch (err) {
+      adblockFeedback = String(err);
+    } finally {
+      adblockBusy = false;
+    }
+  }
+
+  function removeAdblockSite(site: string) {
+    void saveAppSetting("adblockAllowlist", appSettings.adblockAllowlist.filter((candidate) => candidate !== site));
+  }
+
+  function serviceAdblockOverride(serviceId: string): ServiceAdblockOverride {
+    return ownValue(appSettings.serviceAdblock, serviceId) ?? {};
+  }
+
+  function saveServiceAdblock(serviceId: string, patch: ServiceAdblockPatch) {
+    void saveAppSetting("serviceAdblock", withServiceAdblockPatch(appSettings.serviceAdblock, serviceId, patch));
+  }
+
+  async function addServiceAdblockSites(serviceId: string) {
+    if (adblockBusy) return;
+    adblockBusy = true;
+    try {
+      const sites = await normalizedSites(serviceAdblockOverride(serviceId).allowlist ?? [], adblockServiceSiteInput);
+      if (sites) {
+        saveServiceAdblock(serviceId, { allowlist: sites });
+        adblockServiceSiteInput = "";
+      }
+    } catch (err) {
+      adblockFeedback = String(err);
+    } finally {
+      adblockBusy = false;
+    }
   }
 
   function serviceSpellcheckOverride(serviceId: string): ServiceSpellcheckOverride {
@@ -4169,6 +4310,42 @@
             <p class="desc">Overrides the global spelling settings for this service only.{spellingState?.controls.languages === false ? " Languages are managed by your system." : " Services that share a sandbox share one spell checker, so the most recent change applies to all of them."} Saved immediately.</p>
           </div>
 
+          {#if adblockState?.engine.supported}
+            {@const adblockOverride = serviceAdblockOverride(settingsServiceId)}
+            <div class="set-title">Ad blocking</div>
+            <div class="setrow">
+              <label class="block">
+                Block ads and trackers
+                <select
+                  class="select"
+                  aria-label={`Ad blocking for ${serviceLabel(settingsSvc)}`}
+                  value={adblockOverride.enabled === undefined ? "inherit" : adblockOverride.enabled ? "on" : "off"}
+                  onchange={(event) => {
+                    const choice = event.currentTarget.value;
+                    saveServiceAdblock(settingsServiceId, { enabled: choice === "inherit" ? null : choice === "on" });
+                  }}
+                >
+                  <option value="inherit">Use global setting ({appSettings.adblockEnabled ? "On" : "Off"})</option>
+                  <option value="on">On</option>
+                  <option value="off">Off</option>
+                </select>
+              </label>
+              <p class="desc">If this website stops working, turn blocking off here. Takes effect the next time the page loads. Saved immediately.</p>
+              <form class="spelling-add" onsubmit={(event) => { event.preventDefault(); void addServiceAdblockSites(settingsServiceId); }}>
+                <input class="input" type="text" aria-label={`Sites that are never blocked in ${serviceLabel(settingsSvc)}`} placeholder="Never block on this site (example.com)" bind:value={adblockServiceSiteInput} />
+                <button class="secondary sm" type="submit" disabled={adblockBusy || !adblockServiceSiteInput.trim()}>Add site</button>
+              </form>
+              {#if adblockOverride.allowlist?.length}
+                <ul class="spelling-words" aria-label={`Sites never blocked in ${serviceLabel(settingsSvc)}`}>
+                  {#each adblockOverride.allowlist as site (site)}
+                    <li><span>{site}</span><button class="secondary sm" aria-label={`Stop allowing ${site}`} onclick={() => saveServiceAdblock(settingsServiceId, { allowlist: (adblockOverride.allowlist ?? []).filter((candidate) => candidate !== site) })}>Remove</button></li>
+                  {/each}
+                </ul>
+              {/if}
+              {#if adblockFeedback}<p class="desc" role="status">{adblockFeedback}</p>{/if}
+            </div>
+
+          {/if}
           <div class="set-title">Keyboard shortcuts</div>
           <div class="setrow service-shortcut-policy">
             <div class="service-shortcut-copy">
@@ -4610,7 +4787,7 @@
           </div>
 
           <nav class="settings-tabs" aria-label="Settings sections">
-            {#each [["general", "General"], ["services", "Services"], ["workspaces", "Workspaces"], ["appearance", "Appearance"], ["spelling", "Spelling"], ["keybindings", "Keybinds"], ["sandbox", "Sandbox"], ["privacy", "Privacy"], ["backup", "Backup"], ["audit", "Audit log"], ["advanced", "Advanced"], ["updates", "Updates"], ["about", "About"]] as [id, label] (id)}
+            {#each [["general", "General"], ["services", "Services"], ["workspaces", "Workspaces"], ["appearance", "Appearance"], ["spelling", "Spelling"], ["adblock", "Ad blocking"], ["keybindings", "Keybinds"], ["sandbox", "Sandbox"], ["privacy", "Privacy"], ["backup", "Backup"], ["audit", "Audit log"], ["advanced", "Advanced"], ["updates", "Updates"], ["about", "About"]] as [id, label] (id)}
               <button
                 class="setting-tab"
                 class:on={settingsTab === id}
@@ -5342,6 +5519,72 @@
                   {/if}
                 </div>
               </section>
+            {:else if settingsTab === "adblock"}
+              {#if adblockState && !adblockState.engine.supported}
+                <section class="settings-section" aria-labelledby="settings-adblock-unavailable">
+                  <div class="section-heading"><h3 id="settings-adblock-unavailable">Ad blocking</h3><p>Ad blocking is not available on this platform yet.</p></div>
+                </section>
+              {:else}
+                <section class="settings-section" aria-labelledby="settings-adblock-main">
+                  <div class="section-heading"><h3 id="settings-adblock-main">Ad and tracker blocking</h3><p>Blocks requests that the selected filter lists identify as advertising or tracking. Nothing about your browsing is sent anywhere; only the filter lists themselves are downloaded. Some websites may break, so each service can turn blocking off in its own settings.</p></div>
+                  <div class="settings-list">
+                    {@render appToggle("Block ads and trackers", "Applies to every service unless the service overrides it. Changes apply the next time a page loads.", "adblockEnabled", appSettings.adblockEnabled)}
+                  </div>
+                  {#if adblockState}
+                    <p class="desc" role="status">
+                      {#if adblockState.phase === "ready"}Blocking is active.
+                      {:else if adblockState.phase === "compiling"}Preparing filter rules. This can take a few seconds and happens only when the lists change.
+                      {:else if adblockState.phase === "waiting"}Waiting for the filter lists to download.
+                      {:else if adblockState.phase === "error"}Blocking could not start: {adblockState.error}
+                      {:else}Blocking is off.{/if}
+                    </p>
+                  {/if}
+                </section>
+                <section class="settings-section" aria-labelledby="settings-adblock-lists">
+                  <div class="section-heading"><h3 id="settings-adblock-lists">Filter lists</h3><p>Lists are downloaded over HTTPS, checked, and kept on this device, so blocking keeps working offline. They refresh automatically.</p></div>
+                  <div class="settings-list">
+                    <div class="spelling-language-grid" role="group" aria-label="Filter lists">
+                      {#each adblockState?.catalog ?? [] as entry (entry.id)}
+                        <label class="spelling-language">
+                          <input type="checkbox" checked={appSettings.adblockLists.includes(entry.id)} onchange={(event) => setAdblockList(entry.id, event.currentTarget.checked)} />
+                          <span>{entry.name}</span>
+                        </label>
+                      {/each}
+                    </div>
+                    {#if adblockState?.lists.length}
+                      <ul class="spelling-words" aria-label="Filter list status">
+                        {#each adblockState.lists as list (list.id)}
+                          <li><span>{list.name}<br /><small class="desc">{describeListStatus(list)}</small></span>{#if list.custom}<button class="secondary sm" aria-label={`Remove ${list.name}`} onclick={() => removeAdblockCustomList(list.url)}>Remove</button>{/if}</li>
+                        {/each}
+                      </ul>
+                    {/if}
+                    <form class="spelling-add" onsubmit={(event) => { event.preventDefault(); void addAdblockCustomList(); }}>
+                      <input class="input" type="url" aria-label="Custom filter list address" placeholder="https://example.com/list.txt" bind:value={adblockListInput} />
+                      <button class="secondary sm" type="submit" disabled={adblockBusy || !adblockListInput.trim()}>Add list</button>
+                    </form>
+                    <div><button class="secondary sm" disabled={adblockBusy || !appSettings.adblockEnabled && Object.keys(appSettings.serviceAdblock).length === 0} onclick={() => void updateAdblockListsNow()}>Update lists now</button></div>
+                    {#if adblockFeedback}<p class="desc" role="status">{adblockFeedback}</p>{/if}
+                    {#if adblockState}<p class="desc">{adblockState.engine.coverageNote}</p>{/if}
+                    {#if adblockState && !adblockState.engine.supportsCounters}<p class="desc">Blocked-request counts are not shown because this platform's web engine does not report blocked requests.</p>{/if}
+                  </div>
+                </section>
+                <section class="settings-section" aria-labelledby="settings-adblock-allowlist">
+                  <div class="section-heading"><h3 id="settings-adblock-allowlist">Never block on these sites</h3><p>Blocking is skipped while a page from one of these sites (or its subdomains) is open.</p></div>
+                  <div class="settings-list">
+                    <form class="spelling-add" onsubmit={(event) => { event.preventDefault(); void addAdblockSites(); }}>
+                      <input class="input" type="text" aria-label="Site to never block" placeholder="example.com" bind:value={adblockSiteInput} />
+                      <button class="secondary sm" type="submit" disabled={adblockBusy || !adblockSiteInput.trim()}>Add site</button>
+                    </form>
+                    {#if appSettings.adblockAllowlist.length}
+                      <ul class="spelling-words" aria-label="Sites that are never blocked">
+                        {#each appSettings.adblockAllowlist as site (site)}
+                          <li><span>{site}</span><button class="secondary sm" aria-label={`Stop allowing ${site}`} onclick={() => removeAdblockSite(site)}>Remove</button></li>
+                        {/each}
+                      </ul>
+                    {/if}
+                  </div>
+                </section>
+              {/if}
             {:else if settingsTab === "keybindings"}
               <section class="settings-section" aria-labelledby="settings-keybindings-main">
                 <div class="section-heading"><h3 id="settings-keybindings-main">Keybindings</h3><p>Customize application navigation. Bindings may be a single shortcut or a two-stroke chord such as Ctrl+K Ctrl+S. Letter keys are shown as uppercase key labels; Shift is required only when <strong>Shift</strong> is explicitly present. Press Delete while recording to clear a binding.</p></div>
