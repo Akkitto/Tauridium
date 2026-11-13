@@ -42,8 +42,11 @@ class ServiceMenuOverlayTests(unittest.TestCase):
     self.assertIn(".reparent(&window)", raise_fn)
     main = read("src-tauri/src/main.rs")
     self.assertGreaterEqual(len(re.findall(r"service_menu::restack\(", main)), 2)
-    for event in ("Resized", "Focused(false)", "ScaleFactorChanged"):
-      self.assertRegex(main, event.replace("(", r"\(").replace(")", r"\)") + r"[^\n]*\n?[^\n]*service_menu::close")
+    for event in ("Resized", "ScaleFactorChanged"):
+      self.assertRegex(main, event + r"[^\n]*\n?[^\n]*service_menu::close")
+    # Focus loss closes the menu only when another process owns the foreground window; the
+    # Windows overlay is a child window, so focusing it must not dismiss the menu.
+    self.assertRegex(main, r"Focused\(false\)[^\n]*\n?[^\n]*service_menu::window_focus_lost")
 
   def test_shell_renders_the_overlay_and_keeps_the_in_window_menu_as_fallback(self):
     app = read("src/App.svelte")
