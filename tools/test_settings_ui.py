@@ -126,6 +126,26 @@ class SettingsUiReleaseTests(unittest.TestCase):
     self.assertIn('view = "appSettings"', body)
     self.assertIn('onclick={closeServiceSettings}>✕ close</button>', self.app)
 
+  def test_spelling_tab_follows_platform_capabilities(self) -> None:
+    self.assertIn('["spelling", "Spelling"]', self.app)
+    self.assertIn('settingsTab === "spelling"', self.app)
+    for command in ("getSpellingState", "addSpellingWord", "removeSpellingWord"):
+      self.assertIn(command, self.api)
+    # Controls the platform cannot honour must be explained, never offered.
+    self.assertIn("spellingState.controls.languages", self.app)
+    self.assertIn("spellingState.controls.dictionary", self.app)
+    self.assertIn("Managed by {spellingState.controls.platform}", self.app)
+    # Every spelling change reuses the persisted-setting path that shows `Saved`.
+    for key in ("spellcheckEnabled", "spellcheckLanguages", "serviceSpellcheck"):
+      self.assertIn(key, self.app)
+    self.assertIn('saveAppSetting("serviceSpellcheck"', self.app)
+    self.assertIn('saveAppSetting("spellcheckLanguages"', self.app)
+
+  def test_service_deletion_and_duplication_carry_spelling_overrides(self) -> None:
+    self.assertIn("delete serviceSpellcheck[s.id]", self.app)
+    self.assertIn("copyOwnEntry(serviceSpellcheck, service.id, newId)", self.app)
+    self.assertIn("serviceSpellcheck: previousSpellcheck", self.app)
+
   def test_deprecated_local_only_wording_is_absent(self) -> None:
     lowered = self.app.lower()
     self.assertNotIn('local' + '-only', lowered)
