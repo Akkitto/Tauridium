@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod adblock;
 mod audit;
 mod backup;
 mod browser_privacy;
@@ -2449,6 +2450,9 @@ async fn create_service_webview(
             startup_diagnostics::log("primary", "spelling.apply_error", &error);
         }
     }
+    // Attach before the service gets any further chance to load: the cached
+    // filter is already in memory after startup, so this is synchronous.
+    adblock::runtime::apply_service(win.app_handle(), service_id, true);
     state.created.lock().unwrap().insert(service_id.to_string());
     download_toast::restack(win.app_handle());
     service_menu::restack(win.app_handle());
@@ -3711,6 +3715,14 @@ fn default_app_settings_value() -> Value {
         "serviceSpellcheck".into(),
         spelling::default_service_overrides(),
     );
+    settings.insert("adblockEnabled".into(), adblock::default_enabled());
+    settings.insert("adblockLists".into(), adblock::default_lists());
+    settings.insert("adblockCustomLists".into(), adblock::default_custom_lists());
+    settings.insert("adblockAllowlist".into(), adblock::default_allowlist());
+    settings.insert(
+        "serviceAdblock".into(),
+        adblock::default_service_overrides(),
+    );
     settings.insert("serviceOrder".into(), Value::Array(Vec::new()));
     settings.insert("workspaceOrder".into(), Value::Array(Vec::new()));
     settings.insert("workspaceQuickSwitchOrder".into(), "custom".into());
@@ -4195,6 +4207,7 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
     }
     validate_service_zoom_levels(object.get("serviceZoomLevels"))?;
     spelling::validate_settings(object)?;
+    adblock::validate_settings(object)?;
     browser_privacy::validate(object.get("trackingPreventionExceptions"))?;
     validate_keybindings(object.get("keybindings"))?;
     validate_sandboxes(object.get("sandboxes"), object.get("serviceSandboxes"))?;
@@ -4633,6 +4646,62 @@ fn spelling_get_state(
 }
 
 #[tauri::command]
+fn adblock_get_state(app: AppHandle) -> adblock::runtime::AdblockState {
+    adblock::runtime::state(&app)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AdblockSites {
+    accepted: Vec<String>,
+    rejected: Vec<AdblockRejectedSite>,
+}
+
+#[derive(serde::Serialize)]
+struct AdblockRejectedSite {
+    input: String,
+    reason: String,
+}
+
+/// Normalises allowlist input so the shell shows exactly what will be saved
+/// and why anything was refused.
+#[tauri::command]
+fn adblock_normalize_sites(inputs: Vec<String>) -> AdblockSites {
+    let (accepted, rejected) = adblock::normalize_allowlist(&inputs);
+    AdblockSites {
+        accepted,
+        rejected: rejected
+            .into_iter()
+            .map(|(input, reason)| AdblockRejectedSite { input, reason })
+            .collect(),
+    }
+}
+
+#[tauri::command]
+async fn adblock_update_lists(app: AppHandle) -> Result<adblock::runtime::AdblockState, String> {
+    adblock::runtime::update_now(&app).await?;
+    Ok(adblock::runtime::state(&app))
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AdblockListCheck {
+    network_rules: u32,
+    cosmetic_rules: u32,
+}
+
+/// Downloads and validates a custom list so the shell can give immediate
+/// feedback before the address is saved in settings.
+#[tauri::command]
+async fn adblock_check_list(app: AppHandle, url: String) -> Result<AdblockListCheck, String> {
+    let stats = adblock::runtime::check_list(&app, &url).await?;
+    Ok(AdblockListCheck {
+        network_rules: stats.network,
+        cosmetic_rules: stats.cosmetic,
+    })
+}
+
+#[tauri::command]
 fn spelling_add_word(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -4715,6 +4784,9 @@ fn set_app_settings(
                 )
             }) {
                 apply_spelling_settings(&app, &state, &value);
+            }
+            if adblock::patch_affects(&patch) {
+                adblock::runtime::settings_changed(&app);
             }
             let changes = patch
                 .iter()
@@ -5077,6 +5149,11 @@ fn perform_restore_backup(
     let local_profile = LocalProfile::from_value(document.local_profile())?;
     recipes::validate_custom_recipe_backups(document.custom_recipes())?;
     let previous_settings = effective_app_settings_value(app);
+    // Backups made before ad blocking carry none of its settings; keep the
+    // current ones instead of resetting them to defaults.
+    let app_settings =
+        adblock::carry_forward_missing(app_settings, &document.app_settings(), &previous_settings);
+    validate_app_settings_value(&app_settings)?;
     let previous_profile = state.local_profile.lock().unwrap().clone();
     let previous_recipes = recipes::backup_custom_recipes(app)?;
     let previous_spelling_words = spelling_backup_words(app)?;
@@ -5154,6 +5231,7 @@ fn perform_restore_backup(
 
     *state.local_profile.lock().unwrap() = local_profile;
     apply_spelling_settings(app, state, &app_settings);
+    adblock::runtime::settings_changed(app);
     let mut summary = document
         .summary(path)
         .with_recovery_backup_path(&recovery_path);
@@ -5853,6 +5931,7 @@ fn main() {
                     .get("trackingPreventionExceptions").cloned().unwrap_or_else(|| serde_json::json!({}));
             }
             startup_diagnostics::log("primary", "settings.loaded", "application settings loaded into memory");
+            adblock::runtime::start(app.handle());
             {
                 let st = app.state::<AppState>();
                 let settings = st.settings.lock().unwrap();
@@ -6148,6 +6227,10 @@ fn main() {
             service_menu::service_menu_action,
             set_service_zoom,
             spelling_get_state,
+            adblock_get_state,
+            adblock_update_lists,
+            adblock_normalize_sites,
+            adblock_check_list,
             spelling_add_word,
             spelling_remove_word,
             toggle_devtools_command
@@ -6662,6 +6745,85 @@ mod tests {
 
         settings["serviceSpellcheck"] = json!({ "service-a": { "languages": ["not a tag"] } });
         assert!(validate_app_settings_value(&settings).is_err());
+    }
+
+    #[test]
+    fn adblock_settings_default_when_missing_and_validate_in_app_settings() {
+        // Settings files written before ad blocking lack the keys entirely and
+        // must load with blocking off.
+        let defaults = merge_app_settings_value(&json!({})).unwrap();
+        assert_eq!(defaults["adblockEnabled"], json!(false));
+        assert_eq!(defaults["adblockLists"], json!(["easylist", "easyprivacy"]));
+        assert_eq!(defaults["adblockCustomLists"], json!([]));
+        assert_eq!(defaults["adblockAllowlist"], json!([]));
+        assert_eq!(defaults["serviceAdblock"], json!({}));
+        assert!(validate_app_settings_value(&defaults).is_ok());
+
+        let mut settings = defaults.clone();
+        settings["adblockEnabled"] = json!(true);
+        settings["adblockAllowlist"] = json!(["example.com"]);
+        settings["serviceAdblock"] = json!({ "service-a": { "enabled": false } });
+        assert!(validate_app_settings_value(&settings).is_ok());
+
+        settings["serviceAdblock"] = json!({ "service-a": { "allowlist": ["Not A Site"] } });
+        assert!(validate_app_settings_value(&settings).is_err());
+        settings["serviceAdblock"] = json!({});
+        settings["adblockCustomLists"] = json!(["http://example.com/list.txt"]);
+        assert!(validate_app_settings_value(&settings).is_err());
+    }
+
+    #[test]
+    fn adblock_settings_survive_a_save_and_reload() {
+        let mut settings = merge_app_settings_value(&json!({})).unwrap();
+        settings["adblockEnabled"] = json!(true);
+        settings["adblockLists"] = json!(["easyprivacy"]);
+        settings["adblockCustomLists"] = json!(["https://example.com/list.txt"]);
+        settings["adblockAllowlist"] = json!(["a.com", "b.org"]);
+        settings["serviceAdblock"] =
+            json!({ "svc-1": { "enabled": false, "allowlist": ["c.net"] } });
+        validate_app_settings_value(&settings).unwrap();
+
+        // What persist_app_settings writes, and what the next start reads.
+        let on_disk = serde_json::to_string_pretty(&settings).unwrap();
+        let reloaded = merge_app_settings_value(&serde_json::from_str(&on_disk).unwrap()).unwrap();
+        for key in [
+            "adblockEnabled",
+            "adblockLists",
+            "adblockCustomLists",
+            "adblockAllowlist",
+            "serviceAdblock",
+        ] {
+            assert_eq!(reloaded[key], settings[key], "{key} must survive a restart");
+        }
+    }
+
+    #[test]
+    fn restoring_a_pre_adblock_backup_keeps_current_blocking_settings() {
+        let mut current = merge_app_settings_value(&json!({})).unwrap();
+        current["adblockEnabled"] = json!(true);
+        current["adblockAllowlist"] = json!(["a.com"]);
+        current["serviceAdblock"] = json!({ "svc": { "enabled": false } });
+
+        // The restore path merges the backup over defaults, which resets blocking...
+        let old_backup = json!({ "theme": "dark" });
+        let merged = merge_app_settings_value(&old_backup).unwrap();
+        assert_eq!(merged["adblockEnabled"], json!(false));
+        // ...so the keys it lacks are carried forward from the current profile.
+        let restored = adblock::carry_forward_missing(merged, &old_backup, &current);
+        validate_app_settings_value(&restored).unwrap();
+        assert_eq!(restored["theme"], json!("dark"));
+        assert_eq!(restored["adblockEnabled"], json!(true));
+        assert_eq!(restored["adblockAllowlist"], json!(["a.com"]));
+        assert_eq!(restored["serviceAdblock"], current["serviceAdblock"]);
+
+        // A backup that does carry blocking settings wins, even when they say "off".
+        let new_backup = json!({ "adblockEnabled": false, "adblockAllowlist": [] });
+        let merged = merge_app_settings_value(&new_backup).unwrap();
+        let restored = adblock::carry_forward_missing(merged, &new_backup, &current);
+        assert_eq!(restored["adblockEnabled"], json!(false));
+        assert_eq!(restored["adblockAllowlist"], json!([]));
+        // Keys the backup omits are still carried forward individually.
+        assert_eq!(restored["serviceAdblock"], current["serviceAdblock"]);
     }
 
     #[test]

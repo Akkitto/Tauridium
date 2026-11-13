@@ -64,6 +64,10 @@ commands.allow = [
   "settle_service_menu",
   "set_service_zoom",
   "spelling_get_state",
+  "adblock_get_state",
+  "adblock_update_lists",
+  "adblock_normalize_sites",
+  "adblock_check_list",
   "spelling_add_word",
   "spelling_remove_word",
   "toggle_devtools_command"
