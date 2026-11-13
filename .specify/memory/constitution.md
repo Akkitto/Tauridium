@@ -5,7 +5,7 @@ Modified principles:
   - III. Isolation by Default, Local First: added the typed-text privacy rule
   - VI. Tested and Reproducible: added real-engine verification and honest status reporting
 Added principles: VII. Verified Platform Behaviour; VIII. Compatible Evolution
-Added sections: Dependencies and Supply Chain; Spec Kit Practice
+Added sections: Dependencies and Supply Chain; Spec Kit Practice (including one branch per spec)
 Modified sections: Platform and Release Constraints (Linux first for this fork)
 Removed sections: none
 Templates:
@@ -134,6 +134,8 @@ Unknown future versions MUST be rejected without overwriting the file.
 
 ## Spec Kit Practice
 
+- One branch per spec. A feature's spec directory (`specs/NNN-name`), its branch and its
+  pull request correspond one-to-one; unrelated work goes on its own spec and branch.
 - Record unknowns as spikes in `research.md` and resolve them before dependent tasks.
 - When implementation reveals reality that differs from the spec (platform limits,
   deferred scope), update the spec and plan so they describe what was built.
