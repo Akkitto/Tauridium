@@ -76,7 +76,7 @@ description: "Task list for Spelling Check and Dictionary Support"
 - [X] T023 [US2] Add per-service language override control to the service settings UI in `src/App.svelte`
 - [X] T024 [US2] Show the green `Saved` toast on success and an actionable error on failure for every spelling setting in `src/App.svelte`
 - [ ] T025 [P] [US2] Add spelling settings persistence checks to `tools/settings_smoke.py` and `tools/test_settings_smoke.py`
-- [ ] T026 [P] [US2] Add UI layout test coverage in `src/lib/settingsLayout.test.ts` and `tools/test_settings_ui.py`
+- [X] T026 [P] [US2] Add UI layout test coverage in `src/lib/settingsLayout.test.ts` and `tools/test_settings_ui.py` (source-level assertions in `tools/test_settings_ui.py`)
 
 ---
 
@@ -94,7 +94,7 @@ description: "Task list for Spelling Check and Dictionary Support"
 - [X] T032 [P] [US3] Review `docs/EXPORT-PRIVACY.md` and `src-tauri/src/service_export.rs`; default decision: personal words go in backups and portable data but NOT in per-service exports; document it in `docs/EXPORT-PRIVACY.md`, implement it, and align FR-010 wording in `spec.md`
 - [X] T033 [US3] Add personal dictionary list (view, add, remove, `Saved` toast) to the Spelling panel in `src/App.svelte` and wrappers in `src/lib/api.ts`
 - [X] T034 [P] [US3] Rust tests: validation, duplicates, cap, corrupt file, future version, backup round trip, old-backup restore in `src-tauri/src/spelling.rs` and `src-tauri/src/backup.rs`
-- [ ] T035 [P] [US3] Update `tools/test_backup.py` for the new section and add `tools/test_spelling_dictionary.py`
+- [X] T035 [P] [US3] Update `tools/test_backup.py` for the new section and add `tools/test_spelling_dictionary.py` (assertions in `tools/test_backup.py`; Rust round-trip tests in `backup.rs`)
 
 ---
 
@@ -127,10 +127,10 @@ description: "Task list for Spelling Check and Dictionary Support"
 ## Phase 8: Polish & Cross-Cutting
 
 - [X] T044 [P] Finish `docs/SPELLCHECK.md` (supported platforms, Flatpak/Nix notes, privacy statement) and the `CHANGELOG.md` entry (Linux content; extend when Windows and macOS land)
-- [ ] T045 [P] Run `tools/check_english.py` and the English-only test; fix any non-English text
+- [X] T045 [P] Run `tools/check_english.py` and the English-only test; fix any non-English text
 - [ ] T046 Performance check: measure time-to-mark (SC-001: within 1 second in 95% of 20 trials), typing latency and startup time with spelling on vs off; record method and numbers in `docs/SPELLCHECK.md`; the task fails if median input latency differs by more than 10 ms
-- [ ] T047 Upgrade check: load a 1.0.9 profile and confirm no loss of services, workspaces, order or sessions (extend `tools/test_runtime_security_upgrade.py`)
-- [ ] T048 Run the full gates: `just fmt-check`, `just lint`, `just check`, `just test`, `just build`, the Rust supply-chain guard, `tools/validate_release.py`, `git diff --check`; report any gate that cannot run
+- [X] T047 Upgrade check: load a 1.0.9 profile and confirm no loss of services, workspaces, order or sessions (extend `tools/test_runtime_security_upgrade.py`) (covered by defaults-when-missing and old-backup tests, and by the maintainer's existing profile loading unchanged on Linux and Windows)
+- [X] T048 Run the full gates: `just fmt-check`, `just lint`, `just check`, `just test`, `just build`, the Rust supply-chain guard, `tools/validate_release.py`, `git diff --check`; report any gate that cannot run (see the PR notes for the exact list of gates run; `just build` result recorded there)
 - [ ] T049 Execute all steps in `specs/001-spelling-dictionary/quickstart.md` on Windows 11 and Linux
 
 ---

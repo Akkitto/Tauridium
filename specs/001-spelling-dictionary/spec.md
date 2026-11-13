@@ -76,7 +76,7 @@ A user disables spell checking globally or for a specific service (for example a
 
 ---
 
-### User Story 5 - Look up a word in a dictionary (Priority: P3)
+### User Story 5 - Look up a word in a dictionary (Priority: P3) *(deferred)*
 
 A user selects a word and chooses a lookup action to see its definition without leaving the app.
 
@@ -115,15 +115,15 @@ A user selects a word and chooses a lookup action to see its definition without 
 - **FR-005**: Users MUST be able to select one or more spelling languages globally.
 - **FR-006**: Users MUST be able to override the language set and the on/off state per service.
 - **FR-007**: Users MUST be able to enable or disable spell checking globally and per service.
-- **FR-008**: Users MUST be able to add a word to a personal dictionary from the context menu, and view and remove words in settings.
+- **FR-008**: Users MUST be able to add a word to a personal dictionary and remove it later. Where Tauridium manages the dictionary (Linux), this is available from the website right-click menu and from Settings. Where the operating system manages it (Windows, macOS), the right-click menu adds words to the system dictionary and Settings explains this.
 - **FR-009**: Personal dictionary words MUST apply across all services and persist across restarts.
-- **FR-010**: The personal dictionary and spelling settings MUST be included in backups, exports and portable data, and MUST be restored from them.
+- **FR-010**: The personal dictionary and spelling settings MUST be included in full backups and restored from them, and an older backup without a dictionary MUST leave the current dictionary unchanged. Portable service, workspace and sandbox exports MUST NOT include personal words.
 - **FR-011**: Every spelling setting changed from the UI MUST show visible confirmation of successful persistence, and failures MUST show an actionable error.
-- **FR-012**: Users MUST be able to look up a selected word and see a definition or a clear not-found/unavailable message.
+- **FR-012**: *(Deferred to a later change.)* Users MUST be able to look up a selected word and see a definition or a clear not-found/unavailable message. When built, the word MUST be sent to an external site only after an explicit user action, with the privacy cost stated in the UI.
 - **FR-013**: Checking MUST NOT apply to password or other sensitive input fields.
 - **FR-014**: Typed text MUST NOT be sent to any external service for spell checking.
 - **FR-015**: Existing local data, service and workspace order, sessions, and upgrade compatibility MUST be preserved.
-- **FR-016**: The feature MUST behave consistently on Windows 11 and Linux, and on macOS on a best-effort basis; where a platform cannot support a capability, the UI MUST say so.
+- **FR-016**: The per-service on/off switch MUST work on Windows 11, Linux and macOS. Languages and the personal dictionary are controlled by Tauridium on Linux only. On Windows and macOS the engines expose no way to control them, so the UI MUST say they are managed by the operating system instead of offering settings that do nothing.
 - **FR-017**: Spell checking MUST NOT cause noticeable typing lag or increase startup time.
 - **FR-018**: User-facing text and documentation MUST be in English, and the changelog MUST describe the feature.
 
@@ -154,5 +154,8 @@ A user selects a word and chooses a lookup action to see its definition without 
 - Dictionaries are available offline; how they are obtained is a planning decision.
 - Word lookup may be limited where no offline definition source exists, in which case it shows the unavailable message.
 - Grammar checking, autocorrect, and text prediction are out of scope.
+- Word lookup (User Story 5, FR-012) is deferred and not part of the first release of this feature.
 - Spellchecking of the app's own shell UI fields (e.g. service name inputs) is out of scope; only service page content is in scope.
 - Service webviews remain isolated; settings and the personal dictionary are app-level, not tied to any service account.
+- On Windows and macOS the per-service switch works through the standard `spellcheck` attribute on editable fields of the top-level page; embedded frames are not covered.
+- Services that share a sandbox share one spell checker on Linux, so the latest language or on/off change applies to all of them.
