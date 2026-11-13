@@ -104,6 +104,10 @@ windows-sys = { version = ">=0.59, <=0.61", features = [
 
 [target.'cfg(target_os = "macos")'.dependencies]
 apple-native-keyring-store = { version = "=1.0.2", features = ["keychain"] }
+# Same locked versions Tauri/Wry already use; needed to set WebKit's spell-checking
+# default inside this process instead of a bundle-identifier domain it may not read.
+objc2 = "=0.6.5"
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSString", "NSUserDefaults", "NSValue", "NSDictionary", "NSObject"] }
 
 [[bin]]
 name = "tauridium"

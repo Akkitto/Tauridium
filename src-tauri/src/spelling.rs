@@ -626,37 +626,27 @@ pub(crate) fn prepare_engine(app_data: &Path) -> Result<(), String> {
 
 /// macOS: WebKit only underlines misspellings when the app default
 /// `WebContinuousSpellCheckingEnabled` is true, and treats a missing key as
-/// false. Set it once if the user has never chosen a value, so their own later
-/// choice from the context menu is respected. Best effort: failures are
-/// reported, never fatal.
+/// false. Register it in this process so it applies whichever preferences
+/// domain the process uses (the bundle identifier when packaged, the executable
+/// name when run unbundled), and still yields to a value the user has stored
+/// from the context menu. Never fails.
 #[cfg(target_os = "macos")]
-pub(crate) fn register_macos_defaults(bundle_id: &str) -> Result<(), String> {
-    use std::process::Command;
-    const KEY: &str = "WebContinuousSpellCheckingEnabled";
-    let already_set = Command::new("/usr/bin/defaults")
-        .args(["read", bundle_id, KEY])
-        .output()
-        .map_err(|error| format!("Unable to read the macOS spelling default: {error}"))?
-        .status
-        .success();
-    if already_set {
-        return Ok(());
-    }
-    let status = Command::new("/usr/bin/defaults")
-        .args(["write", bundle_id, KEY, "-bool", "true"])
-        .status()
-        .map_err(|error| format!("Unable to set the macOS spelling default: {error}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err("Unable to set the macOS spelling default".into())
-    }
+pub(crate) fn register_macos_defaults() {
+    use objc2::rc::Retained;
+    use objc2::runtime::AnyObject;
+    use objc2_foundation::{NSDictionary, NSNumber, NSString, NSUserDefaults};
+    let key = NSString::from_str("WebContinuousSpellCheckingEnabled");
+    let defaults = NSUserDefaults::standardUserDefaults();
+    let enabled: Retained<AnyObject> =
+        Retained::into_super(Retained::into_super(Retained::into_super(NSNumber::new_bool(true))));
+    let registration = NSDictionary::from_retained_objects(&[&*key], &[enabled]);
+    // SAFETY: the dictionary holds an NSString key and an NSNumber value, both
+    // valid property-list types.
+    unsafe { defaults.registerDefaults(&registration) };
 }
 
 #[cfg(not(target_os = "macos"))]
-pub(crate) fn register_macos_defaults(_bundle_id: &str) -> Result<(), String> {
-    Ok(())
-}
+pub(crate) fn register_macos_defaults() {}
 
 /// Which spelling controls the platform engine really honours. Where a control
 /// is not available the UI explains that the operating system manages it,

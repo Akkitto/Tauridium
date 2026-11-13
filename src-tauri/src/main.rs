@@ -5717,6 +5717,9 @@ fn write_build_info_if_requested() -> Result<bool, String> {
 }
 
 fn main() {
+    // WebKit reads its spelling default when the first web view is created, so
+    // register it before any window exists.
+    spelling::register_macos_defaults();
     if let Err(error) = startup_diagnostics::initialize_from_args() {
         startup_diagnostics::report_fatal("launch", "diagnostics.initialization_error", &error);
         std::process::exit(2);
@@ -5827,11 +5830,6 @@ fn main() {
                 Ok(app_data) => {
                     if let Err(error) = spelling::prepare_engine(&app_data) {
                         startup_diagnostics::log("primary", "spelling.prepare_error", &error);
-                    }
-                    if let Err(error) =
-                        spelling::register_macos_defaults(&app.config().identifier)
-                    {
-                        startup_diagnostics::log("primary", "spelling.macos_defaults_error", &error);
                     }
                 }
                 Err(error) => startup_diagnostics::log(

@@ -25,8 +25,8 @@ top-level page of a service, not to embedded frames.
 
 On macOS, WebKit underlines misspellings only when the app default
 `WebContinuousSpellCheckingEnabled` is true, and treats a missing value as false.
-Tauridium sets it once if you have never chosen a value, so a later choice from the
-right-click menu is respected.
+Tauridium registers it as an in-process default at startup, so it works for packaged
+and unbundled runs alike, and a choice you store from the right-click menu still wins.
 
 These two platforms have been implemented from engine documentation but have not
 yet been tested on real systems.

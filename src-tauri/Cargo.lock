@@ -4588,6 +4588,8 @@ dependencies = [
  "getrandom 0.4.3",
  "gtk",
  "keyring-core",
+ "objc2",
+ "objc2-foundation",
  "regex",
  "reqwest 0.12.28",
  "rfd",
