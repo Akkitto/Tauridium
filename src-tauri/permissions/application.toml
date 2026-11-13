@@ -60,6 +60,9 @@ commands.allow = [
   "reload_app_command",
   "show_service_toast_overlay",
   "set_service_zoom",
+  "spelling_get_state",
+  "spelling_add_word",
+  "spelling_remove_word",
   "toggle_devtools_command"
 ]
 

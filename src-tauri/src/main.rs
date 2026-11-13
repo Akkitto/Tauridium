@@ -33,6 +33,7 @@ mod recipes;
 mod service_badges;
 mod service_export;
 mod single_instance;
+mod spelling;
 mod startup_diagnostics;
 mod storage_security;
 mod window_chrome;
@@ -2416,6 +2417,13 @@ async fn create_service_webview(
     if let Some(o) = dark {
         builder = builder.initialization_script(dark_reader_init(o));
     }
+    {
+        let settings = state.settings.lock().unwrap().clone();
+        let effective = spelling::effective_for_service(&settings, service_id);
+        if let Some(script) = spelling::toggle_init_script(effective.enabled) {
+            builder = builder.initialization_script(script);
+        }
+    }
     let webview = win
         .add_child(builder, pos, size)
         .map_err(|e| format!("Failed to create service webview: {e}"))?;
@@ -2426,6 +2434,18 @@ async fn create_service_webview(
             return Err(format!(
                 "Unable to apply the saved {zoom_percent}% zoom to service {service_id}: {error}"
             ));
+        }
+    }
+    {
+        let settings = state.settings.lock().unwrap().clone();
+        if let Err(error) = spelling::install_menu_filter(&webview) {
+            startup_diagnostics::log("primary", "spelling.menu_filter_error", &error);
+        }
+        if let Err(error) = spelling::apply_to_webview(
+            &webview,
+            &spelling::effective_for_service(&settings, service_id),
+        ) {
+            startup_diagnostics::log("primary", "spelling.apply_error", &error);
         }
     }
     state.created.lock().unwrap().insert(service_id.to_string());
@@ -3682,6 +3702,12 @@ fn default_app_settings_value() -> Value {
         "serviceZoomLevels".into(),
         Value::Object(serde_json::Map::new()),
     );
+    settings.insert("spellcheckEnabled".into(), true.into());
+    settings.insert("spellcheckLanguages".into(), spelling::default_languages());
+    settings.insert(
+        "serviceSpellcheck".into(),
+        spelling::default_service_overrides(),
+    );
     settings.insert("serviceOrder".into(), Value::Array(Vec::new()));
     settings.insert("workspaceOrder".into(), Value::Array(Vec::new()));
     settings.insert("workspaceQuickSwitchOrder".into(), "custom".into());
@@ -4165,6 +4191,7 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         return Err("App setting serviceIconInversions is invalid".into());
     }
     validate_service_zoom_levels(object.get("serviceZoomLevels"))?;
+    spelling::validate_settings(object)?;
     browser_privacy::validate(object.get("trackingPreventionExceptions"))?;
     validate_keybindings(object.get("keybindings"))?;
     validate_sandboxes(object.get("sandboxes"), object.get("serviceSandboxes"))?;
@@ -4539,6 +4566,89 @@ fn sync_services_menu(app: AppHandle, services: Vec<NativeServiceMenuEntry>) -> 
     Ok(())
 }
 
+/// Applies changed spelling settings to every running service webview and
+/// re-mirrors the personal dictionary for the new language set.
+fn apply_spelling_settings(app: &AppHandle, state: &AppState, settings: &Value) {
+    let created: Vec<String> = state.created.lock().unwrap().iter().cloned().collect();
+    for service_id in created {
+        if let Err(error) = spelling::apply_service(app, settings, &service_id) {
+            startup_diagnostics::log("primary", "spelling.apply_error", &error);
+        }
+    }
+    if let Ok(app_data) = app.path().app_data_dir() {
+        if let Err(error) = spelling::list_words(&app_data, &spelling::active_languages(settings)) {
+            startup_diagnostics::log("primary", "spelling.sync_error", &error);
+        }
+    }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SpellingStateResponse {
+    languages: Vec<spelling::SpellingLanguage>,
+    system_language: String,
+    words: Vec<String>,
+    controls: spelling::EngineControls,
+}
+
+fn spelling_context(app: &AppHandle, state: &AppState) -> Result<(PathBuf, Value), String> {
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let settings = state.settings.lock().unwrap().clone();
+    Ok((app_data, settings))
+}
+
+#[tauri::command]
+fn spelling_get_state(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<SpellingStateResponse, String> {
+    let (app_data, settings) = spelling_context(&app, &state)?;
+    let active = spelling::active_languages(&settings);
+    let selected: Vec<String> = settings
+        .get("spellcheckLanguages")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut all_selected = selected;
+    for tag in &active {
+        if !all_selected.contains(tag) {
+            all_selected.push(tag.clone());
+        }
+    }
+    Ok(SpellingStateResponse {
+        languages: spelling::language_list(&spelling::installed_languages(), &all_selected),
+        system_language: spelling::system_language(),
+        words: spelling::list_words(&app_data, &active)?,
+        controls: spelling::engine_controls(),
+    })
+}
+
+#[tauri::command]
+fn spelling_add_word(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    word: String,
+) -> Result<Vec<String>, String> {
+    let (app_data, settings) = spelling_context(&app, &state)?;
+    spelling::add_word(&app_data, &spelling::active_languages(&settings), &word)
+}
+
+#[tauri::command]
+fn spelling_remove_word(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    word: String,
+) -> Result<Vec<String>, String> {
+    let (app_data, settings) = spelling_context(&app, &state)?;
+    spelling::remove_word(&app_data, &spelling::active_languages(&settings), &word)
+}
+
 #[tauri::command]
 fn set_app_settings(
     app: AppHandle,
@@ -4595,6 +4705,14 @@ fn set_app_settings(
         Ok(value) => {
             download_toast::settings_changed(&app, &previous, &value);
             window_chrome::refresh(&app);
+            if patch.keys().any(|key| {
+                matches!(
+                    key.as_str(),
+                    "spellcheckEnabled" | "spellcheckLanguages" | "serviceSpellcheck"
+                )
+            }) {
+                apply_spelling_settings(&app, &state, &value);
+            }
             let changes = patch
                 .iter()
                 .map(|(key, after)| {
@@ -4644,12 +4762,14 @@ fn export_backup(
         let local_profile = serde_json::to_value(state.local_profile.lock().unwrap().clone())
             .map_err(|error| format!("Unable to serialize local profile for backup: {error}"))?;
         let custom_recipes = recipes::backup_custom_recipes(&app)?;
+        let spelling_words = spelling_backup_words(&app)?;
         let document = backup::BackupDocument::new(
             env!("CARGO_PKG_VERSION"),
             app_settings,
             local_profile,
             custom_recipes,
-        );
+        )
+        .with_spelling_words(spelling_words);
         backup::save(Path::new(&path), &document)
     })();
     match operation {
@@ -4847,12 +4967,14 @@ fn create_automatic_backup(
         let local_profile = serde_json::to_value(state.local_profile.lock().unwrap().clone())
             .map_err(|error| format!("Unable to serialize local profile for backup: {error}"))?;
         let custom_recipes = recipes::backup_custom_recipes(&app)?;
+        let spelling_words = spelling_backup_words(&app)?;
         let document = backup::BackupDocument::new(
             env!("CARGO_PKG_VERSION"),
             app_settings,
             local_profile,
             custom_recipes,
-        );
+        )
+        .with_spelling_words(spelling_words);
         let mut summary = backup::save(&path, &document)?;
         match prune_automatic_backups(&root, retention_mode, retention, max_age_days, &path) {
             Ok(removed) => {
@@ -4934,6 +5056,11 @@ fn restore_recovery_backup_path(app: &AppHandle) -> Result<PathBuf, String> {
         .join(format!("pre-restore-{stamp}.json")))
 }
 
+fn spelling_backup_words(app: &AppHandle) -> Result<Vec<String>, String> {
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    spelling::snapshot_words(&app_data)
+}
+
 fn perform_restore_backup(
     app: &AppHandle,
     state: &AppState,
@@ -4949,6 +5076,7 @@ fn perform_restore_backup(
     let previous_settings = effective_app_settings_value(app);
     let previous_profile = state.local_profile.lock().unwrap().clone();
     let previous_recipes = recipes::backup_custom_recipes(app)?;
+    let previous_spelling_words = spelling_backup_words(app)?;
     let restored_recipes =
         recipes::merge_custom_recipe_backups(&previous_recipes, document.custom_recipes())?;
 
@@ -4961,7 +5089,8 @@ fn perform_restore_backup(
         previous_settings.clone(),
         previous_profile_value,
         previous_recipes.clone(),
-    );
+    )
+    .with_spelling_words(previous_spelling_words.clone());
     backup::save(&recovery_path, &recovery_document)
         .map_err(|error| format!("Unable to create pre-restore safety backup: {error}"))?;
 
@@ -4972,6 +5101,12 @@ fn perform_restore_backup(
         recipes::replace_custom_recipes_exact(app, &restored_recipes)?;
         save_local_profile(app, &local_profile)?;
         persist_app_settings(app, state, &app_settings)?;
+        // Backups made before spelling support carry no dictionary and must
+        // leave the current one untouched.
+        if let Some(words) = document.spelling_words() {
+            let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+            spelling::replace_words(&app_data, &spelling::active_languages(&app_settings), words)?;
+        }
         Ok(())
     })();
 
@@ -4986,6 +5121,22 @@ fn perform_restore_backup(
         if let Err(rollback) = persist_app_settings(app, state, &previous_settings) {
             rollback_errors.push(format!("app settings: {rollback}"));
         }
+        if document.spelling_words().is_some() {
+            let rollback = app
+                .path()
+                .app_data_dir()
+                .map_err(|e| e.to_string())
+                .and_then(|app_data| {
+                    spelling::replace_words(
+                        &app_data,
+                        &spelling::active_languages(&previous_settings),
+                        &previous_spelling_words,
+                    )
+                });
+            if let Err(rollback) = rollback {
+                rollback_errors.push(format!("spelling dictionary: {rollback}"));
+            }
+        }
         *state.local_profile.lock().unwrap() = previous_profile;
         if rollback_errors.is_empty() {
             return Err(format!(
@@ -4999,6 +5150,7 @@ fn perform_restore_backup(
     }
 
     *state.local_profile.lock().unwrap() = local_profile;
+    apply_spelling_settings(app, state, &app_settings);
     let mut summary = document
         .summary(path)
         .with_recovery_backup_path(&recovery_path);
@@ -5565,6 +5717,9 @@ fn write_build_info_if_requested() -> Result<bool, String> {
 }
 
 fn main() {
+    // WebKit reads its spelling default when the first web view is created, so
+    // register it before any window exists.
+    spelling::register_macos_defaults();
     if let Err(error) = startup_diagnostics::initialize_from_args() {
         startup_diagnostics::report_fatal("launch", "diagnostics.initialization_error", &error);
         std::process::exit(2);
@@ -5667,6 +5822,21 @@ fn main() {
                     startup_diagnostics::log("primary", "identity.migration_error", &error);
                     eprintln!("Unable to migrate Tauridium application data to the current application identity: {error}");
                 }
+            }
+
+            // Spelling engine word lists must be configured before any service
+            // web process starts so it inherits the private Enchant directory.
+            match app.path().app_data_dir() {
+                Ok(app_data) => {
+                    if let Err(error) = spelling::prepare_engine(&app_data) {
+                        startup_diagnostics::log("primary", "spelling.prepare_error", &error);
+                    }
+                }
+                Err(error) => startup_diagnostics::log(
+                    "primary",
+                    "spelling.prepare_error",
+                    &error.to_string(),
+                ),
             }
 
             // Cache app settings in memory for the poller, shutdown handling, and related logic.
@@ -5960,6 +6130,9 @@ fn main() {
             download_toast::dismiss_download_toast,
             download_toast::resize_download_toast,
             set_service_zoom,
+            spelling_get_state,
+            spelling_add_word,
+            spelling_remove_word,
             toggle_devtools_command
             ];
             handler(invoke)
@@ -6454,6 +6627,24 @@ mod tests {
         assert!(!valid_service_setting_id(""));
         assert!(!valid_service_setting_id("\n"));
         assert!(valid_service_setting_id("service-a"));
+    }
+
+    #[test]
+    fn spelling_settings_default_when_missing_and_validate_in_app_settings() {
+        // Settings files written before spelling support lack the keys entirely.
+        let defaults = merge_app_settings_value(&json!({})).unwrap();
+        assert_eq!(defaults["spellcheckEnabled"], json!(true));
+        assert_eq!(defaults["spellcheckLanguages"], json!([]));
+        assert_eq!(defaults["serviceSpellcheck"], json!({}));
+        assert!(validate_app_settings_value(&defaults).is_ok());
+
+        let mut settings = defaults.clone();
+        settings["spellcheckLanguages"] = json!(["en-US", "de"]);
+        settings["serviceSpellcheck"] = json!({ "service-a": { "enabled": false } });
+        assert!(validate_app_settings_value(&settings).is_ok());
+
+        settings["serviceSpellcheck"] = json!({ "service-a": { "languages": ["not a tag"] } });
+        assert!(validate_app_settings_value(&settings).is_err());
     }
 
     #[test]
