@@ -126,6 +126,11 @@ test-file-drop:
 test-file-drop-fallback:
   python3 tools/service_file_drop_smoke.py --linux-fallback-only
 
+# Needs a production build (just build) and an X11 DISPLAY; downloads nothing.
+[unix]
+test-adblock:
+  python3 tools/adblock_smoke.py --binary src-tauri/target/release/tauridium
+
 [unix]
 test-download-toast:
   python3 tools/download_toast_smoke.py
