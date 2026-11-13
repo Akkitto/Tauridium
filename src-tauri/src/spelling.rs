@@ -637,8 +637,9 @@ pub(crate) fn register_macos_defaults() {
     use objc2_foundation::{NSDictionary, NSNumber, NSString, NSUserDefaults};
     let key = NSString::from_str("WebContinuousSpellCheckingEnabled");
     let defaults = NSUserDefaults::standardUserDefaults();
-    let enabled: Retained<AnyObject> =
-        Retained::into_super(Retained::into_super(Retained::into_super(NSNumber::new_bool(true))));
+    let enabled: Retained<AnyObject> = Retained::into_super(Retained::into_super(
+        Retained::into_super(NSNumber::new_bool(true)),
+    ));
     let registration = NSDictionary::from_retained_objects(&[&*key], &[enabled]);
     // SAFETY: the dictionary holds an NSString key and an NSNumber value, both
     // valid property-list types.
