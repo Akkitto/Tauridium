@@ -155,12 +155,14 @@ def prepare_source(output: Path | None = None, root: Path = ROOT) -> Path:
   return destination
 
 
-def prepare_binary(path: Path, output: Path | None = None, root: Path = ROOT) -> Path:
+def prepare_binary(path: Path, output: Path | None = None, root: Path = ROOT, expected_commit: str | None = None) -> Path:
   value = version(root)
   target = "x86_64-unknown-linux-gnu"  # ARM64 is not advertised until tested on Arch Linux ARM.
   if path.name != payload_name(value, target):
     raise ValueError("binary recipe requires the matching x86_64 system-package asset")
   record = validate_payload(path, value, target)
+  if expected_commit is not None and record["commit"] != expected_commit:
+    raise ValueError("system-package source commit differs from the expected release")
   destination = output or root / "release/aur" / record["commit"][:12] / "tauridium-bin"
   if destination.exists() or destination.is_symlink():
     raise ValueError("Arch binary preparation requires a fresh output directory")
@@ -187,7 +189,8 @@ def validate_recipe(directory: Path) -> None:
   if destination.exists() and destination.read_bytes() != info:
     raise ValueError(".SRCINFO differs; review changes before replacing it")
   destination.write_bytes(info)
-  subprocess.run(["namcap", "PKGBUILD"], cwd=directory, check=True)
+  from arch_namcap import check
+  check(["PKGBUILD"], directory)
 
 
 def main() -> None:
@@ -198,6 +201,7 @@ def main() -> None:
   binary = commands.add_parser("prepare-bin")
   binary.add_argument("archive", type=Path)
   binary.add_argument("--output", type=Path)
+  binary.add_argument("--expected-commit")
   check = commands.add_parser("validate")
   check.add_argument("directory", type=Path)
   payload = commands.add_parser("payload")
@@ -208,7 +212,7 @@ def main() -> None:
   if args.command == "prepare":
     print(prepare_source(args.output))
   elif args.command == "prepare-bin":
-    print(prepare_binary(args.archive, args.output))
+    print(prepare_binary(args.archive, args.output, expected_commit=args.expected_commit))
   elif args.command == "validate":
     validate_recipe(args.directory.resolve(strict=True))
   else:

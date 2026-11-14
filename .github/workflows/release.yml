@@ -250,9 +250,32 @@ jobs:
             -Target '${{ matrix.target }}' `
             -PreviousVersion '0.0.0'
 
+  arch-binary:
+    name: Arch x86_64 binary installation
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: native-x86_64-unknown-linux-gnu
+          path: release/arch-input
+      - name: Prepare same-commit binary package without executing downloaded content
+        shell: bash
+        run: |
+          python3 tools/aur.py prepare-bin release/arch-input/tauridium-*-linux-x64-system.zip --expected-commit "$GITHUB_SHA" --output release/arch-binary
+      - name: Verify actual Arch binary install, UI, audio and removal
+        run: python3 tools/arch_acceptance.py release/arch-binary --kind binary
+
   verify:
     name: Keyless candidate verification
-    needs: [handoff, build, scoop, nix]
+    needs: [handoff, build, scoop, nix, arch-binary]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     outputs:

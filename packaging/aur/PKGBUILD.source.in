@@ -8,7 +8,8 @@ pkgdesc='Native WebView desktop hub for web services and workspaces'
 arch=('x86_64')
 url='https://github.com/Akkitto/Tauridium'
 license=('MIT')
-depends=('gtk3' 'webkit2gtk-4.1' 'libayatana-appindicator' 'xdotool' 'xdg-utils' 'glib-networking' 'gst-plugins-base' 'gst-plugins-good' 'gst-plugins-bad' 'gst-libav' 'hicolor-icon-theme')
+# WebKit loads media/TLS plugins and the tray library dynamically.
+depends=('glibc' 'libgcc' 'glib2' 'cairo' 'gdk-pixbuf2' 'libsoup3' 'dbus' 'gtk3' 'webkit2gtk-4.1' 'libayatana-appindicator' 'xdg-utils' 'glib-networking' 'gst-plugins-base' 'gst-plugins-good' 'gst-plugins-bad' 'gst-libav' 'hicolor-icon-theme')
 makedepends=('rust>=1.97.1' 'nodejs>=22.12.0' 'npm' 'python' 'pkgconf')
 optdepends=('org.freedesktop.secrets: persistent encrypted credential storage')
 conflicts=('tauridium-bin')

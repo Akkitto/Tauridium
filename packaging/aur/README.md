@@ -118,6 +118,12 @@ just system-package x86_64-unknown-linux-gnu
 just aur-prepare-bin /path/to/tauridium-X.Y.Z-linux-x64-system.zip
 ```
 
+The CI source-package job and the protected release binary-package job run the
+isolated Arch acceptance harness, including real WebKit UI and nine-phase
+WAV/Ogg/Web Audio playback through a private null sink. `namcap` errors are fatal;
+remaining unstripped-binary, ELF-loader and dynamically loaded dependency warnings
+are reviewed rather than hidden. No real desktop profile or speakers are used.
+
 Run actual makepkg builds, `namcap` on recipes/packages, clean Arch install,
 upgrade, removal/reinstall, dependency/desktop checks and isolated WebKit/media
 smoke tests. The production build probe verifies distribution policy and target;

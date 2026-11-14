@@ -7,7 +7,8 @@ pkgdesc='Native WebView desktop hub for web services and workspaces (binary)'
 arch=('x86_64')
 url='https://github.com/Akkitto/Tauridium'
 license=('MIT')
-depends=('gtk3' 'webkit2gtk-4.1' 'libayatana-appindicator' 'xdotool' 'xdg-utils' 'glib-networking' 'gst-plugins-base' 'gst-plugins-good' 'gst-plugins-bad' 'gst-libav' 'hicolor-icon-theme')
+# WebKit loads media/TLS plugins and the tray library dynamically.
+depends=('glibc' 'libgcc' 'glib2' 'cairo' 'gdk-pixbuf2' 'libsoup3' 'dbus' 'gtk3' 'webkit2gtk-4.1' 'libayatana-appindicator' 'xdg-utils' 'glib-networking' 'gst-plugins-base' 'gst-plugins-good' 'gst-plugins-bad' 'gst-libav' 'hicolor-icon-theme')
 makedepends=('unzip')
 optdepends=('org.freedesktop.secrets: persistent encrypted credential storage')
 provides=("tauridium=$pkgver")
@@ -22,5 +23,5 @@ package() {
   install -Dm644 "$srcdir/usr/share/metainfo/dev.brani.tauridium.metainfo.xml" "$pkgdir/usr/share/metainfo/dev.brani.tauridium.metainfo.xml"
   install -Dm644 "$srcdir/usr/share/icons/hicolor/512x512/apps/dev.brani.tauridium.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/dev.brani.tauridium.png"
   install -Dm644 "$srcdir/usr/share/icons/hicolor/scalable/apps/dev.brani.tauridium.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/dev.brani.tauridium.svg"
-  install -Dm644 "$srcdir/usr/share/licenses/tauridium/LICENSE" "$pkgdir/usr/share/licenses/tauridium/LICENSE"
+  install -Dm644 "$srcdir/usr/share/licenses/tauridium/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

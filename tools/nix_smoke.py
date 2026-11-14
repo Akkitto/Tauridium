@@ -16,7 +16,11 @@ import time
 from pathlib import Path
 
 
-def validate_build_info(info: dict) -> None:
+def validate_build_info(info: dict, mode: str = "nix") -> None:
+  if mode == "system-package":
+    from arch_check import validate
+    validate(info, info["version"], info["target"])
+    return
   if info.get("buildMode") != "production":
     raise RuntimeError("Nix package is not a production custom-protocol build")
   distribution = info.get("distribution", {})
@@ -54,6 +58,7 @@ def isolated_environment(profile: Path) -> dict[str, str]:
 def main() -> int:
   parser = argparse.ArgumentParser(description=__doc__)
   parser.add_argument("executable", type=Path)
+  parser.add_argument("--distribution", choices=("nix", "system-package"), default="nix")
   parser.add_argument("--dbus-config", type=Path, required=True)
   parser.add_argument("--timeout", type=int, default=90, choices=range(30, 601), metavar="SECONDS")
   parser.add_argument("--output", type=Path, default=Path("release/evidence/nix-smoke"))
@@ -72,7 +77,7 @@ def main() -> int:
     build_info = output / "build-info.json"
     subprocess.run([str(executable), "--build-info-file", str(build_info)], env=env, check=True, timeout=20)
     info = json.loads(build_info.read_text(encoding="utf-8"))
-    validate_build_info(info)
+    validate_build_info(info, args.distribution)
     with (output / "application.log").open("w", encoding="utf-8") as log:
       process = subprocess.Popen(["dbus-run-session", f"--config-file={args.dbus_config}", "--", str(executable), "--startup-diagnostics"], env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
       try:
@@ -87,7 +92,7 @@ def main() -> int:
             ocr = subprocess.run(["tesseract", str(output / "window.png"), "stdout"], env=env, capture_output=True, text=True, check=True, timeout=60)
             (output / "window.txt").write_text(ocr.stdout, encoding="utf-8")
             if sign_in_screen_rendered(ocr.stdout):
-              (output / "result.json").write_text(json.dumps({"passed": True, "production": True, "distribution": "nix", "realWebKitUiRendered": True, "isolatedXdgProfile": True}, indent=2) + "\n", encoding="utf-8")
+              (output / "result.json").write_text(json.dumps({"passed": True, "production": True, "distribution": args.distribution, "realWebKitUiRendered": True, "isolatedXdgProfile": True}, indent=2) + "\n", encoding="utf-8")
               print(f"Nix wrapper and real WebKit UI smoke passed: {output}")
               return 0
           time.sleep(1)

@@ -16,6 +16,7 @@ import zipfile
 import aur
 import arch_check
 import arch_build
+import arch_namcap
 
 
 def build_info():
@@ -40,6 +41,13 @@ def payload(path, mutate=None):
 
 
 class ArchPackagingTests(unittest.TestCase):
+  def test_namcap_error_findings_are_fatal_even_on_zero_exit(self):
+    with mock.patch.object(arch_namcap.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "tauridium E: missing license\n", "")):
+      with self.assertRaisesRegex(RuntimeError, "packaging errors"):
+        arch_namcap.check(["PKGBUILD"])
+    with mock.patch.object(arch_namcap.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "tauridium W: optional dynamic library\n", "")):
+      arch_namcap.check(["PKGBUILD"])
+
   def test_managed_builder_uses_locked_production_features_without_bundler(self):
     with mock.patch.object(arch_build.subprocess, "run") as run:
       arch_build.build("x86_64-unknown-linux-gnu", {})
@@ -92,7 +100,9 @@ class ArchPackagingTests(unittest.TestCase):
       path = root / "tauridium-1.0.10-linux-x64-system.zip"
       payload(path)
       with mock.patch.object(aur, "version", return_value="1.0.10"):
-        output = aur.prepare_binary(path, root / "out")
+        with self.assertRaisesRegex(ValueError, "source commit differs"):
+          aur.prepare_binary(path, root / "wrong", expected_commit="b" * 40)
+        output = aur.prepare_binary(path, root / "out", expected_commit="a" * 40)
         text = (output / "PKGBUILD").read_text(encoding="utf-8")
         self.assertIn("pkgname=tauridium-bin", text)
         self.assertIn("provides=(\"tauridium=$pkgver\")", text)
