@@ -38,6 +38,17 @@ def synthetic_nsis(payload: bytes):
 
 
 class ArtifactParserTests(unittest.TestCase):
+  def test_tar_regular_files_with_empty_link_fields_are_scanned(self):
+    payload = b"Harmless regular TAR content that must reach the scan corpus"
+    listing = b"Type = tar\n----------\nPath = source/regular.txt\nFolder = -\nSize = " + str(len(payload)).encode() + b"\nMode = -rw-r--r--\nSymbolic Link = \nHard Link = \n\n"
+    tar_header = bytearray(512)
+    tar_header[257:262] = b"ustar"
+    with tempfile.TemporaryDirectory() as temporary:
+      scanner = security.Scanner(Path(temporary), Path("/synthetic-tools"))
+      with mock.patch.object(security, "bounded_command", side_effect=[listing, payload]):
+        scanner.save(bytes(tar_header), "ordinary.tar")
+      self.assertTrue(any(path.read_bytes() == payload for path in scanner.sources.values()))
+
   def test_every_decoder_output_obeys_the_same_private_path_policy(self):
     for name in ("archive/.aws/config", "package/.ssh/config", "package/.ENV", "CAB/session.json"):
       with self.subTest(name=name), tempfile.TemporaryDirectory() as temporary:
