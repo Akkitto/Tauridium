@@ -55,15 +55,25 @@ production builds with no native updater plugin or update commands. Standard
 AppImages and native Windows releases retain their existing updater behaviour.
 Do not substitute an ordinary runtime ZIP, DEB or AppImage for a managed payload.
 
-Download the system ZIP for the checkout's version from the exact stable GitHub
-release. Verify its SHA-256 against that release's `SHA256SUMS`, and verify its
+Install GitHub CLI for provenance verification and select the exact reviewed
+release-tag checkout before using the binary path. Download its system ZIP from
+the matching stable GitHub release. Verify its SHA-256 against that release's `SHA256SUMS`, and verify its
 GitHub artifact attestation against `Akkitto/Tauridium` and the protected release
 workflow before preparing it. Hashes alone do not establish publisher identity.
 Never treat an archive's self-reported metadata as proof of authenticity.
 
 ```sh
-gh attestation verify /path/to/tauridium-X.Y.Z-linux-x64-system.zip --repo Akkitto/Tauridium
-python3 tools/aur.py prepare-bin /path/to/tauridium-X.Y.Z-linux-x64-system.zip
+# HEAD must be the reviewed vX.Y.Z release-tag commit.
+tauridium_release_commit=$(git rev-parse HEAD)
+gh attestation verify /path/to/tauridium-X.Y.Z-linux-x64-system.zip \
+  --repo Akkitto/Tauridium \
+  --signer-workflow Akkitto/Tauridium/.github/workflows/release.yml \
+  --source-ref refs/tags/vX.Y.Z \
+  --source-digest "$tauridium_release_commit" \
+  --signer-digest "$tauridium_release_commit" \
+  --deny-self-hosted-runners
+python3 tools/aur.py prepare-bin /path/to/tauridium-X.Y.Z-linux-x64-system.zip \
+  --expected-commit "$tauridium_release_commit"
 ```
 
 Enter the printed `tauridium-bin` directory, review `PKGBUILD`, generate
