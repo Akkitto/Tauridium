@@ -19,11 +19,14 @@
   <url type="vcs-browser">https://github.com/Akkitto/Tauridium</url>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v1.0.9/data/screenshots/tauridium-0.8.0-main.png</image>
+      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v1.0.10/data/screenshots/tauridium-0.8.0-main.png</image>
       <caption>Tauridium sign-in and local accountless start screen</caption>
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.0.10" date="2026-11-14">
+      <description><p>Add local Arch Linux packaging, package-manager-owned updates and verified Linux system-package release payloads without submitting to AUR.</p></description>
+    </release>
     <release version="1.0.9" date="2026-11-12">
       <description><p>Refresh locked frontend tooling and migrate Flatpak portal integration to zbus 6 while preserving notification and credential-store compatibility.</p></description>
     </release>

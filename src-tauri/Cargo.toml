@@ -1,6 +1,6 @@
 [package]
 name = "tauridium"
-version = "1.0.9"
+version = "1.0.10"
 edition = "2021"
 rust-version = "1.97.1"
 description = "Tauridium — lightweight Tauri client for Ferdium"
@@ -14,10 +14,12 @@ tauri-build = { version = "2", features = [] }
 
 [features]
 default = ["native-distribution"]
-native-distribution = [
+native-distribution = ["desktop-integration", "dep:tauri-plugin-updater"]
+# Arch and other system packages retain desktop integration without a self-updater.
+system-package = ["desktop-integration"]
+desktop-integration = [
   "dep:tauri-plugin-autostart",
   "dep:tauri-plugin-notification",
-  "dep:tauri-plugin-updater",
   "rfd/gtk3",
   "tauri-plugin-dialog/gtk3",
 ]

@@ -3,9 +3,11 @@ use serde::Serialize;
 #[cfg(not(any(
     feature = "native-distribution",
     feature = "flatpak",
-    all(target_os = "linux", feature = "nix")
+    all(target_os = "linux", any(feature = "nix", feature = "system-package"))
 )))]
-compile_error!("Tauridium requires native-distribution, flatpak, or Linux nix packaging");
+compile_error!(
+    "Tauridium requires native-distribution, flatpak, or Linux nix/system-package packaging"
+);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -13,6 +15,8 @@ pub enum DistributionMode {
     Native,
     Flatpak,
     Nix,
+    #[serde(rename = "system-package")]
+    SystemPackage,
 }
 
 impl DistributionMode {
@@ -21,6 +25,7 @@ impl DistributionMode {
             Self::Native => "native",
             Self::Flatpak => "flatpak",
             Self::Nix => "nix",
+            Self::SystemPackage => "system-package",
         }
     }
 }
@@ -44,6 +49,12 @@ pub struct DistributionInfo {
 pub const fn mode() -> DistributionMode {
     if cfg!(feature = "flatpak") {
         DistributionMode::Flatpak
+    } else if cfg!(all(
+        target_os = "linux",
+        feature = "system-package",
+        not(feature = "native-distribution")
+    )) {
+        DistributionMode::SystemPackage
     } else if cfg!(all(
         target_os = "linux",
         feature = "nix",
@@ -77,6 +88,25 @@ pub fn info() -> DistributionInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn system_package_serialization_is_stable() {
+        assert_eq!(DistributionMode::SystemPackage.as_str(), "system-package");
+        assert_eq!(
+            serde_json::to_string(&DistributionMode::SystemPackage).unwrap(),
+            "\"system-package\""
+        );
+        if cfg!(all(
+            target_os = "linux",
+            feature = "system-package",
+            not(feature = "native-distribution"),
+            not(feature = "flatpak")
+        )) {
+            assert_eq!(mode(), DistributionMode::SystemPackage);
+            assert!(info().updater_managed_externally);
+            assert!(!info().portal_file_access);
+        }
+    }
 
     #[test]
     fn distribution_info_is_internally_consistent() {

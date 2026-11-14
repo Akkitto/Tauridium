@@ -40,6 +40,7 @@ lint:
   cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
   python3 tools/run_preserving_schemas.py cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --no-default-features --features flatpak --locked -- -D warnings
   python3 tools/run_preserving_schemas.py cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --no-default-features --features nix --locked -- -D warnings
+  python3 tools/run_preserving_schemas.py cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --no-default-features --features system-package --locked -- -D warnings
 
 [windows]
 lint:
@@ -52,6 +53,7 @@ check:
   cargo check --manifest-path src-tauri/Cargo.toml --all-targets --locked
   python3 tools/run_preserving_schemas.py cargo check --manifest-path src-tauri/Cargo.toml --all-targets --no-default-features --features flatpak --locked
   python3 tools/run_preserving_schemas.py cargo check --manifest-path src-tauri/Cargo.toml --all-targets --no-default-features --features nix --locked
+  python3 tools/run_preserving_schemas.py cargo check --manifest-path src-tauri/Cargo.toml --all-targets --no-default-features --features system-package --locked
   python3 tools/validate_release.py
   python3 tools/scoop.py validate-template
 
@@ -71,6 +73,7 @@ test:
   cargo test --manifest-path src-tauri/Cargo.toml -p tauri-plugin-window-state --lib --locked
   python3 tools/run_preserving_schemas.py cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --features flatpak --locked
   python3 tools/run_preserving_schemas.py cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --features nix --locked
+  python3 tools/run_preserving_schemas.py cargo test --manifest-path src-tauri/Cargo.toml --no-default-features --features system-package --locked
 
 [windows]
 test:
@@ -372,3 +375,20 @@ winget-intake version commit run:
 [windows]
 winget-intake version commit run:
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/winget.py intake --version {{version}} --commit {{commit}} --run-id {{run}} --output release/winget/candidates/{{version}}.json
+
+# Prepare local Arch recipes; these commands never publish or install anything.
+[linux]
+aur-prepare:
+  python3 tools/aur.py prepare
+
+[linux]
+aur-validate directory:
+  python3 tools/aur.py validate "{{directory}}"
+
+[linux]
+aur-prepare-bin archive:
+  python3 tools/aur.py prepare-bin "{{archive}}"
+
+[linux]
+system-package target:
+  python3 tools/build_system_package.py "{{target}}"

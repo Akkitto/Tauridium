@@ -148,6 +148,18 @@ def _collect_native_into(target: str, output_dir: Path, require_signatures: bool
       )
     )
 
+  if platform == "linux":
+    from aur import payload_name, validate_payload
+    source = ROOT / "release/system-packages" / payload_name(release_version, target)
+    record = validate_payload(source, release_version, target)
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    if record["commit"] != commit:
+      raise SystemExit("error: system-package payload does not match the release commit")
+    destination = output_dir / source.name
+    shutil.copyfile(source, destination)
+    validate_payload(destination, release_version, target)
+    written.append(destination)
+
   return written
 
 

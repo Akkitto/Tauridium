@@ -1,0 +1,47 @@
+# Maintainer: Daniel Braniewski (Akkitto on GitHub)
+# Local recipe; no AUR submission has been made.
+# Source commit: @COMMIT@
+pkgname=tauridium
+pkgver=@VERSION@
+pkgrel=@PKGREL@
+pkgdesc='Native WebView desktop hub for web services and workspaces'
+arch=('x86_64')
+url='https://github.com/Akkitto/Tauridium'
+license=('MIT')
+# WebKit loads media/TLS plugins and the tray library dynamically.
+depends=('glibc' 'libgcc' 'glib2' 'cairo' 'gdk-pixbuf2' 'libsoup3' 'dbus' 'gtk3' 'webkit2gtk-4.1' 'libayatana-appindicator' 'xdg-utils' 'glib-networking' 'gst-plugins-base' 'gst-plugins-good' 'gst-plugins-bad' 'gst-libav' 'hicolor-icon-theme')
+makedepends=('rust>=1.97.1' 'nodejs>=22.12.0' 'npm' 'python' 'pkgconf')
+optdepends=('org.freedesktop.secrets: persistent encrypted credential storage')
+conflicts=('tauridium-bin')
+options=('!lto' '!debug')
+source=('@SOURCE@')
+sha256sums=('@SHA256@')
+
+prepare() {
+  cd "$srcdir/tauridium"
+  # Fetch only locked dependencies as the unprivileged builder. Lifecycle scripts stay off.
+  npm ci --ignore-scripts --no-audit --no-fund
+  cargo fetch --manifest-path src-tauri/Cargo.toml --locked --target "$CARCH-unknown-linux-gnu"
+  python3 tools/check_rust_supply_chain.py --cache
+}
+
+build() {
+  cd "$srcdir/tauridium"
+  npm run build
+  python3 tools/arch_build.py
+}
+
+check() {
+  cd "$srcdir/tauridium"
+  python3 tools/arch_check.py src-tauri/target/release/tauridium "$pkgver" "$CARCH-unknown-linux-gnu"
+}
+
+package() {
+  cd "$srcdir/tauridium"
+  install -Dm755 src-tauri/target/release/tauridium "$pkgdir/usr/bin/tauridium"
+  install -Dm644 data/dev.brani.tauridium.desktop "$pkgdir/usr/share/applications/dev.brani.tauridium.desktop"
+  install -Dm644 data/dev.brani.tauridium.metainfo.xml "$pkgdir/usr/share/metainfo/dev.brani.tauridium.metainfo.xml"
+  install -Dm644 src-tauri/icons/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/dev.brani.tauridium.png"
+  install -Dm644 data/dev.brani.tauridium.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/dev.brani.tauridium.svg"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/tauridium/LICENSE"
+}

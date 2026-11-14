@@ -169,7 +169,7 @@ class ReleasePolicyTests(unittest.TestCase):
 
   def test_public_inventory_is_exact_and_has_no_private_handoff_metadata(self):
     names = policy.public_names("9.9.9")
-    self.assertEqual(len(names), 32)
+    self.assertEqual(len(names), 34)
     self.assertNotIn("release-notes.md", names)
     self.assertIn("latest.json", names)
     self.assertEqual(sum(name.endswith(".sig") for name in names), 6)

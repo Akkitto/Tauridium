@@ -267,7 +267,7 @@ def main() -> int:
   for marker in unix_matrix_markers:
     if marker not in justfile:
       fail(f"Unix native/Flatpak release matrix is missing: {marker}")
-  for distribution in ("flatpak", "nix"):
+  for distribution in ("flatpak", "nix", "system-package"):
     for command in ("clippy", "check", "test"):
       target_flags = " --all-targets" if command != "test" else ""
       marker = f"python3 tools/run_preserving_schemas.py cargo {command} --manifest-path src-tauri/Cargo.toml{target_flags} --no-default-features --features {distribution} --locked"

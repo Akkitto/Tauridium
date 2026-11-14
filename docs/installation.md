@@ -8,6 +8,14 @@ installation, updates, development and migration. The Nix package is supplied by
 this repository's flake; it is not yet advertised as an official nixpkgs package.
 Its self-updater is disabled and updates are managed by Nix.
 
+## Arch Linux
+
+Build a pacman-owned package directly from a reviewed Tauridium checkout, or
+prepare `tauridium-bin` from a verified Linux system-package release payload.
+See [Arch packaging](../packaging/aur/README.md) for commands, updates and removal.
+These recipes are available locally; no AUR submission or public pacman repository
+is advertised. Only Arch x86_64 is currently targeted.
+
 ## Windows
 
 Tauridium publishes native Windows installers and portable ZIP archives for x64 and ARM64.

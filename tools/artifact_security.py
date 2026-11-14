@@ -362,7 +362,7 @@ class Scanner:
       paths.add(member)
       if entry.get("Folder") == "+" or entry.get("Mode", "").startswith("d") or entry.get("Attributes", "").startswith("D"):
         continue
-      if entry.get("Mode", "").startswith("l") or "Symbolic Link" in entry or "Hard Link" in entry:
+      if entry.get("Mode", "").startswith("l") or entry.get("Symbolic Link") or entry.get("Hard Link"):
         target = entry.get("Symbolic Link", entry.get("Hard Link", ""))
         self.save(target.encode("utf-8"), name + "/" + member + "/LINK-TARGET", depth=depth + 1, decode=False)
         continue

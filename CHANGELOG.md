@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.10] - 2026-11-14
+
+- Add local Arch Linux source and binary package recipes, verified preparation tools and direct-repository installation instructions; AUR submission remains separate.
+- Add an updater-free system-package build mode and production Linux x64/ARM64 payloads for package-manager-owned installations, preserving ordinary desktop integrations.
+- Correct archive security scanning so regular TAR members with empty link metadata are fully inspected.
+
 ## [Unreleased]
 
 ## [1.0.9] - 2026-11-12

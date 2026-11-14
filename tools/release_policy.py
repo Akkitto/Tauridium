@@ -62,6 +62,7 @@ def target_names(version: str, target: str, signed: bool = False) -> set[str]:
       names.update(name + ".sig" for name in bundles)
   else:
     names.update(f"{prefix}-linux-{arch}.{extension}" for extension in ("deb", "rpm", "AppImage"))
+    names.add(f"{prefix}-linux-{arch}-system.zip")
     if signed:
       names.add(f"{prefix}-linux-{arch}.AppImage.sig")
   return names

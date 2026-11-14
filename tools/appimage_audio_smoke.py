@@ -180,7 +180,7 @@ def capture_audio(environment: dict[str, str], seconds=1.0) -> tuple[int, float]
     process.stdout.close()
 
 
-def run(image: Path, output: Path) -> dict:
+def run(image: Path, output: Path, *, system_package: bool = False) -> dict:
   state = {'step': 0, 'phase': 'silent'}
   reports = []
   media_requests = []
@@ -206,19 +206,28 @@ def run(image: Path, output: Path) -> dict:
                        PULSE_CLIENTCONFIG=str(client_config))
     bus = profile / 'session.conf'
     bus.write_text(BUS, encoding='utf-8')
-    # Downloaded snapshots need not preserve executable mode. Keep the original
-    # artifact untouched and execute only a private byte-for-byte copy.
-    executable = profile / 'Tauridium.AppImage'
-    shutil.copyfile(image, executable)
-    executable.chmod(0o700)
-    with (output / 'extract.log').open('w', encoding='utf-8') as log:
-      subprocess.run([str(executable), '--appimage-extract'], cwd=profile,
-                     stdout=log, stderr=log, check=True, timeout=90)
-    appdir = profile / 'squashfs-root'
-    machine = 62 if platform.machine().lower() in ('x86_64', 'amd64') else 183
-    validate_appdir(appdir, machine)
-    if not (appdir / 'usr/lib/gstreamer-1.0/libgstpulseaudio.so').is_file():
-      raise RuntimeError('AppImage needs its bundled PulseAudio plugin for the null-sink test')
+    if system_package:
+      # Keep service discovery isolated while allowing system WebKit's GLib schemas.
+      schema = Path('/usr/share/glib-2.0/schemas/gschemas.compiled')
+      if not schema.is_file():
+        raise RuntimeError('System WebKit test requires installed GLib settings schemas')
+      environment['GSETTINGS_SCHEMA_DIR'] = str(schema.parent)
+      runner = image
+    else:
+      # Downloaded snapshots need not preserve executable mode. Keep the original
+      # artifact untouched and execute only a private byte-for-byte copy.
+      executable = profile / 'Tauridium.AppImage'
+      shutil.copyfile(image, executable)
+      executable.chmod(0o700)
+      with (output / 'extract.log').open('w', encoding='utf-8') as log:
+        subprocess.run([str(executable), '--appimage-extract'], cwd=profile,
+                       stdout=log, stderr=log, check=True, timeout=90)
+      appdir = profile / 'squashfs-root'
+      machine = 62 if platform.machine().lower() in ('x86_64', 'amd64') else 183
+      validate_appdir(appdir, machine)
+      if not (appdir / 'usr/lib/gstreamer-1.0/libgstpulseaudio.so').is_file():
+        raise RuntimeError('AppImage needs its bundled PulseAudio plugin for the null-sink test')
+      runner = appdir / 'AppRun'
 
     buffer = io.BytesIO()
     with wave.open(buffer, 'wb') as wav:
@@ -315,9 +324,10 @@ def run(image: Path, output: Path) -> dict:
       if name.startswith('GST_') or name in ('LD_LIBRARY_PATH', 'LD_PRELOAD', 'LD_AUDIT', 'GTK_PATH',
           'GTK_EXE_PREFIX', 'GTK_DATA_PREFIX', 'GIO_EXTRA_MODULES', 'GDK_PIXBUF_MODULE_FILE', 'GI_TYPELIB_PATH'):
         application_env.pop(name)
-    application_env.update(APPDIR=str(appdir), APPIMAGE=str(image),
-      GST_REGISTRY=str(profile / 'application-registry.bin'), GST_DEBUG='2')
-    producer_media_diagnostics(appdir, profile, application_env, ogg)
+    application_env.update(GST_REGISTRY=str(profile / 'application-registry.bin'), GST_DEBUG='2')
+    if not system_package:
+      application_env.update(APPDIR=str(appdir), APPIMAGE=str(image))
+      producer_media_diagnostics(appdir, profile, application_env, ogg)
     try:
       with (output / 'pulse.log').open('w', encoding='utf-8') as pulse_log, (output / 'application.log').open('w', encoding='utf-8') as app_log:
         pulse = subprocess.Popen(['pulseaudio', '-n', '--daemonize=no', '--use-pid-file=no',
@@ -333,12 +343,16 @@ def run(image: Path, output: Path) -> dict:
         subprocess.run(['pactl', 'info'], env=environment, check=True,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
         info = profile / 'build-info.json'
-        subprocess.run([str(appdir / 'AppRun'), '--build-info-file', str(info)],
+        subprocess.run([str(runner), '--build-info-file', str(info)],
                        env=application_env, check=True, stdout=app_log, stderr=app_log, timeout=30)
-        if json.loads(info.read_text(encoding='utf-8')).get('buildMode') != 'production':
+        build_info = json.loads(info.read_text(encoding='utf-8'))
+        if system_package:
+          from arch_check import validate
+          validate(build_info, build_info['version'], build_info['target'])
+        if build_info.get('buildMode') != 'production':
           raise RuntimeError('Audio test requires a real production AppImage')
         app = subprocess.Popen(['dbus-run-session', '--config-file=' + str(bus), '--',
-          str(appdir / 'AppRun'), '--startup-diagnostics'], env=application_env,
+          str(runner), '--startup-diagnostics'], env=application_env,
           stdout=app_log, stderr=app_log, start_new_session=True)
         for phase in ('silent', 'wav', 'silent', 'ogg', 'silent', 'web-audio', 'silent', 'wav', 'silent'):
           with lock:
@@ -383,7 +397,7 @@ def run(image: Path, output: Path) -> dict:
       stop(pulse)
       server.shutdown()
       server.server_close()
-  result = {'passed': True, 'production': True, 'bundledGstreamerVerified': True,
+  result = {'passed': True, 'production': True, 'bundledGstreamerVerified': not system_package, 'systemPackage': system_package,
     'isolatedProfileDisplayBusAndNullSink': True, 'realSpeakersUsed': False, 'phases': completed}
   (output / 'result.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
   return result
@@ -393,6 +407,7 @@ def main():
   parser = argparse.ArgumentParser(description=__doc__)
   group = parser.add_mutually_exclusive_group(required=True)
   group.add_argument('--appimage', type=Path)
+  group.add_argument('--system-package', type=Path, help='Trusted locally installed package executable')
   group.add_argument('--target', choices=TARGETS)
   parser.add_argument('--output', type=Path, default=ROOT / 'release/evidence/appimage-audio')
   parser.add_argument('--inside-display', action='store_true', help=argparse.SUPPRESS)
@@ -418,11 +433,11 @@ def main():
       parser.error('expected exactly one produced AppImage for this target')
     image = images[0]
   else:
-    image = args.appimage
+    image = args.appimage or args.system_package
   image = image.resolve(strict=True)
   args.output.mkdir(parents=True, exist_ok=True)
-  run(image, args.output.resolve())
-  print('Production AppImage audio passed using only a private null sink.')
+  run(image, args.output.resolve(), system_package=args.system_package is not None)
+  print('Production audio passed using only a private null sink.')
   return 0
 
 

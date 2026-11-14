@@ -17,7 +17,7 @@ mod local_profile;
 #[cfg(all(
     target_os = "linux",
     feature = "nix",
-    not(feature = "native-distribution"),
+    not(feature = "desktop-integration"),
     not(feature = "flatpak")
 ))]
 mod nix_autostart;
@@ -80,12 +80,12 @@ use tauri::{
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, State, Url, WebviewUrl, WindowEvent,
     Wry,
 };
-#[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
+#[cfg(all(feature = "desktop-integration", not(feature = "flatpak")))]
 use tauri_plugin_autostart::ManagerExt;
 #[cfg(all(
     any(
         feature = "native-distribution",
-        all(target_os = "linux", feature = "nix")
+        all(target_os = "linux", any(feature = "nix", feature = "system-package"))
     ),
     not(feature = "flatpak")
 ))]
@@ -1795,7 +1795,11 @@ fn open_external(url: &str) -> Result<(), String> {
     }
     #[cfg(all(
         target_os = "linux",
-        any(feature = "native-distribution", feature = "nix"),
+        any(
+            feature = "native-distribution",
+            feature = "nix",
+            feature = "system-package"
+        ),
         not(feature = "flatpak")
     ))]
     {
@@ -1845,7 +1849,7 @@ fn show_system_notification(
     #[cfg(all(
         any(
             feature = "native-distribution",
-            all(target_os = "linux", feature = "nix")
+            all(target_os = "linux", any(feature = "nix", feature = "system-package"))
         ),
         not(feature = "flatpak")
     ))]
@@ -4269,7 +4273,7 @@ fn read_app_settings_value(app: &AppHandle) -> Value {
 
 fn effective_app_settings_value(app: &AppHandle) -> Value {
     let value = read_app_settings_value(app);
-    #[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
+    #[cfg(all(feature = "desktop-integration", not(feature = "flatpak")))]
     {
         let mut value = value;
         if let Ok(enabled) = app.autolaunch().is_enabled() {
@@ -4279,12 +4283,12 @@ fn effective_app_settings_value(app: &AppHandle) -> Value {
         }
         value
     }
-    #[cfg(any(not(feature = "native-distribution"), feature = "flatpak"))]
+    #[cfg(any(not(feature = "desktop-integration"), feature = "flatpak"))]
     {
         #[cfg(all(
             target_os = "linux",
             feature = "nix",
-            not(feature = "native-distribution"),
+            not(feature = "desktop-integration"),
             not(feature = "flatpak")
         ))]
         let value = {
@@ -4300,7 +4304,7 @@ fn effective_app_settings_value(app: &AppHandle) -> Value {
     }
 }
 
-#[cfg(any(test, all(feature = "native-distribution", not(feature = "flatpak"))))]
+#[cfg(any(test, all(feature = "desktop-integration", not(feature = "flatpak"))))]
 fn autostart_needs_update(current: bool, desired: bool) -> bool {
     current != desired
 }
@@ -4309,15 +4313,15 @@ fn apply_autostart_setting(app: &AppHandle, settings: &Value) -> Result<bool, St
     // Native builds use the autostart plugin; Flatpak builds use the Background portal.
     let _ = app;
     #[cfg(any(
-        all(feature = "native-distribution", not(feature = "flatpak")),
-        all(target_os = "linux", feature = "nix"),
+        all(feature = "desktop-integration", not(feature = "flatpak")),
+        all(target_os = "linux", any(feature = "nix", feature = "system-package")),
         all(target_os = "linux", feature = "flatpak")
     ))]
     let enabled = settings
         .get("autostart")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    #[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
+    #[cfg(all(feature = "desktop-integration", not(feature = "flatpak")))]
     {
         let current = app
             .autolaunch()
@@ -4342,7 +4346,7 @@ fn apply_autostart_setting(app: &AppHandle, settings: &Value) -> Result<bool, St
     #[cfg(all(
         target_os = "linux",
         feature = "nix",
-        not(feature = "native-distribution"),
+        not(feature = "desktop-integration"),
         not(feature = "flatpak")
     ))]
     {
@@ -5625,18 +5629,20 @@ fn main() {
     );
 
     let builder = tauri::Builder::default();
+    #[cfg(all(feature = "desktop-integration", not(feature = "flatpak")))]
+    let builder =
+        builder
+            .plugin(tauri_plugin_notification::init())
+            .plugin(tauri_plugin_autostart::init(
+                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                None,
+            ));
     #[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]
-    let builder = builder
-        .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_autostart::init(
-            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            None,
-        ))
-        .plugin(tauri_plugin_updater::Builder::new().build());
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     #[cfg(all(
         target_os = "linux",
         feature = "nix",
-        not(feature = "native-distribution"),
+        not(feature = "desktop-integration"),
         not(feature = "flatpak")
     ))]
     let builder = builder.plugin(tauri_plugin_notification::init());
@@ -5858,7 +5864,7 @@ fn main() {
 
             // Native packages retain Tauri's notification permission flow. Flatpak builds
             // use the XDG Notification portal directly and need no plugin permission request.
-            #[cfg(all(any(feature = "native-distribution", all(target_os = "linux", feature = "nix")), not(feature = "flatpak")))]
+            #[cfg(all(any(feature = "native-distribution", all(target_os = "linux", any(feature = "nix", feature = "system-package"))), not(feature = "flatpak")))]
             if let Ok(state) = app.notification().permission_state() {
                 if state != PermissionState::Granted {
                     let _ = app.notification().request_permission();
