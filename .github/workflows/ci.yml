@@ -23,6 +23,9 @@ jobs:
   nix:
     uses: ./.github/workflows/nix.yml
 
+  arch:
+    uses: ./.github/workflows/arch.yml
+
   linux:
     name: Linux full gates
     runs-on: ubuntu-22.04

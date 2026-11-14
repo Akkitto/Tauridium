@@ -176,6 +176,9 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/test_windows_titlebar.ps1 -Binary "src-tauri/target/${{ matrix.target }}/release/tauridium.exe"
+      - name: Build updater-free Linux system package
+        if: runner.os == 'Linux'
+        run: just system-package ${{ matrix.target }}
       - name: Collect exact unsigned native asset set
         run: just package-native ${{ matrix.target }}
       - name: Verify portable Windows package

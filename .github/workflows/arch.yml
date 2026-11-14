@@ -1,0 +1,24 @@
+name: Arch packaging
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  arch:
+    name: Arch x86_64 source package
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - name: Prepare exact clean source snapshot
+        run: python3 tools/aur.py prepare --output "$RUNNER_TEMP/arch-input"
+      - name: Build and test a real package on isolated Arch Linux
+        run: python3 tools/arch_acceptance.py "$RUNNER_TEMP/arch-input"
