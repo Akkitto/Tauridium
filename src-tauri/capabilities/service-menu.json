@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "service-menu",
+  "description": "Only the service context menu state and event subscriptions, no filesystem or other application commands",
+  "webviews": ["service-menu"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "service-menu"
+  ]
+}

@@ -1,4 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { ServiceAdblockOverride } from "./adblock";
+import type { ServiceSpellcheckOverride } from "./spelling";
 
 // Models mirror the Ferdium server API (/v1).
 export interface MeUser {
@@ -190,6 +192,32 @@ export function showServiceToastOverlay(serviceId: string, message: string): Pro
   return invoke("show_service_toast_overlay", { serviceId, message });
 }
 
+export interface ServiceMenuRequest {
+  serviceId: string;
+  label: string;
+  /** Pointer position in the shell webview's coordinates. */
+  x: number;
+  y: number;
+  zoomPercent: number;
+  enabled: boolean;
+  /** True when a pointer press opened the menu, so releasing that press cannot dismiss it. */
+  pointer: boolean;
+}
+
+/** Opens the native overlay menu above the service webviews and returns its opening id. */
+export function openServiceMenu(request: ServiceMenuRequest): Promise<number> {
+  return invoke("open_service_menu", { request });
+}
+
+export function closeServiceMenu(id: number): Promise<void> {
+  return invoke("close_service_menu", { id });
+}
+
+/** Reports that the pointer press which opened the menu was released. */
+export function settleServiceMenu(id: number): Promise<void> {
+  return invoke("settle_service_menu", { id });
+}
+
 export function toggleDeveloperTools(): Promise<void> {
   return invoke("toggle_devtools_command");
 }
@@ -367,6 +395,14 @@ export interface AppSettings {
   serviceIconInversions: Record<string, boolean>;
   trackingPreventionExceptions: Record<string, boolean>;
   serviceZoomLevels: Record<string, number>;
+  spellcheckEnabled: boolean;
+  spellcheckLanguages: string[];
+  serviceSpellcheck: Record<string, ServiceSpellcheckOverride>;
+  adblockEnabled: boolean;
+  adblockLists: string[];
+  adblockCustomLists: string[];
+  adblockAllowlist: string[];
+  serviceAdblock: Record<string, ServiceAdblockOverride>;
   serviceOrder: string[];
   workspaceOrder: string[];
   workspaceQuickSwitchOrder: "custom" | "customReverse" | "alphabetical" | "alphabeticalReverse" | "recent" | "recentReverse";
@@ -437,6 +473,80 @@ export function setAppSettings(
   patch: Partial<AppSettings>,
 ): Promise<AppSettings> {
   return invoke("set_app_settings", { patch });
+}
+
+export interface SpellingLanguage {
+  tag: string;
+  displayName: string;
+  available: boolean;
+  reason: string | null;
+}
+
+export interface SpellingState {
+  languages: SpellingLanguage[];
+  systemLanguage: string;
+  words: string[];
+  controls: SpellingControls;
+}
+
+/** Which spelling controls this platform's engine honours. */
+export interface SpellingControls {
+  toggle: boolean;
+  languages: boolean;
+  dictionary: boolean;
+  platform: string;
+}
+
+export function getSpellingState(): Promise<SpellingState> {
+  return invoke("spelling_get_state");
+}
+
+export function addSpellingWord(word: string): Promise<string[]> {
+  return invoke("spelling_add_word", { word });
+}
+
+export function removeSpellingWord(word: string): Promise<string[]> {
+  return invoke("spelling_remove_word", { word });
+}
+
+export interface AdblockListStatus {
+  id: string;
+  name: string;
+  url: string;
+  custom: boolean;
+  status: "active" | "waiting" | "error";
+  lastUpdated: number | null;
+  ruleCount: number;
+  lastError: string | null;
+}
+
+export interface AdblockState {
+  engine: { platform: string; supported: boolean; supportsCounters: boolean; coverageNote: string };
+  phase: "unsupported" | "off" | "waiting" | "compiling" | "ready" | "error";
+  error: string | null;
+  catalog: { id: string; name: string }[];
+  lists: AdblockListStatus[];
+}
+
+export interface AdblockSites {
+  accepted: string[];
+  rejected: { input: string; reason: string }[];
+}
+
+export function getAdblockState(): Promise<AdblockState> {
+  return invoke("adblock_get_state");
+}
+
+export function updateAdblockLists(): Promise<AdblockState> {
+  return invoke("adblock_update_lists");
+}
+
+export function checkAdblockList(url: string): Promise<{ networkRules: number; cosmeticRules: number }> {
+  return invoke("adblock_check_list", { url });
+}
+
+export function normalizeAdblockSites(inputs: string[]): Promise<AdblockSites> {
+  return invoke("adblock_normalize_sites", { inputs });
 }
 
 export interface BackupSummary {

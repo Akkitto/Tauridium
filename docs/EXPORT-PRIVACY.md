@@ -45,3 +45,8 @@ Backups recognize personal recipes by their committed `package.json` marker;
 cache-only and unfinished folders are excluded without being deleted. A damaged
 package or unreadable companion file in a committed recipe remains an export
 error, rather than silently producing an incomplete recovery backup.
+
+## Spelling dictionary
+
+The personal spelling dictionary is included in full recovery backups. Portable
+service, workspace and sandbox exports do not include it.

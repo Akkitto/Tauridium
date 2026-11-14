@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod adblock;
 mod audit;
 mod backup;
 mod browser_privacy;
@@ -32,7 +33,9 @@ mod recipe_source;
 mod recipes;
 mod service_badges;
 mod service_export;
+mod service_menu;
 mod single_instance;
+mod spelling;
 mod startup_diagnostics;
 mod storage_security;
 mod window_chrome;
@@ -2416,6 +2419,13 @@ async fn create_service_webview(
     if let Some(o) = dark {
         builder = builder.initialization_script(dark_reader_init(o));
     }
+    {
+        let settings = state.settings.lock().unwrap().clone();
+        let effective = spelling::effective_for_service(&settings, service_id);
+        if let Some(script) = spelling::toggle_init_script(effective.enabled) {
+            builder = builder.initialization_script(script);
+        }
+    }
     let webview = win
         .add_child(builder, pos, size)
         .map_err(|e| format!("Failed to create service webview: {e}"))?;
@@ -2428,8 +2438,24 @@ async fn create_service_webview(
             ));
         }
     }
+    {
+        let settings = state.settings.lock().unwrap().clone();
+        if let Err(error) = spelling::install_menu_filter(&webview) {
+            startup_diagnostics::log("primary", "spelling.menu_filter_error", &error);
+        }
+        if let Err(error) = spelling::apply_to_webview(
+            &webview,
+            &spelling::effective_for_service(&settings, service_id),
+        ) {
+            startup_diagnostics::log("primary", "spelling.apply_error", &error);
+        }
+    }
+    // Attach before the service gets any further chance to load: the cached
+    // filter is already in memory after startup, so this is synchronous.
+    adblock::runtime::apply_service(win.app_handle(), service_id, true);
     state.created.lock().unwrap().insert(service_id.to_string());
     download_toast::restack(win.app_handle());
+    service_menu::restack(win.app_handle());
     Ok(())
 }
 
@@ -2476,6 +2502,7 @@ fn activate_service_webview(
         state.preloading.lock().unwrap().remove(service_id);
         *state.active.lock().unwrap() = Some(service_id.to_string());
         download_toast::restack(app);
+        service_menu::restack(app);
     }
     activated
 }
@@ -3682,6 +3709,20 @@ fn default_app_settings_value() -> Value {
         "serviceZoomLevels".into(),
         Value::Object(serde_json::Map::new()),
     );
+    settings.insert("spellcheckEnabled".into(), true.into());
+    settings.insert("spellcheckLanguages".into(), spelling::default_languages());
+    settings.insert(
+        "serviceSpellcheck".into(),
+        spelling::default_service_overrides(),
+    );
+    settings.insert("adblockEnabled".into(), adblock::default_enabled());
+    settings.insert("adblockLists".into(), adblock::default_lists());
+    settings.insert("adblockCustomLists".into(), adblock::default_custom_lists());
+    settings.insert("adblockAllowlist".into(), adblock::default_allowlist());
+    settings.insert(
+        "serviceAdblock".into(),
+        adblock::default_service_overrides(),
+    );
     settings.insert("serviceOrder".into(), Value::Array(Vec::new()));
     settings.insert("workspaceOrder".into(), Value::Array(Vec::new()));
     settings.insert("workspaceQuickSwitchOrder".into(), "custom".into());
@@ -4165,6 +4206,8 @@ fn validate_app_settings_value(settings: &Value) -> Result<(), String> {
         return Err("App setting serviceIconInversions is invalid".into());
     }
     validate_service_zoom_levels(object.get("serviceZoomLevels"))?;
+    spelling::validate_settings(object)?;
+    adblock::validate_settings(object)?;
     browser_privacy::validate(object.get("trackingPreventionExceptions"))?;
     validate_keybindings(object.get("keybindings"))?;
     validate_sandboxes(object.get("sandboxes"), object.get("serviceSandboxes"))?;
@@ -4539,6 +4582,145 @@ fn sync_services_menu(app: AppHandle, services: Vec<NativeServiceMenuEntry>) -> 
     Ok(())
 }
 
+/// Applies changed spelling settings to every running service webview and
+/// re-mirrors the personal dictionary for the new language set.
+fn apply_spelling_settings(app: &AppHandle, state: &AppState, settings: &Value) {
+    let created: Vec<String> = state.created.lock().unwrap().iter().cloned().collect();
+    for service_id in created {
+        if let Err(error) = spelling::apply_service(app, settings, &service_id) {
+            startup_diagnostics::log("primary", "spelling.apply_error", &error);
+        }
+    }
+    if let Ok(app_data) = app.path().app_data_dir() {
+        if let Err(error) = spelling::list_words(&app_data, &spelling::active_languages(settings)) {
+            startup_diagnostics::log("primary", "spelling.sync_error", &error);
+        }
+    }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SpellingStateResponse {
+    languages: Vec<spelling::SpellingLanguage>,
+    system_language: String,
+    words: Vec<String>,
+    controls: spelling::EngineControls,
+}
+
+fn spelling_context(app: &AppHandle, state: &AppState) -> Result<(PathBuf, Value), String> {
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let settings = state.settings.lock().unwrap().clone();
+    Ok((app_data, settings))
+}
+
+#[tauri::command]
+fn spelling_get_state(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<SpellingStateResponse, String> {
+    let (app_data, settings) = spelling_context(&app, &state)?;
+    let active = spelling::active_languages(&settings);
+    let selected: Vec<String> = settings
+        .get("spellcheckLanguages")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut all_selected = selected;
+    for tag in &active {
+        if !all_selected.contains(tag) {
+            all_selected.push(tag.clone());
+        }
+    }
+    Ok(SpellingStateResponse {
+        languages: spelling::language_list(&spelling::installed_languages(), &all_selected),
+        system_language: spelling::system_language(),
+        words: spelling::list_words(&app_data, &active)?,
+        controls: spelling::engine_controls(),
+    })
+}
+
+#[tauri::command]
+fn adblock_get_state(app: AppHandle) -> adblock::runtime::AdblockState {
+    adblock::runtime::state(&app)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AdblockSites {
+    accepted: Vec<String>,
+    rejected: Vec<AdblockRejectedSite>,
+}
+
+#[derive(serde::Serialize)]
+struct AdblockRejectedSite {
+    input: String,
+    reason: String,
+}
+
+/// Normalises allowlist input so the shell shows exactly what will be saved
+/// and why anything was refused.
+#[tauri::command]
+fn adblock_normalize_sites(inputs: Vec<String>) -> AdblockSites {
+    let (accepted, rejected) = adblock::normalize_allowlist(&inputs);
+    AdblockSites {
+        accepted,
+        rejected: rejected
+            .into_iter()
+            .map(|(input, reason)| AdblockRejectedSite { input, reason })
+            .collect(),
+    }
+}
+
+#[tauri::command]
+async fn adblock_update_lists(app: AppHandle) -> Result<adblock::runtime::AdblockState, String> {
+    adblock::runtime::update_now(&app).await?;
+    Ok(adblock::runtime::state(&app))
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AdblockListCheck {
+    network_rules: u32,
+    cosmetic_rules: u32,
+}
+
+/// Downloads and validates a custom list so the shell can give immediate
+/// feedback before the address is saved in settings.
+#[tauri::command]
+async fn adblock_check_list(app: AppHandle, url: String) -> Result<AdblockListCheck, String> {
+    let stats = adblock::runtime::check_list(&app, &url).await?;
+    Ok(AdblockListCheck {
+        network_rules: stats.network,
+        cosmetic_rules: stats.cosmetic,
+    })
+}
+
+#[tauri::command]
+fn spelling_add_word(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    word: String,
+) -> Result<Vec<String>, String> {
+    let (app_data, settings) = spelling_context(&app, &state)?;
+    spelling::add_word(&app_data, &spelling::active_languages(&settings), &word)
+}
+
+#[tauri::command]
+fn spelling_remove_word(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    word: String,
+) -> Result<Vec<String>, String> {
+    let (app_data, settings) = spelling_context(&app, &state)?;
+    spelling::remove_word(&app_data, &spelling::active_languages(&settings), &word)
+}
+
 #[tauri::command]
 fn set_app_settings(
     app: AppHandle,
@@ -4595,6 +4777,17 @@ fn set_app_settings(
         Ok(value) => {
             download_toast::settings_changed(&app, &previous, &value);
             window_chrome::refresh(&app);
+            if patch.keys().any(|key| {
+                matches!(
+                    key.as_str(),
+                    "spellcheckEnabled" | "spellcheckLanguages" | "serviceSpellcheck"
+                )
+            }) {
+                apply_spelling_settings(&app, &state, &value);
+            }
+            if adblock::patch_affects(&patch) {
+                adblock::runtime::settings_changed(&app);
+            }
             let changes = patch
                 .iter()
                 .map(|(key, after)| {
@@ -4644,12 +4837,14 @@ fn export_backup(
         let local_profile = serde_json::to_value(state.local_profile.lock().unwrap().clone())
             .map_err(|error| format!("Unable to serialize local profile for backup: {error}"))?;
         let custom_recipes = recipes::backup_custom_recipes(&app)?;
+        let spelling_words = spelling_backup_words(&app)?;
         let document = backup::BackupDocument::new(
             env!("CARGO_PKG_VERSION"),
             app_settings,
             local_profile,
             custom_recipes,
-        );
+        )
+        .with_spelling_words(spelling_words);
         backup::save(Path::new(&path), &document)
     })();
     match operation {
@@ -4847,12 +5042,14 @@ fn create_automatic_backup(
         let local_profile = serde_json::to_value(state.local_profile.lock().unwrap().clone())
             .map_err(|error| format!("Unable to serialize local profile for backup: {error}"))?;
         let custom_recipes = recipes::backup_custom_recipes(&app)?;
+        let spelling_words = spelling_backup_words(&app)?;
         let document = backup::BackupDocument::new(
             env!("CARGO_PKG_VERSION"),
             app_settings,
             local_profile,
             custom_recipes,
-        );
+        )
+        .with_spelling_words(spelling_words);
         let mut summary = backup::save(&path, &document)?;
         match prune_automatic_backups(&root, retention_mode, retention, max_age_days, &path) {
             Ok(removed) => {
@@ -4934,6 +5131,11 @@ fn restore_recovery_backup_path(app: &AppHandle) -> Result<PathBuf, String> {
         .join(format!("pre-restore-{stamp}.json")))
 }
 
+fn spelling_backup_words(app: &AppHandle) -> Result<Vec<String>, String> {
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    spelling::snapshot_words(&app_data)
+}
+
 fn perform_restore_backup(
     app: &AppHandle,
     state: &AppState,
@@ -4947,8 +5149,14 @@ fn perform_restore_backup(
     let local_profile = LocalProfile::from_value(document.local_profile())?;
     recipes::validate_custom_recipe_backups(document.custom_recipes())?;
     let previous_settings = effective_app_settings_value(app);
+    // Backups made before ad blocking carry none of its settings; keep the
+    // current ones instead of resetting them to defaults.
+    let app_settings =
+        adblock::carry_forward_missing(app_settings, &document.app_settings(), &previous_settings);
+    validate_app_settings_value(&app_settings)?;
     let previous_profile = state.local_profile.lock().unwrap().clone();
     let previous_recipes = recipes::backup_custom_recipes(app)?;
+    let previous_spelling_words = spelling_backup_words(app)?;
     let restored_recipes =
         recipes::merge_custom_recipe_backups(&previous_recipes, document.custom_recipes())?;
 
@@ -4961,7 +5169,8 @@ fn perform_restore_backup(
         previous_settings.clone(),
         previous_profile_value,
         previous_recipes.clone(),
-    );
+    )
+    .with_spelling_words(previous_spelling_words.clone());
     backup::save(&recovery_path, &recovery_document)
         .map_err(|error| format!("Unable to create pre-restore safety backup: {error}"))?;
 
@@ -4972,6 +5181,12 @@ fn perform_restore_backup(
         recipes::replace_custom_recipes_exact(app, &restored_recipes)?;
         save_local_profile(app, &local_profile)?;
         persist_app_settings(app, state, &app_settings)?;
+        // Backups made before spelling support carry no dictionary and must
+        // leave the current one untouched.
+        if let Some(words) = document.spelling_words() {
+            let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+            spelling::replace_words(&app_data, &spelling::active_languages(&app_settings), words)?;
+        }
         Ok(())
     })();
 
@@ -4986,6 +5201,22 @@ fn perform_restore_backup(
         if let Err(rollback) = persist_app_settings(app, state, &previous_settings) {
             rollback_errors.push(format!("app settings: {rollback}"));
         }
+        if document.spelling_words().is_some() {
+            let rollback = app
+                .path()
+                .app_data_dir()
+                .map_err(|e| e.to_string())
+                .and_then(|app_data| {
+                    spelling::replace_words(
+                        &app_data,
+                        &spelling::active_languages(&previous_settings),
+                        &previous_spelling_words,
+                    )
+                });
+            if let Err(rollback) = rollback {
+                rollback_errors.push(format!("spelling dictionary: {rollback}"));
+            }
+        }
         *state.local_profile.lock().unwrap() = previous_profile;
         if rollback_errors.is_empty() {
             return Err(format!(
@@ -4999,6 +5230,8 @@ fn perform_restore_backup(
     }
 
     *state.local_profile.lock().unwrap() = local_profile;
+    apply_spelling_settings(app, state, &app_settings);
+    adblock::runtime::settings_changed(app);
     let mut summary = document
         .summary(path)
         .with_recovery_backup_path(&recovery_path);
@@ -5565,6 +5798,9 @@ fn write_build_info_if_requested() -> Result<bool, String> {
 }
 
 fn main() {
+    // WebKit reads its spelling default when the first web view is created, so
+    // register it before any window exists.
+    spelling::register_macos_defaults();
     if let Err(error) = startup_diagnostics::initialize_from_args() {
         startup_diagnostics::report_fatal("launch", "diagnostics.initialization_error", &error);
         std::process::exit(2);
@@ -5653,6 +5889,7 @@ fn main() {
         )
         .manage(AppState::default())
         .manage(download_toast::DownloadToastState::default())
+        .manage(service_menu::ServiceMenuState::default())
         .manage(window_chrome::WindowChromeState::default())
         .setup(move |app| {
             startup_diagnostics::log("primary", "tauri.setup.begin", "Tauri setup callback entered");
@@ -5669,6 +5906,21 @@ fn main() {
                 }
             }
 
+            // Spelling engine word lists must be configured before any service
+            // web process starts so it inherits the private Enchant directory.
+            match app.path().app_data_dir() {
+                Ok(app_data) => {
+                    if let Err(error) = spelling::prepare_engine(&app_data) {
+                        startup_diagnostics::log("primary", "spelling.prepare_error", &error);
+                    }
+                }
+                Err(error) => startup_diagnostics::log(
+                    "primary",
+                    "spelling.prepare_error",
+                    &error.to_string(),
+                ),
+            }
+
             // Cache app settings in memory for the poller, shutdown handling, and related logic.
             *app.state::<AppState>().settings.lock().unwrap() =
                 read_app_settings_value(app.handle());
@@ -5679,6 +5931,7 @@ fn main() {
                     .get("trackingPreventionExceptions").cloned().unwrap_or_else(|| serde_json::json!({}));
             }
             startup_diagnostics::log("primary", "settings.loaded", "application settings loaded into memory");
+            adblock::runtime::start(app.handle());
             {
                 let st = app.state::<AppState>();
                 let settings = st.settings.lock().unwrap();
@@ -5700,7 +5953,10 @@ fn main() {
             if let Some(win) = app.get_window("main") {
                 startup_diagnostics::log("primary", "window.events", "main window event handler registered");
                 win.on_window_event(move |event| match event {
-                    WindowEvent::Resized(_) => reposition_active(&handle),
+                    WindowEvent::Resized(_) => {
+                        service_menu::close(&handle, false, "window-resized");
+                        reposition_active(&handle)
+                    },
                     // When focus returns (for example after closing devtools), reapply the
                     // layout because the service webview may have been resized and
                     // overlapped the sidebar.
@@ -5710,11 +5966,15 @@ fn main() {
                         window_chrome::refresh(&handle);
                     },
                     WindowEvent::Focused(false) => {
+                        service_menu::window_focus_lost(&handle);
                         download_toast::refresh(&handle);
                         window_chrome::refresh(&handle);
                     },
                     WindowEvent::ThemeChanged(_) => window_chrome::refresh(&handle),
-                    WindowEvent::ScaleFactorChanged { .. } => reposition_active(&handle),
+                    WindowEvent::ScaleFactorChanged { .. } => {
+                        service_menu::close(&handle, false, "scale-factor-changed");
+                        reposition_active(&handle)
+                    },
                     WindowEvent::CloseRequested { api, .. } => {
                         // Persist geometry/state before either hiding to tray or allowing a real close.
                         save_main_window_state(&handle);
@@ -5959,7 +6219,20 @@ fn main() {
             download_toast::get_download_toast,
             download_toast::dismiss_download_toast,
             download_toast::resize_download_toast,
+            service_menu::open_service_menu,
+            service_menu::close_service_menu,
+            service_menu::settle_service_menu,
+            service_menu::get_service_menu,
+            service_menu::dismiss_service_menu,
+            service_menu::service_menu_action,
             set_service_zoom,
+            spelling_get_state,
+            adblock_get_state,
+            adblock_update_lists,
+            adblock_normalize_sites,
+            adblock_check_list,
+            spelling_add_word,
+            spelling_remove_word,
             toggle_devtools_command
             ];
             handler(invoke)
@@ -6454,6 +6727,103 @@ mod tests {
         assert!(!valid_service_setting_id(""));
         assert!(!valid_service_setting_id("\n"));
         assert!(valid_service_setting_id("service-a"));
+    }
+
+    #[test]
+    fn spelling_settings_default_when_missing_and_validate_in_app_settings() {
+        // Settings files written before spelling support lack the keys entirely.
+        let defaults = merge_app_settings_value(&json!({})).unwrap();
+        assert_eq!(defaults["spellcheckEnabled"], json!(true));
+        assert_eq!(defaults["spellcheckLanguages"], json!([]));
+        assert_eq!(defaults["serviceSpellcheck"], json!({}));
+        assert!(validate_app_settings_value(&defaults).is_ok());
+
+        let mut settings = defaults.clone();
+        settings["spellcheckLanguages"] = json!(["en-US", "de"]);
+        settings["serviceSpellcheck"] = json!({ "service-a": { "enabled": false } });
+        assert!(validate_app_settings_value(&settings).is_ok());
+
+        settings["serviceSpellcheck"] = json!({ "service-a": { "languages": ["not a tag"] } });
+        assert!(validate_app_settings_value(&settings).is_err());
+    }
+
+    #[test]
+    fn adblock_settings_default_when_missing_and_validate_in_app_settings() {
+        // Settings files written before ad blocking lack the keys entirely and
+        // must load with blocking off.
+        let defaults = merge_app_settings_value(&json!({})).unwrap();
+        assert_eq!(defaults["adblockEnabled"], json!(false));
+        assert_eq!(defaults["adblockLists"], json!(["easylist", "easyprivacy"]));
+        assert_eq!(defaults["adblockCustomLists"], json!([]));
+        assert_eq!(defaults["adblockAllowlist"], json!([]));
+        assert_eq!(defaults["serviceAdblock"], json!({}));
+        assert!(validate_app_settings_value(&defaults).is_ok());
+
+        let mut settings = defaults.clone();
+        settings["adblockEnabled"] = json!(true);
+        settings["adblockAllowlist"] = json!(["example.com"]);
+        settings["serviceAdblock"] = json!({ "service-a": { "enabled": false } });
+        assert!(validate_app_settings_value(&settings).is_ok());
+
+        settings["serviceAdblock"] = json!({ "service-a": { "allowlist": ["Not A Site"] } });
+        assert!(validate_app_settings_value(&settings).is_err());
+        settings["serviceAdblock"] = json!({});
+        settings["adblockCustomLists"] = json!(["http://example.com/list.txt"]);
+        assert!(validate_app_settings_value(&settings).is_err());
+    }
+
+    #[test]
+    fn adblock_settings_survive_a_save_and_reload() {
+        let mut settings = merge_app_settings_value(&json!({})).unwrap();
+        settings["adblockEnabled"] = json!(true);
+        settings["adblockLists"] = json!(["easyprivacy"]);
+        settings["adblockCustomLists"] = json!(["https://example.com/list.txt"]);
+        settings["adblockAllowlist"] = json!(["a.com", "b.org"]);
+        settings["serviceAdblock"] =
+            json!({ "svc-1": { "enabled": false, "allowlist": ["c.net"] } });
+        validate_app_settings_value(&settings).unwrap();
+
+        // What persist_app_settings writes, and what the next start reads.
+        let on_disk = serde_json::to_string_pretty(&settings).unwrap();
+        let reloaded = merge_app_settings_value(&serde_json::from_str(&on_disk).unwrap()).unwrap();
+        for key in [
+            "adblockEnabled",
+            "adblockLists",
+            "adblockCustomLists",
+            "adblockAllowlist",
+            "serviceAdblock",
+        ] {
+            assert_eq!(reloaded[key], settings[key], "{key} must survive a restart");
+        }
+    }
+
+    #[test]
+    fn restoring_a_pre_adblock_backup_keeps_current_blocking_settings() {
+        let mut current = merge_app_settings_value(&json!({})).unwrap();
+        current["adblockEnabled"] = json!(true);
+        current["adblockAllowlist"] = json!(["a.com"]);
+        current["serviceAdblock"] = json!({ "svc": { "enabled": false } });
+
+        // The restore path merges the backup over defaults, which resets blocking...
+        let old_backup = json!({ "theme": "dark" });
+        let merged = merge_app_settings_value(&old_backup).unwrap();
+        assert_eq!(merged["adblockEnabled"], json!(false));
+        // ...so the keys it lacks are carried forward from the current profile.
+        let restored = adblock::carry_forward_missing(merged, &old_backup, &current);
+        validate_app_settings_value(&restored).unwrap();
+        assert_eq!(restored["theme"], json!("dark"));
+        assert_eq!(restored["adblockEnabled"], json!(true));
+        assert_eq!(restored["adblockAllowlist"], json!(["a.com"]));
+        assert_eq!(restored["serviceAdblock"], current["serviceAdblock"]);
+
+        // A backup that does carry blocking settings wins, even when they say "off".
+        let new_backup = json!({ "adblockEnabled": false, "adblockAllowlist": [] });
+        let merged = merge_app_settings_value(&new_backup).unwrap();
+        let restored = adblock::carry_forward_missing(merged, &new_backup, &current);
+        assert_eq!(restored["adblockEnabled"], json!(false));
+        assert_eq!(restored["adblockAllowlist"], json!([]));
+        // Keys the backup omits are still carried forward individually.
+        assert_eq!(restored["serviceAdblock"], current["serviceAdblock"]);
     }
 
     #[test]

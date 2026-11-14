@@ -20,6 +20,25 @@ class BackupWorkflowTests(unittest.TestCase):
     cls.api = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
     cls.app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
 
+  def test_adblock_settings_ride_in_backups_and_old_backups_do_not_reset_them(self) -> None:
+    # Blocking settings are app settings, so every backup path already carries them.
+    self.assertIn("effective_app_settings_value(&app)", self.main)
+    self.assertIn("adblock::carry_forward_missing(", self.main)
+    # backup.rs needs no ad blocking code; its tests freeze a pre-feature backup.
+    self.assertNotIn("adblock", self.backup.split("#[cfg(test)]", 1)[0])
+    self.assertIn("PRE_ADBLOCK_BACKUP", self.backup)
+    self.assertIn("backup_carries_adblock_settings_with_integrity", self.backup)
+
+  def test_spelling_dictionary_is_backed_up_restored_and_rolled_back(self) -> None:
+    # Created by manual, automatic and pre-restore recovery backups.
+    self.assertGreaterEqual(self.main.count(".with_spelling_words("), 3)
+    self.assertIn("document.spelling_words()", self.main)
+    self.assertIn("spelling::replace_words(", self.main)
+    self.assertIn("spelling dictionary: {rollback}", self.main)
+    # Old backups carry no dictionary and must keep their digest and not clear one.
+    self.assertIn('skip_serializing_if = "Option::is_none"', self.backup)
+    self.assertIn("spelling_words: Option<&'a [String]>", self.backup)
+
   def test_backup_commands_are_registered_and_exposed(self) -> None:
     handler = self.main.split("tauri::generate_handler![", 1)[1].split("]", 1)[0]
     self.assertIn("export_backup", handler)

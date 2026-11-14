@@ -189,6 +189,12 @@
           "markdownDescription": "Notification renderer can only access its own notification state"
         },
         {
+          "description": "Service menu renderer can only read the menu it was opened for and report a choice",
+          "type": "string",
+          "const": "service-menu",
+          "markdownDescription": "Service menu renderer can only read the menu it was opened for and report a choice"
+        },
+        {
           "description": "Unified title bar can only inspect its presentation, open native menus and return focus",
           "type": "string",
           "const": "window-titlebar",

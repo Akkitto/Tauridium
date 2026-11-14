@@ -59,7 +59,17 @@ commands.allow = [
   "reload_active_service_command",
   "reload_app_command",
   "show_service_toast_overlay",
+  "open_service_menu",
+  "close_service_menu",
+  "settle_service_menu",
   "set_service_zoom",
+  "spelling_get_state",
+  "adblock_get_state",
+  "adblock_update_lists",
+  "adblock_normalize_sites",
+  "adblock_check_list",
+  "spelling_add_word",
+  "spelling_remove_word",
   "toggle_devtools_command"
 ]
 
@@ -77,3 +87,8 @@ commands.allow = [
 identifier = "window-titlebar"
 description = "Unified title bar can only inspect its presentation, open native menus and return focus"
 commands.allow = ["get_window_chrome", "open_window_menu", "focus_window_content"]
+
+[[permission]]
+identifier = "service-menu"
+description = "Service menu renderer can only read the menu it was opened for and report a choice"
+commands.allow = ["get_service_menu", "dismiss_service_menu", "service_menu_action"]

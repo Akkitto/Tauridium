@@ -188,6 +188,9 @@ struct IntegrityMaterial<'a> {
     app_settings: &'a Value,
     local_profile: &'a Value,
     custom_recipes: &'a [CustomRecipeBackup],
+    // Absent in backups made before spelling support so their digest is unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    spelling_words: Option<&'a [String]>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -202,6 +205,10 @@ pub(crate) struct BackupDocument {
     app_settings: Value,
     local_profile: Value,
     custom_recipes: Vec<CustomRecipeBackup>,
+    /// Personal spelling dictionary. `None` for backups made before spelling
+    /// support, which must not clear an existing dictionary on restore.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    spelling_words: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     integrity: Option<BackupIntegrity>,
     #[serde(skip)]
@@ -250,6 +257,7 @@ impl BackupDocument {
             app_settings,
             local_profile,
             custom_recipes,
+            spelling_words: None,
             integrity: None,
             source_schema: BACKUP_SCHEMA_CURRENT,
         };
@@ -298,6 +306,7 @@ impl BackupDocument {
             app_settings: &self.app_settings,
             local_profile: &self.local_profile,
             custom_recipes: &self.custom_recipes,
+            spelling_words: self.spelling_words.as_deref(),
         }
     }
 
@@ -352,6 +361,15 @@ impl BackupDocument {
         if !self.app_settings.is_object() {
             return Err("Backup appSettings must be a JSON object".into());
         }
+        if let Some(words) = &self.spelling_words {
+            if words.len() > crate::spelling::MAX_WORDS {
+                return Err("Backup spellingWords exceeds the dictionary limit".into());
+            }
+            for word in words {
+                crate::spelling::validate_word(word)
+                    .map_err(|error| format!("Backup spellingWords is invalid: {error}"))?;
+            }
+        }
         if !self.local_profile.is_object() {
             return Err("Backup localProfile must be a JSON object".into());
         }
@@ -368,6 +386,17 @@ impl BackupDocument {
 
     pub(crate) fn custom_recipes(&self) -> &[CustomRecipeBackup] {
         &self.custom_recipes
+    }
+
+    /// Records the personal dictionary and refreshes the integrity digest.
+    pub(crate) fn with_spelling_words(mut self, words: Vec<String>) -> Self {
+        self.spelling_words = Some(words);
+        self.refresh_integrity();
+        self
+    }
+
+    pub(crate) fn spelling_words(&self) -> Option<&[String]> {
+        self.spelling_words.as_deref()
     }
 
     pub(crate) fn summary(&self, path: &Path) -> BackupSummary {
@@ -500,6 +529,109 @@ mod tests {
         assert_eq!(loaded.custom_recipes().len(), 1);
         assert_eq!(loaded.app_settings()["theme"], "dark");
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn backup_carries_spelling_words_with_integrity() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("backup.json");
+        let document = sample().with_spelling_words(vec!["Alpha".into(), "Beta".into()]);
+        save(&path, &document).unwrap();
+        let loaded = load(&path).unwrap();
+        assert_eq!(loaded.spelling_words().unwrap(), ["Alpha", "Beta"]);
+
+        // An empty dictionary is still recorded so restore can clear words.
+        let empty = sample().with_spelling_words(Vec::new());
+        save(&path, &empty).unwrap();
+        assert_eq!(load(&path).unwrap().spelling_words().unwrap().len(), 0);
+
+        // Tampering with the words breaks the digest.
+        let mut value = serde_json::to_value(&document).unwrap();
+        value["spellingWords"] = serde_json::json!(["Alpha", "Evil"]);
+        assert!(BackupDocument::from_value(value).is_err());
+    }
+
+    #[test]
+    fn backup_without_spelling_words_keeps_its_digest_and_does_not_clear_dictionary() {
+        let document = sample();
+        assert!(document.spelling_words().is_none());
+        let value = serde_json::to_value(&document).unwrap();
+        assert!(value.get("spellingWords").is_none());
+        let restored = BackupDocument::from_value(value).unwrap();
+        assert!(restored.spelling_words().is_none());
+    }
+
+    #[test]
+    fn backup_rejects_invalid_spelling_words() {
+        let mut value =
+            serde_json::to_value(sample().with_spelling_words(vec!["ok".into()])).unwrap();
+        value["spellingWords"] = serde_json::json!(["two words"]);
+        assert!(BackupDocument::from_value(value).is_err());
+    }
+
+    fn adblock_settings() -> Value {
+        json!({
+            "theme": "dark",
+            "adblockEnabled": true,
+            "adblockLists": ["easylist"],
+            "adblockCustomLists": ["https://example.com/list.txt"],
+            "adblockAllowlist": ["a.com"],
+            "serviceAdblock": { "svc": { "enabled": false, "allowlist": ["b.org"] } }
+        })
+    }
+
+    fn with_settings(settings: Value) -> BackupDocument {
+        BackupDocument::new(
+            "9.9.9",
+            settings,
+            json!({"version": 1, "services": [{"id": "svc"}], "workspaces": []}),
+            Vec::new(),
+        )
+    }
+
+    #[test]
+    fn backup_carries_adblock_settings_with_integrity() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("backup.json");
+        save(&path, &with_settings(adblock_settings())).unwrap();
+        let loaded = load(&path).unwrap();
+        let settings = loaded.app_settings();
+        assert_eq!(settings["adblockEnabled"], json!(true));
+        assert_eq!(
+            settings["adblockCustomLists"],
+            json!(["https://example.com/list.txt"])
+        );
+        assert_eq!(settings["adblockAllowlist"], json!(["a.com"]));
+        assert_eq!(
+            settings["serviceAdblock"],
+            json!({ "svc": { "enabled": false, "allowlist": ["b.org"] } })
+        );
+
+        // The allowlist is covered by the integrity digest.
+        let mut value = serde_json::to_value(with_settings(adblock_settings())).unwrap();
+        value["appSettings"]["adblockAllowlist"] = json!(["evil.example"]);
+        assert!(BackupDocument::from_value(value).is_err());
+    }
+
+    /// A backup written before ad blocking existed (its app settings carry no
+    /// ad blocking key), produced by the unchanged digest code and frozen here.
+    const PRE_ADBLOCK_BACKUP: &str = r#"{"format":"tauridium-backup","schema":2,"appVersion":"9.9.9","exportedAtUnix":1794603657,"containsSensitiveData":true,"excluded":["ferdiumSessionCredentials","websiteCookiesAndStorage","remoteRecipeCache","windowMonitorGeometry"],"appSettings":{"theme":"dark"},"localProfile":{"services":[{"id":"svc"}],"version":1,"workspaces":[]},"customRecipes":[{"id":"local-ai","package":{"config":{"serviceURL":"https://example.com"},"id":"local-ai","name":"Local AI"},"iconSvg":"<svg></svg>","webviewJs":"console.log('local');"}],"integrity":{"algorithm":"sha256","payloadSha256":"8bb13f4ec7f9a170fbea96da7e7f87cbffadc388cd2c88ecbb59d4192d779535"}}"#;
+
+    #[test]
+    fn backup_made_before_adblock_still_verifies_and_carries_no_blocking_settings() {
+        let value: Value = serde_json::from_str(PRE_ADBLOCK_BACKUP).unwrap();
+        for key in [
+            "adblockEnabled",
+            "adblockLists",
+            "adblockCustomLists",
+            "adblockAllowlist",
+            "serviceAdblock",
+        ] {
+            assert!(value["appSettings"].get(key).is_none());
+        }
+        let loaded = BackupDocument::from_value(value).unwrap();
+        assert!(loaded.summary(Path::new("old.json")).integrity_verified);
+        assert_eq!(loaded.app_settings()["theme"], "dark");
     }
 
     #[test]
