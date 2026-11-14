@@ -110,7 +110,7 @@ verify that its immutable tag/commit and all three offline source manifests agre
 just flatpak-publication-check
 ```
 
-The publication manifest pins the exact commit behind `v1.0.3`. For the next
+The publication manifest pins a specific release tag and its exact commit. For the next
 release, materialize the new tag's peeled commit in a separate packaging commit
 after tagging. A release commit cannot embed its own future hash. Use the
 post-tag reference for publication and `just flatpak-build` for local testing.
