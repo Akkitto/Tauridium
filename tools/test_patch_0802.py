@@ -26,8 +26,8 @@ class Patch0802Tests(unittest.TestCase):
     main = self.read("src-tauri/src/main.rs")
     body = main.split("fn apply_autostart_setting", 1)[1].split("fn persist_app_settings", 1)[0]
     value_cfg = """#[cfg(any(
-        all(feature = \"native-distribution\", not(feature = \"flatpak\")),
-        all(target_os = \"linux\", feature = \"nix\"),
+        all(feature = \"desktop-integration\", not(feature = \"flatpak\")),
+        all(target_os = \"linux\", any(feature = \"nix\", feature = \"system-package\")),
         all(target_os = \"linux\", feature = \"flatpak\")
     ))]
     let enabled = settings"""
