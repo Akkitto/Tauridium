@@ -150,9 +150,11 @@ class ArchPackagingTests(unittest.TestCase):
     with tempfile.TemporaryDirectory() as temporary:
       root = Path(temporary) / "repo"
       self.make_repository(root)
-      (root / "safe.txt").unlink()
-      (root / "safe.txt").symlink_to("/etc/hostname")
-      subprocess.run(["git", "add", "safe.txt"], cwd=root, check=True)
+      # Exercise the Git symlink object even on Windows without symlink privileges.
+      subprocess.run(["git", "config", "core.symlinks", "false"], cwd=root, check=True)
+      (root / "safe.txt").write_text("unread-synthetic-target", encoding="utf-8")
+      blob = subprocess.check_output(["git", "hash-object", "-w", "--stdin"], cwd=root, input=b"unread-synthetic-target").decode().strip()
+      subprocess.run(["git", "update-index", "--cacheinfo", "120000," + blob + ",safe.txt"], cwd=root, check=True)
       subprocess.run(["git", "commit", "-qm", "Test: Add synthetic symlink"], cwd=root, check=True)
       with mock.patch.object(aur, "SOURCE_FILES", {"package.json", "safe.txt"}), mock.patch.object(aur, "SOURCE_ROOTS", ()):
         with self.assertRaisesRegex(ValueError, "regular tracked"):
