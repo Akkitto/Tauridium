@@ -7,6 +7,8 @@ import subprocess
 import sys
 
 from aur import ROOT, TARGETS, write_payload
+from arch_build import build as build_elf
+from tauri_build import build_environment
 from run_preserving_schemas import SCHEMA_ROOT, snapshot_files, restore_files
 
 
@@ -19,8 +21,8 @@ def build(target: str) -> Path:
   environment = dict(os.environ, CARGO_TARGET_DIR=str(target_dir))
   snapshot = snapshot_files(SCHEMA_ROOT)
   try:
-    subprocess.run([sys.executable, "tools/tauri_build.py", "--no-bundle", "--ci", "--target", target,
-                    "--no-default-features", "--features", "system-package"], cwd=ROOT, env=environment, check=True)
+    subprocess.run(["npm", "run", "build"], cwd=ROOT, env=build_environment(environment), check=True)
+    build_elf(target, environment)
   finally:
     restore_files(SCHEMA_ROOT, snapshot)
   return write_payload(target_dir / target / "release/tauridium", target, ROOT / "release/system-packages")

@@ -15,6 +15,7 @@ import zipfile
 
 import aur
 import arch_check
+import arch_build
 
 
 def build_info():
@@ -39,6 +40,15 @@ def payload(path, mutate=None):
 
 
 class ArchPackagingTests(unittest.TestCase):
+  def test_managed_builder_uses_locked_production_features_without_bundler(self):
+    with mock.patch.object(arch_build.subprocess, "run") as run:
+      arch_build.build("x86_64-unknown-linux-gnu", {})
+    command = run.call_args.args[0]
+    for argument in ("--release", "--offline", "--locked", "--no-default-features", "system-package,tauri/custom-protocol"):
+      self.assertIn(argument, command)
+    self.assertEqual(command[0], "cargo")
+    self.assertIn("CARGO_ENCODED_RUSTFLAGS", run.call_args.kwargs["env"])
+
   def test_build_info_rejects_native_updater_debug_wrong_version_and_portal_policy(self):
     arch_check.validate(build_info(), "1.0.10", "x86_64-unknown-linux-gnu")
     for field, value in (("version", "1.0.9"), ("target", "aarch64-unknown-linux-gnu"), ("buildMode", "development")):
