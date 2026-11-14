@@ -87,11 +87,11 @@ modules:
       - rm -rf /app/lib/tauridium-rust-toolchain
       - rm -f /app/bin/cargo-tauri
     sources:
-      # Publication uses the immutable v1.0.9 source. Local builds use committed HEAD.
+      # Publication uses the immutable v1.0.10 source. Local builds use committed HEAD.
       - type: git
         url: https://github.com/Akkitto/Tauridium.git
-        tag: v1.0.9
-        commit: 02ea4976265d42dd0585bea5cc481e4b69c8594f
+        tag: v1.0.10
+        commit: f999802861625af967c028bd9307203669a0a4db
         dest: source
         x-checker-data:
           type: git
