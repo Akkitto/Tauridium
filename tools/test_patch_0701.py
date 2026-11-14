@@ -31,7 +31,7 @@ class Patch0701Tests(unittest.TestCase):
 
   def test_public_release_is_created_only_after_all_validation_jobs(self) -> None:
     verify = WORKFLOW.split("  verify:", 1)[1].split("  sign:", 1)[0]
-    self.assertIn("needs: [handoff, build, scoop, nix]", verify)
+    self.assertIn("needs: [handoff, build, scoop, nix, arch-binary]", verify)
     self.assertIn("python3 tools/assemble_release.py", verify)
     self.assertNotIn("merge-multiple: true", WORKFLOW)
     self.assertIn("needs: verify", WORKFLOW.split("  sign:", 1)[1].split("  finalize:", 1)[0])

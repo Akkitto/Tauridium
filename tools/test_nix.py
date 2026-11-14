@@ -54,7 +54,7 @@ class NixTests(unittest.TestCase):
 
   def test_release_publication_requires_both_nix_architectures(self):
     release = (ROOT / ".github/workflows/release.yml").read_text()
-    self.assertIn("needs: [handoff, build, scoop, nix]", release)
+    self.assertIn("needs: [handoff, build, scoop, nix, arch-binary]", release)
     workflow = (ROOT / ".github/workflows/nix.yml").read_text()
     for marker in ("aarch64-linux", "x86_64-linux", "flake check", ".#smoke", ".#nixos-test"):
       self.assertIn(marker, workflow)
