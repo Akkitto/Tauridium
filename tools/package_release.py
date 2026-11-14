@@ -760,6 +760,7 @@ def build_docs(
       (ROOT / "tools" / "fixtures" / "file-drop.html", "tools/fixtures/file-drop.html"),
       (ROOT / "docs" / "github-language-statistics.md", "docs/github-language-statistics.md"),
       (ROOT / "packaging" / "scoop" / "README.md", "docs/scoop-packaging.md"),
+      (ROOT / "packaging" / "aur" / "README.md", "packaging/aur/README.md"),
     ):
       source_name = source.as_posix().removeprefix(ROOT.as_posix() + "/")
       if source_name in entries:
