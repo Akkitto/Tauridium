@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.11] - 2026-11-15
+
+- Keep the existing styled service context menu above native service views, preserving its actions, themes and system-menu preference.
+- Correct display-scale and titlebar positioning, cancel stale openings and preserve keyboard focus, dismissal and safe native fallback.
+- Add production interaction regressions over real service views, including Windows unified/classic titlebars and Linux package gates.
+
 ## [1.0.10] - 2026-11-14
 
 - Add local Arch Linux source and binary package recipes, verified preparation tools and direct-repository installation instructions; AUR submission remains separate.

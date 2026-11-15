@@ -19,11 +19,14 @@
   <url type="vcs-browser">https://github.com/Akkitto/Tauridium</url>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v1.0.10/data/screenshots/tauridium-0.8.0-main.png</image>
+      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v1.0.11/data/screenshots/tauridium-0.8.0-main.png</image>
       <caption>Tauridium sign-in and local accountless start screen</caption>
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.0.11" date="2026-11-15">
+      <description><p>Keep styled service context menus above native service views with reliable positioning, keyboard interaction, dismissal and system-menu fallback.</p></description>
+    </release>
     <release version="1.0.10" date="2026-11-14">
       <description><p>Add local Arch Linux packaging, package-manager-owned updates and verified Linux system-package release payloads without submitting to AUR.</p></description>
     </release>
