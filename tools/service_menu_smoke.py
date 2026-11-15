@@ -172,7 +172,7 @@ def main() -> int:
               return screenshot(window, f'{theme}-open')
             if theme != 'native':
               click(window, anchor_x, anchor_y, 3); click(window, 900, 450)
-              time.sleep(1)
+              time.sleep(3)
               text, _ = screenshot(window, f'{theme}-cancel-during-opening')
               if 'Duplicate' in text: raise RuntimeError('A pending menu appeared after clicking the native service')
               checks.append(f'{theme}: native service click cancels an opening before presentation')
@@ -195,11 +195,13 @@ def main() -> int:
             text, _ = screenshot(window, f'{theme}-click-away')
             if 'Duplicate' in text or 'Reset zoom' in text: raise RuntimeError('Clicking the service did not dismiss the menu')
             checks.append(f'{theme}: click-away into native service dismisses')
-            for _ in range(3):
-              click(window, anchor_x, anchor_y, 3); click(window, 900, 450)
-            time.sleep(1)
-            text, _ = screenshot(window, f'{theme}-warm-opening-cancel')
-            if 'Duplicate' in text: raise RuntimeError('A warm opening survived immediate native click-away')
+            for index, delay in enumerate((0, .01, .03, .08, .15)):
+              click(window, anchor_x, anchor_y, 3)
+              if delay: time.sleep(delay)
+              click(window, 900, 450)
+              time.sleep(.4)
+              text, _ = screenshot(window, f'{theme}-warm-opening-cancel-{index}')
+              if 'Duplicate' in text: raise RuntimeError(f'A warm opening survived native click-away after {delay}s')
             checks.append(f'{theme}: repeated warm openings cancel on immediate native click-away')
             open_menu(); xdo('windowfocus', 0); time.sleep(.4)
             text, _ = screenshot(window, f'{theme}-deactivated')

@@ -503,6 +503,7 @@ fn reveal(app: &AppHandle, id: u64, focus: bool) -> Result<bool, String> {
     }
     // Cancellation can arrive during native sizing. It invalidates core before
     // waiting for lifecycle, so no cancelled session may become visible here.
+    #[cfg(not(target_os = "linux"))]
     {
         let mut core = state.core.lock().unwrap();
         let Some(session) = core.session.as_mut().filter(|session| session.id == id) else {
@@ -512,10 +513,46 @@ fn reveal(app: &AppHandle, id: u64, focus: bool) -> Result<bool, String> {
     }
     #[cfg(target_os = "linux")]
     {
+        // Resolve only a weak owner reference on GTK's thread. The final focus
+        // check, display and focus transfer must share one UI callback: a click
+        // queued while native geometry is being prepared must win over a popup.
+        let (send, receive) = std::sync::mpsc::sync_channel(1);
+        owner
+            .with_webview(move |platform| {
+                use gtk::prelude::*;
+                let owner: gtk::glib::SendWeakRef<gtk::Widget> =
+                    platform.inner().upcast::<gtk::Widget>().downgrade().into();
+                let _ = send.send(owner);
+            })
+            .map_err(|error| error.to_string())?;
+        let owner = receive.recv().map_err(|error| error.to_string())?;
         let native_layout = *state.gtk_layout.lock().unwrap();
+        let handle = app.clone();
+        let (send, receive) = std::sync::mpsc::sync_channel(1);
         view.with_webview(move |platform| {
             use gtk::prelude::*;
             let view = platform.inner();
+            if focus
+                && !owner.upgrade().is_some_and(|owner| {
+                    owner.has_focus()
+                        && owner
+                            .toplevel()
+                            .and_then(|widget| widget.downcast::<gtk::Window>().ok())
+                            .is_some_and(|window| window.is_active())
+                })
+            {
+                let _ = send.send(false);
+                return;
+            }
+            {
+                let state = handle.state::<ServiceMenuState>();
+                let mut core = state.core.lock().unwrap();
+                let Some(session) = core.session.as_mut().filter(|session| session.id == id) else {
+                    let _ = send.send(false);
+                    return;
+                };
+                session.visible = true;
+            }
             if let Some(layout) = native_layout {
                 view.set_size_request(layout.width as i32, layout.height as i32);
             }
@@ -536,8 +573,15 @@ fn reveal(app: &AppHandle, id: u64, focus: bool) -> Result<bool, String> {
                 window.raise();
             }
             view.queue_draw();
+            if focus {
+                view.grab_focus();
+            }
+            let _ = send.send(true);
         })
         .map_err(|error| error.to_string())?;
+        if !receive.recv().map_err(|error| error.to_string())? {
+            return Ok(false);
+        }
     }
     #[cfg(windows)]
     {
@@ -590,9 +634,12 @@ fn reveal(app: &AppHandle, id: u64, focus: bool) -> Result<bool, String> {
     {
         return Ok(false);
     }
-    view.show().map_err(|error| error.to_string())?;
-    if focus && window_active(app) {
-        view.set_focus().map_err(|error| error.to_string())?;
+    #[cfg(not(target_os = "linux"))]
+    {
+        view.show().map_err(|error| error.to_string())?;
+        if focus && window_active(app) {
+            view.set_focus().map_err(|error| error.to_string())?;
+        }
     }
     // A cancellation that raced reveal is completed under the same lifecycle
     // before its close command returns; it cannot affect a newer session.
