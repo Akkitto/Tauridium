@@ -12,14 +12,16 @@ class IpcSecurityTests(unittest.TestCase):
     source = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
     # cfg contains brackets too: use the terminating macro invocation instead.
     handler = source.split("tauri::generate_handler![", 1)[1].split("];", 1)[0]
-    names = set(re.findall(r"^\s*(?:download_toast::)?([a-z_]+),?\s*$", handler, re.M))
+    names = set(re.findall(r"^\s*(?:(?:download_toast|service_menu)::)?([a-z_]+),?\s*$", handler, re.M))
     permissions = (ROOT / "src-tauri/permissions/application.toml").read_text(encoding="utf-8")
     arrays = re.findall(r"commands\.allow\s*=\s*(\[[^\]]*\])", permissions)
-    main, toast, titlebar = (set(json.loads(value)) for value in arrays)
-    self.assertEqual(main | toast | titlebar, names)
+    main, toast, titlebar, menu = (set(json.loads(value)) for value in arrays)
+    self.assertEqual(main | toast | titlebar | menu, names)
     self.assertEqual(main & titlebar, {"get_window_chrome"})
     self.assertFalse(toast & titlebar)
     self.assertEqual(titlebar, {"get_window_chrome", "open_window_menu", "focus_window_content"})
+    self.assertEqual(menu, {"get_service_menu", "measure_service_menu", "dismiss_service_menu", "choose_service_menu"})
+    self.assertFalse(menu & (main | toast | titlebar))
     self.assertFalse(main & toast)
     self.assertEqual(toast, {"get_download_toast", "dismiss_download_toast", "resize_download_toast"})
     self.assertIn("ipc_security::command_allowed(", source)
@@ -29,7 +31,7 @@ class IpcSecurityTests(unittest.TestCase):
     for path in (ROOT / "src-tauri/capabilities").glob("*.json"):
       capability = json.loads(path.read_text(encoding="utf-8"))
       self.assertNotIn("windows", capability, str(path))
-      self.assertIn(capability["webviews"], [["main"], ["download-toast"], ["window-titlebar"]])
+      self.assertIn(capability["webviews"], [["main"], ["download-toast"], ["window-titlebar"], ["service-menu"]])
       self.assertNotIn("remote", capability)
 
   def test_popup_scheme_checks_precede_allow(self):

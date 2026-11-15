@@ -7,6 +7,13 @@ const TOAST_COMMANDS: &[&str] = &[
     "resize_download_toast",
 ];
 
+const MENU_COMMANDS: &[&str] = &[
+    "get_service_menu",
+    "measure_service_menu",
+    "dismiss_service_menu",
+    "choose_service_menu",
+];
+
 const TITLEBAR_COMMANDS: &[&str] = &[
     "get_window_chrome",
     "open_window_menu",
@@ -17,10 +24,13 @@ pub(crate) fn command_allowed(label: &str, command: &str) -> bool {
     match label {
         "main" => {
             command == "get_window_chrome"
-                || (!TOAST_COMMANDS.contains(&command) && !TITLEBAR_COMMANDS.contains(&command))
+                || (!TOAST_COMMANDS.contains(&command)
+                    && !TITLEBAR_COMMANDS.contains(&command)
+                    && !MENU_COMMANDS.contains(&command))
         }
         "window-titlebar" => TITLEBAR_COMMANDS.contains(&command),
         "download-toast" => TOAST_COMMANDS.contains(&command),
+        "service-menu" => MENU_COMMANDS.contains(&command),
         _ => false,
     }
 }
@@ -89,6 +99,33 @@ mod tests {
         }
         assert!(!command_allowed("main", "open_window_menu"));
         assert!(command_allowed("main", "get_window_chrome"));
+    }
+
+    #[test]
+    fn service_menu_has_no_main_toast_or_titlebar_authority() {
+        for command in MENU_COMMANDS {
+            assert!(command_allowed("service-menu", command));
+            for label in [
+                "main",
+                "svc-mail",
+                "download-toast",
+                "window-titlebar",
+                "service-menu-child",
+            ] {
+                assert!(!command_allowed(label, command));
+            }
+        }
+        for command in [
+            "prepare_service_menu",
+            "present_service_menu",
+            "close_service_menu",
+            "set_app_settings",
+            "export_backup",
+            "get_download_toast",
+            "open_window_menu",
+        ] {
+            assert!(!command_allowed("service-menu", command));
+        }
     }
 
     #[test]

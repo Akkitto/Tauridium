@@ -567,3 +567,9 @@ export function openWindowMenu(index: number, x: number): Promise<void> {
 export function focusWindowContent(): Promise<void> {
   return invoke("focus_window_content");
 }
+
+// Only the main renderer prepares/presents a popup; its renderer has a separate
+// exact capability for measurement and selection of the Rust-bound target.
+export const prepareServiceMenu = (request: import("./serviceMenu").ServiceMenuRequest) => invoke<number>("prepare_service_menu", { request });
+export const presentServiceMenu = (id: number) => invoke<boolean>("present_service_menu", { id });
+export const closeServiceMenu = (id: number, restoreFocus: boolean) => invoke<void>("close_service_menu", { id, restoreFocus });

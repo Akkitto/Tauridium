@@ -4,6 +4,9 @@
 identifier = "app-ui"
 description = "Existing application commands for the trusted main UI only"
 commands.allow = [
+  "prepare_service_menu",
+  "present_service_menu",
+  "close_service_menu",
   "login",
   "start_local_session",
   "restore_session",
@@ -77,3 +80,8 @@ commands.allow = [
 identifier = "window-titlebar"
 description = "Unified title bar can only inspect its presentation, open native menus and return focus"
 commands.allow = ["get_window_chrome", "open_window_menu", "focus_window_content"]
+
+[[permission]]
+identifier = "service-menu"
+description = "Styled service menu can only measure, dismiss or select its current bound action"
+commands.allow = ["get_service_menu", "measure_service_menu", "dismiss_service_menu", "choose_service_menu"]

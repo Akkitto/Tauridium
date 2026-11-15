@@ -22,7 +22,7 @@ class Patch0409Tests(unittest.TestCase):
   def test_context_menu_uses_native_popup_above_service_webviews(self) -> None:
     body = self.app.split("async function popupNativeServiceContextMenu", 1)[1].split("function openServiceContextMenu(event", 1)[0]
     self.assertIn('const menu = await Menu.new({', body)
-    self.assertIn('await menu.popup(new LogicalPosition(x, y));', body)
+    self.assertIn('await menu.popup(new PhysicalPosition(Math.round(origin.x + x * pixelRatio), Math.round(origin.y + y * pixelRatio)));', body)
     self.assertIn('await menu.close().catch(() => {});', body)
     self.assertIn('if (!appSettings.prettyServiceContextMenu)', self.app)
 
@@ -63,7 +63,10 @@ class Patch0409Tests(unittest.TestCase):
   def test_context_menu_uses_logical_pointer_and_keyboard_positions(self) -> None:
     mouse = self.app.split("function openServiceContextMenu(event", 1)[1].split("function openServiceContextMenuFromKeyboard", 1)[0]
     keyboard = self.app.split("function openServiceContextMenuFromKeyboard", 1)[1].split("function sameIds", 1)[0]
-    self.assertIn('popupNativeServiceContextMenu(service, event.clientX, event.clientY)', mouse)
+    self.assertIn('showStyledServiceMenu(service, event.clientX, event.clientY, event.currentTarget, event.buttons !== 0)', mouse)
+    presentation = self.app.split('function showStyledServiceMenu', 1)[1].split('function openServiceContextMenu(event', 1)[0]
+    self.assertIn('pixelRatio: window.devicePixelRatio', presentation)
+    self.assertIn('popupNativeServiceContextMenu(service, x, y,', presentation)
     self.assertIn('rect ? rect.left + 28 : 12', keyboard)
     self.assertIn('rect ? rect.bottom : 12', keyboard)
 

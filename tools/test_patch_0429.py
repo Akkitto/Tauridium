@@ -45,11 +45,13 @@ class Patch0429Tests(unittest.TestCase):
     self.assertIn('settings.insert("prettyServiceContextMenu".into(), true.into());', MAIN)
     self.assertIn('"prettyServiceContextMenu",', MAIN)
     self.assertIn("Use original service context menu", APP)
-    self.assertIn('class="service-context-menu"', APP)
-    self.assertIn("service-context-backdrop", APP)
+    renderer = (ROOT / 'src/ServiceMenu.svelte').read_text(encoding='utf-8')
+    self.assertIn('class="service-context-menu"', renderer)
+    self.assertIn('ServiceMenuController', APP)
+    self.assertNotIn('class="service-context-menu"', APP)
     self.assertIn("if (!appSettings.prettyServiceContextMenu)", APP)
     self.assertIn("popupNativeServiceContextMenu", APP)
-    self.assertIn("await menu.popup(new LogicalPosition(x, y));", APP)
+    self.assertIn("await menu.popup(new PhysicalPosition(Math.round(origin.x + x * pixelRatio), Math.round(origin.y + y * pixelRatio)));", APP)
 
   def test_native_about_menu_has_project_source_and_author_quick_links(self) -> None:
     builder = MAIN.split("fn build_native_application_menu", 1)[1].split("#[derive(Clone, Copy)]", 1)[0]

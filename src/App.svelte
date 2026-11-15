@@ -6,7 +6,10 @@
   import { ownValue, setOwnValue, copyOwnEntry, downloadOverride, downloadDirectoryLabel } from "./lib/settingsMaps";
   import tauridiumLogo from "./assets/tauridium.svg";
   import { listen } from "@tauri-apps/api/event";
-  import { LogicalPosition } from "@tauri-apps/api/dpi";
+  import { PhysicalPosition } from "@tauri-apps/api/dpi";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
+  import { prepareServiceMenu, presentServiceMenu, closeServiceMenu } from "./lib/api";
+  import { ServiceMenuController, captureMenuPointer, type ServiceMenuAction, type ServiceMenuRequest } from "./lib/serviceMenu";
   import { Menu } from "@tauri-apps/api/menu";
   import {
     accentFg,
@@ -236,7 +239,23 @@
   let quickSwitcherIndex = $state(0);
   let lastQuickSwitcherShortcutToggle: { mode: QuickSwitcherMode | null; at: number } = { mode: null, at: 0 };
 
-  let serviceContextMenu = $state<{ serviceId: string; x: number; y: number } | null>(null);
+  let serviceMenuOpener: HTMLElement | null = null;
+  let nativeMenuIntent = 0;
+  let unlistenServiceMenuAction: (() => void) | undefined;
+  let unlistenServiceMenuClosed: (() => void) | undefined;
+  const serviceMenu = new ServiceMenuController({
+    prepare: prepareServiceMenu,
+    present: (id) => document.hasFocus() ? presentServiceMenu(id) : Promise.resolve(false),
+    close: closeServiceMenu,
+    fallback: async (request, isCurrent) => {
+      const service = services.find((item) => item.id === request.serviceId);
+      if (service) {
+        try { await popupNativeServiceContextMenu(service, request.x, request.y, isCurrent, request.pixelRatio); }
+        catch (failure) { error = `Unable to open service menu: ${failure}`; throw failure; }
+      }
+    },
+    error: (failure) => console.warn(`Service menu: ${failure}`),
+  });
   let toastMessage = $state("");
   let toastTone = $state<"default" | "success">("default");
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -667,6 +686,14 @@
 
   onDestroy(() => {
     unlistenDownloadToastGeometry?.();
+    unlistenServiceMenuAction?.();
+    unlistenServiceMenuClosed?.();
+    closeServiceContextMenu();
+    window.removeEventListener("pointerdown", closeServiceContextMenu, true);
+    window.removeEventListener("pointerup", releaseServiceMenuPointer, true);
+    window.removeEventListener("mouseup", releaseServiceMenuPointer, true);
+    window.removeEventListener("pointercancel", cancelServiceMenuPointer, true);
+    window.removeEventListener("blur", blurServiceMenuOwner);
     unlistenWindowChrome?.();
     if (automaticBackupTimer) clearInterval(automaticBackupTimer);
     if (recordingTimer) clearTimeout(recordingTimer);
@@ -677,6 +704,17 @@
   });
 
   onMount(async () => {
+    unlistenServiceMenuAction = await listen<{ id: number; serviceId: string; action: ServiceMenuAction }>("service-menu-action", (event) => {
+      dispatchServiceMenuAction(event.payload.id, event.payload.serviceId, event.payload.action);
+    });
+    unlistenServiceMenuClosed = await listen<{ id: number; restoreFocus: boolean }>("service-menu-closed", (event) => {
+      if (serviceMenu.closed(event.payload.id) && event.payload.restoreFocus) serviceMenuOpener?.focus();
+    });
+    window.addEventListener("pointerdown", closeServiceContextMenu, true);
+    window.addEventListener("pointerup", releaseServiceMenuPointer, true);
+    window.addEventListener("mouseup", releaseServiceMenuPointer, true);
+    window.addEventListener("pointercancel", cancelServiceMenuPointer, true);
+    window.addEventListener("blur", blurServiceMenuOwner);
     const unlistenChrome = await listen<{ enabled: boolean; fallback: boolean }>("window-chrome-changed", (event) => {
       unifiedTitleBarAtStartup = event.payload.enabled;
       unifiedTitleBarFallback = event.payload.fallback;
@@ -817,6 +855,7 @@
   }
 
   function handleWindowResize() {
+    closeServiceContextMenu();
     if (appSettings.sidebarCollapsed || appSettings.sidebarWidthMode !== "percent" || sidebarResizeFrame !== null) return;
     sidebarResizeFrame = requestAnimationFrame(() => {
       sidebarResizeFrame = null;
@@ -1170,20 +1209,29 @@
   }
 
   function closeServiceContextMenu() {
-    serviceContextMenu = null;
-  }
-
-  function runServiceContextAction(service: Service, action: (selectedService: Service) => Promise<void>) {
-    closeServiceContextMenu();
-    void action(service);
+    nativeMenuIntent++;
+    serviceMenu.cancel();
   }
 
   function openContextServiceSettings(service: Service) {
-    openServiceSettings(service);
     closeServiceContextMenu();
+    openServiceSettings(service);
   }
 
-  async function popupNativeServiceContextMenu(service: Service, x: number, y: number) {
+  function dispatchServiceMenuAction(id: number, serviceId: string, action: ServiceMenuAction) {
+    if (!serviceMenu.takeAction(id, serviceId)) return;
+    const service = services.find((item) => item.id === serviceId);
+    if (!service) return;
+    if (action === "settings") openContextServiceSettings(service);
+    else if (action === "reload" && service.isEnabled !== false) void reloadServiceFromUi(service);
+    else if (action === "zoom-in") void increaseServiceZoom(service);
+    else if (action === "zoom-out") void decreaseServiceZoom(service);
+    else if (action === "zoom-reset") void resetServiceZoom(service);
+    else if (action === "duplicate") void duplicateServiceFromUi(service);
+    else if (action === "toggle") void toggleServiceEnabled(service);
+  }
+
+  async function popupNativeServiceContextMenu(service: Service, x: number, y: number, isCurrent = () => true, pixelRatio = window.devicePixelRatio) {
     const zoomPercent = serviceZoomPercent(service.id);
     const menu = await Menu.new({
       items: [
@@ -1199,63 +1247,53 @@
       ],
     });
     try {
-      await menu.popup(new LogicalPosition(x, y));
+      const origin = await getCurrentWebview().position();
+      if (isCurrent()) await menu.popup(new PhysicalPosition(Math.round(origin.x + x * pixelRatio), Math.round(origin.y + y * pixelRatio)));
     } finally {
       await menu.close().catch(() => {});
     }
   }
 
+  function showStyledServiceMenu(service: Service, x: number, y: number, opener: EventTarget | null, held = false) {
+    closeServiceContextMenu();
+    serviceMenuOpener = opener instanceof HTMLElement ? opener : null;
+    serviceMenuOpener?.focus({ preventScroll: true });
+    if (!appSettings.prettyServiceContextMenu) {
+      const intent = nativeMenuIntent;
+      void popupNativeServiceContextMenu(service, x, y, () => nativeMenuIntent === intent).catch((err) => { error = `Unable to open service menu: ${err}`; });
+      return;
+    }
+    const request: ServiceMenuRequest = {
+      serviceId: service.id, label: serviceLabel(service), enabled: service.isEnabled !== false,
+      zoomPercent: serviceZoomPercent(service.id), x, y, pixelRatio: window.devicePixelRatio,
+      theme: document.body.classList.contains("light") ? "light" : document.body.classList.contains("oled") ? "oled" : "dark",
+    };
+    void serviceMenu.open(request, held);
+  }
+
   function openServiceContextMenu(event: MouseEvent, service: Service) {
     event.preventDefault();
     event.stopPropagation();
-    if (!appSettings.prettyServiceContextMenu) {
-      void popupNativeServiceContextMenu(service, event.clientX, event.clientY).catch((err) => {
-        error = `Unable to open service menu: ${err}`;
-      });
-      return;
+    showStyledServiceMenu(service, event.clientX, event.clientY, event.currentTarget, event.buttons !== 0);
+  }
+
+  function captureServiceMenuPointer(event: PointerEvent) {
+    if (captureMenuPointer(event.button, event.ctrlKey, navigator.platform) && event.currentTarget instanceof HTMLElement) {
+      event.currentTarget.setPointerCapture(event.pointerId);
     }
-    const width = 226;
-    const height = 330;
-    serviceContextMenu = {
-      serviceId: service.id,
-      x: Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)),
-      y: Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8)),
-    };
-    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".service-context-menu button:not(:disabled)")?.focus());
   }
 
   function openServiceContextMenuFromKeyboard(event: KeyboardEvent, service: Service) {
     if (!(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
     event.preventDefault();
     const rect = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : null;
-    if (!appSettings.prettyServiceContextMenu) {
-      void popupNativeServiceContextMenu(service, rect ? rect.left + 28 : 12, rect ? rect.bottom : 12).catch((err) => {
-        error = `Unable to open service menu: ${err}`;
-      });
-      return;
-    }
-    serviceContextMenu = {
-      serviceId: service.id,
-      x: rect ? Math.min(rect.left + 28, window.innerWidth - 234) : 12,
-      y: rect ? Math.min(rect.bottom, window.innerHeight - 338) : 12,
-    };
-    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".service-context-menu button:not(:disabled)")?.focus());
+    showStyledServiceMenu(service, rect ? rect.left + 28 : 12, rect ? rect.bottom : 12, event.currentTarget);
   }
 
-  function handleServiceContextMenuKeydown(event: KeyboardEvent) {
-    const menu = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-    const items = menu ? [...menu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')] : [];
-    if (!items.length) return;
-    const current = items.indexOf(document.activeElement as HTMLButtonElement);
-    let next = current;
-    if (event.key === "ArrowDown") next = (current + 1 + items.length) % items.length;
-    else if (event.key === "ArrowUp") next = (current - 1 + items.length) % items.length;
-    else if (event.key === "Home") next = 0;
-    else if (event.key === "End") next = items.length - 1;
-    else return;
-    event.preventDefault();
-    items[next]?.focus();
-  }
+  function blurServiceMenuOwner() { nativeMenuIntent++; serviceMenu.ownerBlur(); }
+
+  function releaseServiceMenuPointer() { serviceMenu.releasePointer(); }
+  function cancelServiceMenuPointer() { closeServiceContextMenu(); }
 
   function sameIds(left: string[], right: string[]): boolean {
     return left.length === right.length && left.every((id, index) => id === right[index]);
@@ -1545,6 +1583,7 @@
   }
 
   function selectService(s: Service) {
+    closeServiceContextMenu();
     if (s.isEnabled === false) return;
     clearServiceDragSelection();
     const prev = activeId;
@@ -1757,6 +1796,7 @@
   }
 
   function openServiceSettings(s: Service, returnToSettings = false) {
+    closeServiceContextMenu();
     error = null;
     serviceSettingsReturnToSettings = returnToSettings;
     settingsSvc = { ...s }; // Editable copy; applied to the server on Save.
@@ -2546,6 +2586,7 @@
   }
 
   async function openAdd() {
+    closeServiceContextMenu();
     error = null;
     view = "add";
     addMode = "catalog";
@@ -2724,6 +2765,7 @@
   }
 
   function openAppSettings() {
+    closeServiceContextMenu();
     error = null;
     view = "appSettings";
     hideServices();
@@ -2740,6 +2782,7 @@
   }
 
   function openAbout() {
+    closeServiceContextMenu();
     error = null;
     hideServices().catch(() => {});
     settingsTab = "about";
@@ -3412,6 +3455,7 @@
   }
 
   function openQuickSwitcher(mode: QuickSwitcherMode) {
+    closeServiceContextMenu();
     const now = Date.now();
     if (lastQuickSwitcherShortcutToggle.mode === mode && now - lastQuickSwitcherShortcutToggle.at < 120) return;
     lastQuickSwitcherShortcutToggle = { mode, at: now };
@@ -3574,7 +3618,7 @@
   }
 
   function handleGlobalKeydown(event: KeyboardEvent) {
-    if (event.key === "Escape" && serviceContextMenu) {
+    if (event.key === "Escape" && serviceMenu.isOpen) {
       event.preventDefault();
       closeServiceContextMenu();
       return;
@@ -3756,6 +3800,7 @@
   }
 
   async function handleLogout() {
+    closeServiceContextMenu();
     // Cleanup prevents hibernation timers, preloading, or reconnection from the
     // previous session from continuing and recreating webviews afterward.
     cancelPreloading();
@@ -5280,9 +5325,9 @@
                 </section>
               {/if}
               <section class="settings-section" aria-labelledby="settings-advanced-context-menu">
-                <div class="section-heading"><h3 id="settings-advanced-context-menu">Service context menu</h3><p>Choose between Tauridium's original styled menu and the native fallback that always stays above service webviews.</p></div>
+                <div class="section-heading"><h3 id="settings-advanced-context-menu">Service context menu</h3><p>Choose Tauridium's styled menu or the native system menu. Both stay above service webviews.</p></div>
                 <div class="settings-list">
-                  {@render appToggle("Use original service context menu", "Enabled by default. Uses Tauridium's original styled right-click menu. Embedded service webviews can cover the part of this shell menu that extends over them. Disable this to use the native system menu, which always stays in front.", "prettyServiceContextMenu", appSettings.prettyServiceContextMenu)}
+                  {@render appToggle("Use original service context menu", "Enabled by default. Keeps Tauridium's styled right-click menu above embedded services. Disable this to use the native system menu.", "prettyServiceContextMenu", appSettings.prettyServiceContextMenu)}
                 </div>
               </section>
               <section class="settings-section" aria-labelledby="settings-advanced-sidebar-order">
@@ -5453,26 +5498,6 @@
   </div>
 {/if}
 
-{#if serviceContextMenu}
-  {@const contextService = services.find((service) => service.id === serviceContextMenu?.serviceId) ?? null}
-  <div class="service-context-backdrop" role="presentation" onclick={(event) => event.currentTarget === event.target && closeServiceContextMenu()} oncontextmenu={(event) => { event.preventDefault(); if (event.currentTarget === event.target) closeServiceContextMenu(); }}>
-    {#if contextService}
-      <div class="service-context-menu" role="menu" tabindex="-1" aria-label={`${serviceLabel(contextService)} actions`} style={`left:${serviceContextMenu.x}px;top:${serviceContextMenu.y}px`} onkeydown={handleServiceContextMenuKeydown}>
-        <button role="menuitem" onclick={() => openContextServiceSettings(contextService)}>Settings</button>
-        <button role="menuitem" disabled={contextService.isEnabled === false} onclick={() => runServiceContextAction(contextService, reloadServiceFromUi)}>Reload</button>
-        <div class="service-context-separator" aria-hidden="true"></div>
-        <button role="menuitem" disabled={serviceZoomPercent(contextService.id) >= 200} onclick={() => runServiceContextAction(contextService, increaseServiceZoom)}>Zoom in ({stepServiceZoomPercent(serviceZoomPercent(contextService.id), 1)}%)</button>
-        <button role="menuitem" disabled={serviceZoomPercent(contextService.id) <= 50} onclick={() => runServiceContextAction(contextService, decreaseServiceZoom)}>Zoom out ({stepServiceZoomPercent(serviceZoomPercent(contextService.id), -1)}%)</button>
-        <button role="menuitem" disabled={serviceZoomPercent(contextService.id) === 100} onclick={() => runServiceContextAction(contextService, resetServiceZoom)}>Reset zoom (100%)</button>
-        <div class="service-context-separator" aria-hidden="true"></div>
-        <button role="menuitem" onclick={() => runServiceContextAction(contextService, duplicateServiceFromUi)}>Duplicate</button>
-        <div class="service-context-separator" aria-hidden="true"></div>
-        <button role="menuitem" class:context-danger={contextService.isEnabled !== false} onclick={() => runServiceContextAction(contextService, toggleServiceEnabled)}>{contextService.isEnabled === false ? "Enable" : "Disable"}</button>
-      </div>
-    {/if}
-  </div>
-{/if}
-
 {#if toastMessage}
   <div class="toast" class:success={toastTone === "success"} style:bottom={`${downloadToastHeight > 0 ? downloadToastHeight + 36 : 24}px`} role="status" aria-live="polite">{toastMessage}</div>
 {/if}
@@ -5535,6 +5560,7 @@
       class:disabled={s.isEnabled === false}
       class:asleep={hibernated.has(s.id)}
       aria-disabled={s.isEnabled === false}
+      onpointerdown={captureServiceMenuPointer}
       oncontextmenu={(e) => openServiceContextMenu(e, s)}
       onclick={(e) => onServiceRowClick(e, s)}
       onkeydown={(e) => openServiceContextMenuFromKeyboard(e, s)}
@@ -6096,13 +6122,6 @@
   .service-workspace-create-card .setting-copy { padding-top: 9px; }
   .service-workspace-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding-top: 9px; }
   .danger-link { color: #ff9b9b; }
-  .service-context-backdrop { position: fixed; inset: 0; z-index: 1200; }
-  .service-context-menu { position: fixed; width: 226px; padding: 5px; border: 1px solid var(--border2); border-radius: 9px; background: var(--panel); box-shadow: 0 14px 42px rgba(0, 0, 0, 0.45); }
-  .service-context-menu button { width: 100%; min-height: 34px; padding: 7px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--text2); text-align: left; cursor: pointer; font: inherit; }
-  .service-context-menu button:hover:not(:disabled), .service-context-menu button:focus-visible { background: var(--hover); }
-  .service-context-menu button:disabled { color: var(--muted2); cursor: default; }
-  .service-context-menu button.context-danger { color: #ff9b9b; }
-  .service-context-separator { height: 1px; margin: 4px 3px; background: var(--border); }
   .toast { position: fixed; z-index: 1400; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: min(520px, calc(100vw - 32px)); padding: 10px 14px; border: 1px solid var(--border2); border-radius: 9px; background: var(--panel); color: var(--text); box-shadow: 0 10px 34px rgba(0, 0, 0, 0.42); font-size: 13px; }
   .toast.success { background: #187a45; border-color: #2ca866; color: #fff; }
   .quick-switcher-backdrop { position: fixed; inset: 0; z-index: 1000; display: flex; justify-content: center; align-items: flex-start; padding-top: min(14vh, 120px); background: rgba(0, 0, 0, 0.46); }

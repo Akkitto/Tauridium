@@ -1,51 +1,27 @@
 #!/usr/bin/env python3
-"""Regression coverage for Tauridium 0.6.14 service context-menu action capture."""
-
-from __future__ import annotations
-
-import unittest
+"""Regression coverage for captured service identity after menu dismissal."""
 from pathlib import Path
-
+import unittest
 ROOT = Path(__file__).resolve().parents[1]
 APP = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
 
-
 class Patch0614Tests(unittest.TestCase):
-  def test_pretty_context_actions_capture_service_before_closing_menu(self) -> None:
-    helper = APP.split("function runServiceContextAction", 1)[1].split("function openContextServiceSettings", 1)[0]
-    self.assertIn("service: Service", helper)
-    self.assertIn("closeServiceContextMenu();", helper)
-    self.assertIn("void action(service);", helper)
+  def test_pretty_context_actions_capture_service_before_dispatch(self):
+    helper = APP.split("function dispatchServiceMenuAction", 1)[1].split("async function popupNativeServiceContextMenu", 1)[0]
+    self.assertIn("serviceMenu.takeAction(id, serviceId)", helper)
+    self.assertIn("const service = services.find((item) => item.id === serviceId)", helper)
+    self.assertIn("if (!service) return", helper)
+    for action in ("duplicateServiceFromUi", "reloadServiceFromUi", "toggleServiceEnabled"):
+      self.assertIn(f"void {action}(service)", helper)
+      self.assertLess(helper.index("const service ="), helper.index(f"void {action}(service)"))
 
-    menu = APP.split('{#if serviceContextMenu}', 1)[1].split('{#if toastMessage}', 1)[0]
-    self.assertIn(
-      "runServiceContextAction(contextService, duplicateServiceFromUi)",
-      menu,
-    )
-    self.assertIn(
-      "runServiceContextAction(contextService, reloadServiceFromUi)",
-      menu,
-    )
-    self.assertIn(
-      "runServiceContextAction(contextService, toggleServiceEnabled)",
-      menu,
-    )
-
-  def test_pretty_context_actions_never_close_then_read_reactive_context_service(self) -> None:
-    menu = APP.split('{#if serviceContextMenu}', 1)[1].split('{#if toastMessage}', 1)[0]
-    self.assertNotIn(
-      "closeServiceContextMenu(); void duplicateServiceFromUi(contextService)",
-      menu,
-    )
-    self.assertNotIn(
-      "closeServiceContextMenu(); void reloadServiceFromUi(contextService)",
-      menu,
-    )
-    self.assertNotIn(
-      "closeServiceContextMenu(); void toggleServiceEnabled(contextService)",
-      menu,
-    )
-
+  def test_pretty_context_actions_do_not_read_cleared_reactive_menu_state(self):
+    self.assertNotIn("serviceContextMenu", APP)
+    native = (ROOT / "src-tauri/src/service_menu.rs").read_text(encoding="utf-8")
+    choice = native.split("async fn choose_service_menu", 1)[1].split("#[cfg(test)]", 1)[0]
+    self.assertIn("claim(id, action)", choice)
+    self.assertIn("session.request.service_id", choice)
+    self.assertLess(choice.index("claim(id, action)"), choice.index("hide_idle(&app)"))
 
 if __name__ == "__main__":
   unittest.main()

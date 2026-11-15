@@ -167,6 +167,14 @@ public static class ChromeNative {
     Point point=new Point(); point.X=Title(h).Buttons[2].Left-24; point.Y=outer.Top+1;
     return WindowFromPoint(point)==h && Hit(h,point)==12;
   }
+  public static bool OwnsPoint(IntPtr owner,Point point) { return GetAncestor(WindowFromPoint(point),2)==owner; }
+  public static void ClickPoint(IntPtr owner,int x,int y,bool right) {
+    Point p=new Point(); p.X=x; p.Y=y;
+    if (GetAncestor(WindowFromPoint(p),2)!=owner) throw new InvalidOperationException("Refusing to click outside the test window.");
+    if (!SetCursorPos(x,y)) throw new InvalidOperationException("Unable to position the test pointer.");
+    Input down=new Input(), up=new Input(); down.Data.Mouse.Flags=right?8u:2u; up.Data.Mouse.Flags=right?16u:4u;
+    if (SendInput(2,new Input[]{down,up},Marshal.SizeOf(typeof(Input)))!=2) throw new InvalidOperationException("Test pointer input was blocked.");
+  }
   public static bool HasPopup(int pid) {
     IntPtr h=IntPtr.Zero;
     while ((h=FindWindowEx(IntPtr.Zero,h,"#32768",null)) != IntPtr.Zero) {
@@ -453,6 +461,122 @@ function Toggle-Chrome([bool]$Enabled) {
   } 'changed title-bar checkbox state'
   Wait-For { $Value=Read-Settings; $Value.PSObject.Properties['unifiedTitleBar'] -and $Value.unifiedTitleBar -is [bool] -and $Value.unifiedTitleBar -eq $Enabled } 'saved title-bar preference'
 }
+function Visible-Service-Item([string]$Name) {
+  $Control=Find-Control $Name ([Windows.Automation.ControlType]::MenuItem)
+  if ($Control -and -not $Control.Current.IsOffscreen) { return $Control }
+  return $null
+}
+function Open-Service-Menu {
+  Activate-Tauridium
+  $Row=Find-Control 'Beta fixture' ([Windows.Automation.ControlType]::Button)
+  if (-not $Row) { throw 'Missing synthetic sidebar service.' }
+  $R=$Row.Current.BoundingRectangle
+  [ChromeNative]::ClickPoint($script:Window,[int]($R.Right-8),[int]($R.Top+$R.Height/2),$true)
+  Wait-For { $null -ne (Visible-Service-Item 'Duplicate') } 'styled service menu'
+  if ([ChromeNative]::HasPopup($script:Child.Id)) { throw 'Styled menu unexpectedly used the system fallback.' }
+}
+function Test-Service-Pixel([int]$X,[int]$Y) {
+  $Point=New-Object ChromeNative+Point; $Point.X=$X; $Point.Y=$Y
+  if (-not [ChromeNative]::OwnsPoint($script:Window,$Point)) { throw 'Refusing to read pixels outside the test window.' }
+  $Bitmap=New-Object Drawing.Bitmap(1,1); $Graphics=[Drawing.Graphics]::FromImage($Bitmap)
+  try {
+    $Graphics.CopyFromScreen($X,$Y,0,0,$Bitmap.Size)
+    $Pixel=$Bitmap.GetPixel(0,0)
+    return $Pixel.R -lt 80 -and $Pixel.G -gt 180 -and $Pixel.B -gt 100 -and $Pixel.B -lt 210
+  } finally { $Graphics.Dispose(); $Bitmap.Dispose() }
+}
+function Test-Service-Menus {
+  $Fixture=Join-Path $Output 'synthetic-service'; [IO.Directory]::CreateDirectory($Fixture) | Out-Null
+  [IO.File]::WriteAllText((Join-Path $Fixture 'fixture.html'),'<!doctype html><meta charset="utf-8"><style>html,body{margin:0;min-height:100%;background:#20e0a0;color:#111}</style><h1>REAL NATIVE SERVICE VIEW</h1><p>Account-free service menu fixture</p>',$Utf8)
+  $Listener=New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback,0)
+  $Listener.Start(); $Port=$Listener.LocalEndpoint.Port; $Listener.Stop()
+  $Python=(Get-Command python.exe -ErrorAction Stop).Source
+  $Server=Start-Process -FilePath $Python -ArgumentList @('-I','-m','http.server',"$Port",'--bind','127.0.0.1','--directory',('"{0}"' -f $Fixture)) -PassThru -RedirectStandardOutput (Join-Path $Fixture 'server.log') -RedirectStandardError (Join-Path $Fixture 'server-errors.log')
+  try {
+    Wait-For { try { (Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$Port/fixture.html" -TimeoutSec 2).StatusCode -eq 200 } catch { $false } } 'local synthetic service fixture'
+    $Services=@(
+      @{id='menu-alpha';name='Alpha fixture';recipeId='custom-website';isEnabled=$true;isLocalRecipe=$true;order=0;customUrl="http://127.0.0.1:$Port/fixture.html?alpha"},
+      @{id='menu-beta';name='Beta fixture';recipeId='custom-website';isEnabled=$true;isLocalRecipe=$true;order=1;customUrl="http://127.0.0.1:$Port/fixture.html?beta"}
+    )
+    [IO.File]::WriteAllText((Join-Path $ProfileRoot 'session.json'),'{"mode":"local","version":1}',$Utf8)
+    [IO.File]::WriteAllText((Join-Path $ProfileRoot 'local_profile.json'),(@{version=1;services=$Services;workspaces=@()} | ConvertTo-Json -Depth 6),$Utf8)
+    foreach ($Mode in @('unified','classic','native')) {
+      $Config=Read-Settings
+      foreach ($Entry in @{
+        unifiedTitleBar=($Mode -ne 'classic'); prettyServiceContextMenu=($Mode -ne 'native');
+        preloadServices=$false; fetchMissingServiceIcons=$false; serviceZoomLevels=@{}; theme='dark'; closeToSystemTray=$false
+      }.GetEnumerator()) { $Config | Add-Member -NotePropertyName $Entry.Key -NotePropertyValue $Entry.Value -Force }
+      [IO.File]::WriteAllText($Settings,($Config | ConvertTo-Json -Depth 12),$Utf8)
+      Start-Tauridium
+      Wait-For { $null -ne (Find-Control 'REAL NATIVE SERVICE VIEW') } 'rendered native service document'
+      if ($Mode -eq 'native') {
+        $Row=Find-Control 'Beta fixture' ([Windows.Automation.ControlType]::Button); $R=$Row.Current.BoundingRectangle
+        [ChromeNative]::ClickPoint($script:Window,[int]($R.Right-8),[int]($R.Top+$R.Height/2),$true)
+        Wait-For { [ChromeNative]::HasPopup($script:Child.Id) } 'system service menu preference'
+        [Windows.Forms.SendKeys]::SendWait('{ESC}')
+        Wait-For { -not [ChromeNative]::HasPopup($script:Child.Id) } 'dismissed system service menu'
+        Check $true 'native service menu preference opens and dismisses a real system popup'
+        Stop-Tauridium; continue
+      }
+      $Row=Find-Control 'Beta fixture' ([Windows.Automation.ControlType]::Button); $R=$Row.Current.BoundingRectangle
+      $Outer=New-Object ChromeNative+Rect; [ChromeNative]::GetWindowRect($script:Window,[ref]$Outer) | Out-Null
+      [ChromeNative]::ClickPoint($script:Window,[int]($R.Right-8),[int]($R.Top+$R.Height/2),$true)
+      [ChromeNative]::ClickPoint($script:Window,($Outer.Right-90),($Outer.Bottom-150),$false)
+      $CancelledDeadline=[DateTime]::UtcNow.AddSeconds(10)
+      do {
+        if ((Visible-Service-Item 'Duplicate') -or [ChromeNative]::HasPopup($script:Child.Id)) { throw 'A cancelled opening appeared after clicking the native service.' }
+        Start-Sleep -Milliseconds 100
+      } while ([DateTime]::UtcNow -lt $CancelledDeadline)
+      Check $true "$Mode clicking the native service cancels a cold menu opening"
+      Open-Service-Menu
+      foreach ($Name in @('Settings','Reload','Zoom in (110%)','Zoom out (90%)','Reset zoom (100%)','Duplicate','Disable')) {
+        Wait-For { $null -ne (Visible-Service-Item $Name) } "visible styled row $Name"
+      }
+      $Zoom=(Visible-Service-Item 'Zoom in (110%)').Current.BoundingRectangle
+      $Row=(Find-Control 'Beta fixture' ([Windows.Automation.ControlType]::Button)).Current.BoundingRectangle
+      Check ($Zoom.Left -ge $Row.Right-2) "$Mode service menu extends over the native service area"
+      $X=[int]($Zoom.Left+12); $Y=[int]($Zoom.Top+$Zoom.Height/2)
+      [Windows.Forms.SendKeys]::SendWait('{ESC}')
+      Wait-For { $null -eq (Visible-Service-Item 'Duplicate') } 'dismissed styled popup'
+      Wait-For { Test-Service-Pixel $X $Y } 'uncovered bright native service pixels'
+      Open-Service-Menu
+      Wait-For { -not (Test-Service-Pixel $X $Y) } 'styled menu painted above native service pixels'
+      [ChromeNative]::ClickPoint($script:Window,$X,$Y,$false)
+      Wait-For {
+        $Map=(Read-Settings).serviceZoomLevels
+        $Map.PSObject.Properties['menu-beta'] -and $Map.'menu-beta' -gt 100
+      } 'real overlapping menu click updates the inactive target service'
+      $Map=(Read-Settings).serviceZoomLevels
+      Check (-not $Map.PSObject.Properties['menu-alpha']) "$Mode menu action does not change the active service"
+      Open-Service-Menu
+      $Outer=New-Object ChromeNative+Rect; [ChromeNative]::GetWindowRect($script:Window,[ref]$Outer) | Out-Null
+      [ChromeNative]::ClickPoint($script:Window,($Outer.Right-90),($Outer.Bottom-150),$false)
+      Wait-For { $null -eq (Visible-Service-Item 'Duplicate') } 'click-away into native service'
+      Check $true "$Mode native service click dismisses styled menu"
+      (Find-Control 'Beta fixture' ([Windows.Automation.ControlType]::Button)).SetFocus()
+      [Windows.Forms.SendKeys]::SendWait('+{F10}')
+      Wait-For { $null -ne (Visible-Service-Item 'Duplicate') } 'keyboard service menu'
+      [Windows.Forms.SendKeys]::SendWait('{END}')
+      Wait-For { [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Disable' } 'End navigates to final enabled action'
+      [Windows.Forms.SendKeys]::SendWait('{HOME}')
+      Wait-For { [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Settings' } 'Home navigates to first action'
+      [Windows.Forms.SendKeys]::SendWait('{ESC}')
+      Wait-For { $null -eq (Visible-Service-Item 'Duplicate') } 'keyboard menu Escape'
+      Wait-For { [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Beta fixture' } 'Escape restores invoking row focus'
+      Check $true "$Mode styled service menu supports keyboard navigation and focus return"
+      Open-Service-Menu
+      [ChromeNative]::ShowWindow($script:Window,3) | Out-Null
+      Wait-For { $null -eq (Visible-Service-Item 'Duplicate') } 'resize dismisses styled popup'
+      [ChromeNative]::ShowWindow($script:Window,9) | Out-Null
+      Check $true "$Mode resize cleans up the styled service menu"
+      Stop-Tauridium
+    }
+  } finally {
+    if ($script:Child -and -not $script:Child.HasExited) { Stop-Tauridium }
+    if (-not $Server.HasExited) { $Server.Kill(); $Server.WaitForExit(5000) | Out-Null }
+    $Server.Dispose()
+  }
+}
 try {
   Start-Tauridium
   Check-Menu-Mode $true 'older settings default to a unified title bar'
@@ -530,9 +654,10 @@ try {
   $RestoredOuter = Outer-Size
   Check ($RestoredOuter[0] -eq $OriginalOuter[0] -and $RestoredOuter[1] -eq $OriginalOuter[1]) 'maximized restart preserves normal outside dimensions'
   Stop-Tauridium
+  Test-Service-Menus
   $Result = @{ passed=$true; checks=$script:Checks.ToArray(); privateAccountsUsed=$false; titleBarModes=@('unified-default','classic-restarted','unified-restarted') }
   [IO.File]::WriteAllText((Join-Path $Output 'result.json'),($Result | ConvertTo-Json -Depth 6),$Utf8)
-  Write-Host 'Native production Windows title-bar smoke passed.'
+  Write-Host 'Native production Windows title-bar and service-menu smoke passed.'
 } catch {
   Write-Test-Diagnostics
   throw
