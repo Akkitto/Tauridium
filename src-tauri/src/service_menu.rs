@@ -65,16 +65,26 @@ struct Session {
     visible: bool,
 }
 
-#[derive(Default)]
 struct Core {
     revision: u64,
     session: Option<Session>,
+    owner_input: bool,
+}
+
+impl Default for Core {
+    fn default() -> Self {
+        Self {
+            revision: 0,
+            session: None,
+            owner_input: true,
+        }
+    }
 }
 
 impl Core {
     fn prepare(&mut self, request: Request) -> u64 {
         self.revision += 1;
-        self.session = Some(Session {
+        self.session = self.owner_input.then_some(Session {
             id: self.revision,
             request,
             measured: None,
@@ -239,6 +249,10 @@ fn close_id(app: &AppHandle, id: u64, restore_focus: bool) -> Result<(), String>
     let Some(session) = removed else {
         return Ok(());
     };
+    finish_close(app, session, restore_focus)
+}
+
+fn finish_close(app: &AppHandle, session: Session, restore_focus: bool) -> Result<(), String> {
     let state = app.state::<ServiceMenuState>();
     let _lifecycle = state.lifecycle.lock().unwrap();
     hide_idle(app)?;
@@ -249,26 +263,77 @@ fn close_id(app: &AppHandle, id: u64, restore_focus: bool) -> Result<(), String>
             .set_focus()
             .map_err(|error| error.to_string())?;
     }
-    notify_closed(app, id, restore)
+    notify_closed(app, session.id, restore)
+}
+
+fn finish_close_async(app: &AppHandle, session: Option<Session>) {
+    if let Some(session) = session {
+        let app = app.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            if let Err(error) = finish_close(&app, session, false) {
+                report(error);
+            }
+        });
+    }
 }
 
 pub(crate) fn close(app: &AppHandle) {
-    let id = app
+    // Invalidate synchronously, including when called by a native input event.
+    // Native cleanup can wait for the worker without allowing a late reveal.
+    let session = app
         .state::<ServiceMenuState>()
         .core
         .lock()
         .unwrap()
         .session
-        .as_ref()
-        .map(|session| session.id);
-    if let Some(id) = id {
-        let app = app.clone();
-        tauri::async_runtime::spawn_blocking(move || {
-            if let Err(error) = close_id(&app, id, false) {
-                report(error);
-            }
+        .take();
+    finish_close_async(app, session);
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn watch_input(view: &Webview) -> Result<(), String> {
+    let owner = view.label() == "main";
+    let app = view.app_handle().clone();
+    view.with_webview(move |platform| {
+        use gtk::prelude::*;
+        let view = platform.inner();
+        let pointer_app = app.clone();
+        view.connect_button_press_event(move |_, _| {
+            native_input(&pointer_app, owner);
+            gtk::glib::Propagation::Proceed
         });
-    }
+        let key_app = app.clone();
+        view.connect_key_press_event(move |_, _| {
+            native_input(&key_app, owner);
+            gtk::glib::Propagation::Proceed
+        });
+        view.connect_focus_in_event(move |_, _| {
+            if owner {
+                app.state::<ServiceMenuState>()
+                    .core
+                    .lock()
+                    .unwrap()
+                    .owner_input = true;
+            } else {
+                native_input(&app, false);
+            }
+            gtk::glib::Propagation::Proceed
+        });
+    })
+    .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "linux")]
+fn native_input(app: &AppHandle, owner: bool) {
+    let session = {
+        let state = app.state::<ServiceMenuState>();
+        let mut core = state.core.lock().unwrap();
+        // A service click can precede delivery of an already queued owner IPC.
+        // Keep preparation disarmed until fresh owner input or focus arrives.
+        core.owner_input = owner;
+        core.session.take()
+    };
+    finish_close_async(app, session);
 }
 
 fn window_active(app: &AppHandle) -> bool {
@@ -708,6 +773,9 @@ pub(crate) async fn prepare_service_menu(
             notify_closed(&app, previous.id, false)?;
         }
         let id = state.core.lock().unwrap().prepare(request);
+        if state.core.lock().unwrap().session.is_none() {
+            return Ok(id);
+        }
         if let Err(error) = ensure_view(&app).and_then(|()| announce(&app)) {
             state.core.lock().unwrap().take(id);
             hide_idle(&app)?;
@@ -917,6 +985,23 @@ mod tests {
         assert!(core.claim(next, Action::Settings).is_none());
         assert!(core.snapshot().menu.is_none());
     }
+    #[test]
+    fn native_service_input_disarms_queued_preparation_until_fresh_owner_input() {
+        let mut core = Core::default();
+        let previous = core.prepare(request());
+        core.owner_input = false;
+        assert_eq!(core.session.take().unwrap().id, previous);
+        let cancelled = core.prepare(request());
+        assert!(core.snapshot().menu.is_none());
+        assert!(core.claim(cancelled, Action::Settings).is_none());
+        core.owner_input = true;
+        let next = core.prepare(request());
+        assert!(next > cancelled);
+        assert!(core.take(previous).is_none());
+        assert!(core.take(cancelled).is_none());
+        assert_eq!(core.take(next).unwrap().id, next);
+    }
+
     #[test]
     fn only_visible_enabled_actions_can_be_claimed() {
         let mut core = Core::default();

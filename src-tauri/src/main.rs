@@ -2424,6 +2424,8 @@ async fn create_service_webview(
     let webview = win
         .add_child(builder, pos, size)
         .map_err(|e| format!("Failed to create service webview: {e}"))?;
+    #[cfg(target_os = "linux")]
+    service_menu::watch_input(&webview)?;
     let zoom_percent = effective_service_zoom_percent(&state.settings.lock().unwrap(), service_id);
     if zoom_percent != SERVICE_ZOOM_DEFAULT_PERCENT {
         if let Err(error) = webview.set_zoom(f64::from(zoom_percent) / 100.0) {
@@ -5707,6 +5709,10 @@ fn main() {
 
             let handle = app.handle().clone();
             download_toast::install_layout_hook(app.handle())?;
+            #[cfg(target_os = "linux")]
+            if let Some(owner) = app.get_webview("main") {
+                service_menu::watch_input(&owner)?;
+            }
             if let Some(win) = app.get_window("main") {
                 startup_diagnostics::log("primary", "window.events", "main window event handler registered");
                 win.on_window_event(move |event| match event {
