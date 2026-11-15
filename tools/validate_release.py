@@ -638,7 +638,7 @@ def main() -> int:
     'if (service && service.isEnabled !== false) selectService(service);',
     '<K extends keyof ServiceCustomUrlTemplate>',
     'onerror={() => markIconFailed(service)}',
-    'await menu.popup(new LogicalPosition(x, y));',
+    'await menu.popup(new PhysicalPosition(Math.round(origin.x + x * pixelRatio), Math.round(origin.y + y * pixelRatio)));',
   ):
     if marker not in app:
       fail(f"0.4.8 frontend quality invariant is missing: {marker}")
@@ -1721,7 +1721,7 @@ def main() -> int:
     'Invert service icon colors',
     'class:service-icon-inverted={serviceIconInverted(',
     'const menu = await Menu.new({',
-    'await menu.popup(new LogicalPosition(x, y));',
+    'await menu.popup(new PhysicalPosition(Math.round(origin.x + x * pixelRatio), Math.round(origin.y + y * pixelRatio)));',
     '.service-workspace-search.service-sandbox-search { width: min(100%, 240px);',
     'sameDownloadPreference(ownValue(persisted.serviceDownloadSettings, serviceId), preference)',
     'sameDownloadPreference(ownValue(persisted.workspaceDownloadSettings, workspaceId), preference)',
@@ -1736,7 +1736,7 @@ def main() -> int:
   ):
     if test_marker not in patch_0428:
       fail(f"0.4.28 regression coverage is missing: {test_marker}")
-  if 'popupNativeServiceContextMenu' not in app or 'await menu.popup(new LogicalPosition(x, y));' not in app:
+  if 'popupNativeServiceContextMenu' not in app or 'await menu.popup(new PhysicalPosition(Math.round(origin.x + x * pixelRatio), Math.round(origin.y + y * pixelRatio)));' not in app:
     fail("0.4.28 native service context-menu fallback regressed")
   if "JSON.stringify(persisted.serviceDownloadSettings" in app:
     fail("service download verification regressed to order-sensitive JSON serialization")
@@ -1754,7 +1754,7 @@ def main() -> int:
     '"Author Homepage"',
     'onclick={openAdd}>Create service</button>',
   ):
-    if marker not in app + api_ts + main_rs:
+    if marker not in app + api_ts + main_rs + read("src/ServiceMenu.svelte"):
       fail(f"0.4.29 service UX invariant is missing: {marker}")
   if '.args(["/C", "start", "", url])' in main_rs:
     fail("0.4.29 Windows external-link handling regressed to cmd.exe")

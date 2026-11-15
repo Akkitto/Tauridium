@@ -129,6 +129,11 @@ test-file-drop:
 test-file-drop-fallback:
   python3 tools/service_file_drop_smoke.py --linux-fallback-only
 
+# Requires a production build and an isolated X11 display, like the toast gate.
+[unix]
+test-service-menu:
+  python3 tools/service_menu_smoke.py
+
 [unix]
 test-download-toast:
   python3 tools/download_toast_smoke.py

@@ -34,9 +34,9 @@ class Patch0408Tests(unittest.TestCase):
 
   def test_context_menu_is_native_and_keyboard_accessible(self) -> None:
     self.assertIn('import { Menu } from "@tauri-apps/api/menu";', self.app)
-    self.assertIn('import { LogicalPosition } from "@tauri-apps/api/dpi";', self.app)
+    self.assertIn('import { PhysicalPosition } from "@tauri-apps/api/dpi";', self.app)
     self.assertIn('event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")', self.app)
-    self.assertIn('await menu.popup(new LogicalPosition(x, y));', self.app)
+    self.assertIn('await menu.popup(new PhysicalPosition(Math.round(origin.x + x * pixelRatio), Math.round(origin.y + y * pixelRatio)));', self.app)
 
 
 if __name__ == "__main__":

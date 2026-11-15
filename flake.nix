@@ -64,6 +64,10 @@
             inherit pkgs;
             package = self.packages.${system}.tauridium;
           };
+          service-menu-smoke = import ./packaging/nix/service-menu-smoke.nix {
+            inherit pkgs;
+            package = self.packages.${system}.tauridium;
+          };
           unread-badges-smoke = import ./packaging/nix/unread-badges-smoke.nix {
             inherit pkgs;
             package = self.packages.${system}.tauridium;
@@ -98,6 +102,11 @@
           type = "app";
           program = "${self.packages.${system}.download-toast-smoke}/bin/tauridium-download-toast-smoke";
           meta.description = "Isolated production download and notification UI tests";
+        };
+        service-menu-smoke = {
+          type = "app";
+          program = "${self.packages.${system}.service-menu-smoke}/bin/tauridium-service-menu-smoke";
+          meta.description = "Isolated production styled service-menu layering and interaction tests";
         };
         unread-badges-smoke = {
           type = "app";

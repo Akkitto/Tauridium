@@ -32,6 +32,7 @@ mod recipe_source;
 mod recipes;
 mod service_badges;
 mod service_export;
+mod service_menu;
 mod single_instance;
 mod startup_diagnostics;
 mod storage_security;
@@ -2423,6 +2424,8 @@ async fn create_service_webview(
     let webview = win
         .add_child(builder, pos, size)
         .map_err(|e| format!("Failed to create service webview: {e}"))?;
+    #[cfg(target_os = "linux")]
+    service_menu::watch_input(&webview)?;
     let zoom_percent = effective_service_zoom_percent(&state.settings.lock().unwrap(), service_id);
     if zoom_percent != SERVICE_ZOOM_DEFAULT_PERCENT {
         if let Err(error) = webview.set_zoom(f64::from(zoom_percent) / 100.0) {
@@ -2434,6 +2437,7 @@ async fn create_service_webview(
     }
     state.created.lock().unwrap().insert(service_id.to_string());
     download_toast::restack(win.app_handle());
+    service_menu::restack(win.app_handle());
     Ok(())
 }
 
@@ -2480,6 +2484,7 @@ fn activate_service_webview(
         state.preloading.lock().unwrap().remove(service_id);
         *state.active.lock().unwrap() = Some(service_id.to_string());
         download_toast::restack(app);
+        service_menu::restack(app);
     }
     activated
 }
@@ -5659,6 +5664,7 @@ fn main() {
         )
         .manage(AppState::default())
         .manage(download_toast::DownloadToastState::default())
+        .manage(service_menu::ServiceMenuState::default())
         .manage(window_chrome::WindowChromeState::default())
         .setup(move |app| {
             startup_diagnostics::log("primary", "tauri.setup.begin", "Tauri setup callback entered");
@@ -5703,10 +5709,14 @@ fn main() {
 
             let handle = app.handle().clone();
             download_toast::install_layout_hook(app.handle())?;
+            #[cfg(target_os = "linux")]
+            if let Some(owner) = app.get_webview("main") {
+                service_menu::watch_input(&owner)?;
+            }
             if let Some(win) = app.get_window("main") {
                 startup_diagnostics::log("primary", "window.events", "main window event handler registered");
                 win.on_window_event(move |event| match event {
-                    WindowEvent::Resized(_) => reposition_active(&handle),
+                    WindowEvent::Resized(_) => { service_menu::close(&handle); reposition_active(&handle); },
                     // When focus returns (for example after closing devtools), reapply the
                     // layout because the service webview may have been resized and
                     // overlapped the sidebar.
@@ -5716,12 +5726,14 @@ fn main() {
                         window_chrome::refresh(&handle);
                     },
                     WindowEvent::Focused(false) => {
+                        service_menu::focus_lost(&handle);
                         download_toast::refresh(&handle);
                         window_chrome::refresh(&handle);
                     },
-                    WindowEvent::ThemeChanged(_) => window_chrome::refresh(&handle),
-                    WindowEvent::ScaleFactorChanged { .. } => reposition_active(&handle),
+                    WindowEvent::ThemeChanged(_) => { service_menu::close(&handle); window_chrome::refresh(&handle); },
+                    WindowEvent::ScaleFactorChanged { .. } => { service_menu::close(&handle); reposition_active(&handle); },
                     WindowEvent::CloseRequested { api, .. } => {
+                        service_menu::close(&handle);
                         // Persist geometry/state before either hiding to tray or allowing a real close.
                         save_main_window_state(&handle);
                         // Close to tray: hide instead of quitting; otherwise quit.
@@ -5962,6 +5974,13 @@ fn main() {
             reload_active_service_command,
             reload_app_command,
             show_service_toast_overlay,
+            service_menu::prepare_service_menu,
+            service_menu::present_service_menu,
+            service_menu::close_service_menu,
+            service_menu::get_service_menu,
+            service_menu::measure_service_menu,
+            service_menu::dismiss_service_menu,
+            service_menu::choose_service_menu,
             download_toast::get_download_toast,
             download_toast::dismiss_download_toast,
             download_toast::resize_download_toast,

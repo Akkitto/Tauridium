@@ -189,6 +189,12 @@
           "markdownDescription": "Notification renderer can only access its own notification state"
         },
         {
+          "description": "Styled service menu can only measure, dismiss or select its current bound action",
+          "type": "string",
+          "const": "service-menu",
+          "markdownDescription": "Styled service menu can only measure, dismiss or select its current bound action"
+        },
+        {
           "description": "Unified title bar can only inspect its presentation, open native menus and return focus",
           "type": "string",
           "const": "window-titlebar",

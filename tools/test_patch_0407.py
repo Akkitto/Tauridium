@@ -33,7 +33,7 @@ class Patch0407Tests(unittest.TestCase):
     self.assertIn('text: "Settings"', self.app)
     self.assertIn('text: "Reload"', self.app)
     self.assertIn('text: service.isEnabled === false ? "Enable" : "Disable"', self.app)
-    self.assertIn('await menu.popup(new LogicalPosition(x, y));', self.app)
+    self.assertIn('await menu.popup(new PhysicalPosition(Math.round(origin.x + x * pixelRatio), Math.round(origin.y + y * pixelRatio)));', self.app)
 
   def test_disabled_services_are_closed_and_never_selected_or_preloaded(self) -> None:
     self.assertIn('if (s.isEnabled === false) return;', self.app)

@@ -28,7 +28,7 @@ class Patch0428Tests(unittest.TestCase):
   def test_service_context_menu_is_native_so_child_webviews_cannot_cover_it(self) -> None:
     self.assertIn('import { Menu } from "@tauri-apps/api/menu";', APP)
     self.assertIn("const menu = await Menu.new({", APP)
-    self.assertIn("await menu.popup(new LogicalPosition(x, y));", APP)
+    self.assertIn("await menu.popup(new PhysicalPosition(Math.round(origin.x + x * pixelRatio), Math.round(origin.y + y * pixelRatio)));", APP)
     self.assertIn("await menu.close().catch(() => {});", APP)
     self.assertIn("if (!appSettings.prettyServiceContextMenu)", APP)
 

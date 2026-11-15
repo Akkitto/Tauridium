@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "service-menu",
+  "description": "Only app-owned service menu state and events, no other application authority",
+  "webviews": ["service-menu"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten", "service-menu"]
+}
