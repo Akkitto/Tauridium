@@ -185,6 +185,7 @@ public static class ChromeNative {
 '@
 $script:Child = $null
 $script:Window = [IntPtr]::Zero
+$script:LastServicePixel = 'not sampled'
 $script:Checks = New-Object 'System.Collections.Generic.List[string]'
 $script:TestPids = New-Object 'System.Collections.Generic.List[int]'
 $TestStarted = [DateTime]::UtcNow
@@ -194,6 +195,7 @@ if ($PreviousDpiContext -eq [IntPtr]::Zero) { throw 'Unable to enable per-monito
 function Write-Test-Diagnostics {
   Write-Host 'Fresh test profile diagnostics (no personal accounts or service data):'
   Write-Host ([ChromeNative]::DesktopMetadata())
+  Write-Host ('Last owned synthetic-service pixel: '+$script:LastServicePixel)
   if ($script:Window -ne [IntPtr]::Zero) {
     Write-Host ('Main: {0}; menu={1}' -f [ChromeNative]::WindowMetadata($script:Window),[ChromeNative]::GetMenu($script:Window))
     Write-Host ('Foreground: '+[ChromeNative]::WindowMetadata([ChromeNative]::GetForegroundWindow()))
@@ -482,6 +484,7 @@ function Test-Service-Pixel([int]$X,[int]$Y) {
   try {
     $Graphics.CopyFromScreen($X,$Y,0,0,$Bitmap.Size)
     $Pixel=$Bitmap.GetPixel(0,0)
+    $script:LastServicePixel=('x={0}; y={1}; RGB={2},{3},{4}' -f $X,$Y,$Pixel.R,$Pixel.G,$Pixel.B)
     return $Pixel.R -lt 80 -and $Pixel.G -gt 180 -and $Pixel.B -gt 100 -and $Pixel.B -lt 210
   } finally { $Graphics.Dispose(); $Bitmap.Dispose() }
 }
@@ -535,7 +538,10 @@ function Test-Service-Menus {
       $Zoom=(Visible-Service-Item 'Zoom in (110%)').Current.BoundingRectangle
       $Row=(Find-Control 'Beta fixture' ([Windows.Automation.ControlType]::Button)).Current.BoundingRectangle
       Check ($Zoom.Left -ge $Row.Right-2) "$Mode service menu extends over the native service area"
-      $X=[int]($Zoom.Left+12); $Y=[int]($Zoom.Top+$Zoom.Height/2)
+      $Service=(Find-Control 'REAL NATIVE SERVICE VIEW').Current.BoundingRectangle
+      $X=[int][Math]::Max($Zoom.Left+12,$Service.Left+20); $Y=[int]($Zoom.Top+$Zoom.Height/2)
+      Check ($X -lt $Zoom.Right-8) "$Mode sampled menu point actually overlaps the service document"
+      Write-Host ('Synthetic menu overlap: menu={0}; service={1}; sample={2},{3}' -f $Zoom,$Service,$X,$Y)
       [Windows.Forms.SendKeys]::SendWait('{ESC}')
       Wait-For { $null -eq (Visible-Service-Item 'Duplicate') } 'dismissed styled popup'
       Wait-For { Test-Service-Pixel $X $Y } 'uncovered bright native service pixels'
@@ -571,6 +577,9 @@ function Test-Service-Menus {
       Check $true "$Mode resize cleans up the styled service menu"
       Stop-Tauridium
     }
+  } catch {
+    Write-Test-Diagnostics
+    throw
   } finally {
     if ($script:Child -and -not $script:Child.HasExited) { Stop-Tauridium }
     if (-not $Server.HasExited) { $Server.Kill(); $Server.WaitForExit(5000) | Out-Null }
