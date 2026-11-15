@@ -90,8 +90,8 @@ modules:
       # Publication uses the immutable v1.0.10 source. Local builds use committed HEAD.
       - type: git
         url: https://github.com/Akkitto/Tauridium.git
-        tag: v1.0.10
-        commit: f999802861625af967c028bd9307203669a0a4db
+        tag: v1.0.11
+        commit: 0c1c8b3b80e539674777dd6ec0da61e3deb46c48
         dest: source
         x-checker-data:
           type: git
