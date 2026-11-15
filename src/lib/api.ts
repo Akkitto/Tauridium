@@ -190,6 +190,32 @@ export function showServiceToastOverlay(serviceId: string, message: string): Pro
   return invoke("show_service_toast_overlay", { serviceId, message });
 }
 
+export interface ServiceMenuRequest {
+  serviceId: string;
+  label: string;
+  /** Pointer position in the shell webview's coordinates. */
+  x: number;
+  y: number;
+  zoomPercent: number;
+  enabled: boolean;
+  /** True when a pointer press opened the menu, so releasing that press cannot dismiss it. */
+  pointer: boolean;
+}
+
+/** Opens the native overlay menu above the service webviews and returns its opening id. */
+export function openServiceMenu(request: ServiceMenuRequest): Promise<number> {
+  return invoke("open_service_menu", { request });
+}
+
+export function closeServiceMenu(id: number): Promise<void> {
+  return invoke("close_service_menu", { id });
+}
+
+/** Reports that the pointer press which opened the menu was released. */
+export function settleServiceMenu(id: number): Promise<void> {
+  return invoke("settle_service_menu", { id });
+}
+
 export function toggleDeveloperTools(): Promise<void> {
   return invoke("toggle_devtools_command");
 }
