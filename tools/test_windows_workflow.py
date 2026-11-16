@@ -155,8 +155,10 @@ class WindowsCiTests(unittest.TestCase):
     self.assertIn('os: windows-11-arm', ci)
     self.assertIn('os: windows-latest', ci)
     self.assertIn('windows-native:\n    needs: windows-verifier', ci)
-    self.assertIn('if: ${{ always() }}', ci)
-    self.assertIn('needs.windows-verifier.result', ci)
+    native = ci.split('  windows-native:', 1)[1]
+    self.assertIn('if: ${{ !cancelled() }}', native)
+    self.assertNotIn('if: ${{ always() }}', native.split('    steps:', 1)[0])
+    self.assertIn('if ("${{ needs.windows-verifier.result }}" -ne "success")', native)
     self.assertIn('throw "Both native Windows verifier checks must pass"', ci)
     self.assertIn('tools/test_windows_minisign.ps1', ci)
     release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")

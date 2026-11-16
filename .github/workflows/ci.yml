@@ -132,7 +132,8 @@ jobs:
 
   windows-native:
     needs: windows-verifier
-    if: ${{ always() }}
+    # Report verifier failures, but let superseded runs release their runners.
+    if: ${{ !cancelled() }}
     name: Windows native ${{ matrix.label }} full gates
     strategy:
       fail-fast: false
