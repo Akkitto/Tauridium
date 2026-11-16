@@ -43,7 +43,7 @@ class LocalNpmAdvisoryTests(unittest.TestCase):
         self.addCleanup(mock.patch.stopall)
         self.run = mock.patch.object(AUDIT.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "", "")).start()
 
-    def check(self, payload=None, today=date(2026, 10, 28)):
+    def check(self, payload=None, today=date(2026, 11, 16)):
         with mock.patch.object(AUDIT, "_fetch_advisories", return_value=self.payload if payload is None else payload):
             return AUDIT.check(self.root, today=today)
 
@@ -76,12 +76,20 @@ class LocalNpmAdvisoryTests(unittest.TestCase):
                     self.check(changed)
 
     def test_assessment_expires_and_cannot_silently_extend_its_deadline(self):
-        self.check(today=date(2026, 11, 15))
+        self.check(today=date(2026, 11, 30))
         with self.assertRaisesRegex(ValueError, "Expired"):
-            self.check(today=date(2026, 11, 16))
+            self.check(today=date(2026, 12, 1))
         self.policy["expires"] = "2099-01-01"
         (self.root / "data/local-npm-advisory-policy.json").write_text(json.dumps(self.policy), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "Expired or unreviewed"):
+            self.check()
+
+    def test_review_date_is_bound_and_cannot_be_used_before_review(self):
+        with self.assertRaises(AUDIT.AssessmentExpired):
+            self.check(today=date(2026, 11, 15))
+        self.policy["reviewedAt"] = "2026-11-17"
+        (self.root / "data/local-npm-advisory-policy.json").write_text(json.dumps(self.policy), encoding="utf-8")
+        with self.assertRaises(AUDIT.AssessmentExpired):
             self.check()
 
     def test_changed_patch_fails_even_if_its_own_manifest_is_rehashed(self):

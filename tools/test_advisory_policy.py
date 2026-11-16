@@ -24,6 +24,15 @@ class AdvisoryPolicyTests(unittest.TestCase):
     with self.assertRaisesRegex(SystemExit, "unassessed"):
       audit.evaluate("flatpak/tauri-cli.Cargo.lock", self.report, self.policy, date(2026, 10, 15))
 
+  def test_public_diagnostics_classify_expiry_without_echoing_private_errors(self):
+    private = "synthetic-private-parser-detail"
+    known = audit.public_failure(audit.audit_local_npm.AssessmentExpired(private))
+    self.assertIn("assessment expired or unreviewed", known)
+    self.assertNotIn(private, known)
+    unknown = audit.public_failure(ValueError(private))
+    self.assertIn("private scanner diagnostics withheld", unknown)
+    self.assertNotIn(private, unknown)
+
   def test_expiry_and_upstream_new_findings_fail_closed(self):
     with self.assertRaisesRegex(SystemExit, "expired"):
       audit.evaluate("flatpak/tauri-cli.Cargo.lock", self.report, self.policy, date(2026, 12, 1))
@@ -46,7 +55,7 @@ class AdvisoryPolicyTests(unittest.TestCase):
     report["warnings"] = {"unmaintained": [finding]}
     accepted = audit.evaluate("src-tauri/Cargo.lock", report, self.policy, date(2026, 10, 17))
     self.assertEqual(accepted[0]["status"], "reviewed-maintenance-warning")
-    self.assertEqual(accepted[0]["expires"], "2026-11-15")
+    self.assertEqual(accepted[0]["expires"], "2026-11-30")
     for advisory, package, version in (
       ("RUSTSEC-2026-0370", "zvariant", "5.15.1"),
       ("RUSTSEC-2026-0372", "zvariant_derive", "5.15.1"),
@@ -57,7 +66,7 @@ class AdvisoryPolicyTests(unittest.TestCase):
           "package": {"name": package, "version": version}}]
         reviewed = audit.evaluate("src-tauri/Cargo.lock", related, self.policy, date(2026, 10, 17))
         self.assertEqual(reviewed[0]["status"], "reviewed-maintenance-warning")
-        self.assertEqual(reviewed[0]["expires"], "2026-11-15")
+        self.assertEqual(reviewed[0]["expires"], "2026-11-30")
         related["vulnerabilities"]["list"] = related["warnings"].pop("unmaintained")
         with self.assertRaisesRegex(SystemExit, "unassessed"):
           audit.evaluate("src-tauri/Cargo.lock", related, self.policy, date(2026, 10, 17))
@@ -82,7 +91,7 @@ class AdvisoryPolicyTests(unittest.TestCase):
     report["warnings"] = {"unmaintained": [{"advisory": {"id": "RUSTSEC-2026-0371"},
       "package": {"name": "zbus_names", "version": "4.3.5"}}]}
     with self.assertRaisesRegex(SystemExit, "expired"):
-      audit.evaluate("src-tauri/Cargo.lock", report, self.policy, date(2026, 11, 16))
+      audit.evaluate("src-tauri/Cargo.lock", report, self.policy, date(2026, 12, 1))
 
   def test_application_assessments_reject_changed_or_missing_exact_lock_binding(self):
     for value in (None, "0" * 64):
