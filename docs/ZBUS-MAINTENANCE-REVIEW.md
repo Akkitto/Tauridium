@@ -1,6 +1,6 @@
 # D-Bus standalone-crate maintenance review
 
-Re-reviewed 12 November 2026; reassessment due **15 November 2026**. This is an
+Re-reviewed 16 November 2026; reassessment due **30 November 2026**. This is an
 explicit temporary maintenance assessment, not a vulnerability fix or a claim
 that the standalone crate has become maintained again.
 
@@ -24,23 +24,23 @@ inspected; this decision is not based on a scanner severity filter.
 ## Exact current scope
 
 The application lock has SHA-256
-`8aae56d5a8d6cb3d17d80e90113c12f46956d353d1f75605b47af263b56aa2cd`.
-Re-reviewed on 12 November against current official RustSec database commit
-`af7b3ec33460b8e2de8d422e16d628518891a519` after the portal migration. The 1.0.9 portal migration adds the separately reviewed zbus 6.2.1 runtime; the required zbus 5 wire/name consumers remain as listed below. Fresh whole-lock scanning reports zero known application vulnerabilities
+`9f0893c09b238be6abb4a6ef6fa0bc4440f21ae09d4e62fbdfca5175266e56ad`.
+Re-reviewed on 16 November against current official RustSec database commit
+`02e2517f457a359fc6d3440ea4560c8ea188fee8` after the portal migration. The 1.0.9 portal migration adds the separately reviewed zbus 6.2.1 runtime; the required zbus 5 wire/name consumers remain as listed below. Fresh whole-lock scanning reports zero known application vulnerabilities
 and the same four explicitly assessed maintenance notices (including the separate
 GTK tooling notice). The yanked `async-executor 1.14.0` discovered during
 reassessment was replaced by non-yanked `1.14.1`; the final scan has no yanked
-findings. The assessment expiry remains 15 November.
+findings. The assessment expiry is 30 November following the fresh source and upstream review.
 It contains `zbus_names 4.3.5`, `zvariant 5.15.1`, `zvariant_derive 5.15.1`,
 `zbus 5.19.0` and `zbus_macros 5.19.0`.
 An actual Linux all-feature reverse dependency inspection shows:
 
 | Parent | Application integration |
 | --- | --- |
-| `notify-rust 4.18.2` | `tauri-plugin-notification 2.8.0` |
+| `notify-rust 4.18.2` | `tauri-plugin-notification 2.8.1` |
 | `secret-service 5.2.0` | `zbus-secret-service-keyring-store 1.0.1` |
 | `zbus-secret-service-keyring-store 1.0.1` | Native OS-vault storage |
-| `tauri-plugin-notification 2.8.0` direct zbus dependency | Native notification integration |
+| `tauri-plugin-notification 2.8.1` direct zbus dependency | Native notification integration |
 | Tauridium's optional direct `zbus 6.2.1` dependency | Flatpak portal integration |
 
 The compatible `rfd 0.17.2` / dialog `2.8.4` update removes the prior ashpd
@@ -66,7 +66,7 @@ the vault with plaintext storage.
 
 Only the three exact application-lock maintenance findings above are recorded
 as `reviewed-maintenance-warning`, expiring on
-15 November 2026. Fresh whole-lock scanning still prints the finding, reason and
+30 November 2026. Fresh whole-lock scanning still prints the finding, reason and
 expiry. The full application lock is now SHA-256-bound, as the builder lock already
 was; a changed lock requires review before its assessment remains valid. Both
 locks have explicit LF Git attributes so Windows conversion cannot change the
@@ -84,6 +84,11 @@ Track the coordinated zbus 6 migration for all three crates through the notifica
 parents. Prepare it in an isolated checkout, inspect dependency/source changes,
 refresh the locked Flatpak/Nix inputs and run real feature matrices, Nix package/
 installation checks, Flatpak build/runtime checks and native vault/notification/
-dialog acceptance. Reassess before 15 November; do not merely move the date.
+dialog acceptance. Reassess before 30 November; do not merely move the date.
 The interim policy does not waive hosted Windows CI, manual GUI checks, release
 environment protections, signature verification or any other publication gate.
+
+The current update and exact upstream/source evidence are recorded in
+[the 16 November reassessment](SECURITY-REVIEW-2026-11-16.md). Stable vault
+parents still lack a released zbus-6 migration; a prerelease replacement is not
+a safe substitute for validating credential storage and its upgrade behavior.

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "applicationLockSha256": "b2d0f0b6eddb3bb7bbafa38f9d0b419f2e39ca39b8cd4954e5722f27b604f803",
+  "applicationLockSha256": "9f0893c09b238be6abb4a6ef6fa0bc4440f21ae09d4e62fbdfca5175266e56ad",
   "builderLockSha256": "6019075d357d3ff887c4fb0f59584c2720971749d95789dd60cee5f42550a202",
   "assessments": [
     {
@@ -9,9 +9,9 @@
       "package": "zvariant",
       "version": "5.15.1",
       "kind": "unmaintained",
-      "expires": "2026-11-15",
+      "expires": "2026-11-30",
       "status": "reviewed-maintenance-warning",
-      "reason": "Reviewed 12 November 2026 for the 1.0.9 migration: direct Flatpak portal calls use zbus 6.2.1 with its default runtime, new wire types and real private-bus response regression coverage. Current notification and OS-vault parents independently require zbus 5.19.0 and these standalone wire/name crates. Retaining their required versions preserves notifications and encrypted vault access. No alpha upgrade or forced dependency replacement. This informational maintenance assessment remains limited to the exact package/version and SHA-256-bound complete application lock; vulnerabilities, unsoundness, changed bytes and expiry fail closed. No expiry extension. See docs/ZBUS-MAINTENANCE-REVIEW.md."
+      "reason": "Re-reviewed 16 November 2026 against current official RustSec database 02e2517f457a359fc6d3440ea4560c8ea188fee8 and exact application lock 9f0893c09b238be6abb4a6ef6fa0bc4440f21ae09d4e62fbdfca5175266e56ad. These are informational standalone-crate maintenance notices, with no asserted vulnerability or patched standalone release. Direct portals already use zbus 6.2.1; stable notification and OS-vault parents still require zbus 5.19.0. Stable secret-service remains 5.2.0 and its zbus-6 successor is only a prerelease; do not force an ABI-incompatible replacement or risk credential storage. The notification 2.8.1 patch retains the required graph. Exact scope/version/kind, whole-lock SHA256, unknown findings, unsoundness and expiry remain enforced. Fresh bounded review due 30 November 2026; see docs/SECURITY-REVIEW-2026-11-16.md."
     },
     {
       "lock": "src-tauri/Cargo.lock",
@@ -19,9 +19,9 @@
       "package": "zvariant_derive",
       "version": "5.15.1",
       "kind": "unmaintained",
-      "expires": "2026-11-15",
+      "expires": "2026-11-30",
       "status": "reviewed-maintenance-warning",
-      "reason": "Reviewed 12 November 2026 for the 1.0.9 migration: direct Flatpak portal calls use zbus 6.2.1 with its default runtime, new wire types and real private-bus response regression coverage. Current notification and OS-vault parents independently require zbus 5.19.0 and these standalone wire/name crates. Retaining their required versions preserves notifications and encrypted vault access. No alpha upgrade or forced dependency replacement. This informational maintenance assessment remains limited to the exact package/version and SHA-256-bound complete application lock; vulnerabilities, unsoundness, changed bytes and expiry fail closed. No expiry extension. See docs/ZBUS-MAINTENANCE-REVIEW.md."
+      "reason": "Re-reviewed 16 November 2026 against current official RustSec database 02e2517f457a359fc6d3440ea4560c8ea188fee8 and exact application lock 9f0893c09b238be6abb4a6ef6fa0bc4440f21ae09d4e62fbdfca5175266e56ad. These are informational standalone-crate maintenance notices, with no asserted vulnerability or patched standalone release. Direct portals already use zbus 6.2.1; stable notification and OS-vault parents still require zbus 5.19.0. Stable secret-service remains 5.2.0 and its zbus-6 successor is only a prerelease; do not force an ABI-incompatible replacement or risk credential storage. The notification 2.8.1 patch retains the required graph. Exact scope/version/kind, whole-lock SHA256, unknown findings, unsoundness and expiry remain enforced. Fresh bounded review due 30 November 2026; see docs/SECURITY-REVIEW-2026-11-16.md."
     },
     {
       "lock": "src-tauri/Cargo.lock",
@@ -29,9 +29,9 @@
       "package": "zbus_names",
       "version": "4.3.5",
       "kind": "unmaintained",
-      "expires": "2026-11-15",
+      "expires": "2026-11-30",
       "status": "reviewed-maintenance-warning",
-      "reason": "Reviewed 12 November 2026 for the 1.0.9 migration: direct Flatpak portal calls use zbus 6.2.1 with its default runtime, new wire types and real private-bus response regression coverage. Current notification and OS-vault parents independently require zbus 5.19.0 and these standalone wire/name crates. Retaining their required versions preserves notifications and encrypted vault access. No alpha upgrade or forced dependency replacement. This informational maintenance assessment remains limited to the exact package/version and SHA-256-bound complete application lock; vulnerabilities, unsoundness, changed bytes and expiry fail closed. No expiry extension. See docs/ZBUS-MAINTENANCE-REVIEW.md."
+      "reason": "Re-reviewed 16 November 2026 against current official RustSec database 02e2517f457a359fc6d3440ea4560c8ea188fee8 and exact application lock 9f0893c09b238be6abb4a6ef6fa0bc4440f21ae09d4e62fbdfca5175266e56ad. These are informational standalone-crate maintenance notices, with no asserted vulnerability or patched standalone release. Direct portals already use zbus 6.2.1; stable notification and OS-vault parents still require zbus 5.19.0. Stable secret-service remains 5.2.0 and its zbus-6 successor is only a prerelease; do not force an ABI-incompatible replacement or risk credential storage. The notification 2.8.1 patch retains the required graph. Exact scope/version/kind, whole-lock SHA256, unknown findings, unsoundness and expiry remain enforced. Fresh bounded review due 30 November 2026; see docs/SECURITY-REVIEW-2026-11-16.md."
     },
     {
       "lock": "flatpak/tauri-cli.Cargo.lock",
@@ -39,9 +39,9 @@
       "package": "rsa",
       "version": "0.9.10",
       "kind": "vulnerability",
-      "expires": "2026-11-15",
+      "expires": "2026-11-30",
       "status": "not-affected-under-enforced-controls",
-      "reason": "Re-reviewed on 2026-11-02 against official RustSec database 263a4d951a0867d4bddc29dddd6d59427c78f9a7 and checksum-verified published CLI/bundler archives: upstream still lists no patched RSA release; a prerelease is not a fix. The patched builder removes RPM OpenPGP entirely. Remaining RSA 0.9.10 has exactly one parent, tauri-macos-sign 2.4.3 (crate SHA256 4478507a7aeee53b73ac780f4f645a584ae07eab599a3d171f8afb258fb02026), gated to macOS in both CLI and bundler manifests. Its only RSA source references are certificate.rs:851-868, generating a fresh key and serializing PKCS8 for a local self-signed certificate, not RSA decryption affected by Marvin. Linux/Windows builders do not compile that dependency. Canonical builds reject signing credentials and isolated updater signing uses Minisign Ed25519. Whole-lock scanning still reports this exact expiring advisory; no upstream RSA patch, warning filter or advisory exclusion is claimed. Reassessment remains due 2026-11-15 without extension. Source: https://github.com/tauri-apps/tauri/blob/993038c49185307dfc895ab7657d77ca0d5ed7c7/crates/tauri-macos-sign/src/apple_codesign/certificate.rs"
+      "reason": "Re-reviewed 16 November 2026 against current RustSec database 02e2517f457a359fc6d3440ea4560c8ea188fee8 and checksum-verified CLI/bundler/macOS signing sources. RSA >=0.10.0 is now patched upstream; the supported tauri-macos-sign 2.4.3 still constrains rsa to 0.9, including in newly published CLI 2.12.5/bundler 2.10.5. Do not claim no upstream RSA fix or force an unsupported API replacement. In the exact retained patched builder lock, RSA has only that parent, gated to macOS in both manifests. Actual Linux and Windows inverse build graphs contain no RSA. All signing-helper Rust references are the fresh private-key generation in certificate.rs:852 and PKCS8 serialization; no network-facing RSA decryption endpoint or owner signing key is used. RPM OpenPGP is removed, canonical builds reject signing credentials and updater signing uses isolated Minisign Ed25519. Full-lock scanning continues reporting this exact vulnerability and bounded not-affected assessment; no ignore or target filter. Reassess by 30 November 2026; evidence and exact source hashes in docs/SECURITY-REVIEW-2026-11-16.md."
     },
     {
       "lock": "src-tauri/Cargo.lock",

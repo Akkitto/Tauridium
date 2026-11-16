@@ -19,7 +19,12 @@ MAX_RESPONSE_BYTES = 65536
 NETWORK_TIMEOUT = 20
 KNOWN_ADVISORY = "https://github.com/advisories/GHSA-gcqx-w48m-w2h4"
 LOCAL_RUNTIME_SHA256 = "f52c1deed5fef6181e217aa466fb2ec6936c2b9c22060a8c0cfa9c0f015df992"
-REVIEW_DEADLINE = date(2026, 11, 15)
+REVIEWED_ON = date(2026, 11, 16)
+REVIEW_DEADLINE = date(2026, 11, 30)
+
+
+class AssessmentExpired(ValueError):
+    """A known, static policy failure safe to classify in public diagnostics."""
 
 
 def _unique_object(pairs):
@@ -55,8 +60,10 @@ def _load_policy(root: Path, today: date) -> dict:
             or policy.get("localVersion") != "4.3.1+tauridium.1"
             or policy.get("runtimeSha256") != LOCAL_RUNTIME_SHA256 or not policy.get("reason")):
         raise ValueError("Local npm advisory policy does not match the reviewed security backport")
-    if date.fromisoformat(policy["expires"]) != REVIEW_DEADLINE or today > REVIEW_DEADLINE:
-        raise ValueError("Expired or unreviewed local npm advisory assessment; reassess by 15 November 2026")
+    if (date.fromisoformat(policy["expires"]) != REVIEW_DEADLINE
+            or policy.get("reviewedAt") != REVIEWED_ON.isoformat()
+            or not REVIEWED_ON <= today <= REVIEW_DEADLINE):
+        raise AssessmentExpired("Expired or unreviewed local npm advisory assessment; current evidence is required")
     advisory = policy.get("expectedAdvisory", {})
     if (advisory.get("url") != KNOWN_ADVISORY or advisory.get("id") != 1243505
             or advisory.get("severity") != "low" or advisory.get("vulnerable_versions") != ">=4.2.0 <=4.3.1"

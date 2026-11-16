@@ -6,8 +6,8 @@
   },
   "localVersion": "4.3.1+tauridium.1",
   "runtimeSha256": "f52c1deed5fef6181e217aa466fb2ec6936c2b9c22060a8c0cfa9c0f015df992",
-  "expires": "2026-11-15",
-  "reason": "Re-reviewed official registry/advisory metadata and the exact vendored implementation on 2026-11-02: upstream latest remains 4.3.1 with no patched release, the live npm bulk response exactly matches this known advisory, and the pinned runtime SHA256 is unchanged. The backport rejects reserved keys before value access in both merge loops and defines own data properties. Source integrity, actual Svelte resolution, exploit controls and compatibility are executed before the enforced current online query. This assessment covers only the exact concretely backported advisory; new findings or changed advisory details require review. Reassessment remains due 2026-11-15 without extension.",
+  "expires": "2026-11-30",
+  "reason": "Re-reviewed 16 November 2026 against current official registry and advisory metadata: upstream latest is still 4.3.1 with no patched release, the live npm bulk response exactly matches advisory 1243505, and the runtime SHA256 remains f52c1deed5fef6181e217aa466fb2ec6936c2b9c22060a8c0cfa9c0f015df992. Actual Svelte resolution, reserved-key/getter exploit controls, own-property construction, source provenance and configuration compatibility all pass with the updated frontend lock. Only this exact concretely backported advisory is assessed; changed code/details, new advisories and expiry still fail closed. New bounded review due 30 November 2026. Evidence: docs/SECURITY-REVIEW-2026-11-16.md.",
   "expectedAdvisory": {
     "id": 1243505,
     "url": "https://github.com/advisories/GHSA-gcqx-w48m-w2h4",
@@ -21,5 +21,6 @@
       "score": 5.3,
       "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N"
     }
-  }
+  },
+  "reviewedAt": "2026-11-16"
 }
