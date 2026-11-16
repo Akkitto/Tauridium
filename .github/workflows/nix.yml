@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # cachix/install-nix-action 31.11.3, dereferenced immutable commit.
+      # cachix/install-nix-action, pinned to a reviewed immutable commit.
       - uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086
         with:
           set_as_trusted_user: false
