@@ -468,12 +468,34 @@ function Visible-Service-Item([string]$Name) {
   if ($Control -and -not $Control.Current.IsOffscreen) { return $Control }
   return $null
 }
-function Open-Service-Menu {
+function Click-Service-Row {
   Activate-Tauridium
-  $Row=Find-Control 'Beta fixture' ([Windows.Automation.ControlType]::Button)
-  if (-not $Row) { throw 'Missing synthetic sidebar service.' }
-  $R=$Row.Current.BoundingRectangle
-  [ChromeNative]::ClickPoint($script:Window,[int]($R.Right-8),[int]($R.Top+$R.Height/2),$true)
+  $Probe=@{ Geometry=$null; Since=$null; Point=$null }
+  # A rendered service document does not mean the sibling sidebar has settled
+  # after native restore/DPI/layout. Wait for fresh UIA geometry and real native
+  # point ownership; never relax ClickPoint's final fail-closed ownership check.
+  Wait-For {
+    $Row=Find-Control 'Beta fixture' ([Windows.Automation.ControlType]::Button)
+    if (-not $Row -or $Row.Current.IsOffscreen) { $Probe.Since=$null; return $false }
+    $R=$Row.Current.BoundingRectangle
+    if ($R.IsEmpty -or $R.Width -le 16 -or $R.Height -le 0) { $Probe.Since=$null; return $false }
+    foreach ($Value in @($R.Left,$R.Top,$R.Right,$R.Bottom)) {
+      if ([Double]::IsNaN($Value) -or [Double]::IsInfinity($Value)) { $Probe.Since=$null; return $false }
+    }
+    $Point=New-Object ChromeNative+Point
+    $Point.X=[int]($R.Right-8); $Point.Y=[int]($R.Top+$R.Height/2)
+    if (-not [ChromeNative]::OwnsPoint($script:Window,$Point)) { $Probe.Since=$null; return $false }
+    $Geometry='{0},{1},{2},{3}' -f $Point.X,$Point.Y,$R.Width,$R.Height
+    if ($Probe.Geometry -ne $Geometry -or $null -eq $Probe.Since) {
+      $Probe.Geometry=$Geometry; $Probe.Since=[DateTime]::UtcNow
+    }
+    $Probe.Point=$Point
+    return ([DateTime]::UtcNow-$Probe.Since).TotalMilliseconds -ge 300
+  } 'stable uncovered synthetic sidebar service'
+  [ChromeNative]::ClickPoint($script:Window,$Probe.Point.X,$Probe.Point.Y,$true)
+}
+function Open-Service-Menu {
+  Click-Service-Row
   Wait-For { $null -ne (Visible-Service-Item 'Duplicate') } 'styled service menu'
   if ([ChromeNative]::HasPopup($script:Child.Id)) { throw 'Styled menu unexpectedly used the system fallback.' }
 }
@@ -513,17 +535,15 @@ function Test-Service-Menus {
       Start-Tauridium
       Wait-For { $null -ne (Find-Control 'REAL NATIVE SERVICE VIEW') } 'rendered native service document'
       if ($Mode -eq 'native') {
-        $Row=Find-Control 'Beta fixture' ([Windows.Automation.ControlType]::Button); $R=$Row.Current.BoundingRectangle
-        [ChromeNative]::ClickPoint($script:Window,[int]($R.Right-8),[int]($R.Top+$R.Height/2),$true)
+        Click-Service-Row
         Wait-For { [ChromeNative]::HasPopup($script:Child.Id) } 'system service menu preference'
         [Windows.Forms.SendKeys]::SendWait('{ESC}')
         Wait-For { -not [ChromeNative]::HasPopup($script:Child.Id) } 'dismissed system service menu'
         Check $true 'native service menu preference opens and dismisses a real system popup'
         Stop-Tauridium; continue
       }
-      $Row=Find-Control 'Beta fixture' ([Windows.Automation.ControlType]::Button); $R=$Row.Current.BoundingRectangle
+      Click-Service-Row
       $Outer=New-Object ChromeNative+Rect; [ChromeNative]::GetWindowRect($script:Window,[ref]$Outer) | Out-Null
-      [ChromeNative]::ClickPoint($script:Window,[int]($R.Right-8),[int]($R.Top+$R.Height/2),$true)
       [ChromeNative]::ClickPoint($script:Window,($Outer.Right-90),($Outer.Bottom-150),$false)
       $CancelledDeadline=[DateTime]::UtcNow.AddSeconds(10)
       do {
