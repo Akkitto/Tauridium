@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -15,10 +16,15 @@ LOCK = json.loads((ROOT / "package-lock.json").read_text(encoding="utf-8"))
 
 class Patch0714Tests(unittest.TestCase):
   def test_flate2_backend_is_explicit_and_cross_platform(self) -> None:
-    self.assertIn(
-      'flate2 = { version = "=1.1.10", default-features = false, features = ["rust_backend"] }',
-      CARGO,
-    )
+    manifest = tomllib.loads(CARGO)
+    flate = manifest["dependencies"]["flate2"]
+    self.assertRegex(flate["version"], r"^=[0-9]+\.[0-9]+\.[0-9]+$")
+    self.assertIs(flate["default-features"], False)
+    self.assertEqual(flate["features"], ["rust_backend"])
+    locked = tomllib.loads((ROOT / "src-tauri/Cargo.lock").read_text(encoding="utf-8"))
+    self.assertEqual([p["version"] for p in locked["package"] if p["name"] == "flate2"], [flate["version"][1:]])
+    for target in manifest.get("target", {}).values():
+      self.assertNotIn("flate2", target.get("dependencies", {}))
     self.assertIn(
       'zip = { version = "=9.1.2", default-features = false, features = ["deflate-flate2"] }',
       CARGO,
