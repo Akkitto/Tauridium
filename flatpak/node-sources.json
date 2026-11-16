@@ -417,16 +417,16 @@
   },
   {
     "type": "file",
-    "url": "https://registry.npmjs.org/@tsconfig/svelte/-/svelte-5.0.8.tgz",
-    "sha512": "524367c35fe81447de711f32a721c842e5987643ef1e2c1c43bf2c87eca622262817eb9ce47d5405eb5b8f2a93faf806277a9037a9e1b9c26f897e877ac5ad29",
-    "dest": "flatpak-node/npm-cache/_cacache/content-v2/sha512/52/43",
-    "dest-filename": "67c35fe81447de711f32a721c842e5987643ef1e2c1c43bf2c87eca622262817eb9ce47d5405eb5b8f2a93faf806277a9037a9e1b9c26f897e877ac5ad29"
+    "url": "https://registry.npmjs.org/@tsconfig/svelte/-/svelte-5.0.9.tgz",
+    "sha512": "81bb5baac105abd805cc69a024c201dfe95e5d59a452db68163cde1ec6ea37aa852acb78d1fbf19cdf7edc08dd97c565206c0f7afb3d2cd27c61485081c86a6b",
+    "dest": "flatpak-node/npm-cache/_cacache/content-v2/sha512/81/bb",
+    "dest-filename": "5baac105abd805cc69a024c201dfe95e5d59a452db68163cde1ec6ea37aa852acb78d1fbf19cdf7edc08dd97c565206c0f7afb3d2cd27c61485081c86a6b"
   },
   {
     "type": "inline",
-    "contents": "21b7a5a5798ec423a6a1e9419731a5e241732d08\t{\"key\":\"make-fetch-happen:request-cache:https://registry.npmjs.org/@tsconfig/svelte/-/svelte-5.0.8.tgz\",\"integrity\":\"sha512-UkNnw1/oFEfecR8ypyHIQuWYdkPvHiwcQ78sh+ymIiYoF+uc5H1UBetbjyqT+vgGJ3qQN6nhucJviX6HesWtKQ==\",\"time\":0,\"metadata\":{\"url\":\"https://registry.npmjs.org/@tsconfig/svelte/-/svelte-5.0.8.tgz\",\"reqHeaders\":{},\"resHeaders\":{}}}",
-    "dest": "flatpak-node/npm-cache/_cacache/index-v5/34/7a",
-    "dest-filename": "7820a55d88566d082400ef007bfd592f5d5e1ee2f9a67e7391452b0f904f"
+    "contents": "1e78e7868767551d6bdaf93c83103fc9fc38fb45\t{\"key\":\"make-fetch-happen:request-cache:https://registry.npmjs.org/@tsconfig/svelte/-/svelte-5.0.9.tgz\",\"integrity\":\"sha512-gbtbqsEFq9gFzGmgJMIB3+leXVmkUttoFjzeHsbqN6qFKst40fvxnN9+3Ajdl8VlIGwPevs9LNJ8YUhQgchqaw==\",\"time\":0,\"metadata\":{\"url\":\"https://registry.npmjs.org/@tsconfig/svelte/-/svelte-5.0.9.tgz\",\"reqHeaders\":{},\"resHeaders\":{}}}",
+    "dest": "flatpak-node/npm-cache/_cacache/index-v5/70/a3",
+    "dest-filename": "794d237f45366edc2cd40bf1375b34945f2353789ce8e5d59b69bf7239c7"
   },
   {
     "type": "file",
@@ -1158,16 +1158,16 @@
   },
   {
     "type": "file",
-    "url": "https://registry.npmjs.org/vite/-/vite-8.3.6.tgz",
-    "sha512": "508edd2b6f4d9d2e78164fa69a8ee8fa323a53c169ee10e5f97e50d64e39587f9de1d4a56cb554113190fa17e4360bcb406ca81253e3f37ee7672bf830173454",
-    "dest": "flatpak-node/npm-cache/_cacache/content-v2/sha512/50/8e",
-    "dest-filename": "dd2b6f4d9d2e78164fa69a8ee8fa323a53c169ee10e5f97e50d64e39587f9de1d4a56cb554113190fa17e4360bcb406ca81253e3f37ee7672bf830173454"
+    "url": "https://registry.npmjs.org/vite/-/vite-8.3.8.tgz",
+    "sha512": "2f33a7de1f6b1bfd2f84b757ad5e3227840503d784a2a0a5f98c7e90625deda07dc3a9df3605472926302cf6541ebcf86466beb7e9178d5f62b6f7070cb428b8",
+    "dest": "flatpak-node/npm-cache/_cacache/content-v2/sha512/2f/33",
+    "dest-filename": "a7de1f6b1bfd2f84b757ad5e3227840503d784a2a0a5f98c7e90625deda07dc3a9df3605472926302cf6541ebcf86466beb7e9178d5f62b6f7070cb428b8"
   },
   {
     "type": "inline",
-    "contents": "3e0daa91582459d5b7b9b5c9c1c894aaa779a002\t{\"key\":\"make-fetch-happen:request-cache:https://registry.npmjs.org/vite/-/vite-8.3.6.tgz\",\"integrity\":\"sha512-UI7dK29NnS54Fk+mmo7o+jI6U8Fp7hDl+X5Q1k45WH+d4dSlbLVUETGQ+hfkNgvLQGyoElPj837nZyv4MBc0VA==\",\"time\":0,\"metadata\":{\"url\":\"https://registry.npmjs.org/vite/-/vite-8.3.6.tgz\",\"reqHeaders\":{},\"resHeaders\":{}}}",
-    "dest": "flatpak-node/npm-cache/_cacache/index-v5/2f/8d",
-    "dest-filename": "e6afc0ea2545fe9c79820ebd914d8e4fdbc11e0ca4ff259460f71bfc280d"
+    "contents": "e9aa754793260523eef072eb66eac361051915e6\t{\"key\":\"make-fetch-happen:request-cache:https://registry.npmjs.org/vite/-/vite-8.3.8.tgz\",\"integrity\":\"sha512-LzOn3h9rG/0vhLdXrV4yJ4QFA9eEoqCl+Yx+kGJd7aB9w6nfNgVHKSYwLPZUHrz4ZGa+t+kXjV9itvcHDLQouA==\",\"time\":0,\"metadata\":{\"url\":\"https://registry.npmjs.org/vite/-/vite-8.3.8.tgz\",\"reqHeaders\":{},\"resHeaders\":{}}}",
+    "dest": "flatpak-node/npm-cache/_cacache/index-v5/3a/c6",
+    "dest-filename": "2a58872dde30e80abcd12c9e67d9916abba23b7befbf6d202254110b5241"
   },
   {
     "type": "file",
