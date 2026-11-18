@@ -39,3 +39,6 @@ vendor/deepmerge/** text eol=lf
 
 # The reviewed native window-state repair is also byte-bound across platforms.
 vendor/tauri-plugin-window-state/** text eol=lf
+
+# Preserve reviewed registry/backport bytes across Windows checkouts.
+vendor/picomatch/** -text

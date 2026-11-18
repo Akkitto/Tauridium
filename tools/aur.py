@@ -31,7 +31,7 @@ PAYLOAD = {
   "usr/share/licenses/tauridium/LICENSE": "LICENSE",
 }
 SOURCE_ROOTS = ("src/", "vendor/", "data/", "src-tauri/src/", "src-tauri/assets/", "src-tauri/icons/", "src-tauri/capabilities/", "src-tauri/permissions/", "src-tauri/bundled-recipes/")
-SOURCE_FILES = {"package.json", "package-lock.json", ".npmrc", "index.html", "vite.config.ts", "svelte.config.js", "tsconfig.json", "LICENSE", "src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "src-tauri/build.rs", "src-tauri/tauri.conf.json", "tools/check_deepmerge.mjs", "tools/check_rust_supply_chain.py", "tools/arch_check.py", "tools/arch_build.py", "tools/tauri_build.py"}
+SOURCE_FILES = {"package.json", "package-lock.json", ".npmrc", "index.html", "vite.config.ts", "svelte.config.js", "tsconfig.json", "LICENSE", "src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "src-tauri/build.rs", "src-tauri/tauri.conf.json", "tools/check_deepmerge.mjs", "tools/check_picomatch.mjs", "tools/check_rust_supply_chain.py", "tools/arch_check.py", "tools/arch_build.py", "tools/tauri_build.py"}
 
 
 def git(*args: str, root: Path = ROOT) -> str:

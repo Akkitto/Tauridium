@@ -306,7 +306,7 @@ class NpmPolicyTests(unittest.TestCase):
     commands = [call.args[0] for call in run_checked.call_args_list]
     self.assertEqual(commands[0], ["node", "tools/check_frontend.mjs", "--runtime-only"])
     self.assertEqual(commands[1], ["npm", "ci", "--ignore-scripts"])
-    self.assertEqual(commands[2], ["npm", "audit", "--audit-level=high"])
+    self.assertEqual(commands[2], [INIT.sys.executable, "tools/audit_npm.py"])
     self.assertEqual(
       commands[3],
       ["node", "tools/check_frontend.mjs"],

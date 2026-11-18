@@ -1292,7 +1292,7 @@
 
   function blurServiceMenuOwner() { nativeMenuIntent++; serviceMenu.ownerBlur(); }
 
-  function releaseServiceMenuPointer() { serviceMenu.releasePointer(); }
+  function releaseServiceMenuPointer(event: MouseEvent) { serviceMenu.releasePointer(event.buttons); }
   function cancelServiceMenuPointer() { closeServiceContextMenu(); }
 
   function sameIds(left: string[], right: string[]): boolean {

@@ -10,18 +10,18 @@ or WSL merely to develop Tauridium on Windows.
 After the release tag has been pushed, try the immutable release:
 
 ```sh
-nix --extra-experimental-features 'nix-command flakes' run github:Akkitto/Tauridium/v1.0.11
+nix --extra-experimental-features 'nix-command flakes' run github:Akkitto/Tauridium/v1.0.12
 ```
 
 Install in your profile for a stable desktop launcher and session autostart:
 
 ```sh
-nix --extra-experimental-features 'nix-command flakes' profile add github:Akkitto/Tauridium/v1.0.11#tauridium
+nix --extra-experimental-features 'nix-command flakes' profile add github:Akkitto/Tauridium/v1.0.12#tauridium
 nix profile list
 ```
 
 Tagged references are intentionally immutable: upgrading a profile pinned to
-v1.0.11 cannot discover a newer tag. Replace that reference when choosing the next
+v1.0.12 cannot discover a newer tag. Replace that reference when choosing the next
 release. For automatic tracking of the development branch, use
 `github:Akkitto/Tauridium/master#tauridium` instead, understanding that it follows
 unreleased commits; `nix profile upgrade <name>` then updates it. Obtain the exact
@@ -60,7 +60,7 @@ cross-compilation interface or Windows/macOS packages.
 Add this input to your existing configuration flake:
 
 ```nix
-inputs.tauridium.url = "github:Akkitto/Tauridium/v1.0.11";
+inputs.tauridium.url = "github:Akkitto/Tauridium/v1.0.12";
 ```
 
 Bind it in your existing `outputs` function, for example
@@ -340,6 +340,15 @@ tray-library and external URL launcher paths. No global WebKit sandbox/TLS
 disabling workaround is installed.
 
 `nix-check` builds/tests the package, metadata and runtime build identity.
+`just test-service-menu-wayland` (or `nix run .#service-menu-wayland-smoke`)
+checks the production package on its own headless native Wayland compositor,
+with Xwayland disabled. It exercises cold and repeated styled menus, real
+service input and completed-download toasts in all three themes, and rejects
+unintended top-level surface creation. The private display and synthetic
+profiles never use your running desktop or accounts; evidence stays under
+`release/evidence/service-menu-wayland` and is not published automatically.
+The existing X11 and Windows menu gates remain separate.
+
 `nix-smoke` launches the actual wrapped application in private D-Bus/Xvfb and XDG
 directories, retaining a screenshot, OCR text and build information under ignored
 `release/evidence/nix-smoke`. It does not use your accounts or app profile.

@@ -78,9 +78,33 @@ describe("native service menu lifecycle", () => {
     menu.cancel(); await flush(); expect(port.close).toHaveBeenCalledWith(1, false);
   });
 
+  it("ignores an unrelated release while preparation is pending and a button remains held", async () => {
+    const { port, menu } = harness(); const pending = deferred<number>();
+    port.prepare.mockReturnValueOnce(pending.promise);
+    const opening = menu.open(request, true); await flush();
+    menu.releasePointer(2);
+    pending.resolve(7); await flush();
+    expect(port.present).not.toHaveBeenCalled();
+    expect(menu.isOpen).toBe(true);
+    menu.releasePointer(0); await opening;
+    expect(port.present).toHaveBeenCalledWith(7);
+  });
+
+  it.each([
+    ["an X1 release while the right button remains held", 2],
+    ["a right-button release while the left button remains held", 1],
+  ])("keeps a ready opening hidden after %s", async (_description, buttons) => {
+    const { port, menu } = harness(); const opening = menu.open(request, true);
+    await flush(); menu.releasePointer(buttons); await flush();
+    expect(port.present).not.toHaveBeenCalled();
+    expect(menu.isOpen).toBe(true);
+    menu.releasePointer(0); await opening;
+    expect(port.present).toHaveBeenCalledWith(1);
+  });
+
   it("cancels a held opening without ever showing it", async () => {
     const { port, menu } = harness(); const opening = menu.open(request, true);
-    await flush(); menu.cancel(); await opening;
+    await flush(); menu.releasePointer(2); menu.cancel(); await opening;
     expect(port.present).not.toHaveBeenCalled();
   });
 

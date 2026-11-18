@@ -119,7 +119,7 @@ def generate_node_sources(lock_path: Path) -> list[dict[str, Any]]:
   validate_local_lock(packages)
   sources: list[dict[str, Any]] = []
   for package_path, package in packages.items():
-    if package_path == "node_modules/deepmerge":
+    if package_path in ("node_modules/deepmerge", "node_modules/picomatch"):
       # The exact reviewed backport travels in the immutable source, not the npm cache.
       continue
     if not isinstance(package, dict):

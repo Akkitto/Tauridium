@@ -3,6 +3,7 @@ import copy
 import hashlib
 import io
 import json
+import re
 from pathlib import Path
 import stat
 import struct
@@ -41,6 +42,15 @@ def payload(path, mutate=None):
 
 
 class ArchPackagingTests(unittest.TestCase):
+  def test_source_inventory_includes_every_frontend_build_guard(self):
+    package = json.loads((aur.ROOT / "package.json").read_text(encoding="utf-8"))
+    guards = set(re.findall(r"\btools/[A-Za-z0-9_./-]+\.mjs", package["scripts"]["build"]))
+    self.assertTrue(guards, "Production build guards must be explicitly packaged")
+    for guard in guards:
+      with self.subTest(guard=guard):
+        self.assertIn(guard, aur.SOURCE_FILES)
+        self.assertTrue((aur.ROOT / guard).is_file())
+
   def test_namcap_error_findings_are_fatal_even_on_zero_exit(self):
     with mock.patch.object(arch_namcap.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "tauridium E: missing license\n", "")):
       with self.assertRaisesRegex(RuntimeError, "packaging errors"):

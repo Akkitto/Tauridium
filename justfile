@@ -134,18 +134,23 @@ test-file-drop-fallback:
 test-service-menu:
   python3 tools/service_menu_smoke.py
 
+# Uses a private headless Wayland compositor and the pinned production package.
+[linux]
+test-service-menu-wayland:
+  nix --extra-experimental-features 'nix-command flakes' run .#service-menu-wayland-smoke
+
 [unix]
 test-download-toast:
   python3 tools/download_toast_smoke.py
 
 [unix]
 audit: rust-supply-chain-host
-  npm audit --audit-level=low
+  python3 tools/audit_npm.py
   python3 tools/audit_dependencies.py
 
 [windows]
 audit: rust-supply-chain-host
-  npm audit --audit-level=low
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/audit_npm.py
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/audit_dependencies.py
 
 [unix]

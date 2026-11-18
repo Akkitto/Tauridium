@@ -19,11 +19,14 @@
   <url type="vcs-browser">https://github.com/Akkitto/Tauridium</url>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v1.0.11/data/screenshots/tauridium-0.8.0-main.png</image>
+      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v1.0.12/data/screenshots/tauridium-0.8.0-main.png</image>
       <caption>Tauridium sign-in and local accountless start screen</caption>
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.0.12" date="2026-11-18">
+      <description><p>Keep styled service menus and download notifications responsive on native Wayland and preserve held-pointer input ordering.</p></description>
+    </release>
     <release version="1.0.11" date="2026-11-15">
       <description><p>Keep styled service context menus above native service views with reliable positioning, keyboard interaction, dismissal and system-menu fallback.</p></description>
     </release>

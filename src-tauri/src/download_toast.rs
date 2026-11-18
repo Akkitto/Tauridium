@@ -202,7 +202,7 @@ fn resize(app: &AppHandle) -> Result<(), String> {
                 }
             }
             if let Some(window) = view.parent_window() {
-                window.ensure_native();
+                crate::linux_overlay::prepare_parent_for_stacking(&window);
                 window.raise();
             }
             if let Some(window) = platform.inner().window() {
@@ -387,7 +387,7 @@ fn render(app: &AppHandle) -> Result<(), String> {
                     let handler = parent.connect_size_allocate(move |_, _| {
                         if let Some(view) = weak_view.upgrade() {
                             if let Some(window) = view.parent_window() {
-                                window.ensure_native();
+                                crate::linux_overlay::prepare_parent_for_stacking(&window);
                                 window.raise();
                             }
                             if let Some(window) = view.window() {

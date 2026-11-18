@@ -6,7 +6,7 @@ import tomllib
 from urllib.parse import quote
 
 from package_release import version, git_output
-from npm_policy import LOCAL_PATH, validate_local_sources
+from npm_policy import validate_local_sources
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -42,8 +42,9 @@ def generate(root: Path, release_version: str, commit: str) -> dict:
   npm = json.loads((root / "package-lock.json").read_text(encoding="utf-8"))
   manifest = json.loads((root / "package.json").read_text(encoding="utf-8"))
   validate_local_sources(root, manifest, npm["packages"])
+  local_targets = {package["resolved"] for package in npm["packages"].values() if package.get("link")}
   for path, package in npm["packages"].items():
-    if not path or path == LOCAL_PATH:
+    if not path or path in local_targets:
       # A local link and its lock target describe one package, not two components.
       continue
     name = path.rsplit("node_modules/", 1)[-1]
