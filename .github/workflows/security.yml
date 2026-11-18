@@ -33,7 +33,7 @@ jobs:
           python3 tools/npm_policy.py
           npm ci --ignore-scripts
           node tools/check_deepmerge.mjs
-          npm audit --audit-level=low
+          python3 tools/audit_npm.py
       - name: Install exact advisory scanner without signing credentials
         run: |
           VERSION="$(python3 -c 'import json; print(json.load(open("data/build-toolchain.json"))["cargoAudit"])')"

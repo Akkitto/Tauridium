@@ -145,12 +145,12 @@ test-download-toast:
 
 [unix]
 audit: rust-supply-chain-host
-  npm audit --audit-level=low
+  python3 tools/audit_npm.py
   python3 tools/audit_dependencies.py
 
 [windows]
 audit: rust-supply-chain-host
-  npm audit --audit-level=low
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/audit_npm.py
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/audit_dependencies.py
 
 [unix]

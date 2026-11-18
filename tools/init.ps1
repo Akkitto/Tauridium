@@ -856,10 +856,10 @@ try {
     if ($LASTEXITCODE -ne 0) {
       throw ("npm.cmd ci failed with exit code {0}" -f $LASTEXITCODE)
     }
-    Write-Host "+ npm.cmd audit --audit-level=high"
-    & npm.cmd audit --audit-level=high
+    Write-Host "+ Complete npm graph and exact local backport security controls"
+    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $PythonRunnerPath tools/audit_npm.py
     if ($LASTEXITCODE -ne 0) {
-      throw ("npm.cmd audit failed with exit code {0}" -f $LASTEXITCODE)
+      throw ("complete npm security audit failed with exit code {0}" -f $LASTEXITCODE)
     }
     Write-Host "+ node.exe tools/check_frontend.mjs"
     & node.exe tools/check_frontend.mjs

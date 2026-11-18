@@ -49,7 +49,7 @@ class WindowsBootstrapTests(unittest.TestCase):
       'cargo.exe install cargo-audit --locked',
       'VBSCRIPT',
       '& npm.cmd ci',
-      '& npm.cmd audit --audit-level=high',
+      '& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $PythonRunnerPath tools/audit_npm.py',
       '& node.exe tools/check_frontend.mjs',
     ):
       self.assertIn(marker, self.script)

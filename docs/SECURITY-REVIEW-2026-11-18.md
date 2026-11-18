@@ -133,7 +133,9 @@ substring and case-insensitive options. Long failing inputs and complex
 wildcard-star variants are tested under deadlines; frontend tests and complete
 production builds remain required.
 
-Ordinary `npm audit` remains unchanged. A separate current npm bulk query for
+The canonical audit still executes the complete, all-severity `npm audit` graph
+against the official registry, explicitly including development, optional and
+peer dependencies. A separate current npm bulk query for
 the original 4.0.7 version keeps the advisory visible even though npm does not
 report local package links. Only the exact known advisory metadata and exact
 verified backport are assessed; new or changed advisories, source drift,
@@ -141,3 +143,25 @@ bypassed resolution and an expired review fail closed. The new assessment is
 reviewed on **18 November** and expires **30 November 2026**. It does not extend
 the earlier deepmerge, zbus or builder RSA deadlines. Replace the backport with
 a supported upstream release after compatibility review when one is available.
+
+### Consistent reporting across supported npm versions
+
+npm10 can report a patched local link and its dependent packages against the
+original version, while npm11 can omit local links from its audit report.
+Canonical initialization, routine audits and CI therefore use
+`tools/audit_npm.py`. It executes both exact backport controls and current
+upstream queries, then scans the complete graph without severity or dependency
+omission. Direct findings are accepted only when their full advisory metadata
+and installed paths exactly match an executed, verified backport assessment.
+A transitive report is assessed only when every dependency path ends at one
+of those verified facts. Unknown direct advisories, mixed findings, unpatched
+copies, cycles, missing counts, malformed output and scanner failures close
+the gate. The report preserves npm's raw exit code and every assessed graph
+entry; it does not relabel npm's raw finding count as zero.
+
+The same actual source was checked with checksum-verified npm10.9.4 and the
+pinned npm11 environment. npm10 returned its seven known propagated findings;
+the full gate passed only after exact patch/exploit/live-advisory controls.
+npm11 returned no raw findings and passed the same controls. Raw `npm audit`
+on an older npm may continue to describe the modified local source as the
+upstream release; the canonical report explains that distinction explicitly.
