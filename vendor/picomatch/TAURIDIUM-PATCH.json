@@ -1,0 +1,27 @@
+{
+  "version": "4.0.7+tauridium.1",
+  "upstream": {
+    "name": "picomatch",
+    "version": "4.0.7",
+    "url": "https://registry.npmjs.org/picomatch/-/picomatch-4.0.7.tgz",
+    "sha512": "sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA=="
+  },
+  "adaptedFrom": {
+    "url": "https://github.com/micromatch/picomatch/pull/246",
+    "commit": "f03bec2c02e46f063fbfdc161aae1d0f854b2565",
+    "mergedUpstream": false
+  },
+  "advisory": "GHSA-fc5q-39xc-vjpf",
+  "scope": "Collapse simple single-branch repeated-star extglobs; use the existing literal safeguard for capture mode. No claim of safety for arbitrary regular expressions or explicit safeguard opt-outs. Complex single-branch wildcard-star forms use the existing conservative literal fallback instead of retaining nested unbounded repetition.",
+  "files": {
+    "index.js": "02ae26406508e28f9ba0865be16cf77f0b33de6c4d4d49c212c4176df1d5625a",
+    "posix.js": "5695ff5dfcd5a338a40630bd506056f2950bcb08fe1cc068519cbbfe60add480",
+    "lib/constants.js": "c28f952d2758261fe5428a121add485cc25b03e0193633f649de903dc0e5e222",
+    "lib/parse.js": "10e08261453bc5e1579afe463d2855940c89b35b821df7cc7483a1f93e42c2e1",
+    "lib/picomatch.js": "fdd249d7ffff853f3bb1c77eafc8baa1a437bea85a94c35877b83c6a40d9ca94",
+    "lib/scan.js": "6457a1764e5c2e543cc3a0c00ce12ebb3764097628868198370b64d4e642aaae",
+    "lib/utils.js": "f04604f70cd1a3f6ace80b84766468674ff38b4bb83818d2ef1d81fc6355f935",
+    "LICENSE": "d0cd141b0c322fded5dfad1d4645bb2fedfc05b7321fe1009469638190d59ef9",
+    "package.json": "d99d53ca96c75a65ba3987bf8f330960e54d052ab317a1dcc150c763f8542af3"
+  }
+}
