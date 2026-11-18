@@ -631,7 +631,7 @@ fn reveal(app: &AppHandle, id: u64, focus: bool) -> Result<bool, String> {
                 parent.size_allocate(&parent.allocation());
             }
             if let Some(window) = view.parent_window() {
-                window.ensure_native();
+                crate::linux_overlay::prepare_parent_for_stacking(&window);
                 window.raise();
             }
             if let Some(window) = view.window() {

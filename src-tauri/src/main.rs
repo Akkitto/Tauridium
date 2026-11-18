@@ -13,6 +13,8 @@ mod gtk_security;
 mod http_security;
 mod icons;
 mod ipc_security;
+#[cfg(target_os = "linux")]
+mod linux_overlay;
 mod local_profile;
 #[cfg(all(
     target_os = "linux",
