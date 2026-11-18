@@ -83,7 +83,10 @@ export class ServiceMenuController {
     if (!this.current?.presenting) this.cancel();
   }
 
-  releasePointer(): void {
+  releasePointer(buttons = 0): void {
+    // Mouseup also fires for chorded and synthetic button releases. Keep the
+    // owner in control until the pointer has no buttons held.
+    if (buttons !== 0) return;
     this.current?.release?.(true);
     if (this.current) this.current.release = undefined;
   }
