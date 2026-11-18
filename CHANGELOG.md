@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.12] - 2026-11-18
+
+- Prevent styled service menus and download notifications from creating unintended native Wayland windows and stalling rendering.
+- Keep service menus closed until all held pointer buttons are released, including chorded side-button input.
+- Add production native Wayland menu, input-recovery and download-notification regression checks alongside the existing X11 and Windows gates.
+- Backport the newly reported build-tool glob-matching denial-of-service fix with integrity, compatibility and live advisory controls.
+
 ## [1.0.11] - 2026-11-15
 
 - Keep the existing styled service context menu above native service views, preserving its actions, themes and system-menu preference.
