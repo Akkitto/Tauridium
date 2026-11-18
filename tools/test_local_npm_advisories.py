@@ -37,6 +37,7 @@ class LocalNpmAdvisoryTests(unittest.TestCase):
         shutil.copyfile(ROOT / "data/local-npm-advisory-policy.json", self.root / "data/local-npm-advisory-policy.json")
         shutil.copyfile(ROOT / "tools/check_deepmerge.mjs", self.root / "tools/check_deepmerge.mjs")
         shutil.copytree(ROOT / "vendor/deepmerge", self.root / "vendor/deepmerge")
+        shutil.copytree(ROOT / "vendor/picomatch", self.root / "vendor/picomatch")
         self.policy = json.loads((self.root / "data/local-npm-advisory-policy.json").read_text(encoding="utf-8"))
         self.payload = {"deepmerge": [self.policy["expectedAdvisory"]]}
         self.node = mock.patch.object(AUDIT.shutil, "which", return_value="synthetic-node").start()

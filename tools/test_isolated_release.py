@@ -75,6 +75,18 @@ class IsolatedReleaseTests(unittest.TestCase):
       self.assertEqual(properties["tauridium:source-file-sha256:" + filename], digest)
     self.assertFalse(any(entry["name"] == "vendor/deepmerge" for entry in document["components"]))
 
+  def test_sbom_identifies_one_verified_local_glob_backport(self):
+    document = build_input_sbom.generate(build_input_sbom.ROOT, "9.9.9", "a" * 40)
+    candidates = [row for row in document["components"] if row["name"] == "picomatch"]
+    self.assertEqual(len(candidates), 1)
+    component = candidates[0]
+    self.assertEqual(component["version"], "4.0.7+tauridium.1")
+    self.assertNotIn("purl", component)
+    properties = {row["name"]: row["value"] for row in component["properties"]}
+    self.assertEqual(properties["tauridium:upstream-version"], "4.0.7")
+    self.assertEqual(properties["tauridium:source"], "repository-path-patch:vendor/picomatch")
+    self.assertFalse(any(row["name"] == "vendor/picomatch" for row in document["components"]))
+
   def test_sbom_does_not_misidentify_the_local_window_state_repair_as_a_registry_release(self):
     document = build_input_sbom.generate(build_input_sbom.ROOT, "9.9.9", "a" * 40)
     component = next(row for row in document["components"] if row["name"] == "tauri-plugin-window-state")

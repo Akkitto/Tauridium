@@ -1,8 +1,28 @@
 {
   "schema": 1,
-  "applicationLockSha256": "9f0893c09b238be6abb4a6ef6fa0bc4440f21ae09d4e62fbdfca5175266e56ad",
+  "applicationLockSha256": "bf0a32d493f3e84e898b6b1596753aced5bfadbd0ebb3332f82ecd23e34a8eeb",
   "builderLockSha256": "6019075d357d3ff887c4fb0f59584c2720971749d95789dd60cee5f42550a202",
   "assessments": [
+    {
+      "lock": "src-tauri/Cargo.lock",
+      "id": "RUSTSEC-2026-0543",
+      "package": "chrono",
+      "version": "0.4.45",
+      "kind": "unmaintained",
+      "expires": "2026-11-30",
+      "status": "reviewed-maintenance-warning",
+      "reason": "Reviewed 18 November 2026 against official RustSec database 233155b4025b854c68a4b199c0e32d7fd53291a2. This is an informational maintenance notice affecting every Chrono version; it asserts no vulnerability and lists no patched release. The official registry still publishes 0.4.45 as latest stable. The exact application lock retains Chrono through serde_with 3.24.0 and tauri-utils 2.10.2; latest stable tauri-utils 2.10.3 still uses serde_with 3. Replacing Chrono with jiff/time is a parent API migration, not a compatible lock-only update. The locked Linux application inverse graph contains no active Chrono dependency, but the complete lock remains scanned without target filtering. Retain the supported graph temporarily; exact lock/package/version/kind, whole-lock SHA-256, unknown findings, unsoundness and expiry remain enforced. Fresh reassessment due 30 November 2026; see docs/SECURITY-REVIEW-2026-11-18.md."
+    },
+    {
+      "lock": "flatpak/tauri-cli.Cargo.lock",
+      "id": "RUSTSEC-2026-0543",
+      "package": "chrono",
+      "version": "0.4.45",
+      "kind": "unmaintained",
+      "expires": "2026-11-30",
+      "status": "reviewed-maintenance-warning",
+      "reason": "Reviewed 18 November 2026 against official RustSec database 233155b4025b854c68a4b199c0e32d7fd53291a2. RUSTSEC-2026-0543 reports unmaintained status for all Chrono versions, not a vulnerability or a patched release; 0.4.45 remains latest stable. Exact builder parents are serde_with 3.24.0, tauri-macos-sign 2.4.3 and x509-certificate 0.24.0. Checksum-verified latest stable CLI 2.12.5 and bundler 2.10.5 still require tauri-macos-sign =2.4.3, whose manifest and certificate-generation APIs use Chrono 0.4; even latest x509-certificate 0.25.0 retains Chrono. No supported parent update removes this maintenance finding. Keep the reviewed patched builder and signing-key rejection controls; do not force an incompatible jiff/time substitution or discard existing security backports. This exact whole-lock maintenance assessment expires 30 November 2026; unknown vulnerabilities, different kinds/versions, unsoundness and expiry still fail. See docs/SECURITY-REVIEW-2026-11-18.md."
+    },
     {
       "lock": "src-tauri/Cargo.lock",
       "id": "RUSTSEC-2026-0370",
@@ -11,7 +31,7 @@
       "kind": "unmaintained",
       "expires": "2026-11-30",
       "status": "reviewed-maintenance-warning",
-      "reason": "Re-reviewed 16 November 2026 against current official RustSec database 02e2517f457a359fc6d3440ea4560c8ea188fee8 and exact application lock 9f0893c09b238be6abb4a6ef6fa0bc4440f21ae09d4e62fbdfca5175266e56ad. These are informational standalone-crate maintenance notices, with no asserted vulnerability or patched standalone release. Direct portals already use zbus 6.2.1; stable notification and OS-vault parents still require zbus 5.19.0. Stable secret-service remains 5.2.0 and its zbus-6 successor is only a prerelease; do not force an ABI-incompatible replacement or risk credential storage. The notification 2.8.1 patch retains the required graph. Exact scope/version/kind, whole-lock SHA256, unknown findings, unsoundness and expiry remain enforced. Fresh bounded review due 30 November 2026; see docs/SECURITY-REVIEW-2026-11-16.md."
+      "reason": "Re-reviewed 16 November 2026 against current official RustSec database 02e2517f457a359fc6d3440ea4560c8ea188fee8 and exact application lock 9f0893c09b238be6abb4a6ef6fa0bc4440f21ae09d4e62fbdfca5175266e56ad. These are informational standalone-crate maintenance notices, with no asserted vulnerability or patched standalone release. Direct portals already use zbus 6.2.1; stable notification and OS-vault parents still require zbus 5.19.0. Stable secret-service remains 5.2.0 and its zbus-6 successor is only a prerelease; do not force an ABI-incompatible replacement or risk credential storage. The notification 2.8.1 patch retains the required graph. Exact scope/version/kind, whole-lock SHA256, unknown findings, unsoundness and expiry remain enforced. Fresh bounded review due 30 November 2026; see docs/SECURITY-REVIEW-2026-11-16.md. On 18 November 2026 the v1.0.12 binding was updated after verifying that the only lockfile change is the local Tauridium root version; dependency versions, sources and checksums remain identical. The existing expiry is unchanged."
     },
     {
       "lock": "src-tauri/Cargo.lock",
@@ -21,7 +41,7 @@
       "kind": "unmaintained",
       "expires": "2026-11-30",
       "status": "reviewed-maintenance-warning",
-      "reason": "Re-reviewed 16 November 2026 against current official RustSec database 02e2517f457a359fc6d3440ea4560c8ea188fee8 and exact application lock 9f0893c09b238be6abb4a6ef6fa0bc4440f21ae09d4e62fbdfca5175266e56ad. These are informational standalone-crate maintenance notices, with no asserted vulnerability or patched standalone release. Direct portals already use zbus 6.2.1; stable notification and OS-vault parents still require zbus 5.19.0. Stable secret-service remains 5.2.0 and its zbus-6 successor is only a prerelease; do not force an ABI-incompatible replacement or risk credential storage. The notification 2.8.1 patch retains the required graph. Exact scope/version/kind, whole-lock SHA256, unknown findings, unsoundness and expiry remain enforced. Fresh bounded review due 30 November 2026; see docs/SECURITY-REVIEW-2026-11-16.md."
+      "reason": "Re-reviewed 16 November 2026 against current official RustSec database 02e2517f457a359fc6d3440ea4560c8ea188fee8 and exact application lock 9f0893c09b238be6abb4a6ef6fa0bc4440f21ae09d4e62fbdfca5175266e56ad. These are informational standalone-crate maintenance notices, with no asserted vulnerability or patched standalone release. Direct portals already use zbus 6.2.1; stable notification and OS-vault parents still require zbus 5.19.0. Stable secret-service remains 5.2.0 and its zbus-6 successor is only a prerelease; do not force an ABI-incompatible replacement or risk credential storage. The notification 2.8.1 patch retains the required graph. Exact scope/version/kind, whole-lock SHA256, unknown findings, unsoundness and expiry remain enforced. Fresh bounded review due 30 November 2026; see docs/SECURITY-REVIEW-2026-11-16.md. On 18 November 2026 the v1.0.12 binding was updated after verifying that the only lockfile change is the local Tauridium root version; dependency versions, sources and checksums remain identical. The existing expiry is unchanged."
     },
     {
       "lock": "src-tauri/Cargo.lock",
@@ -31,7 +51,7 @@
       "kind": "unmaintained",
       "expires": "2026-11-30",
       "status": "reviewed-maintenance-warning",
-      "reason": "Re-reviewed 16 November 2026 against current official RustSec database 02e2517f457a359fc6d3440ea4560c8ea188fee8 and exact application lock 9f0893c09b238be6abb4a6ef6fa0bc4440f21ae09d4e62fbdfca5175266e56ad. These are informational standalone-crate maintenance notices, with no asserted vulnerability or patched standalone release. Direct portals already use zbus 6.2.1; stable notification and OS-vault parents still require zbus 5.19.0. Stable secret-service remains 5.2.0 and its zbus-6 successor is only a prerelease; do not force an ABI-incompatible replacement or risk credential storage. The notification 2.8.1 patch retains the required graph. Exact scope/version/kind, whole-lock SHA256, unknown findings, unsoundness and expiry remain enforced. Fresh bounded review due 30 November 2026; see docs/SECURITY-REVIEW-2026-11-16.md."
+      "reason": "Re-reviewed 16 November 2026 against current official RustSec database 02e2517f457a359fc6d3440ea4560c8ea188fee8 and exact application lock 9f0893c09b238be6abb4a6ef6fa0bc4440f21ae09d4e62fbdfca5175266e56ad. These are informational standalone-crate maintenance notices, with no asserted vulnerability or patched standalone release. Direct portals already use zbus 6.2.1; stable notification and OS-vault parents still require zbus 5.19.0. Stable secret-service remains 5.2.0 and its zbus-6 successor is only a prerelease; do not force an ABI-incompatible replacement or risk credential storage. The notification 2.8.1 patch retains the required graph. Exact scope/version/kind, whole-lock SHA256, unknown findings, unsoundness and expiry remain enforced. Fresh bounded review due 30 November 2026; see docs/SECURITY-REVIEW-2026-11-16.md. On 18 November 2026 the v1.0.12 binding was updated after verifying that the only lockfile change is the local Tauridium root version; dependency versions, sources and checksums remain identical. The existing expiry is unchanged."
     },
     {
       "lock": "flatpak/tauri-cli.Cargo.lock",

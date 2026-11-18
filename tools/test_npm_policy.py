@@ -43,6 +43,7 @@ class NpmPolicyTests(unittest.TestCase):
             for name in (".npmrc", "package.json", "package-lock.json"):
                 shutil.copyfile(ROOT / name, root / name)
             shutil.copytree(ROOT / "vendor/deepmerge", root / "vendor/deepmerge")
+            shutil.copytree(ROOT / "vendor/picomatch", root / "vendor/picomatch")
             POLICY.validate(root)
             runtime = root / "vendor/deepmerge/dist/cjs.js"
             original = runtime.read_bytes()
