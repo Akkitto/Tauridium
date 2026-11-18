@@ -68,6 +68,10 @@
             inherit pkgs;
             package = self.packages.${system}.tauridium;
           };
+          service-menu-wayland-smoke = import ./packaging/nix/service-menu-wayland-smoke.nix {
+            inherit pkgs;
+            package = self.packages.${system}.tauridium;
+          };
           unread-badges-smoke = import ./packaging/nix/unread-badges-smoke.nix {
             inherit pkgs;
             package = self.packages.${system}.tauridium;
@@ -107,6 +111,13 @@
           type = "app";
           program = "${self.packages.${system}.service-menu-smoke}/bin/tauridium-service-menu-smoke";
           meta.description = "Isolated production styled service-menu layering and interaction tests";
+        };
+        service-menu-wayland-smoke = {
+          type = "app";
+          program = "${
+            self.packages.${system}.service-menu-wayland-smoke
+          }/bin/tauridium-service-menu-wayland-smoke";
+          meta.description = "Isolated native Wayland production menu rendering and input regressions";
         };
         unread-badges-smoke = {
           type = "app";

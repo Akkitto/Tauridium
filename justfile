@@ -134,6 +134,11 @@ test-file-drop-fallback:
 test-service-menu:
   python3 tools/service_menu_smoke.py
 
+# Uses a private headless Wayland compositor and the pinned production package.
+[linux]
+test-service-menu-wayland:
+  nix --extra-experimental-features 'nix-command flakes' run .#service-menu-wayland-smoke
+
 [unix]
 test-download-toast:
   python3 tools/download_toast_smoke.py

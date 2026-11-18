@@ -42,6 +42,8 @@ jobs:
         run: nix --extra-experimental-features 'nix-command flakes' run .#download-toast-smoke
       - name: Exercise styled menus above real native service views
         run: nix --extra-experimental-features 'nix-command flakes' run .#service-menu-smoke
+      - name: Exercise native Wayland menus and input in a private headless compositor
+        run: nix --extra-experimental-features 'nix-command flakes' run .#service-menu-wayland-smoke
       - name: Exercise actual production service unread badges with pinned recipes
         run: nix --extra-experimental-features 'nix-command flakes' run .#unread-badges-smoke
       - name: Exercise production Settings navigation and download controls
