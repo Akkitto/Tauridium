@@ -1,0 +1,25 @@
+{
+  "assets": {
+    "tauridium-1.0.11-windows-arm64.msi": {
+      "sha256": "1eb1dcef3948de42649bf266dd36799c16dc836f1877e4607e25d5e37f149a65",
+      "size": 6692864
+    },
+    "tauridium-1.0.11-windows-arm64.msi.sig": {
+      "sha256": "ce4a3cf0e1cca175d1b4fb02057c6bfa28eebe65cce0df906feb4aea53fd65a8",
+      "size": 452
+    },
+    "tauridium-1.0.11-windows-x64.msi": {
+      "sha256": "a875695cabfe5b23b704f27d06a915cbdc3f48b3c11ab652d279a7aca3e8fd42",
+      "size": 7127040
+    },
+    "tauridium-1.0.11-windows-x64.msi.sig": {
+      "sha256": "fc1e553664c5f1546d5649a90bb1e91ed279c311febf5e16262d417d9b29bebb",
+      "size": 448
+    }
+  },
+  "commit": "0c1c8b3b80e539674777dd6ec0da61e3deb46c48",
+  "releaseId": 446404096,
+  "runId": 43758329577,
+  "schema": 1,
+  "version": "1.0.11"
+}
