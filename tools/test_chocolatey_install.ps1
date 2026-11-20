@@ -15,7 +15,7 @@ $Locks = Join-Path $Root 'packaging/chocolatey/releases'
 $Versions = @(Get-ChildItem -LiteralPath $Locks -Filter '*.json' | ForEach-Object { [version]$_.BaseName } | Sort-Object -Descending)
 if (-not $Version) { $Version = $Versions[0].ToString() }
 if (-not $PreviousVersion) { $PreviousVersion = @($Versions | Where-Object { $_ -lt [version]$Version })[0].ToString() }
-$RunRoot = Join-Path $env:RUNNER_TEMP ('tauridium-chocolatey-' + [guid]::NewGuid().ToString('N') + ' paths with spaces')
+$RunRoot = Join-Path $env:RUNNER_TEMP ('tauridium-chocolatey-' + [guid]::NewGuid().ToString('N') + ' paths with spaces caf' + [char]0x00e9)
 $Feed = Join-Path $RunRoot 'packages'
 New-Item -ItemType Directory -Path $Feed -Force | Out-Null
 $Python = (Get-Command python.exe -ErrorAction Stop).Source
@@ -28,7 +28,7 @@ if (@(Get-TauridiumRegistrations).Count -or @(Get-TauridiumProducts).Count) { th
 $ChocoData = Join-Path $env:ChocolateyInstall 'lib/tauridium'
 if (Test-Path -LiteralPath $ChocoData) { throw 'Refusing an existing Chocolatey package.' }
 
-function Invoke-TestCommand([string]$Command, [string[]]$Arguments, [bool]$Success=$true) {
+function Invoke-TestCommand([string]$Command, [string[]]$Arguments, [bool]$Success=$true, [string]$ExpectedError='') {
   if (@($Arguments | Where-Object { $_ -match '["\r\n]' }).Count) { throw 'Unexpected harness argument.' }
   $Info = New-Object Diagnostics.ProcessStartInfo
   $Info.FileName = $Command
@@ -46,10 +46,13 @@ function Invoke-TestCommand([string]$Command, [string[]]$Arguments, [bool]$Succe
     Write-Host $Output.Result; Write-Host $Errors.Result
     $Okay = $Process.ExitCode -in @(0,3010)
     if ($Okay -ne $Success) { throw ('Unexpected command exit ' + $Process.ExitCode + ': ' + $Command) }
+    if (-not $Success -and (-not $ExpectedError -or ($Output.Result + $Errors.Result) -notmatch [regex]::Escape($ExpectedError))) {
+      throw 'Negative installer test failed for an unexpected reason.'
+    }
   } finally { $Process.Dispose() }
 }
-function Invoke-Choco([string]$Verb, [string[]]$More=@(), [bool]$Success=$true) {
-  Invoke-TestCommand $Choco (@($Verb,'tauridium','--yes','--no-progress','--limit-output','--source',$Feed) + $More) $Success
+function Invoke-Choco([string]$Verb, [string[]]$More=@(), [bool]$Success=$true, [string]$ExpectedError='') {
+  Invoke-TestCommand $Choco (@($Verb,'tauridium','--yes','--no-progress','--limit-output','--source',$Feed) + $More) $Success $ExpectedError
 }
 function Assert-Installed([string]$Expected) {
   $Products = @(Get-TauridiumProducts); Assert-TauridiumRegistrations $Products
@@ -89,7 +92,7 @@ function Assert-GuiAndRunningGuard {
     } while ((-not $Ready -or $Process.MainWindowHandle -eq [IntPtr]::Zero) -and [DateTime]::UtcNow -lt $Deadline)
     if (-not $Ready -or -not $Process.Responding -or $Process.MainWindowHandle -eq [IntPtr]::Zero) { throw 'Installed GUI did not become ready and responsive.' }
     $Install = Join-Path $ChocoData 'tools/chocolateyInstall.ps1'
-    Invoke-TestCommand 'powershell.exe' @('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',$Install) $false
+    Invoke-TestCommand 'powershell.exe' @('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',$Install) $false 'Close all Tauridium windows'
     $Process.Refresh();if ($Process.HasExited) { throw 'Running-app refusal killed the application.' }
   } finally {
     # Only the synthetic process started by this harness may be stopped.
@@ -119,7 +122,7 @@ try {
   New-Item -Path $FixtureKey -Force | Out-Null
   New-ItemProperty -Path $FixtureKey -Name DisplayName -Value 'Tauridium' | Out-Null
   New-ItemProperty -Path $FixtureKey -Name Publisher -Value 'brani' | Out-Null
-  Invoke-Choco 'install' @('--version',$PreviousVersion) $false
+  Invoke-Choco 'install' @('--version',$PreviousVersion) $false 'A conflicting Tauridium installation exists'
   Remove-Item -LiteralPath $FixtureKey -Recurse
   if (@(Get-TauridiumProducts).Count) { throw 'Conflict refusal still installed an MSI.' }
   $Checks.Add('Conflicting per-user registration refused without installation')
@@ -134,7 +137,7 @@ try {
   Invoke-TestCommand 'msiexec.exe' @('/i',$Msi,'/qn','/norestart','REBOOT=ReallySuppress','AUTOLAUNCHAPP=0')
   Assert-Installed $Version;Assert-PackageVersion $PreviousVersion
   $Checks.Add('Native MSI update preserves one product family while Chocolatey still records the previous version')
-  Invoke-TestCommand 'powershell.exe' @('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $RunRoot ('stage-' + $PreviousVersion + '/tools/chocolateyInstall.ps1'))) $false
+  Invoke-TestCommand 'powershell.exe' @('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $RunRoot ('stage-' + $PreviousVersion + '/tools/chocolateyInstall.ps1'))) $false 'A newer Tauridium MSI is already installed'
   Assert-Installed $Version
   Invoke-Choco 'upgrade' @('--version',$Version)
   Assert-Installed $Version;Assert-PackageVersion $Version

@@ -60,12 +60,12 @@ function Get-TauridiumMsiProperty($Database, [string]$Name) {
   if ($Name -notin @('ProductName','Manufacturer','ProductVersion','UpgradeCode','ALLUSERS','ProductCode')) { throw 'Unexpected MSI property query.' }
   $View = $Database.OpenView("SELECT ``Value`` FROM ``Property`` WHERE ``Property`` = '$Name'")
   try {
-    $View.Execute()
+    [void]$View.Execute()
     $Record = $View.Fetch()
     if ($null -eq $Record) { return '' }
     try { return [string]$Record.StringData(1) }
     finally { [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($Record) }
-  } finally { $View.Close(); [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($View) }
+  } finally { [void]$View.Close(); [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($View) }
 }
 function Get-TauridiumPayload([string]$Tools) {
   $Release = Get-Content -LiteralPath (Join-Path $Tools 'release.json') -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -88,12 +88,14 @@ function Get-TauridiumPayload([string]$Tools) {
     try { $Template = ([string]$Summary.Property(7)).Split(';')[0] }
     finally { [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($Summary) }
     if ($Template.ToLowerInvariant() -ne $Arch) { throw 'MSI architecture differs from the native Windows target.' }
-    if ((Get-TauridiumMsiProperty $Database 'ProductName') -ne 'Tauridium' -or
-        (Get-TauridiumMsiProperty $Database 'Manufacturer') -ne 'brani' -or
-        (Get-TauridiumMsiProperty $Database 'ProductVersion') -ne $Release.version -or
-        (Get-TauridiumMsiProperty $Database 'UpgradeCode') -ne $TauridiumUpgradeCode -or
-        (Get-TauridiumMsiProperty $Database 'ALLUSERS') -ne '1') {
-      throw 'Embedded MSI does not match the expected application/version/machine scope.'
+    $Expected = @{ ProductName='Tauridium'; Manufacturer='brani'; ProductVersion=[string]$Release.version; UpgradeCode=$TauridiumUpgradeCode; ALLUSERS='1' }
+    $Mismatches = @()
+    foreach ($Field in $Expected.Keys) {
+      $Actual = Get-TauridiumMsiProperty $Database $Field
+      if ($Actual -isnot [string] -or $Actual -cne $Expected[$Field]) { $Mismatches += $Field }
+    }
+    if ($Mismatches.Count) {
+      throw ('Embedded MSI does not match expected identity/scope; property names: ' + ($Mismatches -join ', '))
     }
   } finally {
     if ($null -ne $Database) { [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($Database) }
