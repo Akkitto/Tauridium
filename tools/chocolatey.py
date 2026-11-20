@@ -244,6 +244,20 @@ def normalized_package(archive: Path, expected: dict[str, bytes]) -> dict[str, b
         if value.lstrip('/') == core: node.set(key, ('/' if value.startswith('/') else '') + fixed)
         if node.tag.rsplit('}', 1)[-1] == 'Relationship' and key == 'Id': node.set(key, 'R' + str(index))
       if node.tag.rsplit('}', 1)[-1] in ('created', 'modified'): node.text = '1980-01-01T00:00:00Z'
+    # NuGet enumerates content-type declarations from an unordered collection.
+    # OPC declaration order has no meaning; duplicate declarations do.
+    identities = set()
+    for child in document:
+      local = child.tag.rsplit('}', 1)[-1]
+      if local in ('Default', 'Override'):
+        key = (local, child.get('Extension', child.get('PartName', '')).lower())
+        if key in identities: raise ValueError('Duplicate NuGet content-type declaration')
+        identities.add(key)
+      child.attrib = dict(sorted(child.attrib.items()))
+    document[:] = sorted(document, key=lambda child: (
+        child.tag, tuple((k, v) for k, v in sorted(child.attrib.items()) if k != 'Id'), child.text or ''))
+    for index, child in enumerate(document, 1):
+      if child.tag.rsplit('}', 1)[-1] == 'Relationship': child.set('Id', 'R' + str(index))
     contents[fixed if name == core else name] = ET.tostring(document, encoding='utf-8', xml_declaration=True)
   return contents
 

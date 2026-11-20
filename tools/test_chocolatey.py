@@ -170,3 +170,15 @@ class ChocolateyTests(unittest.TestCase):
       payload['tauridium.nuspec']=ET.tostring(package)
     archive,expected=self.fixture('duplicate',mutation=duplicate)
     with self.assertRaises(ValueError):c.normalized_package(archive,expected)
+
+  def test_content_type_enumeration_order_does_not_change_the_package(self):
+    first=b'<Types><Default Extension="ps1" ContentType="application/octet-stream"/><Default Extension="json" ContentType="application/json"/></Types>'
+    second=b'<Types><Default ContentType="application/json" Extension="json"/><Default ContentType="application/octet-stream" Extension="ps1"/></Types>'
+    a,expected=self.fixture('typesfirst',{'[Content_Types].xml':first})
+    b,_=self.fixture('typessecond',{'[Content_Types].xml':second})
+    self.assertEqual(c.normalized_package(a,expected),c.normalized_package(b,expected))
+
+  def test_duplicate_case_insensitive_content_type_is_rejected(self):
+    data=b'<Types><Default Extension="ps1" ContentType="one"/><Default Extension="PS1" ContentType="two"/></Types>'
+    archive,expected=self.fixture('duplicatetype',{'[Content_Types].xml':data})
+    with self.assertRaises(ValueError):c.normalized_package(archive,expected)
