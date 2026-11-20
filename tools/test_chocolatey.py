@@ -191,3 +191,11 @@ class ChocolateyTests(unittest.TestCase):
     normalized=c.normalized_package(a,expected)
     self.assertEqual(normalized,c.normalized_package(b,expected))
     self.assertIn(b'<creator>brani</creator>',normalized['package/services/metadata/core-properties/tauridium.psmdcp'])
+
+  def test_license_checkout_line_endings_do_not_change_staged_payloads(self):
+    license_file=self.root/'LICENSE'
+    with mock.patch.object(c,'ROOT',self.root):
+      license_file.write_bytes(b'MIT License\r\nCopyright brani\r\n')
+      windows=c.staging_files(self.lock,self.assets)
+      license_file.write_bytes(b'MIT License\nCopyright brani\n')
+      self.assertEqual(windows,c.staging_files(self.lock,self.assets))

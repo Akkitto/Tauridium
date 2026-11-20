@@ -143,7 +143,7 @@ def nuspec(version: str) -> bytes:
 def staging_files(lock: dict, assets: Path) -> dict[str, bytes]:
   validate_lock(lock)
   files = {'tauridium.nuspec': nuspec(lock['version']),
-           'LICENSE.txt': (ROOT / 'LICENSE').read_bytes(),
+           'LICENSE.txt': (ROOT / 'LICENSE').read_text(encoding='utf-8').replace('\r\n', '\n').encode(),
            'VERIFICATION.txt': ('Self-contained local package; no registry submission.\n'
               'MSI sizes, SHA-256 and version-bound publisher signatures verified before packaging.\n'
               f'Source: https://github.com/Akkitto/Tauridium/tree/{lock["commit"]}\n'
