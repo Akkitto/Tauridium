@@ -402,3 +402,32 @@ aur-prepare-bin archive:
 [linux]
 system-package target:
   python3 tools/build_system_package.py "{{target}}"
+
+# Chocolatey packages remain local: no feed credentials or submission commands.
+[unix]
+chocolatey-fetch version:
+  python3 tools/chocolatey.py fetch --lock packaging/chocolatey/releases/{{version}}.json --assets-dir release/chocolatey/assets/{{version}}
+
+[windows]
+chocolatey-fetch version:
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/chocolatey.py fetch --lock packaging/chocolatey/releases/{{version}}.json --assets-dir release/chocolatey/assets/{{version}}
+
+[unix]
+chocolatey-prepare version: (chocolatey-fetch version)
+  python3 tools/chocolatey.py prepare --lock packaging/chocolatey/releases/{{version}}.json --assets-dir release/chocolatey/assets/{{version}} --stage release/chocolatey/stage/{{version}}
+
+[windows]
+chocolatey-prepare version: (chocolatey-fetch version)
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/chocolatey.py prepare --lock packaging/chocolatey/releases/{{version}}.json --assets-dir release/chocolatey/assets/{{version}} --stage release/chocolatey/stage/{{version}}
+
+[windows]
+chocolatey-pack version: (chocolatey-prepare version)
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/chocolatey.py pack --lock packaging/chocolatey/releases/{{version}}.json --assets-dir release/chocolatey/assets/{{version}} --stage release/chocolatey/stage/{{version}} --output release/chocolatey/packages/tauridium.{{version}}.nupkg
+
+[unix]
+chocolatey-intake version commit run:
+  python3 tools/chocolatey.py intake --version {{version}} --commit {{commit}} --run-id {{run}} --output release/chocolatey/candidates/{{version}}.json
+
+[windows]
+chocolatey-intake version commit run:
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/python.ps1 tools/chocolatey.py intake --version {{version}} --commit {{commit}} --run-id {{run}} --output release/chocolatey/candidates/{{version}}.json

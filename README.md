@@ -54,6 +54,8 @@ scoop install tauridium
 
 Alternatively, download the native installer or x64/ARM64 portable ZIP from [GitHub Releases](https://github.com/Akkitto/Tauridium/releases/latest). Windows builds require the Microsoft Edge WebView2 Runtime, which is normally provided by supported Windows 10 releases and Windows 11.
 
+A self-contained [local Chocolatey package](packaging/chocolatey/README.md) can also be built from reviewed release installers and installed from a local folder; it is not submitted to the community feed.
+
 See [Installation](docs/installation.md) for package details, persistence behavior and release integrity, and [Scoop packaging](packaging/scoop/README.md) for the upstream submission fixture and validation flow.
 
 Windows initialization prefers Scoop, then WinGet for Minisign. If neither is

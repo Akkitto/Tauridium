@@ -1,0 +1,5 @@
+# Dependency lock binding — 20 November 2026
+
+The v1.0.13 packaging patch changes only Tauridium's local root package version in the application Cargo lock. A parsed comparison with the prior committed lock proves that every dependency version, source, checksum and feature dependency record is unchanged. The application lock SHA-256 is `ae8878303f143144ba6e745093b5db746f22b511dc1c5be98b6a524e2e633dee`; the exact audit policy binding is updated accordingly. The builder lock is unchanged.
+
+Fresh complete npm and RustSec audits passed both before synchronization and on the v1.0.13 release identity. Canonical quality gates, the optimized native build and the real Nix production build also passed with the updated exact lock binding. No advisory is ignored, classification relaxed, dependency overridden or review deadline extended. Existing reviewed findings, temporary backports and their 30 November 2026 reassessment deadline remain visible and enforced. See the 16 and 18 November security reviews for scope and evidence. This note does not claim an upstream vulnerability or maintenance finding has been removed.

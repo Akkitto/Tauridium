@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.13] - 2026-11-20
+
+- Add self-contained local Chocolatey packages from verified Windows x64/ARM64 MSI releases, without community-feed submission.
+- Preserve user data and MSI identity across native updates, Chocolatey upgrades and removal, with explicit architecture, installer integrity and conflict checks.
+- Add real native installation lifecycle, deterministic package and decoded artifact-security checks before release signing.
+
 ## [1.0.12] - 2026-11-18
 
 - Prevent styled service menus and download notifications from creating unintended native Wayland windows and stalling rendering.
