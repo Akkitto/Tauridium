@@ -17,6 +17,9 @@ env:
   NODE_OPTIONS: --no-deprecation
 
 jobs:
+  chocolatey:
+    uses: ./.github/workflows/chocolatey.yml
+
   security:
     uses: ./.github/workflows/security.yml
 

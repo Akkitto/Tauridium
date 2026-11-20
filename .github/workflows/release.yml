@@ -16,6 +16,9 @@ env:
   NODE_OPTIONS: --no-deprecation
 
 jobs:
+  chocolatey:
+    uses: ./.github/workflows/chocolatey.yml
+
   security:
     uses: ./.github/workflows/security.yml
 
@@ -27,7 +30,7 @@ jobs:
 
   gate:
     name: Release gates
-    needs: security
+    needs: [security, chocolatey]
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     permissions:
