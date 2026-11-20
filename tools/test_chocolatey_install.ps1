@@ -56,6 +56,7 @@ function Invoke-TestCommand([string]$Command, [string[]]$Arguments, [bool]$Succe
   } finally { $Process.Dispose() }
 }
 function Invoke-Choco([string]$Verb, [string[]]$More=@(), [bool]$Success=$true, [string]$ExpectedError='') {
+  Write-Host ('Chocolatey lifecycle phase: ' + $Verb)
   Invoke-TestCommand $Choco (@($Verb,'tauridium','--yes','--no-progress','--limit-output','--source',$Feed) + $More) $Success $ExpectedError
 }
 function Assert-Installed([string]$Expected) {
