@@ -1,7 +1,7 @@
 # Local Chocolatey package
 
 Tauridium provides a self-contained `tauridium` Chocolatey package for Windows
-x64 and ARM64. It is prepared from the application's repository and installed
+x64 and ARM64 (Windows 10 version 1709 or newer, including Windows 11). It is prepared from the application's repository and installed
 from a local folder. No Chocolatey Community Repository submission, API key,
 account or hosted feed is required. GitHub repository URLs are source/download
 locations; the folder containing the generated `.nupkg` is the Chocolatey source.
@@ -28,7 +28,9 @@ scripts, release metadata, license and verification notes are packaged. No
 producer Git, profiles, credentials, caches or logs enter the package.
 
 The generated package includes both architectures and selects the actual native
-Windows architecture, including under emulated PowerShell. x86 and forced-x86
+Windows architecture through `IsWow64Process2`, including under emulated
+Chocolatey/PowerShell. Runtime-information helpers alone can report the emulated
+x64 view on ARM64. x86 and forced-x86
 requests fail. Embedded bytes, MSI architecture, version, manufacturer, upgrade
 family and machine installation scope are checked before installation. There
 are no package-source dependencies; WebView2 still has to be present or provided
@@ -106,3 +108,5 @@ community submission remain separate work.
 Official references: [package creation](https://docs.chocolatey.org/en-us/create/create-packages/),
 [embedded installer helper](https://docs.chocolatey.org/en-us/create/functions/install-chocolateyinstallpackage/),
 [uninstall helper](https://docs.chocolatey.org/en-us/create/functions/uninstall-chocolateypackage/).
+
+Native-machine API reference: [Microsoft IsWow64Process2](https://learn.microsoft.com/en-us/windows/win32/api/wow64apiset/nf-wow64apiset-iswow64process2).

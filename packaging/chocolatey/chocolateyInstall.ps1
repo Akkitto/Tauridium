@@ -2,6 +2,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'tauridium.ps1')
 Assert-TauridiumStopped
 $Payload = Get-TauridiumPayload $PSScriptRoot
+Write-Host ('Verified native Tauridium MSI: ' + $Payload.Architecture + ' ' + $Payload.Version)
 $Products = @(Get-TauridiumProducts)
 Assert-TauridiumRegistrations $Products
 if ($Products.Count -eq 1 -and [version]$Products[0].Version -gt [version]$Payload.Version) {

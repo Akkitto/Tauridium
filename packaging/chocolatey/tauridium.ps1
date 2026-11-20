@@ -5,14 +5,38 @@ $TauridiumUpgradeCode = '{417CADD0-7C97-590B-8DAF-C89B2319571E}'
 
 function Get-TauridiumArchitecture {
   if ($env:ChocolateyForceX86 -eq 'true') { throw 'Tauridium does not provide an x86 package.' }
-  # The native OS architecture remains authoritative under emulated PowerShell.
-  $Native = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
-  switch ($Native.ToLowerInvariant()) {
-    'x64' { return 'x64' }
-    'arm64' { return 'arm64' }
+  # Older .NET architecture reports can reflect x64 emulation on ARM64.
+  # IsWow64Process2 returns the actual native machine independently of that view.
+  if (-not ('Tauridium.Chocolatey.NativeMachine' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+namespace Tauridium.Chocolatey {
+  public static class NativeMachine {
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWow64Process2(IntPtr process, out ushort processMachine, out ushort nativeMachine);
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetCurrentProcess();
+    public static ushort GetMachine() {
+      ushort processMachine;
+      ushort nativeMachine;
+      if (!IsWow64Process2(GetCurrentProcess(), out processMachine, out nativeMachine))
+        throw new Win32Exception(Marshal.GetLastWin32Error());
+      return nativeMachine;
+    }
+  }
+}
+'@
+  }
+  switch ([int][Tauridium.Chocolatey.NativeMachine]::GetMachine()) {
+    0x8664 { return 'x64' }
+    0xAA64 { return 'arm64' }
     default { throw 'Tauridium supports only Windows x64 and ARM64.' }
   }
 }
+
 function Assert-TauridiumStopped {
   if (@(Get-Process -Name tauridium -ErrorAction SilentlyContinue).Count -gt 0) {
     throw 'Close all Tauridium windows and quit its tray process, then retry. No process was terminated.'
