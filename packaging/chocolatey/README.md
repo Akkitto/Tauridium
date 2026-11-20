@@ -21,7 +21,7 @@ The recipe fetches both official MSI/signature pairs from fixed version-specific
 GitHub release URLs, checks their exact sizes/SHA-256 and publisher signatures
 using the pinned native Minisign verifier, then prepares an allowlisted staging
 tree. It invokes actual `choco pack`, verifies its payload and NuGet identity,
-and normalizes ZIP timestamps and generated NuGet core-metadata identifiers.
+and normalizes ZIP timestamps, generated NuGet identifiers and host/tool stamps.
 Repeat generation must produce identical bytes or fails while preserving the
 existing output. Only the two MSIs, their public signatures, fixed install/removal
 scripts, release metadata, license and verification notes are packaged. No

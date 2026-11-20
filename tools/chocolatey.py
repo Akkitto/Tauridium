@@ -244,6 +244,9 @@ def normalized_package(archive: Path, expected: dict[str, bytes]) -> dict[str, b
         if value.lstrip('/') == core: node.set(key, ('/' if value.startswith('/') else '') + fixed)
         if node.tag.rsplit('}', 1)[-1] == 'Relationship' and key == 'Id': node.set(key, 'R' + str(index))
       if node.tag.rsplit('}', 1)[-1] in ('created', 'modified'): node.text = '1980-01-01T00:00:00Z'
+      # NuGet stamps its host/tool version here; this canonicalizer is the
+      # final metadata producer. Keep the actual package author unchanged.
+      if node.tag.rsplit('}', 1)[-1] == 'lastModifiedBy': node.text = 'Tauridium local package builder'
     # NuGet enumerates content-type declarations from an unordered collection.
     # OPC declaration order has no meaning; duplicate declarations do.
     identities = set()

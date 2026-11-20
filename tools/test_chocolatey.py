@@ -182,3 +182,12 @@ class ChocolateyTests(unittest.TestCase):
     data=b'<Types><Default Extension="ps1" ContentType="one"/><Default Extension="PS1" ContentType="two"/></Types>'
     archive,expected=self.fixture('duplicatetype',{'[Content_Types].xml':data})
     with self.assertRaises(ValueError):c.normalized_package(archive,expected)
+
+  def test_generated_host_tool_stamp_normalizes_without_changing_author(self):
+    first=b'<coreProperties><creator>brani</creator><lastModifiedBy>NuGet host build A</lastModifiedBy></coreProperties>'
+    second=b'<coreProperties><creator>brani</creator><lastModifiedBy>NuGet host build B</lastModifiedBy></coreProperties>'
+    a,expected=self.fixture('hostfirst',{'package/services/metadata/core-properties/hostfirst.psmdcp':first})
+    b,_=self.fixture('hostsecond',{'package/services/metadata/core-properties/hostsecond.psmdcp':second})
+    normalized=c.normalized_package(a,expected)
+    self.assertEqual(normalized,c.normalized_package(b,expected))
+    self.assertIn(b'<creator>brani</creator>',normalized['package/services/metadata/core-properties/tauridium.psmdcp'])
