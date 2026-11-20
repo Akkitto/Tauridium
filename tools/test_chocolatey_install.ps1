@@ -70,6 +70,10 @@ function Assert-Installed([string]$Expected) {
   Invoke-TestCommand $script:InstalledExe @('--build-info-file',$Probe)
   $Info = Get-Content -LiteralPath $Probe -Raw | ConvertFrom-Json
   $Target = if ($Architecture -eq 'x64') { 'x86_64-pc-windows-msvc' } else { 'aarch64-pc-windows-msvc' }
+  $SafeVersion = if ([string]$Info.version -match '^\d{1,8}\.\d{1,8}\.\d{1,8}$') { [string]$Info.version } else { 'unexpected' }
+  $SafeTarget = if ($Info.target -in @('x86_64-pc-windows-msvc','aarch64-pc-windows-msvc','x86_64-unknown-linux-gnu','aarch64-unknown-linux-gnu')) { [string]$Info.target } else { 'unexpected' }
+  $SafeMode = if ($Info.buildMode -in @('production','development')) { [string]$Info.buildMode } else { 'unexpected' }
+  Write-Host ('MSI runtime facts: ' + (@{version=$SafeVersion;target=$SafeTarget;mode=$SafeMode;expectedVersion=$Expected;expectedTarget=$Target} | ConvertTo-Json -Compress))
   if ($Info.version -ne $Expected -or $Info.target -ne $Target -or $Info.buildMode -ne 'production') { throw 'Actual installed binary identity mismatch.' }
 }
 function Assert-Removed {
