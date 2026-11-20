@@ -267,7 +267,25 @@ def pack(lock: dict, assets: Path, stage: Path, output: Path) -> None:
         archive.writestr(entry, payload)
     if output.exists() or output.is_symlink():
       require_regular(output)
-      if output.read_bytes() != buffer.read_bytes(): raise ValueError('Existing local package differs; preserve it for review')
+      if output.read_bytes() != buffer.read_bytes():
+        differences = []
+        with zipfile.ZipFile(output) as prior:
+          for name, payload in contents.items():
+            before = prior.read(name)
+            if before == payload: continue
+            fields = []
+            if name.endswith(('.xml', '.rels', '.psmdcp', '.nuspec')):
+              old_nodes = list(ET.fromstring(before).iter())
+              new_nodes = list(ET.fromstring(payload).iter())
+              for a, b in zip(old_nodes, new_nodes):
+                if a.text != b.text or a.attrib != b.attrib:
+                  field = b.tag.rsplit('}', 1)[-1]
+                  fields.append(field if field in {'Relationship','Override','Default','creator','identifier','version','title','description','keywords','lastModifiedBy','created','modified'} else 'other')
+            # Only generated allowlisted names/field labels are reported, not
+            # arbitrary metadata values or possible credentials.
+            label = name if name in expected or name in {'_rels/.rels','[Content_Types].xml','package/services/metadata/core-properties/tauridium.psmdcp'} else 'unexpected'
+            differences.append({'member': label, 'fields': fields})
+        raise ValueError('Existing local package differs; preserve it for review: ' + json.dumps(differences))
     else:
       output.parent.mkdir(parents=True, exist_ok=True)
       with output.open('xb') as stream: stream.write(buffer.read_bytes())
