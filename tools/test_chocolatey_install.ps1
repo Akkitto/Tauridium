@@ -59,6 +59,7 @@ function Invoke-Choco([string]$Verb, [string[]]$More=@(), [bool]$Success=$true, 
   Invoke-TestCommand $Choco (@($Verb,'tauridium','--yes','--no-progress','--limit-output','--source',$Feed) + $More) $Success $ExpectedError
 }
 function Assert-Installed([string]$Expected) {
+  if (@(Get-Process -Name tauridium -ErrorAction SilentlyContinue).Count) { throw 'MSI unexpectedly launched Tauridium during unattended installation.' }
   $Products = @(Get-TauridiumProducts); Assert-TauridiumRegistrations $Products
   if ($Products.Count -ne 1 -or $Products[0].Version -ne $Expected) { throw 'Expected one exact machine-wide MSI installation.' }
   $Row = @(Get-TauridiumRegistrations)[0]
@@ -139,7 +140,7 @@ try {
   $Checks.Add('Previous release installed machine-wide with exact native production binary')
   # Model the actual MSI updater path independently of Chocolatey tracking.
   $Msi = Join-Path $RunRoot ('assets-' + $Version + '/tauridium-' + $Version + '-windows-' + $Architecture + '.msi')
-  Invoke-TestCommand 'msiexec.exe' @('/i',$Msi,'/qn','/norestart','REBOOT=ReallySuppress','AUTOLAUNCHAPP=0')
+  Invoke-TestCommand 'msiexec.exe' @('/i',$Msi,'/qn','/norestart','REBOOT=ReallySuppress')
   Assert-Installed $Version;Assert-PackageVersion $PreviousVersion
   $Checks.Add('Native MSI update preserves one product family while Chocolatey still records the previous version')
   Invoke-TestCommand 'powershell.exe' @('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $RunRoot ('stage-' + $PreviousVersion + '/tools/chocolateyInstall.ps1'))) $false 'A newer Tauridium MSI is already installed'
@@ -149,7 +150,7 @@ try {
   $Checks.Add('Chocolatey upgrade after native MSI update converges without downgrade or duplicates')
   Assert-GuiAndRunningGuard
   $Checks.Add('Responsive real production GUI and safe running-process refusal')
-  Invoke-Choco 'install' @('--version',$Version,'--force','--install-arguments','ALLUSERS=2 MSIINSTALLPERUSER=1','--override-arguments')
+  Invoke-Choco 'install' @('--version',$Version,'--force','--install-arguments','ALLUSERS=2 MSIINSTALLPERUSER=1 AUTOLAUNCHAPP=1','--override-arguments')
   Assert-Installed $Version
   $Checks.Add('Explicit same-version reinstall preserves one machine installation even with caller scope overrides')
   Invoke-Choco 'uninstall'

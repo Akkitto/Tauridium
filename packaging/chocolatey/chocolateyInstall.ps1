@@ -9,7 +9,7 @@ if ($Products.Count -eq 1 -and [version]$Products[0].Version -gt [version]$Paylo
 }
 # MSI is installed machine-wide; never launch the app elevated or reboot silently.
 Install-ChocolateyInstallPackage -PackageName 'tauridium' -FileType 'msi' `
-  -File $Payload.File -SilentArgs '/qn /norestart REBOOT=ReallySuppress AUTOLAUNCHAPP=0 WIXUI_EXITDIALOGOPTIONALCHECKBOX=0' `
+  -File $Payload.File -SilentArgs '/qn /norestart REBOOT=ReallySuppress WIXUI_EXITDIALOGOPTIONALCHECKBOX=0' `
   -UseOnlyPackageSilentArguments -ValidExitCodes @(0, 3010)
 $Installed = @(Get-TauridiumProducts)
 Assert-TauridiumRegistrations $Installed
