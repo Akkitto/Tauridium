@@ -37,6 +37,15 @@ namespace Tauridium.Chocolatey {
   }
 }
 
+function Assert-TauridiumInstallerArguments {
+  # Chocolatey's global override can replace even package-owned silent flags.
+  # Reject unsupported input before invoking either installer helper; do not log it.
+  foreach ($Variable in @('chocolateyInstallArguments','chocolateyInstallOverride','chocolateyPackageParameters')) {
+    if (-not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($Variable, 'Process'))) {
+      throw 'Custom installer arguments or package parameters are not supported; use the fixed machine-wide defaults.'
+    }
+  }
+}
 function Assert-TauridiumStopped {
   if (@(Get-Process -Name tauridium -ErrorAction SilentlyContinue).Count -gt 0) {
     throw 'Close all Tauridium windows and quit its tray process, then retry. No process was terminated.'

@@ -1,5 +1,6 @@
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'tauridium.ps1')
+Assert-TauridiumInstallerArguments
 Assert-TauridiumStopped
 # The upgrade family survives a legitimate MSI self-update that changes ProductCode.
 $Products = @(Get-TauridiumProducts)

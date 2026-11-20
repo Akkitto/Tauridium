@@ -129,6 +129,9 @@ try {
     1..2 | ForEach-Object { Invoke-TestCommand $Python @('tools/chocolatey.py','pack','--lock',$Lock,'--assets-dir',$Assets,'--stage',$Stage,'--output',$Output) }
   }
   $Checks.Add('Real choco pack, exact inventory and byte-identical repeat packaging for both releases')
+  Invoke-Choco 'install' @('--version',$PreviousVersion,'--forcex86') $false 'Tauridium does not provide an x86 package'
+  if (@(Get-TauridiumProducts).Count) { throw 'Unsupported x86 request still installed an MSI.' }
+  $Checks.Add('Forced-x86 selection refused before installing a payload')
   New-Item -Path $FixtureKey -Force | Out-Null
   New-ItemProperty -Path $FixtureKey -Name DisplayName -Value 'Tauridium' | Out-Null
   New-ItemProperty -Path $FixtureKey -Name Publisher -Value 'brani' | Out-Null
@@ -154,9 +157,13 @@ try {
   $Checks.Add('Chocolatey upgrade after native MSI update converges without downgrade or duplicates')
   Assert-GuiAndRunningGuard
   $Checks.Add('Responsive real production GUI and safe running-process refusal')
-  Invoke-Choco 'install' @('--version',$Version,'--force','--install-arguments','ALLUSERS=2 MSIINSTALLPERUSER=1 AUTOLAUNCHAPP=1','--override-arguments')
+  Invoke-Choco 'install' @('--version',$Version,'--force','--install-arguments','ALLUSERS=2 MSIINSTALLPERUSER=1 AUTOLAUNCHAPP=1','--override-arguments') $false 'Custom installer arguments or package parameters are not supported'
   Assert-Installed $Version
-  $Checks.Add('Explicit same-version reinstall preserves one machine installation even with caller scope overrides')
+  $Checks.Add('Unsafe caller scope/launch override refused before changing the installed application')
+  Invoke-Choco 'install' @('--version',$Version,'--force')
+  Assert-Installed $Version
+  Assert-PackageVersion $Version
+  $Checks.Add('Ordinary same-version reinstall succeeds with one machine installation')
   Invoke-Choco 'uninstall'
   Assert-Removed
   Invoke-Choco 'install' @('--version',$Version)
