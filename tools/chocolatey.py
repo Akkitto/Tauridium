@@ -223,7 +223,17 @@ def normalized_package(archive: Path, expected: dict[str, bytes]) -> dict[str, b
     document = xml(data)
     nodes = [e for e in document if e.tag.rsplit('}', 1)[-1] == 'metadata']
     if len(nodes) != 1: raise ValueError('Invalid NuGet metadata')
-    return [(e.tag.rsplit('}', 1)[-1], e.text, sorted(e.attrib.items()), len(e)) for e in nodes[0]]
+    result = {}
+    for element in nodes[0]:
+      name = element.tag.rsplit('}', 1)[-1]
+      if name in result or len(element): raise ValueError('Duplicate or nested NuGet metadata')
+      attributes = dict(element.attrib)
+      # NuGet can add an XML whitespace-preservation annotation and reorder
+      # scalar metadata. Neither changes identity or introduces dependencies.
+      if attributes.get('{http://www.w3.org/XML/1998/namespace}space') == 'preserve':
+        del attributes['{http://www.w3.org/XML/1998/namespace}space']
+      result[name] = (element.text, sorted(attributes.items()))
+    return result
   if metadata(contents['tauridium.nuspec']) != metadata(expected['tauridium.nuspec']):
     raise ValueError('NuGet changed package identity, dependencies or metadata')
   core = cores[0];fixed = 'package/services/metadata/core-properties/tauridium.psmdcp'

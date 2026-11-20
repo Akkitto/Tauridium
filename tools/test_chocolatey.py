@@ -152,3 +152,21 @@ class ChocolateyTests(unittest.TestCase):
         with self.assertRaises(ValueError):c.intake(self.lock['version'],self.lock['commit'],self.lock['runId'],self.root/'rejected.json')
         fetch.assert_not_called()
       self.assertFalse((self.root/'rejected.json').exists())
+
+  def test_nuget_scalar_reordering_and_space_annotation_preserve_exact_identity(self):
+    import xml.etree.ElementTree as ET
+    def reorder(payload):
+      package=ET.fromstring(payload['tauridium.nuspec']);metadata=next(iter(package))
+      metadata[:]=list(reversed(list(metadata)))
+      for node in metadata:node.set('{http://www.w3.org/XML/1998/namespace}space','preserve')
+      payload['tauridium.nuspec']=ET.tostring(package)
+    archive,expected=self.fixture('reordered',mutation=reorder)
+    self.assertIn('tauridium.nuspec',c.normalized_package(archive,expected))
+
+  def test_duplicate_nuget_scalar_identity_is_rejected(self):
+    import xml.etree.ElementTree as ET
+    def duplicate(payload):
+      package=ET.fromstring(payload['tauridium.nuspec']);metadata=next(iter(package));metadata.append(copy.deepcopy(metadata[0]))
+      payload['tauridium.nuspec']=ET.tostring(package)
+    archive,expected=self.fixture('duplicate',mutation=duplicate)
+    with self.assertRaises(ValueError):c.normalized_package(archive,expected)
