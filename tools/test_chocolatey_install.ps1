@@ -32,18 +32,22 @@ function Invoke-TestCommand([string]$Command, [string[]]$Arguments, [bool]$Succe
   if (@($Arguments | Where-Object { $_ -match '["\r\n]' }).Count) { throw 'Unexpected harness argument.' }
   $Info = New-Object Diagnostics.ProcessStartInfo
   $Info.FileName = $Command
-  $Info.Arguments = (@($Arguments | ForEach-Object { '"' + $_.TrimEnd('\') + '"' }) -join ' ')
+  # Windows Installer parses its switches itself. Quote values that need it,
+  # retaining bare /i, /x and /qn switches, as in normal msiexec invocation.
+  $Info.Arguments = (@($Arguments | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }) -join ' ')
   $Info.UseShellExecute = $false
   $Info.RedirectStandardOutput = $true
   $Info.RedirectStandardError = $true
   $Process = New-Object Diagnostics.Process
   $Process.StartInfo = $Info
   try {
+    Write-Host ('Starting native test command: ' + [IO.Path]::GetFileName($Command))
     if (-not $Process.Start()) { throw 'Native command did not start.' }
     $Output = $Process.StandardOutput.ReadToEndAsync(); $Errors = $Process.StandardError.ReadToEndAsync()
     if (-not $Process.WaitForExit(240000)) { $Process.Kill(); throw ('Command timed out: ' + $Command) }
     if (-not $Output.Wait(15000) -or -not $Errors.Wait(15000)) { throw 'Native output did not close.' }
     Write-Host $Output.Result; Write-Host $Errors.Result
+    Write-Host ('Native test exit: ' + [IO.Path]::GetFileName($Command) + ' = ' + $Process.ExitCode)
     $Okay = $Process.ExitCode -in @(0,3010)
     if ($Okay -ne $Success) { throw ('Unexpected command exit ' + $Process.ExitCode + ': ' + $Command) }
     if (-not $Success -and (-not $ExpectedError -or ($Output.Result + $Errors.Result) -notmatch [regex]::Escape($ExpectedError))) {
@@ -101,6 +105,7 @@ function Assert-GuiAndRunningGuard {
 }
 
 $Checks = New-Object 'Collections.Generic.List[string]'
+$LifecycleFailed = $false
 $FixtureKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Tauridium'
 try {
   Invoke-TestCommand $Choco @('--version')
@@ -144,9 +149,9 @@ try {
   $Checks.Add('Chocolatey upgrade after native MSI update converges without downgrade or duplicates')
   Assert-GuiAndRunningGuard
   $Checks.Add('Responsive real production GUI and safe running-process refusal')
-  Invoke-Choco 'install' @('--version',$Version,'--force')
+  Invoke-Choco 'install' @('--version',$Version,'--force','--install-arguments','ALLUSERS=2 MSIINSTALLPERUSER=1','--override-arguments')
   Assert-Installed $Version
-  $Checks.Add('Explicit same-version reinstall preserves one installation')
+  $Checks.Add('Explicit same-version reinstall preserves one machine installation even with caller scope overrides')
   Invoke-Choco 'uninstall'
   Assert-Removed
   Invoke-Choco 'install' @('--version',$Version)
@@ -159,9 +164,17 @@ try {
   Copy-Item -Path (Join-Path $Feed '*.nupkg') -Destination $Evidence
   @{passed=$true;architecture=$Architecture;version=$Version;previousVersion=$PreviousVersion;checks=@($Checks);realPrivateAccountsUsed=$false} | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $Evidence 'result.json') -Encoding UTF8
   Write-Host ('Chocolatey local lifecycle passed: ' + $Architecture)
+ } catch {
+  $LifecycleFailed = $true
+  throw
 } finally {
-  if (Test-Path -LiteralPath $FixtureKey) { Remove-Item -LiteralPath $FixtureKey -Recurse -Force }
-  # Restriction above ensures these are newly created disposable fixtures only.
-  $Products = @(Get-TauridiumProducts)
-  foreach ($Product in $Products) { Invoke-TestCommand 'msiexec.exe' @('/x',$Product.Code,'/qn','/norestart','REBOOT=ReallySuppress') }
+  try {
+    if (Test-Path -LiteralPath $FixtureKey) { Remove-Item -LiteralPath $FixtureKey -Recurse -Force }
+    # Only this disposable runner's newly created application may be removed.
+    $Products = @(Get-TauridiumProducts)
+    foreach ($Product in $Products) { Invoke-TestCommand 'msiexec.exe' @('/x',$Product.Code,'/qn','/norestart','REBOOT=ReallySuppress') }
+  } catch {
+    Write-Warning 'Disposable-runner MSI cleanup failed; the lifecycle remains unsuccessful. The original failure is preserved.'
+    if (-not $LifecycleFailed) { throw }
+  }
 }

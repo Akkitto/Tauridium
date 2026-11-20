@@ -53,6 +53,8 @@ choco uninstall tauridium
 Quit Tauridium, including its tray process, before either operation. Package
 scripts refuse running instances and never kill them. Installation is
 machine-wide, and the application is not launched elevated by the installer.
+Scope, launch and reboot arguments are owned by the package; caller-supplied
+installer argument overrides cannot change that policy.
 A conflicting per-user NSIS installation must be removed using its own
 uninstaller first; preserve your application data. Package scripts do not migrate
 or delete an unrelated installation, user profile, sessions, backups, credentials
