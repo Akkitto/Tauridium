@@ -8,13 +8,15 @@ locations; the folder containing the generated `.nupkg` is the Chocolatey source
 
 ## Build and install
 
-Use a reviewed checkout, Chocolatey, Python and `just` on Windows. Native commands
+Use the current reviewed `master` checkout, Chocolatey, Python and `just` on Windows.
+The current checkout contains verified locks added after publication; an immutable
+source tag can predate its own release lock. See [New release intake](#new-release-intake) when a lock is missing. Native commands
 work with Windows PowerShell 5.1 and PowerShell 7; WSL is not required.
 
 ```powershell
-just chocolatey-pack 1.0.12
+just chocolatey-pack 1.0.13
 # Review the package and scripts before this elevated installation:
-choco install tauridium --version 1.0.12 --source "$PWD\release\chocolatey\packages"
+choco install tauridium --version 1.0.13 --source "$PWD\release\chocolatey\packages"
 ```
 
 The recipe fetches both official MSI/signature pairs from fixed version-specific
