@@ -1,6 +1,6 @@
 {
   "name": "tauridium",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "description": "Tauridium - lightweight Tauri client for Ferdium",
   "author": "Daniel Braniewski",
   "homepage": "https://github.com/Akkitto/Tauridium",
@@ -23,18 +23,18 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@tauri-apps/api": "2.12.4",
+    "@tauri-apps/api": "2.12.5",
     "@tauri-apps/plugin-dialog": "2.8.4"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@tsconfig/svelte": "5.0.9",
     "deepmerge": "file:vendor/deepmerge",
-    "svelte": "5.57.3",
+    "svelte": "5.58.0",
     "svelte-check": "4.7.8",
     "typescript": "6.0.3",
     "vite": "8.3.8",
-    "vitest": "5.1.0",
+    "vitest": "5.1.1",
     "picomatch": "file:vendor/picomatch"
   },
   "engines": {

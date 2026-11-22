@@ -6708,6 +6708,15 @@ mod tests {
     }
 
     #[test]
+    fn nested_blob_url_origins_are_opaque_without_recursive_stack_growth() {
+        for prefixes in [1, 2, 10_000] {
+            let value = format!("{}https://example.invalid/", "blob:".repeat(prefixes));
+            let parsed = Url::parse(&value).unwrap();
+            assert_eq!(parsed.origin().is_tuple(), prefixes == 1);
+        }
+    }
+
+    #[test]
     fn resolve_url_uses_plain_service_url() {
         let cfg = json!({ "config": { "serviceURL": "https://web.whatsapp.com" } });
         assert_eq!(

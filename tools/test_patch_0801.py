@@ -32,7 +32,7 @@ class Patch0801Tests(unittest.TestCase):
     self.assertIn('"dep:zbus"', body)
     self.assertNotIn('"zbus/tokio"', body)
     self.assertIn('"dep:futures-lite"', body)
-    self.assertIn('zbus = { version = "=6.2.1", default-features = false, features = ["proxy", "default-rt"], optional = true }', cargo)
+    self.assertIn('zbus = { version = "=6.3.0", default-features = false, features = ["proxy", "default-rt"], optional = true }', cargo)
     # rfd 0.17 supplies its portal transport without the removed Tokio selector.
     self.assertNotIn('"rfd/tokio"', body)
     self.assertIn('"rfd/xdg-portal"', body)
