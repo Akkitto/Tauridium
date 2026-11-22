@@ -47,7 +47,7 @@ in
     cargoDeps = rustPlatform.fetchCargoVendor {
       src = source;
       name = "tauri-cli-${policy.tauriCliBuild}";
-      hash = "sha256-vWjSOeqxVg87qOLbcFBaZsdxEjxNPtEwyfLVkL+wUos=";
+      hash = "sha256-Ez9uKTFHGhySzafQhU12wE4yi8TEzZxdgi1WGN7DwQY=";
     };
   }
 )

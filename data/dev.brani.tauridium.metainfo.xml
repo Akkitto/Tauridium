@@ -19,11 +19,12 @@
   <url type="vcs-browser">https://github.com/Akkitto/Tauridium</url>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v1.0.13/data/screenshots/tauridium-0.8.0-main.png</image>
+      <image>https://raw.githubusercontent.com/Akkitto/Tauridium/v1.0.14/data/screenshots/tauridium-0.8.0-main.png</image>
       <caption>Tauridium sign-in and local accountless start screen</caption>
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.0.14" date="2026-11-22"><description><p>Refresh compatible dependencies and verified local package integration.</p></description></release>
     <release version="1.0.13" date="2026-11-20">
       <description><p>Add verified local Chocolatey packaging and native MSI installation lifecycle checks without submitting to a package registry.</p></description>
     </release>

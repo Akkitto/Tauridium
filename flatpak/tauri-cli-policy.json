@@ -1,9 +1,9 @@
 {
   "cargoAudit": "0.22.2",
   "tauriCli": "2.12.4",
-  "tauriCliBuild": "2.12.4+tauridium.1",
+  "tauriCliBuild": "2.12.4+tauridium.2",
   "tauriBundler": "2.10.4",
   "tauriBundlerCrateSha256": "ec436f80e3f9dc5f87e449652cc21fd546760b5ee6b4646cec30e95b68fd9104",
   "tauriCliCrateSha256": "9966558da94fd1c9485d0d78f12233bea5fd4235826fb78e930fe7a26910b956",
-  "tauriCliLockSha256": "6019075d357d3ff887c4fb0f59584c2720971749d95789dd60cee5f42550a202"
+  "tauriCliLockSha256": "bbc1542eebc53c9deac34dfa6d519af653e7030ad9469f49f145592238aafba6"
 }

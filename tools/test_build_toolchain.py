@@ -46,3 +46,11 @@ class BuildToolchainTests(unittest.TestCase):
         flatpak = (ROOT / "flatpak/dev.brani.tauridium.yml").read_text(encoding="utf-8")
         module = flatpak.split("  - name: tauri-cli", 1)[1].split("  - name: tauridium", 1)[0]
         self.assertIn("cleanup:\n      - /bin/cargo-tauri", module)
+
+    def test_application_and_builder_url_origins_have_the_upstream_dos_fix(self):
+        for path in ("src-tauri/Cargo.lock", "flatpak/tauri-cli.Cargo.lock"):
+            lock = tomllib.loads((ROOT / path).read_text(encoding="utf-8"))
+            packages = [p for p in lock["package"] if p["name"] == "url"]
+            self.assertTrue(packages, path)
+            for package in packages:
+                self.assertGreaterEqual(tuple(map(int, package["version"].split("."))), (2, 5, 9), path)
