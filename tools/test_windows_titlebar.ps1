@@ -441,6 +441,38 @@ function Open-Advanced {
   Invoke-Control 'Advanced'
   Wait-For { $null -ne (Find-Control 'Unified title bar' ([Windows.Automation.ControlType]::CheckBox)) } 'title-bar setting'
 }
+function Search-Settings-Value {
+  $Control = Find-Control 'Search settings'
+  if ($null -eq $Control) { return $null }
+  $Pattern = $null
+  if (-not $Control.TryGetCurrentPattern([Windows.Automation.ValuePattern]::Pattern,[ref]$Pattern)) {
+    throw 'Editable Settings search must expose the accessible Value pattern.'
+  }
+  return $Pattern.Current.Value
+}
+function Search-Settings-For([string]$Query, [string]$SelectionKeys = '{ENTER}') {
+  Activate-Tauridium
+  [Windows.Forms.SendKeys]::SendWait('^f')
+  [Windows.Forms.SendKeys]::SendWait($Query)
+  Wait-For { (Search-Settings-Value) -eq $Query } 'scoped Ctrl+F focuses Settings search'
+  [Windows.Forms.SendKeys]::SendWait($SelectionKeys)
+}
+function Test-Settings-Search {
+  # Navigation must not edit a setting, start an action, or persist the query.
+  $Before = (Read-Settings | ConvertTo-Json -Depth 20 -Compress)
+  Search-Settings-For 'show service names'
+  Wait-For { [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Show service names' } 'search opens Services and focuses its exact control'
+  Search-Settings-For 'theme'
+  Wait-For { [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Theme' } 'search opens Appearance and focuses Theme'
+  Search-Settings-For 'sidebar spacing' '{DOWN}{ENTER}'
+  Wait-For { [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Expanded service item spacing' } 'arrow navigation selects the second matching setting'
+  Search-Settings-For 'unified title bar'
+  Wait-For { [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Unified title bar' } 'search exposes the Windows title-bar setting'
+  Check ((Read-Settings | ConvertTo-Json -Depth 20 -Compress) -eq $Before) 'Settings search navigation leaves persisted preferences unchanged'
+  [Windows.Forms.SendKeys]::SendWait('^f')
+  Invoke-Control 'Clear settings search'
+  Wait-For { (Search-Settings-Value) -eq '' } 'clear search clears its actual editable value'
+}
 function Read-Settings([string]$Path = $Settings) {
   $Stream = [IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
   $Reader = New-Object IO.StreamReader($Stream)
@@ -627,6 +659,7 @@ try {
   Wait-For { -not [ChromeNative]::HasPopup($script:Child.Id) } 'dismissed native popup'
   Invoke-Control 'Use Tauridium without an account'
   Open-Advanced
+  Test-Settings-Search
   $Scale = [double][ChromeNative]::GetDpiForWindow($script:Window) / 96.0
   Check ($Scale -gt 0) 'native window DPI is available'
   Check ((Find-Control 'Unified title bar' ([Windows.Automation.ControlType]::CheckBox)).Current.BoundingRectangle.Width -le (48 * $Scale)) 'Advanced toggle has bounded switch geometry'

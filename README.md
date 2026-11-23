@@ -34,6 +34,7 @@ To my knowledge, this is, as of now, the only fully open source, fully free of c
 * Bundled recipes, custom recipes and arbitrary HTTP(S) websites
 * Per-service behaviour including page zoom, notifications, badges, hibernation, appearance, proxy, user agent and link handling
 * Configurable themes, sidebar, keybindings and service interaction
+* [Settings search](docs/SETTINGS-SEARCH.md) with keyboard navigation and direct links to controls
 * Shared sandboxes for deliberately sharing login/session state between compatible services
 * Native notifications, tray operation, persistent window state and launch-at-login
 * Browser-style downloads with global, workspace and service configuration

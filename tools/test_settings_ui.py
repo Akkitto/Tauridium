@@ -111,7 +111,7 @@ class SettingsUiReleaseTests(unittest.TestCase):
       self.assertNotIn(selector, self.app)
 
   def test_backup_has_its_own_settings_tab(self) -> None:
-    self.assertIn('["backup", "Backup"]', self.app)
+    self.assertIn('["backup", "Backup"]', (ROOT / "src/lib/settingsSearch.ts").read_text(encoding="utf-8"))
     self.assertIn('{:else if settingsTab === "backup"}', self.app)
     backup = self.app.split('{:else if settingsTab === "backup"}', 1)[1].split('{:else if settingsTab === "advanced"}', 1)[0]
     advanced = self.app.split('{:else if settingsTab === "advanced"}', 1)[1].split('{:else if settingsTab === "updates"}', 1)[0]

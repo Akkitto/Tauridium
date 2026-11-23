@@ -200,6 +200,39 @@ def main() -> int:
               reports.append({"serviceId": args.service_id, "size": [width, height], "ownOverridePersisted": True,
                               "reopened": True, "removed": True, "globalNavigation": True})
               continue
+            before_search = json.loads((data / "app_settings.json").read_text(encoding="utf-8"))
+
+            def search_capture(suffix, predicate, description):
+              rendered = []
+              def ready():
+                rendered[:] = capture(window, f"{name}-search-{suffix}")
+                return predicate(rendered[0])
+              wait_for(ready, description)
+              return rendered
+
+            def search_setting(query, caption, suffix):
+              xdo("key", "--clearmodifiers", "ctrl+f")
+              xdo("type", "--clearmodifiers", "--delay", "1", query)
+              search_capture(f"{suffix}-results", lambda text: query.casefold() in text.casefold() and "matching setting" in text.lower(), "complete query and rendered Settings search results")
+              xdo("key", "--clearmodifiers", "Return")
+              opened_text, opened_rows, _ = search_capture(f"{suffix}-opened", lambda text: caption in text, f"search destination: {caption}")
+              return opened_text, opened_rows
+
+            search_setting("show service names", "Show service names", "services")
+            search_setting("parent folders", "Show download completion toasts", "prerequisite")
+            assert saved("downloadToasts", False), "Search must not enable a prerequisite setting"
+            search_setting("restore backup", "Manual backup", "action")
+            search_setting("theme", "Theme", "appearance")
+            assert json.loads((data / "app_settings.json").read_text(encoding="utf-8")) == before_search, "Search or navigation changed persisted settings"
+            xdo("key", "--clearmodifiers", "ctrl+f")
+            xdo("type", "--clearmodifiers", "--delay", "1", "zzznosuchsettingzzz")
+            search_capture("no-results", lambda text: "No settings match" in text, "no-results feedback")
+            xdo("key", "--clearmodifiers", "Escape")
+            xdo("key", "--clearmodifiers", "Escape")
+            text, rows, _ = search_capture("cleared", lambda text: "No settings match" not in text and "Search settings" in text, "Escape clears the query and dismisses search feedback")
+            click(word(rows, "General"))
+            text, rows, _ = capture(window, f"{name}-search-return-general")
+            assert "Startup" in text, "Search trapped normal tab navigation"
             advanced = word(rows, "Advanced")
             click(advanced)
             text, rows, _ = capture(window, f"{name}-advanced")
@@ -298,7 +331,8 @@ def main() -> int:
             text, _, _ = capture(window, f"{name}-advanced-again")
             assert "Service context menu" in text, text
             reports.append({"theme": theme, "size": [width, height], "navigation": True,
-                            "closeAndReopen": True, "downloadControlsPersisted": True})
+                            "closeAndReopen": True, "downloadControlsPersisted": True,
+                            "settingsSearch": True, "searchPreservesPreferences": True})
           except Exception:
             (output / f"{name}-failure-settings.json").write_text((data / "app_settings.json").read_text(encoding="utf-8"), encoding="utf-8")
             if window is not None and process.poll() is None:

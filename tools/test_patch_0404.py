@@ -136,8 +136,9 @@ class Patch0404Tests(unittest.TestCase):
       self.assertIn(marker, self.audit)
 
   def test_audit_tab_can_filter_refresh_export_and_clear(self) -> None:
+    self.assertIn('["audit", "Audit log"]', (ROOT / "src/lib/settingsSearch.ts").read_text(encoding="utf-8"))
     for marker in (
-      '["audit", "Audit log"]',
+
       '{:else if settingsTab === "audit"}',
       'placeholder="Search audit events…"',
       "Filter audit events by level",

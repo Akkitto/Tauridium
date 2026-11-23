@@ -290,7 +290,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
     self.assertIn("hideServices().catch", about_body)
     self.assertIn('settingsTab = "about"', about_body)
     self.assertIn('view = "appSettings"', about_body)
-    self.assertIn('["about", "About"]', app)
+    self.assertIn('["about", "About"]', (ROOT / "src/lib/settingsSearch.ts").read_text(encoding="utf-8"))
     self.assertIn('{:else if settingsTab === "about"}', app)
     self.assertIn('>Repository</span>', app)
     self.assertIn('github.com/Akkitto/Tauridium', app)

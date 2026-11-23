@@ -760,12 +760,30 @@ def main() -> int:
     fail("frontend Tauri API test reintroduces a hoist-unsafe top-level invoke mock")
   if "Use Tauridium without an account" not in app:
     fail("login UI does not expose accountless mode")
+  settings_index = read("src/lib/settingsSearch.ts")
+  for tab, label in (
+    ("general", "General"), ("services", "Services"), ("workspaces", "Workspaces"),
+    ("appearance", "Appearance"), ("keybindings", "Keybinds"), ("sandbox", "Sandbox"),
+    ("privacy", "Privacy"), ("backup", "Backup"), ("audit", "Audit log"),
+    ("advanced", "Advanced"), ("updates", "Updates"), ("about", "About"),
+  ):
+    if f'["{tab}", "{label}"]' not in settings_index:
+      fail(f"shared Settings navigation is missing: {label}")
+  for marker in (
+    '["addWorkspace", "Add workspace", "Create a new workspace."]',
+    '["toggleSidebar", "Toggle sidebar"',
+  ):
+    if marker not in settings_index:
+      fail(f"shared Settings keybinding metadata is missing: {marker}")
+  for marker in ("{#each SETTINGS_TABS as", "{#each KEYBINDING_SETTINGS as"):
+    if marker not in app:
+      fail(f"Settings does not render its shared registry: {marker}")
   for marker in (
     'listen("open-about", openAbout)',
     'function openAbout()',
     'hideServices().catch',
     'settingsTab = "about"',
-    '["about", "About"]',
+
     '{:else if settingsTab === "about"}',
   ):
     if marker not in app:
@@ -894,7 +912,6 @@ def main() -> int:
     if marker not in restore_body and marker not in main_rs:
       fail(f"backup restore safety invariant is missing: {marker}")
   for marker in (
-    '["backup", "Backup"]',
     '{:else if settingsTab === "backup"}',
     'value="startup">On program startup</option>',
     'value="daily">Daily</option>',
@@ -1047,7 +1064,6 @@ def main() -> int:
       fail(f"0.4.4 portable export invariant is missing: {marker}")
 
   for marker in (
-    '["audit", "Audit log"]',
     'flex-wrap: wrap',
     'width: min(1180px, calc(100% - 32px))',
     'Service list alignment',
@@ -1064,7 +1080,6 @@ def main() -> int:
 
   workspace_test = read("tools/test_workspace_settings_0413.py")
   for marker in (
-    '["workspaces", "Workspaces"]',
     'workspaceQuickSwitchOrder: "custom" | "customReverse" | "alphabetical" | "alphabeticalReverse" | "recent" | "recentReverse"',
     'workspaceLastUsed: Record<string, number>',
     'orderWorkspacesForQuickSwitch(',
@@ -1225,7 +1240,6 @@ def main() -> int:
   for marker in (
     'addWorkspace: "Ctrl+Shift+N"',
     'case "addWorkspace": openAddWorkspace(); break;',
-    '["addWorkspace", "Add workspace", "Create a new workspace."]',
   ):
     if marker not in ui_ts + app:
       fail(f"0.4.18 Add Workspace keybinding invariant is missing: {marker}")
@@ -1532,8 +1546,6 @@ def main() -> int:
       fail(f"0.4.27 regression coverage is missing: {test_marker}")
 
   for marker in (
-    '["keybindings", "Keybinds"]',
-    '["sandbox", "Sandbox"]',
     'appSettings.theme === "oled"',
     'const MANAGED_SERVICE_PAGE_SIZE = 100;',
     'quickWorkspaceSwitch: "Ctrl+D"',
