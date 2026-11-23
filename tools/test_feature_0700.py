@@ -2,6 +2,7 @@
 """Regression coverage for Tauridium 0.7.0 Scoop distribution readiness."""
 
 from __future__ import annotations
+from rust_sources import read_orchestration_sources
 
 import importlib.util
 import json
@@ -174,7 +175,7 @@ class Feature0700Tests(unittest.TestCase):
     self.assertIn('"docs/scoop-packaging.md"', package_release)
 
   def test_persistence_and_webview2_requirements_are_explicit(self) -> None:
-    main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+    main = read_orchestration_sources(ROOT)
     installation = (ROOT / "docs/installation.md").read_text(encoding="utf-8")
     packaging = (ROOT / "packaging/scoop/README.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")

@@ -1,4 +1,5 @@
 """Run the real notification shim and assert authoritative native limits remain."""
+from rust_sources import read_orchestration_sources
 import json
 from pathlib import Path
 import re
@@ -12,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class NotificationSecurityTests(unittest.TestCase):
   @unittest.skipUnless(shutil.which("node"), "Node required")
   def test_real_service_shim_keeps_only_eight_bounded_notifications(self):
-    source = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+    source = read_orchestration_sources(ROOT)
     script = re.search(r'const IPC_SHIM_JS: &str = r#"(.*?)"#;', source, re.S).group(1)
     probe = f"""
       const vm = require('node:vm');
@@ -25,7 +26,7 @@ class NotificationSecurityTests(unittest.TestCase):
     subprocess.run([shutil.which("node"), "-e", probe], check=True, capture_output=True, timeout=20)
 
   def test_native_poller_rechecks_bounds_rate_and_authoritative_source(self):
-    source = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+    source = read_orchestration_sources(ROOT)
     poller = source.split("fn start_badge_poller", 1)[1].split("fn default_app_settings", 1)[0]
     self.assertIn("source_host=wv.url()", re.sub(r"\s+", "", poller))
     for guard in ("res.len() > 64 * 1024", "arr.iter().take(8)", "notification_budget",

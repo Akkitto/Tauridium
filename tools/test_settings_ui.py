@@ -1,4 +1,5 @@
 from __future__ import annotations
+from rust_sources import read_orchestration_sources
 
 import unittest
 from pathlib import Path
@@ -11,7 +12,7 @@ class SettingsUiReleaseTests(unittest.TestCase):
   def setUpClass(cls) -> None:
     cls.app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
     cls.api = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
-    cls.main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+    cls.main = read_orchestration_sources(ROOT)
 
   def test_all_settings_tabs_remain_available(self) -> None:
     for tab in ("general", "services", "appearance", "privacy", "backup", "advanced", "updates", "about"):

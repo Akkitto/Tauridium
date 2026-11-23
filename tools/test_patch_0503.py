@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Regression coverage for Tauridium 0.5.3 workspace startup preferences."""
+from rust_sources import read_orchestration_sources
 
 from pathlib import Path
 import unittest
@@ -9,7 +10,7 @@ APP = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
 API = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
 UI = (ROOT / "src/lib/ui.ts").read_text(encoding="utf-8")
 UI_TEST = (ROOT / "src/lib/ui.test.ts").read_text(encoding="utf-8")
-MAIN = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+MAIN = read_orchestration_sources(ROOT)
 
 
 class WorkspaceStartupPatchTests(unittest.TestCase):

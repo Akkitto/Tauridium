@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const { test } = require('node:test');
 
 const root = path.resolve(__dirname, '..');
-const native = readFileSync(path.join(root, 'src-tauri/src/main.rs'), 'utf8');
+const native = readFileSync(path.join(root, 'src-tauri/src/services/webview.rs'), 'utf8');
 const raw = name => native.match(new RegExp(`const ${name}: &str = r#"([\\s\\S]*?)"#;`))[1];
 const bridgePath = path.join(root, 'src-tauri/src/service_badges.js');
 const bridge = existsSync(bridgePath) ? readFileSync(bridgePath, 'utf8') : '';

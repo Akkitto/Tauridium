@@ -1,4 +1,5 @@
 """Immutable executable upstream recipes, bounded discovery and cache isolation."""
+from rust_sources import read_orchestration_sources
 import json
 import re
 import unittest
@@ -19,7 +20,7 @@ class RecipeSourceTests(unittest.TestCase):
         native = (ROOT / "src-tauri/src/recipe_source.rs").read_text(encoding="utf-8")
         self.assertIn('include_str!("../../data/recipe-source.json")', native)
         self.assertIn('cache_root.join("remote-recipes").join(revision())', native)
-        main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+        main = read_orchestration_sources(ROOT)
         cache = main.split("fn recipe_cache_directory", 1)[1].split("fn recipe_catalog_cache_path", 1)[0]
         self.assertIn(".app_cache_dir()", cache)
         self.assertNotIn(".app_data_dir()", cache)

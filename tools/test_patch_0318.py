@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+from rust_sources import read_orchestration_sources
 
 import subprocess
 import unittest
@@ -24,7 +25,7 @@ class Patch0318Tests(unittest.TestCase):
     cls.app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
     cls.api = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
     cls.ui = (ROOT / "src/lib/ui.ts").read_text(encoding="utf-8")
-    cls.main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+    cls.main = read_orchestration_sources(ROOT)
 
   def test_manual_backup_name_contains_local_date_time_seconds_and_milliseconds(self) -> None:
     self.assertIn('return `tauridium-backup-${backupTimestamp()}.json`;', self.app)

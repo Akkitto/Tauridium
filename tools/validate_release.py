@@ -2,6 +2,7 @@
 """Validate release-critical Tauridium source invariants without network access."""
 
 from __future__ import annotations
+from rust_sources import read_orchestration_sources
 
 import json
 import re
@@ -102,7 +103,7 @@ def main() -> int:
   lock = json.loads(read("package-lock.json"))
   cargo = read("src-tauri/Cargo.toml")
   cargo_lock = read("src-tauri/Cargo.lock")
-  main_rs = read("src-tauri/src/main.rs")
+  main_rs = read_orchestration_sources(ROOT)
   single_instance_rs = read("src-tauri/src/single_instance.rs")
   startup_diagnostics_rs = read("src-tauri/src/startup_diagnostics.rs")
   rust_toolchain = read("rust-toolchain.toml")
@@ -456,7 +457,7 @@ def main() -> int:
   if "Refusing a development-mode release binary" not in build_rs:
     fail("build script lacks an actionable development-mode release failure")
 
-  main_rs = read("src-tauri/src/main.rs")
+  main_rs = read_orchestration_sources(ROOT)
   window_state_test = read("tools/test_window_state.py")
   errno_lock = (
     'name = "errno"\n'
@@ -700,7 +701,7 @@ def main() -> int:
       fail(f"0.4.10 frontend invariant is missing: {marker}")
   for marker in (
     'let should_fetch = request.prefer_website_icon;',
-    'fn service_shortcut_bridge_js(settings: &Value, service_id: &str, nonce: &str)',
+    'pub(super) fn service_shortcut_bridge_js(\n    settings: &Value,\n    service_id: &str,\n    nonce: &str,\n)',
     'service_shortcut_action_from_url',
     'tauridium-shortcut://bridge/',
     'app.emit("shortcut-action", "reloadService".to_string())',
@@ -2149,7 +2150,7 @@ def main() -> int:
     if invariant not in cargo_manifest:
       fail(f"0.7.5 temporary Tauri patch invariant is missing: {invariant}")
 
-  main_rs = read("src-tauri/src/main.rs")
+  main_rs = read_orchestration_sources(ROOT)
   if main_rs.count("if proton_compat::requires_tauri_marker_workaround(&host)") != 1:
     fail("Proton workaround must be injected exactly once at the service boundary")
 

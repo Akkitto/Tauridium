@@ -1,4 +1,5 @@
 """Regression coverage for Tauridium 0.4.12 stale icon-request cleanup."""
+from rust_sources import read_orchestration_sources
 from pathlib import Path
 import unittest
 
@@ -8,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class Patch0412Tests(unittest.TestCase):
   @classmethod
   def setUpClass(cls) -> None:
-    cls.main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+    cls.main = read_orchestration_sources(ROOT)
     cls.api = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
 
   def test_service_icon_request_contains_only_runtime_used_fields(self) -> None:
