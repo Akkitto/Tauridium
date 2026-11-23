@@ -468,6 +468,11 @@ function Test-Settings-Search {
   Wait-For { [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Expanded service item spacing' } 'arrow navigation selects the second matching setting'
   Search-Settings-For 'unified title bar'
   Wait-For { [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Unified title bar' } 'search exposes the Windows title-bar setting'
+  Search-Settings-For 'Advanced'
+  Wait-For {
+    $Control = Find-Control 'Unified title bar' ([Windows.Automation.ControlType]::CheckBox)
+    $null -ne $Control -and -not $Control.Current.IsOffscreen
+  } 'whole-tab search opens the first Settings section'
   Check ((Read-Settings | ConvertTo-Json -Depth 20 -Compress) -eq $Before) 'Settings search navigation leaves persisted preferences unchanged'
   [Windows.Forms.SendKeys]::SendWait('^f')
   Invoke-Control 'Clear settings search'

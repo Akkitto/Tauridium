@@ -202,11 +202,13 @@ def main() -> int:
               continue
             before_search = json.loads((data / "app_settings.json").read_text(encoding="utf-8"))
 
-            def search_capture(suffix, predicate, description):
+            def search_capture(suffix, predicate, description, *, required_word=None):
               rendered = []
               def ready():
                 rendered[:] = capture(window, f"{name}-search-{suffix}")
-                return predicate(rendered[0])
+                control_ready = required_word is None or any(
+                  row["text"].strip().casefold() == required_word.casefold() for row in rendered[1])
+                return predicate(rendered[0]) and control_ready
               wait_for(ready, description)
               return rendered
 
@@ -238,6 +240,7 @@ def main() -> int:
             assert saved("downloadToasts", False), "Search must not enable a prerequisite setting"
             search_setting("restore backup", "Manual backup", "action")
             search_setting("theme", "Theme", "appearance")
+            search_setting("Advanced", "Service context menu", "tab-start")
             assert json.loads((data / "app_settings.json").read_text(encoding="utf-8")) == before_search, "Search or navigation changed persisted settings"
             enter_search_query("zzznosuchsettingzzz")
             search_capture("no-results", lambda text: "No settings match" in text, "no-results feedback")
@@ -249,7 +252,7 @@ def main() -> int:
             verify_search_value("clearprobe")
             xdo("key", "--clearmodifiers", "Escape")
             xdo("key", "--clearmodifiers", "Escape")
-            text, rows, _ = search_capture("cleared", lambda text: "No settings match" not in text, "Escape dismisses search feedback")
+            text, rows, _ = search_capture("cleared", lambda text: "No settings match" not in text, "cleared search and rendered General tab", required_word="General")
             assert json.loads((data / "app_settings.json").read_text(encoding="utf-8")) == before_search, "Search queries or clearing changed persisted settings"
             click(word(rows, "General"))
             text, rows, _ = capture(window, f"{name}-search-return-general")

@@ -253,7 +253,8 @@
     const focus = control ?? destination;
     if (!control) focus.tabIndex = -1;
     focus.focus({ preventScroll: true });
-    destination.scrollIntoView({ block: "center", behavior: "auto" });
+    const tabDestination = entry.target === `settings-tab-${entry.tab}`;
+    destination.scrollIntoView({ block: tabDestination ? "start" : "center", behavior: "auto" });
     settingsSearchTimer = setTimeout(clearSettingsSearchHighlight, 2500);
     return hint || `Opened ${settingsTabLabel(entry.tab)}: ${entry.label}.`;
   }
