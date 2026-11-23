@@ -22,11 +22,15 @@
   const selected = $derived(Math.min(index, Math.max(0, matches.length - 1)));
 
   export function dismiss() { expanded = false; status = ""; request++; oncancel(); }
-  export function focus() {
+  export async function focus() {
     expanded = Boolean(query.trim()); index = 0; status = "";
     input?.focus({ preventScroll: true });
     input?.select();
-    input?.scrollIntoView({ block: "nearest", behavior: "auto" });
+    // Wait for results to reopen before scrolling; their layout can otherwise
+    // move the focused field back against the viewport edge after navigation.
+    await tick();
+    if (destroyed) return;
+    input?.scrollIntoView({ block: "center", behavior: "auto" });
   }
   onDestroy(() => { destroyed = true; request++; oncancel(); });
   function changed(event: Event & { currentTarget: HTMLInputElement }) {
