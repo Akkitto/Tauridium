@@ -20,7 +20,7 @@ class Patch0418Tests(unittest.TestCase):
     self.assertIn('shortcut("addWorkspace")', MAIN)
     self.assertIn('"addWorkspace",', MAIN.split('const SHORTCUT_ACTIONS', 1)[1].split('fn effective_service_shortcut_capture', 1)[0])
     self.assertIn('case "addWorkspace": openAddWorkspace(); break;', APP)
-    self.assertIn('["addWorkspace", "Add workspace", "Create a new workspace."]', APP)
+    self.assertIn('["addWorkspace", "Add workspace", "Create a new workspace."]', (ROOT / "src/lib/settingsSearch.ts").read_text(encoding="utf-8"))
 
   def test_keybinding_merge_adds_new_defaults_without_resetting_existing_bindings(self) -> None:
     merge = MAIN.split('fn merge_app_settings_value', 1)[1].split('fn read_app_settings_value', 1)[0]

@@ -200,6 +200,63 @@ def main() -> int:
               reports.append({"serviceId": args.service_id, "size": [width, height], "ownOverridePersisted": True,
                               "reopened": True, "removed": True, "globalNavigation": True})
               continue
+            before_search = json.loads((data / "app_settings.json").read_text(encoding="utf-8"))
+
+            def search_capture(suffix, predicate, description, *, required_word=None):
+              rendered = []
+              def ready():
+                rendered[:] = capture(window, f"{name}-search-{suffix}")
+                control_ready = required_word is None or any(
+                  row["text"].strip().casefold() == required_word.casefold() for row in rendered[1])
+                return predicate(rendered[0]) and control_ready
+              wait_for(ready, description)
+              return rendered
+
+            def verify_search_value(expected):
+              # Use only this test's isolated X11 clipboard. Sparse-text OCR can
+              # omit an editable field even when it is visibly rendered correctly.
+              def copied_value():
+                xdo("key", "--clearmodifiers", "ctrl+a", "ctrl+c")
+                result = subprocess.run(["xclip", "-selection", "clipboard", "-out"],
+                                        capture_output=True, text=True, check=False, timeout=10)
+                return result.returncode == 0 and result.stdout == expected
+              wait_for(copied_value, "exact editable Settings search value")
+              xdo("key", "--clearmodifiers", "Right")
+
+            def enter_search_query(query):
+              xdo("key", "--clearmodifiers", "ctrl+f")
+              xdo("type", "--clearmodifiers", "--delay", "1", query)
+              verify_search_value(query)
+
+            def search_setting(query, caption, suffix):
+              enter_search_query(query)
+              search_capture(f"{suffix}-results", lambda text: "matching setting" in text.lower(), "rendered Settings search results")
+              xdo("key", "--clearmodifiers", "Return")
+              opened_text, opened_rows, _ = search_capture(f"{suffix}-opened", lambda text: caption in text, f"search destination: {caption}")
+              return opened_text, opened_rows
+
+            search_setting("show service names", "Show service names", "services")
+            search_setting("parent folders", "Show download completion toasts", "prerequisite")
+            assert saved("downloadToasts", False), "Search must not enable a prerequisite setting"
+            search_setting("restore backup", "Manual backup", "action")
+            search_setting("theme", "Theme", "appearance")
+            search_setting("Advanced", "Service context menu", "tab-start")
+            assert json.loads((data / "app_settings.json").read_text(encoding="utf-8")) == before_search, "Search or navigation changed persisted settings"
+            enter_search_query("zzznosuchsettingzzz")
+            search_capture("no-results", lambda text: "No settings match" in text, "no-results feedback")
+            xdo("key", "--clearmodifiers", "Escape")
+            xdo("key", "--clearmodifiers", "Escape")
+            # Type without refocusing/selecting: any uncleared query would prefix
+            # this probe, so exact native clipboard readback proves the field cleared.
+            xdo("type", "--clearmodifiers", "--delay", "1", "clearprobe")
+            verify_search_value("clearprobe")
+            xdo("key", "--clearmodifiers", "Escape")
+            xdo("key", "--clearmodifiers", "Escape")
+            text, rows, _ = search_capture("cleared", lambda text: "No settings match" not in text, "cleared search and rendered General tab", required_word="General")
+            assert json.loads((data / "app_settings.json").read_text(encoding="utf-8")) == before_search, "Search queries or clearing changed persisted settings"
+            click(word(rows, "General"))
+            text, rows, _ = capture(window, f"{name}-search-return-general")
+            assert "Startup" in text, "Search trapped normal tab navigation"
             advanced = word(rows, "Advanced")
             click(advanced)
             text, rows, _ = capture(window, f"{name}-advanced")
@@ -298,7 +355,8 @@ def main() -> int:
             text, _, _ = capture(window, f"{name}-advanced-again")
             assert "Service context menu" in text, text
             reports.append({"theme": theme, "size": [width, height], "navigation": True,
-                            "closeAndReopen": True, "downloadControlsPersisted": True})
+                            "closeAndReopen": True, "downloadControlsPersisted": True,
+                            "settingsSearch": True, "searchPreservesPreferences": True})
           except Exception:
             (output / f"{name}-failure-settings.json").write_text((data / "app_settings.json").read_text(encoding="utf-8"), encoding="utf-8")
             if window is not None and process.poll() is None:

@@ -16,7 +16,7 @@ class WorkspaceSettings0413Tests(unittest.TestCase):
     self.assertNotIn('view === "workspaces"', APP)
 
   def test_settings_has_workspace_management_tab(self):
-    self.assertIn('["workspaces", "Workspaces"]', APP)
+    self.assertIn('["workspaces", "Workspaces"]', (ROOT / "src/lib/settingsSearch.ts").read_text(encoding="utf-8"))
     self.assertIn('settingsTab === "workspaces"', APP)
     self.assertIn('Configured workspaces', APP)
     self.assertIn('Workspace settings ·', APP)

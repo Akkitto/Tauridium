@@ -39,7 +39,7 @@ class Feature0600Tests(unittest.TestCase):
 
   def test_sidebar_toggle_has_button_menu_shortcut_and_service_bridge_support(self) -> None:
     self.assertIn('toggleSidebar: "Ctrl+Shift+B"', UI)
-    self.assertIn('["toggleSidebar", "Toggle sidebar"', APP)
+    self.assertIn('["toggleSidebar", "Toggle sidebar"', (ROOT / "src/lib/settingsSearch.ts").read_text(encoding="utf-8"))
     self.assertIn('case "toggleSidebar": toggleSidebarCollapsed(); break;', APP)
     self.assertIn('aria-label={appSettings.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}', APP)
     self.assertIn('"toggleSidebar",', MAIN.split("const SHORTCUT_ACTIONS", 1)[1].split("static SERVICE_SHORTCUT", 1)[0])

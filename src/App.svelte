@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { onDestroy, onMount } from "svelte";
+  import { onDestroy, onMount, tick } from "svelte";
+  import SettingsSearch from "./SettingsSearch.svelte";
+  import { SETTINGS_TABS, KEYBINDING_SETTINGS, settingsTabLabel, type SettingsTab, type SettingsSearchEntry } from "./lib/settingsSearch";
   import { managedUpdateText } from "./lib/distribution";
   import { downloadToastPreview } from "./lib/downloadToast";
   import { browserProfileNamespace, retainedTrackingExceptions } from "./lib/browserPrivacy";
@@ -197,8 +199,65 @@
   let serviceIconUrlBusy = $state(false);
   let newWorkspaceName = $state("");
 
-  type Tab = "general" | "services" | "workspaces" | "appearance" | "keybindings" | "sandbox" | "privacy" | "backup" | "audit" | "advanced" | "updates" | "about";
+  type Tab = SettingsTab;
   let settingsTab = $state<Tab>("general");
+  let settingsSearch: { focus: () => void; dismiss: () => void } | undefined = $state();
+  let settingsSearchIntent = 0;
+  let settingsSearchHighlight: HTMLElement | null = null;
+  let settingsSearchTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function clearSettingsSearchHighlight() {
+    if (settingsSearchTimer) clearTimeout(settingsSearchTimer);
+    settingsSearchTimer = undefined;
+    settingsSearchHighlight?.removeAttribute("data-settings-search-highlight");
+    settingsSearchHighlight = null;
+  }
+
+  function cancelSettingsSearchNavigation() {
+    settingsSearchIntent++;
+    clearSettingsSearchHighlight();
+  }
+
+  async function revealSetting(entry: SettingsSearchEntry): Promise<string | null> {
+    const intent = ++settingsSearchIntent;
+    clearSettingsSearchHighlight();
+    // Reuse the editor's existing discard warning rather than silently losing a draft.
+    if (entry.workspaceList && managedWorkspace) {
+      await closeManagedWorkspace();
+      if (intent !== settingsSearchIntent || view !== "appSettings") return null;
+      if (managedWorkspace) return "Navigation canceled. Your workspace name changes were kept.";
+    }
+    selectSettingsTab(entry.tab);
+    await tick();
+    if (intent !== settingsSearchIntent || view !== "appSettings" || settingsTab !== entry.tab) return null;
+    let destination = document.getElementById(entry.target);
+    let hint = "";
+    if (!destination && entry.fallback) {
+      destination = document.getElementById(entry.fallback.target);
+      hint = entry.fallback.message;
+    }
+    if (destination?.closest(".download-toast-options:disabled")) {
+      destination = document.getElementById("settings-option-downloadToasts");
+      hint = destination?.querySelector<HTMLInputElement>("input")?.checked
+        ? "Download notification settings are being saved. Try this option again shortly."
+        : "Enable download completion toasts to configure notification details.";
+    }
+    if (!destination) return "This setting is not currently available. Choose its Settings tab to review the available options.";
+    settingsSearchHighlight = destination;
+    destination.setAttribute("data-settings-search-highlight", "true");
+    // Focus never clicks an action button or changes a preference. This also prevents
+    // a held Enter key from starting a backup or shortcut recording after navigation.
+    const control = entry.focusContainer ? null : destination.querySelector<HTMLElement>(
+      'input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled)',
+    );
+    const focus = control ?? destination;
+    if (!control) focus.tabIndex = -1;
+    focus.focus({ preventScroll: true });
+    const tabDestination = entry.target === `settings-tab-${entry.tab}`;
+    destination.scrollIntoView({ block: tabDestination ? "start" : "center", behavior: "auto" });
+    settingsSearchTimer = setTimeout(clearSettingsSearchHighlight, 2500);
+    return hint || `Opened ${settingsTabLabel(entry.tab)}: ${entry.label}.`;
+  }
 
   let managedServiceQuery = $state("");
   let managedWorkspaceFilter = $state("all");
@@ -3066,12 +3125,12 @@
     await refreshAuditLog();
   }
 
-  function selectSettingsTab(id: string) {
+  function selectSettingsTab(id: Tab) {
     if (id === "about") {
       openAbout();
       return;
     }
-    settingsTab = id as Tab;
+    settingsTab = id;
     if (settingsTab === "audit" && !auditInitialized) void refreshAuditLog();
     if (settingsTab === "services" && allRecipes.length === 0) void refreshRecipes();
   }
@@ -3670,6 +3729,14 @@
         event.preventDefault();
         chooseQuickSwitcherItem(quickSwitcherItems[quickSwitcherIndex]);
       }
+      return;
+    }
+
+    if (view === "appSettings" && !event.isComposing && (event.ctrlKey || event.metaKey)
+      && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "f") {
+      event.preventDefault(); event.stopPropagation();
+      shortcutPending = null;
+      settingsSearch?.focus();
       return;
     }
 
@@ -4458,17 +4525,21 @@
             <button class="icon-button" title="Close settings" aria-label="Close settings" onclick={backToService}>✕</button>
           </div>
 
+          <SettingsSearch bind:this={settingsSearch}
+            context={{ windows: osKind === "win", flatpak: distributionInfo.mode === "flatpak", portalDownloads: distributionInfo.downloadsRequireDestination }}
+            mac={osKind === "mac"} onchoose={revealSetting} onsearchfocus={stopRecording} oncancel={cancelSettingsSearchNavigation} />
+
           <nav class="settings-tabs" aria-label="Settings sections">
-            {#each [["general", "General"], ["services", "Services"], ["workspaces", "Workspaces"], ["appearance", "Appearance"], ["keybindings", "Keybinds"], ["sandbox", "Sandbox"], ["privacy", "Privacy"], ["backup", "Backup"], ["audit", "Audit log"], ["advanced", "Advanced"], ["updates", "Updates"], ["about", "About"]] as [id, label] (id)}
+            {#each SETTINGS_TABS as [id, label] (id)}
               <button
                 class="setting-tab"
                 class:on={settingsTab === id}
                 aria-current={settingsTab === id ? "page" : undefined}
-                onclick={() => selectSettingsTab(id)}>{label}</button>
+                onclick={() => { settingsSearch?.dismiss(); cancelSettingsSearchNavigation(); selectSettingsTab(id); }}>{label}</button>
             {/each}
           </nav>
 
-          <div class="settings-content">
+          <div class="settings-content" id={`settings-tab-${settingsTab}`}>
             {#if settingsTab === "general"}
               <section class="settings-section" aria-labelledby="settings-general-startup">
                 <div class="section-heading">
@@ -4523,7 +4594,7 @@
                   </select>
                   <button class="primary" onclick={openAdd}>Create service</button>
                 </div>
-                <div class="service-export-panel">
+                <div class="service-export-panel" id="settings-option-serviceExport">
                   <div class="service-export-summary">
                     <div class="setting-copy">
                       <span class="setting-label">Portable service export</span>
@@ -4617,7 +4688,7 @@
                   <p>Balance faster switching against memory use.</p>
                 </div>
                 <div class="settings-list">
-                  <div class="setting-card">
+                  <div class="setting-card" id="settings-option-hibernationTimer">
                     <div class="setting-copy">
                       <span class="setting-label">Hibernate inactive services</span>
                       <span class="setting-description">Unload inactive services to save memory. Per-service “Allow hibernation” must also be enabled.</span>
@@ -4801,7 +4872,7 @@
                     <p>Choose which workspace Tauridium opens after restoring a session. Last-workspace restore takes precedence; the default remains the fallback if that workspace no longer exists.</p>
                   </div>
                   <div class="settings-list">
-                    <div class="setting-card">
+                    <div class="setting-card" id="settings-option-defaultWorkspaceId">
                       <div class="setting-copy">
                         <span class="setting-label">Default workspace</span>
                         <span class="setting-description">Used at startup when restoring the last workspace is disabled, or when the remembered workspace is unavailable.</span>
@@ -4818,7 +4889,7 @@
                         {/each}
                       </select>
                     </div>
-                    <label class="setting-card setting-card-toggle">
+                    <label class="setting-card setting-card-toggle" id="settings-option-restoreLastWorkspace">
                       <span class="setting-copy">
                         <span class="setting-label">Restore last workspace on startup</span>
                         <span class="setting-description">Start with the workspace that was active most recently. Enabling this remembers the workspace active right now.</span>
@@ -4843,7 +4914,7 @@
                     <p>Choose how Ctrl+D orders workspaces. “All services” always remains first so you can leave a workspace filter quickly.</p>
                   </div>
                   <div class="settings-list">
-                    <div class="setting-card">
+                    <div class="setting-card" id="settings-option-workspaceQuickSwitchOrder">
                       <div class="setting-copy">
                         <span class="setting-label">Workspace switch order</span>
                         <span class="setting-description">Custom order is managed below. Recent modes use the last time each workspace was selected.</span>
@@ -4862,7 +4933,7 @@
                         <option value="recentReverse">Least recently used</option>
                       </select>
                     </div>
-                    <div class="setting-card">
+                    <div class="setting-card" id="settings-option-workspaceHistory">
                       <div class="setting-copy">
                         <span class="setting-label">Workspace usage history</span>
                         <span class="setting-description">Clear remembered workspace-use times without changing custom ordering or membership.</span>
@@ -4936,7 +5007,7 @@
                   <p>Choose the color scheme and accent used by Tauridium's own interface.</p>
                 </div>
                 <div class="settings-list">
-                  <div class="setting-card">
+                  <div class="setting-card" id="settings-option-theme">
                     <div class="setting-copy">
                       <span class="setting-label">Theme</span>
                       <span class="setting-description">Follow the operating system appearance or force Light, Dark, or true-black Black OLED mode.</span>
@@ -4948,7 +5019,7 @@
                       <option value="light">Light</option>
                     </select>
                   </div>
-                  <div class="setting-card setting-card-stack accent-setting-card">
+                  <div class="setting-card setting-card-stack accent-setting-card" id="settings-option-accentColor">
                     <div class="setting-copy">
                       <span class="setting-label">Accent color</span>
                       <span class="setting-description">Used for selected navigation, primary actions, and active-service emphasis.</span>
@@ -4969,7 +5040,7 @@
                     </div>
                   </div>
                   {#if customColorOpen}
-                    <div class="setting-card setting-card-stack color-picker-card">
+                    <div class="setting-card setting-card-stack color-picker-card" id="settings-option-customAccent">
                       <div class="setting-copy"><span class="setting-label">Custom accent</span><span class="setting-description">Use the platform color picker or adjust hue, saturation, and lightness with keyboard-accessible sliders.</span></div>
                       <div class="color-picker-preview-row">
                         <input type="color" value={appSettings.accentColor} aria-label="Custom accent native color picker" oninput={(event) => setCustomColorFromNative(event.currentTarget.value)} />
@@ -4994,7 +5065,7 @@
                   {@render appToggle("Workspace in taskbar title", `Use workspace context for a separately addressable ${dockWord} or app-icon label when the operating system exposes one. Windows taskbar buttons always mirror the native window title; independent taskbar titles are unsupported on Windows.`, "showWorkspaceInTaskbarTitle", appSettings.showWorkspaceInTaskbarTitle)}
                   {@render appToggle("Custom title templates", "Enable variable-based title formats for the window title and taskbar/app-icon title. The two workspace-title toggles still decide which destinations use the custom format.", "customTitleTemplatesEnabled", appSettings.customTitleTemplatesEnabled)}
                   {#if appSettings.customTitleTemplatesEnabled}
-                    <div class="setting-card setting-card-stack">
+                    <div class="setting-card setting-card-stack" id="settings-option-windowTitleTemplate">
                       <div class="setting-copy">
                         <span class="setting-label">Window title template</span>
                         <span class="setting-description">Available variables: {"{app}"}, {"{workspace}"}, {"{service}"}. Unknown text is preserved literally.</span>
@@ -5008,7 +5079,7 @@
                       />
                       <span class="settings-note">Preview: {renderTitleTemplate(appSettings.windowTitleTemplate, { app: "Tauridium", workspace: activeWorkspaceName, service: activeService ? serviceLabel(activeService) : "No service" })}</span>
                     </div>
-                    <div class="setting-card setting-card-stack">
+                    <div class="setting-card setting-card-stack" id="settings-option-taskbarTitleTemplate">
                       <div class="setting-copy">
                         <span class="setting-label">Taskbar title template</span>
                         <span class="setting-description">Used where the OS exposes a separate taskbar/app-icon label. Windows taskbar buttons always mirror the native window title.</span>
@@ -5033,7 +5104,7 @@
                 </div>
                 <div class="settings-list">
                   {@render appToggle("Collapse sidebar", "Use the compact icon-only rail now. The expanded width is preserved and restored when reopened. Default shortcut: Ctrl+Shift+B.", "sidebarCollapsed", appSettings.sidebarCollapsed)}
-                  <div class="setting-card">
+                  <div class="setting-card" id="settings-option-sidebarStartupCollapsed">
                     <div class="setting-copy">
                       <span class="setting-label">Default sidebar state</span>
                       <span class="setting-description">Used at startup when restoring the last sidebar state is disabled.</span>
@@ -5048,7 +5119,7 @@
                       <option value="collapsed">Collapsed</option>
                     </select>
                   </div>
-                  <label class="setting-card setting-card-toggle">
+                  <label class="setting-card setting-card-toggle" id="settings-option-restoreLastSidebarState">
                     <span class="setting-copy">
                       <span class="setting-label">Restore last sidebar state on startup</span>
                       <span class="setting-description">Start with the sidebar state used most recently. When enabled, this takes precedence over the default sidebar state.</span>
@@ -5064,7 +5135,7 @@
                       <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
                     </span>
                   </label>
-                  <div class="setting-card setting-card-stack">
+                  <div class="setting-card setting-card-stack" id="settings-option-sidebarWidth">
                     <div class="setting-copy"><span class="setting-label">Expanded sidebar width</span><span class="setting-description">Use a fixed pixel width or keep the expanded sidebar proportional to the Tauridium window. Collapsed mode uses a fixed 52 px rail for consistent icon alignment.</span></div>
                     <select class="select setting-control" aria-label="Sidebar width mode" value={appSettings.sidebarWidthMode} onchange={(event) => saveAppSetting("sidebarWidthMode", event.currentTarget.value)}>
                       <option value="pixels">Fixed pixels</option>
@@ -5092,27 +5163,27 @@
                       <p class="settings-note">Relative mode recalculates the service viewport while the window is resized. Updates are animation-frame throttled to avoid unnecessary layout work.</p>
                     {/if}
                   </div>
-                  <div class="setting-card setting-card-stack">
+                  <div class="setting-card setting-card-stack" id="settings-option-collapsedIconSpacing">
                     <div class="setting-copy"><span class="setting-label">Collapsed icon spacing</span><span class="setting-description">Increase the vertical space between icon-only service targets. The current compact 2 px spacing is the minimum.</span></div>
                     <div class="sidebar-width-control">
                       <input class="range" type="range" min="2" max="24" step="1" value={appSettings.collapsedServiceSpacing} aria-label="Collapsed service icon spacing" oninput={(event) => previewServiceSpacing("collapsedServiceSpacing", Number(event.currentTarget.value), true)} onchange={() => saveServiceSpacing("collapsedServiceSpacing", true)} />
                       <output>{Math.round(appSettings.collapsedServiceSpacing)} px</output>
                     </div>
                   </div>
-                  <div class="setting-card setting-card-stack">
+                  <div class="setting-card setting-card-stack" id="settings-option-expandedServiceSpacing">
                     <div class="setting-copy"><span class="setting-label">Expanded service spacing</span><span class="setting-description">Increase the vertical space between service rows in the expanded sidebar. The current compact 2 px spacing is the minimum.</span></div>
                     <div class="sidebar-width-control">
                       <input class="range" type="range" min="2" max="24" step="1" value={appSettings.expandedServiceSpacing} aria-label="Expanded service item spacing" oninput={(event) => previewServiceSpacing("expandedServiceSpacing", Number(event.currentTarget.value), false)} onchange={() => saveServiceSpacing("expandedServiceSpacing", false)} />
                       <output>{Math.round(appSettings.expandedServiceSpacing)} px</output>
                     </div>
                   </div>
-                  <div class="setting-card">
+                  <div class="setting-card" id="settings-option-iconSize">
                     <div class="setting-copy"><span class="setting-label">Service icon size</span><span class="setting-description">Change icon size while preserving consistent sidebar spacing.</span></div>
                     <select class="select setting-control" aria-label="Service icon size" bind:value={appSettings.iconSize} onchange={() => saveAppSetting("iconSize", appSettings.iconSize)}>
                       <option value={18}>Very small</option><option value={21}>Small</option><option value={24}>Normal</option><option value={28}>Large</option><option value={34}>Very large</option>
                     </select>
                   </div>
-                  <div class="setting-card">
+                  <div class="setting-card" id="settings-option-serviceListAlignment">
                     <div class="setting-copy"><span class="setting-label">Service list alignment</span><span class="setting-description">Align the service list to the top, center, or bottom of the sidebar.</span></div>
                     <select class="select setting-control" aria-label="Service list alignment" bind:value={appSettings.sidebarServicesLocation} onchange={() => saveAppSetting("sidebarServicesLocation", appSettings.sidebarServicesLocation)}>
                       <option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option>
@@ -5125,7 +5196,7 @@
                 <div class="settings-list">
                   {@render appToggle("Grayscale inactive icons", "Show service icons in grayscale until they are hovered or active.", "grayscaleServices", appSettings.grayscaleServices)}
                   {#if appSettings.grayscaleServices}
-                    <div class="setting-card">
+                    <div class="setting-card" id="settings-option-inactiveIconDimming">
                       <div class="setting-copy"><span class="setting-label">Inactive icon dimming</span><span class="setting-description">Control how strongly inactive grayscale icons are dimmed.</span></div>
                       <div class="range-control"><input class="range" type="range" min="0" max="100" value={appSettings.grayscaleDim} aria-label="Inactive icon dimming" onchange={(e) => saveAppSetting("grayscaleDim", Number(e.currentTarget.value))} /><span>{appSettings.grayscaleDim}%</span></div>
                     </div>
@@ -5136,37 +5207,20 @@
               <section class="settings-section" aria-labelledby="settings-keybindings-main">
                 <div class="section-heading"><h3 id="settings-keybindings-main">Keybindings</h3><p>Customize application navigation. Bindings may be a single shortcut or a two-stroke chord such as Ctrl+K Ctrl+S. Letter keys are shown as uppercase key labels; Shift is required only when <strong>Shift</strong> is explicitly present. Press Delete while recording to clear a binding.</p></div>
                 <div class="settings-list keybinding-list">
-                  {#each [
-                    ["quickWorkspaceSwitch", "Quick workspace switcher", "Search and switch workspaces."],
-                    ["quickServiceSwitch", "Quick service search", "Search and switch services in the active workspace."],
-                    ["openSettings", "Open Settings", "Open Tauridium application settings."],
-                    ["addService", "Add service", "Open the add-service screen."],
-                    ["addWorkspace", "Add workspace", "Create a new workspace."],
-                    ["toggleSidebar", "Toggle sidebar", "Collapse to the icon-only rail or restore the expanded sidebar."],
-                    ["nextService", "Next service", "Move to the next enabled service."],
-                    ["previousService", "Previous service", "Move to the previous enabled service."],
-                    ["nextWorkspace", "Next workspace", "Move to the next workspace."],
-                    ["previousWorkspace", "Previous workspace", "Move to the previous workspace."],
-                    ["reloadService", "Reload service", "Reload the active service webview."],
-                    ["reloadApp", "Reload Tauridium", "Reload the Tauridium shell."],
-                    ["zoomIn", "Zoom in", "Increase page zoom for the active service."],
-                    ["zoomOut", "Zoom out", "Decrease page zoom for the active service."],
-                    ["resetZoom", "Reset zoom", "Restore the active service to 100% page zoom."],
-                    ["toggleDevtools", "Toggle Developer Tools", "Open or close developer tools for the active service."]
-                  ] as [action, label, description] (action)}
+                  {#each KEYBINDING_SETTINGS as [action, label, description] (action)}
                     {@const binding = appSettings.keybindings[action] ?? ""}
                     {@const conflict = keybindingConflicts.get(bindingStrokes(binding).join(" "))}
-                    <div class="setting-card keybinding-card">
+                    <div class="setting-card keybinding-card" id={`settings-option-keybinding-${action}`}>
                       <div class="setting-copy"><span class="setting-label">{label}</span><span class="setting-description">{description}{#if conflict}<span class="keybinding-conflict"> Conflicts with another action.</span>{/if}</span></div>
                       <div class="keybinding-control">
                         <kbd>{recordingAction === action ? (recordingStrokes.length ? `${recordingStrokes.join(" ")} …` : "Press shortcut…") : (binding || "Unassigned")}</kbd>
-                        <button class="secondary sm" aria-pressed={recordingAction === action} onclick={() => beginRecording(action as KeybindingAction)}>{recordingAction === action ? "Recording" : "Record"}</button>
-                        <button class="link" disabled={!binding} onclick={() => saveKeybinding(action as KeybindingAction, "")}>Clear</button>
+                        <button class="secondary sm" aria-pressed={recordingAction === action} onclick={() => beginRecording(action)}>{recordingAction === action ? "Recording" : "Record"}</button>
+                        <button class="link" disabled={!binding} onclick={() => saveKeybinding(action, "")}>Clear</button>
                       </div>
                     </div>
                   {/each}
                 </div>
-                <div class="setting-actions"><button class="secondary" onclick={() => saveAppSetting("keybindings", { ...DEFAULT_KEYBINDINGS })}>Restore defaults</button></div>
+                <div class="setting-actions" id="settings-option-keybindingDefaults"><button class="secondary" onclick={() => saveAppSetting("keybindings", { ...DEFAULT_KEYBINDINGS })}>Restore defaults</button></div>
               </section>
             {:else if settingsTab === "sandbox"}
               <section class="settings-section" aria-labelledby="settings-sandbox-groups">
@@ -5226,11 +5280,11 @@
               <section class="settings-section" aria-labelledby="settings-backup-automatic">
                 <div class="section-heading"><h3 id="settings-backup-automatic">Automatic backup</h3><p>Create integrity-verified recovery copies on a schedule or on demand, then prune only after the new backup has been reread and verified.</p></div>
                 <div class="settings-list">
-                  <div class="setting-card">
+                  <div class="setting-card" id="settings-option-automaticBackupSchedule">
                     <div class="setting-copy"><span class="setting-label">Schedule</span><span class="setting-description">Choose when Tauridium creates automatic backups while it is running.</span></div>
                     <select class="setting-control" aria-label="Automatic backup schedule" value={appSettings.automaticBackupSchedule} onchange={(e) => saveAppSetting("automaticBackupSchedule", e.currentTarget.value)}><option value="off">Off</option><option value="startup">On program startup</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select>
                   </div>
-                  <div class="setting-card setting-card-stack">
+                  <div class="setting-card setting-card-stack" id="settings-option-automaticBackupDirectory">
                     <div class="setting-copy"><span class="setting-label">Output folder</span><span class="setting-description">{distributionInfo.automaticBackupsUsePrivateStorage ? "Flatpak stores scheduled backups in Tauridium's private application data so recurring writes do not require broad host filesystem access." : "Choose the folder used for scheduled and on-demand automatic backups. Leave unset to use Tauridium's managed configuration folder."}</span></div>
                     {#if distributionInfo.automaticBackupsUsePrivateStorage}
                       <div class="backup-location-row"><code>Tauridium private data/backups/automatic</code><span class="status-badge">Sandboxed</span></div>
@@ -5241,7 +5295,7 @@
                       </div>
                     {/if}
                   </div>
-                  <div class="setting-card">
+                  <div class="setting-card" id="settings-option-automaticBackupRetentionMode">
                     <div class="setting-copy"><span class="setting-label">Retention strategy</span><span class="setting-description">Choose a simple count, age limit, both limits together, or tiered GFS-style history.</span></div>
                     <select class="setting-control" aria-label="Automatic backup retention strategy" value={appSettings.automaticBackupRetentionMode} onchange={(e) => saveAppSetting("automaticBackupRetentionMode", e.currentTarget.value)}>
                       <option value="count">Newest backup count</option>
@@ -5251,13 +5305,13 @@
                     </select>
                   </div>
                   {#if appSettings.automaticBackupRetentionMode === "count" || appSettings.automaticBackupRetentionMode === "countAndAge"}
-                    <div class="setting-card">
+                    <div class="setting-card" id="settings-option-automaticBackupRetention">
                       <div class="setting-copy"><span class="setting-label">Newest backups to keep</span><span class="setting-description">Always keep at least the newest verified automatic backup.</span></div>
                       <input class="setting-number" type="number" min="1" max="365" value={appSettings.automaticBackupRetention} aria-label="Automatic backup count retention" onchange={(e) => saveAppSetting("automaticBackupRetention", Math.max(1, Math.min(365, Number(e.currentTarget.value) || 1)))} />
                     </div>
                   {/if}
                   {#if appSettings.automaticBackupRetentionMode === "age" || appSettings.automaticBackupRetentionMode === "countAndAge"}
-                    <div class="setting-card">
+                    <div class="setting-card" id="settings-option-automaticBackupMaxAgeDays">
                       <div class="setting-copy"><span class="setting-label">Maximum backup age</span><span class="setting-description">Delete automatic backups older than this many days after a new verified backup exists. The newest verified backup is never removed solely because of age.</span></div>
                       <div class="number-with-unit"><input class="setting-number" type="number" min="1" max="3650" value={appSettings.automaticBackupMaxAgeDays} aria-label="Automatic backup maximum age in days" onchange={(e) => saveAppSetting("automaticBackupMaxAgeDays", Math.max(1, Math.min(3650, Number(e.currentTarget.value) || 1)))} /><span>days</span></div>
                     </div>
@@ -5268,7 +5322,7 @@
                       <span class="status-badge">Daily → weekly → monthly → yearly</span>
                     </div>
                   {/if}
-                  <div class="setting-actions"><button class="primary sm" disabled={backupBusy || automaticBackupRunning} onclick={runAutomaticBackupNow}>Back up now</button></div>
+                  <div class="setting-actions" id="settings-option-automaticBackupNow"><button class="primary sm" disabled={backupBusy || automaticBackupRunning} onclick={runAutomaticBackupNow}>Back up now</button></div>
                   <p class="settings-note">Retention cleanup runs only after the newly written backup has been staged, flushed, reread, parsed, and integrity-verified.</p>
                 </div>
               </section>
@@ -5310,7 +5364,7 @@
                 <section class="settings-section" aria-labelledby="settings-advanced-titlebar">
                   <div class="section-heading"><h3 id="settings-advanced-titlebar">Window title bar</h3><p>Keep application menus and the window title in one row, with Windows' native window controls.</p></div>
                   <div class="settings-list">
-                    <label class="setting-card setting-card-toggle">
+                    <label class="setting-card setting-card-toggle" id="settings-option-unifiedTitleBar">
                       <span class="setting-copy"><span class="setting-label">Unified title bar</span><span class="setting-description">Enabled by default on Windows. Disable to restore the classic title bar with the separate native menu bar used before 1.0.7. Quit and reopen Tauridium to apply this preference; closing to the tray does not restart the app.</span></span>
                       <span class="switch-control">
                         <input class="switch-input" type="checkbox" checked={appSettings.unifiedTitleBar} disabled={unifiedTitleBarBusy} aria-label="Unified title bar" onchange={(event) => saveUnifiedTitleBar(event.currentTarget.checked)} />
@@ -5352,7 +5406,7 @@
                       <span class="status-badge">Portal</span>
                     </div>
                   {:else}
-                    <div class="setting-card">
+                    <div class="setting-card" id="settings-option-downloadDirectory">
                       <div class="setting-copy">
                         <span class="setting-label">Default download directory</span>
                         <span class="setting-description" title={downloadDirectoryLabel(appSettings.downloadDirectory)}>{downloadDirectoryLabel(appSettings.downloadDirectory)}</span>
@@ -5365,25 +5419,25 @@
                     {@render appToggle("Ask where to save each download", "Show a native Save dialog for every download. The dialog starts with the website/server-suggested filename and the effective download directory.", "askEachDownload", appSettings.askEachDownload)}
                     <p class="settings-note">Priority: service override → active workspace override → these global defaults. Directory overrides are device-specific settings and full backups preserve them; portable workspace exports intentionally omit filesystem paths.</p>
                   {/if}
-                  <label class="setting-card setting-card-toggle">
+                  <label class="setting-card setting-card-toggle" id="settings-option-downloadToasts">
                     <span class="setting-copy"><span class="setting-label">Show download completion toasts</span><span class="setting-description">Show a non-interrupting notification at the bottom of the window after a website download succeeds. Applies to every service and workspace; off by default.</span></span>
                     <span class="switch-control"><input class="switch-input" type="checkbox" checked={appSettings.downloadToasts} disabled={downloadToastSettingsBusy} aria-label="Show download completion toasts" onchange={(event) => saveDownloadToastSetting("downloadToasts", event.currentTarget.checked)} /><span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span></span>
                   </label>
                   <fieldset class="download-toast-options" disabled={!appSettings.downloadToasts || downloadToastSettingsBusy}>
                     <legend>Download notification details</legend>
-                    <label class="setting-card">
+                    <label class="setting-card" id="settings-option-downloadToastLocation">
                       <span class="setting-copy"><span class="setting-label">Saved location</span><span class="setting-description">Filename only keeps local paths private. Folder name shows just the destination folder; full and partial paths include the filename.</span></span>
                       <select class="select setting-control" value={appSettings.downloadToastLocation} aria-label="Download notification saved location" onchange={(event) => { const value = event.currentTarget.value; if (value === "none" || value === "directory" || value === "full" || value === "partial") void saveDownloadToastSetting("downloadToastLocation", value); }}>
                         <option value="none">Filename only</option><option value="directory">Destination folder name</option><option value="full">Full file path</option><option value="partial">Partial file path</option>
                       </select>
                     </label>
                     {#if appSettings.downloadToastLocation === "partial"}
-                      <label class="setting-card">
+                      <label class="setting-card" id="settings-option-downloadToastParentLevels">
                         <span class="setting-copy"><span class="setting-label">Parent folders to show</span><span class="setting-description">Show the nearest 1–10 parent folders and the filename. Omitted ancestors are marked with an ellipsis; 2 shows, for example, Downloads/Reports/example.pdf.</span></span>
                         <input class="num setting-control" type="number" min="1" max="10" step="1" value={appSettings.downloadToastParentLevels} aria-label="Download notification parent folders" onchange={saveDownloadToastParentLevels} />
                       </label>
                     {/if}
-                    <label class="setting-card">
+                    <label class="setting-card" id="settings-option-downloadToastDuration">
                       <span class="setting-copy"><span class="setting-label">Display time</span><span class="setting-description">The timer pauses while hovered, keyboard-focused, or Tauridium is in the background. Multiple downloads queue; every toast can be dismissed.</span></span>
                       <select class="select setting-control" value={appSettings.downloadToastDuration} aria-label="Download notification display time" onchange={(event) => { const value = Number(event.currentTarget.value); if (value === 0 || value === 8 || value === 15 || value === 30) void saveDownloadToastSetting("downloadToastDuration", value); }}>
                         <option value={8}>8 seconds</option><option value={15}>15 seconds</option><option value={30}>30 seconds</option><option value={0}>Until dismissed</option>
@@ -5396,7 +5450,7 @@
               <section class="settings-section" aria-labelledby="settings-advanced-browser">
                 <div class="section-heading"><h3 id="settings-advanced-browser">Browser identity</h3><p>Advanced compatibility controls for services that depend on browser identification.</p></div>
                 <div class="settings-list">
-                  <div class="setting-card setting-card-stack">
+                  <div class="setting-card setting-card-stack" id="settings-option-userAgentPref">
                     <div class="setting-copy"><span class="setting-label">Custom user agent</span><span class="setting-description">Override the browser identity sent to newly opened services. Restart Tauridium to apply it everywhere.</span></div>
                     <input class="setting-text-input" value={appSettings.userAgentPref} aria-label="Custom user agent" placeholder="Leave empty to use the app default" onchange={(e) => saveAppSetting("userAgentPref", e.currentTarget.value)} />
                   </div>
@@ -5406,7 +5460,7 @@
                 <div class="section-heading"><h3 id="settings-advanced-service-icons">Service icons</h3><p>Control durable website-icon discovery and refresh.</p></div>
                 <div class="settings-list">
                   {@render appToggle("Fetch preferred website icons automatically", "For services with Use website icon enabled, fetch the website icon once and keep it in Tauridium's persistent cache. Services that do not prefer website icons are never fetched automatically.", "fetchMissingServiceIcons", appSettings.fetchMissingServiceIcons)}
-                  <div class="setting-card">
+                  <div class="setting-card" id="settings-option-refetchIcons">
                     <div class="setting-copy"><span class="setting-label">Refetch preferred website icons</span><span class="setting-description">Refresh only services whose Use website icon preference is enabled. Recipe-icon services are left untouched.</span></div>
                     <button class="secondary sm" onclick={refetchAllServiceIcons}>Refetch all…</button>
                   </div>
@@ -5600,7 +5654,7 @@
 {/snippet}
 
 {#snippet appToggle(label: string, desc: string, key: keyof AppSettings, checked: boolean)}
-  <label class="setting-card setting-card-toggle">
+  <label class="setting-card setting-card-toggle" id={`settings-option-${key}`}>
     <span class="setting-copy"><span class="setting-label">{label}</span><span class="setting-description">{desc}</span></span>
     <span class="switch-control">
       <input class="switch-input" type="checkbox" {checked} aria-label={label} onchange={(e) => saveAppSetting(key, e.currentTarget.checked)} />
@@ -5903,6 +5957,7 @@
     color: var(--accent-fg); box-shadow: 0 1px 5px rgba(0, 0, 0, 0.16);
   }
   .settings-content { display: flex; flex-direction: column; gap: 26px; padding: 24px; min-height: 260px; }
+  .settings-content:global([data-settings-search-highlight="true"]), .settings-content :global([data-settings-search-highlight="true"]) { outline: 2px solid var(--accent); outline-offset: 4px; scroll-margin-block: 20px; }
   .settings-section { display: flex; flex-direction: column; gap: 10px; }
   .section-heading { display: flex; flex-direction: column; gap: 4px; padding: 0 2px; }
   .section-heading h3 { margin: 0; font-size: 13px; line-height: 1.3; font-weight: 700; color: var(--text); }
