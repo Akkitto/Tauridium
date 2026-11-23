@@ -5,6 +5,7 @@ pkgs.writeShellApplication {
     dbus
     xvfb-run
     xdotool
+    xclip
     imagemagick
     tesseract
     python3

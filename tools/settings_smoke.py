@@ -210,10 +210,25 @@ def main() -> int:
               wait_for(ready, description)
               return rendered
 
-            def search_setting(query, caption, suffix):
+            def verify_search_value(expected):
+              # Use only this test's isolated X11 clipboard. Sparse-text OCR can
+              # omit an editable field even when it is visibly rendered correctly.
+              def copied_value():
+                xdo("key", "--clearmodifiers", "ctrl+a", "ctrl+c")
+                result = subprocess.run(["xclip", "-selection", "clipboard", "-out"],
+                                        capture_output=True, text=True, check=False, timeout=10)
+                return result.returncode == 0 and result.stdout == expected
+              wait_for(copied_value, "exact editable Settings search value")
+              xdo("key", "--clearmodifiers", "Right")
+
+            def enter_search_query(query):
               xdo("key", "--clearmodifiers", "ctrl+f")
               xdo("type", "--clearmodifiers", "--delay", "1", query)
-              search_capture(f"{suffix}-results", lambda text: query.casefold() in text.casefold() and "matching setting" in text.lower(), "complete query and rendered Settings search results")
+              verify_search_value(query)
+
+            def search_setting(query, caption, suffix):
+              enter_search_query(query)
+              search_capture(f"{suffix}-results", lambda text: "matching setting" in text.lower(), "rendered Settings search results")
               xdo("key", "--clearmodifiers", "Return")
               opened_text, opened_rows, _ = search_capture(f"{suffix}-opened", lambda text: caption in text, f"search destination: {caption}")
               return opened_text, opened_rows
@@ -224,12 +239,18 @@ def main() -> int:
             search_setting("restore backup", "Manual backup", "action")
             search_setting("theme", "Theme", "appearance")
             assert json.loads((data / "app_settings.json").read_text(encoding="utf-8")) == before_search, "Search or navigation changed persisted settings"
-            xdo("key", "--clearmodifiers", "ctrl+f")
-            xdo("type", "--clearmodifiers", "--delay", "1", "zzznosuchsettingzzz")
+            enter_search_query("zzznosuchsettingzzz")
             search_capture("no-results", lambda text: "No settings match" in text, "no-results feedback")
             xdo("key", "--clearmodifiers", "Escape")
             xdo("key", "--clearmodifiers", "Escape")
-            text, rows, _ = search_capture("cleared", lambda text: "No settings match" not in text and "Search settings" in text, "Escape clears the query and dismisses search feedback")
+            # Type without refocusing/selecting: any uncleared query would prefix
+            # this probe, so exact native clipboard readback proves the field cleared.
+            xdo("type", "--clearmodifiers", "--delay", "1", "clearprobe")
+            verify_search_value("clearprobe")
+            xdo("key", "--clearmodifiers", "Escape")
+            xdo("key", "--clearmodifiers", "Escape")
+            text, rows, _ = search_capture("cleared", lambda text: "No settings match" not in text, "Escape dismisses search feedback")
+            assert json.loads((data / "app_settings.json").read_text(encoding="utf-8")) == before_search, "Search queries or clearing changed persisted settings"
             click(word(rows, "General"))
             text, rows, _ = capture(window, f"{name}-search-return-general")
             assert "Startup" in text, "Search trapped normal tab navigation"
