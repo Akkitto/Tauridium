@@ -2,6 +2,7 @@
 """Regression coverage for Tauridium 0.4.4 backup, audit, export, and layout hardening."""
 
 from __future__ import annotations
+from rust_sources import read_orchestration_sources
 
 import unittest
 from pathlib import Path
@@ -12,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class Patch0404Tests(unittest.TestCase):
   @classmethod
   def setUpClass(cls) -> None:
-    cls.main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+    cls.main = read_orchestration_sources(ROOT)
     cls.backup = (ROOT / "src-tauri/src/backup.rs").read_text(encoding="utf-8")
     cls.audit = (ROOT / "src-tauri/src/audit.rs").read_text(encoding="utf-8")
     cls.portable = (ROOT / "src-tauri/src/portable.rs").read_text(encoding="utf-8")

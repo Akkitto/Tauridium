@@ -2,6 +2,7 @@
 """Regression coverage for Tauridium Proton Tauri-marker compatibility."""
 
 from __future__ import annotations
+from rust_sources import read_orchestration_sources
 
 import re
 import unittest
@@ -9,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CARGO = (ROOT / "src-tauri/Cargo.toml").read_text(encoding="utf-8")
-MAIN = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+MAIN = read_orchestration_sources(ROOT)
 PROTON = (ROOT / "src-tauri/src/proton_compat.rs").read_text(encoding="utf-8")
 TAURI_WEBVIEW = (ROOT / "vendor/tauri/src/manager/webview.rs").read_text(encoding="utf-8")
 PATCH_DOC = (ROOT / "vendor/tauri/TAURIDIUM-PATCH.md").read_text(encoding="utf-8")

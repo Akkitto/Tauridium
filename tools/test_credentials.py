@@ -1,4 +1,5 @@
 """Credential-vault persistence and explicit authentication transport policy."""
+from rust_sources import read_orchestration_sources
 import unittest
 from pathlib import Path
 
@@ -18,7 +19,7 @@ class CredentialTests(unittest.TestCase):
         self.assertIn("retired_credential_accounts", source)
 
     def test_login_and_ui_expose_storage_and_transport_choices(self):
-        main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+        main = read_orchestration_sources(ROOT)
         app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
         login = main.split("async fn login(", 1)[1].split("#[tauri::command]", 1)[0]
         self.assertLess(login.index("credentials::validate_server"), login.index(".basic_auth"))

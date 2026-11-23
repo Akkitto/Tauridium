@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Regression coverage for native HTML5 file drops in service webviews."""
+from rust_sources import read_orchestration_sources
 
 from pathlib import Path
 import json
@@ -7,7 +8,7 @@ import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-MAIN = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+MAIN = read_orchestration_sources(ROOT)
 
 
 class ServiceFileDropTests(unittest.TestCase):
@@ -53,7 +54,7 @@ class ServiceFileDropTests(unittest.TestCase):
     self.assertNotIn("invoke(", script)
     self.assertNotIn("fetch(", script)
     self.assertIn(
-      '#[cfg(target_os = "linux")]\n    {\n        builder = builder.initialization_script(include_str!("linux_file_drop.js"));',
+      '#[cfg(target_os = "linux")]\n    {\n        builder = builder.initialization_script(include_str!("../linux_file_drop.js"));',
       MAIN,
     )
 

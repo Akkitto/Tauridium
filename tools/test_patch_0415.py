@@ -1,9 +1,10 @@
 """Regression coverage for Tauridium 0.4.15 Rust settings defaults."""
+from rust_sources import read_orchestration_sources
 from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-RUST = (ROOT / "src-tauri" / "src" / "main.rs").read_text(encoding="utf-8")
+RUST = read_orchestration_sources(ROOT)
 APP = (ROOT / "src" / "App.svelte").read_text(encoding="utf-8")
 
 

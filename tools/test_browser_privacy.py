@@ -1,4 +1,5 @@
 """Preserve sign-in compatibility without blanket tracking/reputation exceptions."""
+from rust_sources import read_orchestration_sources
 from pathlib import Path
 import unittest
 
@@ -16,7 +17,7 @@ class BrowserPrivacyTests(unittest.TestCase):
     self.assertIn('attributes.autoplay', source)
 
   def test_native_environment_policy_is_a_startup_snapshot_and_ui_requires_explicit_consent(self):
-    main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+    main = read_orchestration_sources(ROOT)
     self.assertEqual(main.count('*state.tracking_prevention_startup.lock().unwrap() ='), 1)
     self.assertIn('&state.tracking_prevention_startup.lock().unwrap()', main)
     app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")

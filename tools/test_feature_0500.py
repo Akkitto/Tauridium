@@ -2,6 +2,7 @@
 """Regression coverage for the Tauridium 0.5.0 project-identity feature release."""
 
 from __future__ import annotations
+from rust_sources import read_orchestration_sources
 
 import json
 import subprocess
@@ -27,7 +28,7 @@ class Feature0500Tests(unittest.TestCase):
     cls.readme = (ROOT / "README.md").read_text(encoding="utf-8")
     cls.license = (ROOT / "LICENSE").read_text(encoding="utf-8")
     cls.cargo = (ROOT / "src-tauri/Cargo.toml").read_text(encoding="utf-8")
-    cls.main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+    cls.main = read_orchestration_sources(ROOT)
     cls.single_instance = (ROOT / "src-tauri/src/single_instance.rs").read_text(encoding="utf-8")
     cls.app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
     cls.api = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")

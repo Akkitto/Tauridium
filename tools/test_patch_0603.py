@@ -2,13 +2,14 @@
 """Regression coverage for Tauridium 0.6.3 window restore and spacing-preview fixes."""
 
 from __future__ import annotations
+from rust_sources import read_orchestration_sources
 
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
-MAIN = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+MAIN = read_orchestration_sources(ROOT)
 
 
 class Patch0603Tests(unittest.TestCase):

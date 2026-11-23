@@ -2,6 +2,7 @@
 """Regression coverage for non-mutating local release orchestration."""
 
 from __future__ import annotations
+from rust_sources import read_orchestration_sources
 
 import importlib.util
 import subprocess
@@ -130,7 +131,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")
     build_rs = (ROOT / "src-tauri/build.rs").read_text(encoding="utf-8")
     self.assertIn("build:\n  python3 tools/tauri_build.py --no-bundle --ci", justfile)
-    main_rs = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+    main_rs = read_orchestration_sources(ROOT)
     package_release = (ROOT / "tools/package_release.py").read_text(encoding="utf-8")
     self.assertIn('std::env::var("PROFILE")', build_rs)
     self.assertIn("tauri_build::is_dev()", build_rs)
@@ -147,18 +148,18 @@ class ReleaseWorkflowTests(unittest.TestCase):
     self.assertNotIn("FORBIDDEN_RUNTIME_MARKERS", package_release)
 
   def test_committed_rust_sources_match_native_rustfmt_baseline(self) -> None:
-    main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+    main = read_orchestration_sources(ROOT)
     recipes = (ROOT / "src-tauri/src/recipes.rs").read_text(encoding="utf-8")
 
     # These are the exact forms emitted by rustfmt 1.97.1 on Windows for the
-    # recipe code added in 0.3.x. Keep this lightweight guard so artifact
+    # recipe code after its extraction into service modules. Keep this lightweight guard so artifact
     # packaging environments without Rust still reject the known drift.
     self.assertIn(
-      "async fn recipe_config(app: &AppHandle, app_data: &Path, recipe_id: &str) -> Result<Value, String> {",
+      "pub(crate) async fn recipe_config(\n    app: &AppHandle,\n    app_data: &Path,\n    recipe_id: &str,\n) -> Result<Value, String> {",
       main,
     )
     self.assertIn(
-      "async fn recipe_webview_js(app: &AppHandle, app_data: &Path, recipe_id: &str) -> Option<String> {",
+      'async fn recipe_webview_js(app: &AppHandle, app_data: &Path, recipe_id: &str) -> Option<String> {',
       main,
     )
     self.assertIn(
@@ -187,7 +188,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
       backup,
     )
     self.assertIn(
-      'fn persist_app_settings(app: &AppHandle, state: &AppState, settings: &Value) -> Result<(), String> {',
+      'pub(crate) fn persist_app_settings(\n    app: &AppHandle,\n    state: &AppState,\n    settings: &Value,\n) -> Result<(), String> {',
       main,
     )
     self.assertIn(
@@ -254,14 +255,14 @@ class ReleaseWorkflowTests(unittest.TestCase):
     )
 
   def test_download_notification_uses_valid_quoted_format_string(self) -> None:
-    main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+    main = read_orchestration_sources(ROOT)
     self.assertIn(r'let message = format!("Downloaded \"{filename}\"");', main)
     self.assertIn('show_system_notification(webview.app_handle(), "Tauridium", Some(&message))', main)
     self.assertIn('.and_then(Path::file_name)', main)
     self.assertNotIn('format!("Downloaded "{}""', main)
 
   def test_tauridium_menu_opens_settings_and_exposes_about_quick_links(self) -> None:
-    main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+    main = read_orchestration_sources(ROOT)
     app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
     menu_builder = main.split("fn build_native_application_menu", 1)[1].split("#[derive(Clone, Copy)]", 1)[0]
     native_menu = main.split("// Native application menu", 1)[1].split("// Request notification", 1)[0]

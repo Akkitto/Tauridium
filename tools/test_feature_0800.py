@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Regression coverage for the v0.8.0 Flatpak distribution feature."""
 from __future__ import annotations
+from rust_sources import read_orchestration_sources
 
 import json
 import re
@@ -72,7 +73,7 @@ class FlatpakReleaseTests(unittest.TestCase):
       self.assertNotIn(forbidden, manifest)
 
   def test_updater_is_not_available_in_flatpak_runtime_path(self) -> None:
-    main = self.read("src-tauri/src/main.rs")
+    main = read_orchestration_sources(ROOT)
     self.assertIn('#[cfg(all(feature = "native-distribution", not(feature = "flatpak")))]', main)
     self.assertIn('distribution::is_flatpak()', main)
     capability = self.read("src-tauri/capabilities/default.json")

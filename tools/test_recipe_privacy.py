@@ -1,4 +1,5 @@
 """Explicit executable-content trust and accurate export privacy boundaries."""
+from rust_sources import read_orchestration_sources
 import unittest
 from pathlib import Path
 
@@ -18,7 +19,7 @@ class RecipePrivacyTests(unittest.TestCase):
 
     def test_ui_requires_explicit_import_and_export_trust_and_warns_about_backups(self):
         source = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
-        main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+        main = read_orchestration_sources(ROOT)
         for marker in ("let serviceExportIncludeSensitiveRecipeScripts = $state(false)",
                        "Import this recipe only if you trust",
                        "This backup contains private service configuration",

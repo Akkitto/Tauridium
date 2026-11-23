@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Regression coverage for Tauridium 0.5.4 shortcuts, preloading, and hibernation."""
+from rust_sources import read_orchestration_sources
 
 from pathlib import Path
 import unittest
@@ -8,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
 UI = (ROOT / "src/lib/ui.ts").read_text(encoding="utf-8")
 UI_TEST = (ROOT / "src/lib/ui.test.ts").read_text(encoding="utf-8")
-MAIN = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+MAIN = read_orchestration_sources(ROOT)
 
 
 class ShortcutPreloadHibernationPatchTests(unittest.TestCase):
@@ -38,15 +39,17 @@ class ShortcutPreloadHibernationPatchTests(unittest.TestCase):
     self.assertIn('expect(strokes).toEqual(Object.values(DEFAULT_KEYBINDINGS));', UI_TEST)
 
   def test_preload_keeps_webviews_alive_offscreen_until_first_use(self) -> None:
-    preload = MAIN.split("async fn preload_service", 1)[1].split("struct ServiceIconRequest", 1)[0]
-    create = MAIN.split("async fn create_service_webview", 1)[1].split("async fn show_service", 1)[0]
-    show = MAIN.split("async fn show_service", 1)[1].split("async fn preload_service", 1)[0]
+    lifecycle = (ROOT / "src-tauri/src/services/lifecycle.rs").read_text(encoding="utf-8")
+    webview = (ROOT / "src-tauri/src/services/webview.rs").read_text(encoding="utf-8")
+    preload = lifecycle.split("async fn preload_service", 1)[1].split("fn hide_service_webviews", 1)[0]
+    create = webview.split("async fn create_service_webview", 1)[1]
+    show = lifecycle.split("async fn show_service", 1)[1].split("async fn preload_service", 1)[0]
     self.assertIn('state.preloading.lock().unwrap().insert(service_id.clone());', preload)
     self.assertIn('let offscreen = LogicalPosition::new(-30000.0, 0.0);', preload)
     self.assertNotIn('wv.hide()', preload)
     self.assertIn('.focused(false)', create)
     self.assertIn('.preloading', create)
-    activate = MAIN.split('fn activate_service_webview', 1)[1].split('#[tauri::command]\nasync fn show_service', 1)[0]
+    activate = lifecycle.split('fn activate_service_webview', 1)[1].split("#[tauri::command]", 1)[0]
     self.assertIn('let _ = wv.set_position(offscreen);', activate)
     self.assertIn('let _ = wv.show();', activate)
     self.assertIn('let _ = wv.set_focus();', activate)

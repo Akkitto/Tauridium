@@ -1,4 +1,5 @@
 """Regression coverage for Tauridium 0.4.10 service settings and icon/shortcut fixes."""
+from rust_sources import read_orchestration_sources
 from pathlib import Path
 import unittest
 
@@ -10,7 +11,7 @@ class Patch0410Tests(unittest.TestCase):
   def setUpClass(cls) -> None:
     cls.app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
     cls.api = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
-    cls.main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+    cls.main = read_orchestration_sources(ROOT)
     cls.icons = (ROOT / "src-tauri/src/icons.rs").read_text(encoding="utf-8")
 
   def test_automatic_and_bulk_icon_fetching_respect_service_preference(self) -> None:

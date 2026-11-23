@@ -2,6 +2,7 @@
 """Regression coverage for Tauridium 0.6.2 sidebar spacing and save feedback."""
 
 from __future__ import annotations
+from rust_sources import read_orchestration_sources
 
 import unittest
 from pathlib import Path
@@ -9,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
 API = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
-MAIN = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+MAIN = read_orchestration_sources(ROOT)
 
 
 class Patch0602Tests(unittest.TestCase):

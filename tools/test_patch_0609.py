@@ -2,12 +2,13 @@
 """Regression coverage for Tauridium 0.6.9 Linux portability fixes."""
 
 from __future__ import annotations
+from rust_sources import read_orchestration_sources
 
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MAIN = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+MAIN = read_orchestration_sources(ROOT)
 SINGLE_INSTANCE = (ROOT / "src-tauri/src/single_instance.rs").read_text(encoding="utf-8")
 VALIDATE = (ROOT / "tools/validate_release.py").read_text(encoding="utf-8")
 CI = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")

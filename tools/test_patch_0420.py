@@ -2,6 +2,7 @@
 """Regression coverage for Tauridium 0.4.20 sidebar drag ordering."""
 
 from __future__ import annotations
+from rust_sources import read_orchestration_sources
 
 import unittest
 from pathlib import Path
@@ -11,7 +12,7 @@ APP = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
 API = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
 UI = (ROOT / "src/lib/ui.ts").read_text(encoding="utf-8")
 UI_TEST = (ROOT / "src/lib/ui.test.ts").read_text(encoding="utf-8")
-RUST = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+RUST = read_orchestration_sources(ROOT)
 
 
 class Patch0420Tests(unittest.TestCase):

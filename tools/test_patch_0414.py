@@ -1,11 +1,12 @@
 """Regression coverage for Tauridium 0.4.14 shortcut capture and workspace UX."""
+from rust_sources import read_orchestration_sources
 from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = (ROOT / "src" / "App.svelte").read_text(encoding="utf-8")
 API = (ROOT / "src" / "lib" / "api.ts").read_text(encoding="utf-8")
-RUST = (ROOT / "src-tauri" / "src" / "main.rs").read_text(encoding="utf-8")
+RUST = read_orchestration_sources(ROOT)
 
 
 class Patch0414Tests(unittest.TestCase):
@@ -19,7 +20,8 @@ class Patch0414Tests(unittest.TestCase):
     self.assertIn('App setting serviceShortcutCaptureOverrides is invalid', RUST)
 
   def test_service_webview_bridge_captures_single_shortcuts_and_chords(self) -> None:
-    bridge = RUST.split('fn service_shortcut_bridge_js', 1)[1].split('const IPC_SHIM_JS', 1)[0]
+    shortcuts = (ROOT / 'src-tauri/src/services/shortcuts.rs').read_text(encoding='utf-8')
+    bridge = shortcuts.split('fn service_shortcut_bridge_js', 1)[1].split('#[cfg(test)]', 1)[0]
     self.assertIn('effective_service_shortcut_capture', RUST)
     actions = RUST.split('const SHORTCUT_ACTIONS', 1)[1].split('fn effective_service_shortcut_capture', 1)[0]
     self.assertIn('"quickWorkspaceSwitch"', actions)

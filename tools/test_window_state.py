@@ -2,6 +2,7 @@
 """Regression coverage for persistent Tauridium main-window geometry/state."""
 
 from __future__ import annotations
+from rust_sources import read_orchestration_sources
 
 import re
 import os
@@ -18,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class WindowStateTests(unittest.TestCase):
   def setUp(self) -> None:
-    self.main = (ROOT / "src-tauri/src/main.rs").read_text(encoding="utf-8")
+    self.main = read_orchestration_sources(ROOT)
     self.cargo = (ROOT / "src-tauri/Cargo.toml").read_text(encoding="utf-8")
     self.lock = (ROOT / "src-tauri/Cargo.lock").read_text(encoding="utf-8")
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Regression coverage for the v0.8.2 Windows release-gate fixes."""
 from __future__ import annotations
+from rust_sources import read_orchestration_sources
 
 import json
 import unittest
@@ -23,7 +24,7 @@ class Patch0802Tests(unittest.TestCase):
     self.assertIn(f'$InitVersion = "{version}"', self.read("tools/init.ps1"))
 
   def test_windows_all_features_do_not_compile_an_unused_autostart_value(self) -> None:
-    main = self.read("src-tauri/src/main.rs")
+    main = read_orchestration_sources(ROOT)
     body = main.split("fn apply_autostart_setting", 1)[1].split("fn persist_app_settings", 1)[0]
     value_cfg = """#[cfg(any(
         all(feature = \"desktop-integration\", not(feature = \"flatpak\")),
