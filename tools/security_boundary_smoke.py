@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 NAVIGATIONS = ("tauri://localhost/index.html", "http://tauri.localhost/index.html",
                "https://tauri.localhost/index.html", "http://asset.localhost/test",
                "file:///tmp/tauridium-boundary-nonexistent.txt", "data:text/html,untrusted")
-COMMANDS = ("get_app_metadata", "get_app_settings", "set_app_settings", "clear_service_cache", "export_backup")
+COMMANDS = ("get_app_metadata", "get_support_information", "copy_support_information", "get_app_settings", "set_app_settings", "clear_service_cache", "export_backup")
 
 
 def validate_reports(reports: list[dict], first: str, second: str) -> None:
