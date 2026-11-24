@@ -1,6 +1,7 @@
 param([Parameter(Mandatory = $true)][string]$Binary, [string]$Output = "release/evidence/windows-titlebar", [switch]$CaptureCaptionPreview)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'windows_fixture_server.ps1')
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'This GUI gate requires a fresh GitHub-hosted Windows CI user profile.' }
 $Binary = (Resolve-Path -LiteralPath $Binary).Path
 $ProfileRoot = Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'dev.brani.tauridium'
@@ -171,7 +172,9 @@ public static class ChromeNative {
   public static void ClickPoint(IntPtr owner,int x,int y,bool right) {
     Point p=new Point(); p.X=x; p.Y=y;
     if (GetAncestor(WindowFromPoint(p),2)!=owner) throw new InvalidOperationException("Refusing to click outside the test window.");
+    if (GetForegroundWindow()!=owner) throw new InvalidOperationException("Refusing to click a background test window.");
     if (!SetCursorPos(x,y)) throw new InvalidOperationException("Unable to position the test pointer.");
+    if (GetForegroundWindow()!=owner || GetAncestor(WindowFromPoint(p),2)!=owner) throw new InvalidOperationException("Test window lost foreground or point ownership before input.");
     Input down=new Input(), up=new Input(); down.Data.Mouse.Flags=right?8u:2u; up.Data.Mouse.Flags=right?16u:4u;
     if (SendInput(2,new Input[]{down,up},Marshal.SizeOf(typeof(Input)))!=2) throw new InvalidOperationException("Test pointer input was blocked.");
   }
@@ -512,6 +515,7 @@ function Click-Service-Row {
   # after native restore/DPI/layout. Wait for fresh UIA geometry and real native
   # point ownership; never relax ClickPoint's final fail-closed ownership check.
   Wait-For {
+    if ([ChromeNative]::GetForegroundWindow() -ne $script:Window) { $Probe.Since=$null; return $false }
     $Row=Find-Control 'Beta fixture' ([Windows.Automation.ControlType]::Button)
     if (-not $Row -or $Row.Current.IsOffscreen) { $Probe.Since=$null; return $false }
     $R=$Row.Current.BoundingRectangle
@@ -533,7 +537,12 @@ function Click-Service-Row {
 }
 function Open-Service-Menu {
   Click-Service-Row
-  Wait-For { $null -ne (Visible-Service-Item 'Duplicate') } 'styled service menu'
+  Wait-For {
+    if ([ChromeNative]::GetForegroundWindow() -ne $script:Window) {
+      throw ('Test window lost foreground while opening the styled service menu: '+[ChromeNative]::WindowMetadata([ChromeNative]::GetForegroundWindow()))
+    }
+    $null -ne (Visible-Service-Item 'Duplicate')
+  } 'styled service menu'
   if ([ChromeNative]::HasPopup($script:Child.Id)) { throw 'Styled menu unexpectedly used the system fallback.' }
 }
 function Test-Service-Pixel([int]$X,[int]$Y) {
@@ -553,9 +562,9 @@ function Test-Service-Menus {
   $Listener=New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback,0)
   $Listener.Start(); $Port=$Listener.LocalEndpoint.Port; $Listener.Stop()
   $Python=(Get-Command python.exe -ErrorAction Stop).Source
-  $Server=Start-Process -FilePath $Python -ArgumentList @('-I','-m','http.server',"$Port",'--bind','127.0.0.1','--directory',('"{0}"' -f $Fixture)) -PassThru -RedirectStandardOutput (Join-Path $Fixture 'server.log') -RedirectStandardError (Join-Path $Fixture 'server-errors.log')
+  $Server=Start-HttpFixtureServer -Python $Python -Directory $Fixture -Port $Port
   try {
-    Wait-For { try { (Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$Port/fixture.html" -TimeoutSec 2).StatusCode -eq 200 } catch { $false } } 'local synthetic service fixture'
+    Wait-HttpFixtureServer $Server
     $Services=@(
       @{id='menu-alpha';name='Alpha fixture';recipeId='custom-website';isEnabled=$true;isLocalRecipe=$true;order=0;customUrl="http://127.0.0.1:$Port/fixture.html?alpha"},
       @{id='menu-beta';name='Beta fixture';recipeId='custom-website';isEnabled=$true;isLocalRecipe=$true;order=1;customUrl="http://127.0.0.1:$Port/fixture.html?beta"}
@@ -638,9 +647,9 @@ function Test-Service-Menus {
     Write-Test-Diagnostics
     throw
   } finally {
-    if ($script:Child -and -not $script:Child.HasExited) { Stop-Tauridium }
-    if (-not $Server.HasExited) { $Server.Kill(); $Server.WaitForExit(5000) | Out-Null }
-    $Server.Dispose()
+    try {
+      if ($script:Child -and -not $script:Child.HasExited) { Stop-Tauridium }
+    } finally { Stop-HttpFixtureServer $Server }
   }
 }
 try {
