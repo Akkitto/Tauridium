@@ -81,6 +81,10 @@ rfd = { version = "=0.17.2", default-features = false }
 tauri-plugin-dialog = "=2.8.4"
 rfd = { version = "=0.17.2", default-features = false, features = ["common-controls-v6"] }
 
+# Text-only native clipboard support; Linux reuses GTK for core Wayland/X11 selections.
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+arboard = { version = "=3.7.0", default-features = false }
+
 [target.'cfg(windows)'.dependencies]
 windows-native-keyring-store = "=1.1.0"
 windows-sys = { version = ">=0.59, <=0.61", features = [
