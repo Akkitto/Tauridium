@@ -153,7 +153,7 @@ def main() -> int:
             assert size == (width, height), f"Requested window size was not rendered: {size}"
             assert "Startup" in text, text
             if args.service_id:
-              def open_identity_settings():
+              def open_identity_settings(*, expected_directory=None):
                 # Dense tab text needs line OCR, unlike sparse switch controls.
                 text, rows, _ = capture(window, f"{name}-identity-navigation", psm=6)
                 click(word(rows, "Services", rightmost=True))
@@ -170,10 +170,12 @@ def main() -> int:
                 for step in range(32):
                   text, rows, _ = capture(window, f"{name}-identity-downloads-{step}")
                   control = control_phrase(rows, "Override download settings for this service", checkbox=True)
-                  if control is not None:
+                  if control is not None and (expected_directory is None or expected_directory in text):
                     return text, rows, control
                   xdo("mousemove", "--sync", width - 25, height // 2)
-                  xdo("click", "--repeat", 3, "--delay", 30, 5)
+                  # Keep the override checkbox and its persisted directory visible
+                  # together on compact windows; the label can appear before the value.
+                  xdo("click", "--repeat", 1 if control is not None else 3, "--delay", 30, 5)
                   time.sleep(0.2)
                 raise RuntimeError("Service download settings failed to render for a special ID")
 
@@ -185,7 +187,7 @@ def main() -> int:
               top(width, height, steps=120)
               text, rows, _ = capture(window, f"{name}-identity-close")
               click(word(rows, "close"))
-              text, rows, control = open_identity_settings()
+              text, rows, control = open_identity_settings(expected_directory="System Downloads folder")
               assert "System Downloads folder" in text, "Saved special-ID override did not reopen"
               click(control)
               wait_for(lambda: saved("serviceDownloadSettings", {}), "special-ID override removal")
