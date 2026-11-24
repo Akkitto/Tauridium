@@ -440,6 +440,18 @@ function Outer-Size {
 }
 function Open-Advanced {
   Activate-Tauridium
+  # UIA Invoke completes before account-free startup finishes and does not move
+  # keyboard focus out of the separate title-bar webview. Wait for the local
+  # shell, then focus a harmless shell control before sending its shortcut.
+  Wait-For {
+    $Control=Find-Control 'Collapse sidebar' ([Windows.Automation.ControlType]::Button)
+    $Control -and $Control.Current.IsEnabled -and -not $Control.Current.IsOffscreen
+  } 'ready local sidebar'
+  (Find-Control 'Collapse sidebar' ([Windows.Automation.ControlType]::Button)).SetFocus()
+  Wait-For {
+    $Control=Find-Control 'Collapse sidebar' ([Windows.Automation.ControlType]::Button)
+    $Control -and $Control.Current.HasKeyboardFocus
+  } 'main shell keyboard focus'
   [Windows.Forms.SendKeys]::SendWait('^,')
   Invoke-Control 'Advanced'
   Wait-For { $null -ne (Find-Control 'Unified title bar' ([Windows.Automation.ControlType]::CheckBox)) } 'title-bar setting'
