@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from frontend_source import read_frontend_source
+
 import unittest
 from pathlib import Path
 
@@ -12,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class Patch0403Tests(unittest.TestCase):
   @classmethod
   def setUpClass(cls) -> None:
-    cls.app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+    cls.app = read_frontend_source(ROOT)
     cls.ui = (ROOT / "src/lib/ui.ts").read_text(encoding="utf-8")
     cls.ui_test = (ROOT / "src/lib/ui.test.ts").read_text(encoding="utf-8")
 
@@ -30,9 +32,9 @@ class Patch0403Tests(unittest.TestCase):
     self.assertNotIn('toBe("#ffc133")', self.ui_test)
 
   def test_color_slider_labels_remain_human_readable(self) -> None:
-    self.assertIn("{Math.round(colorHue)}°", self.app)
-    self.assertIn("{Math.round(colorSaturation)}%", self.app)
-    self.assertIn("{Math.round(colorLightness)}%", self.app)
+    self.assertIn("{Math.round(appearance.colorHue)}°", self.app)
+    self.assertIn("{Math.round(appearance.colorSaturation)}%", self.app)
+    self.assertIn("{Math.round(appearance.colorLightness)}%", self.app)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+from frontend_source import frontend_sources, read_frontend_file, read_frontend_source
 from rust_sources import read_orchestration_sources
 
 import unittest
@@ -10,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class SettingsUiReleaseTests(unittest.TestCase):
   @classmethod
   def setUpClass(cls) -> None:
-    cls.app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+    cls.app = read_frontend_source(ROOT)
     cls.api = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
     cls.main = read_orchestration_sources(ROOT)
 
@@ -33,7 +35,7 @@ class SettingsUiReleaseTests(unittest.TestCase):
     self.assertIn(".setting-card-toggle { grid-template-columns: minmax(0, 1fr) auto", self.app)
 
   def test_every_application_setting_remains_exposed(self) -> None:
-    settings_body = self.app.split('{:else if view === "appSettings"}', 1)[1].split('{#snippet row', 1)[0]
+    settings_body = "\n".join(source for name, source in frontend_sources(ROOT).items() if name.startswith("src/components/Settings"))
     for key in (
       "autostart",
       "startMinimized",
@@ -59,7 +61,9 @@ class SettingsUiReleaseTests(unittest.TestCase):
 
   def test_settings_typography_uses_one_desktop_ui_system(self) -> None:
     self.assertIn('system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', self.app)
-    self.assertIn('button, input, select, textarea { font-family: inherit; }', self.app)
+    for name, source in frontend_sources(ROOT).items():
+      if name.endswith(".svelte") and any(f"<{tag}" in source for tag in ("button", "input", "select", "textarea")):
+        self.assertIn("font-family: inherit;", source, msg=f"Native controls must inherit the UI font in {name}")
     self.assertIn('.setting-label {', self.app)
     self.assertIn('.setting-description {', self.app)
     self.assertIn('.section-heading h3 {', self.app)
@@ -91,7 +95,7 @@ class SettingsUiReleaseTests(unittest.TestCase):
     self.assertIn("openExternalUrl(url)", self.app)
 
   def test_about_link_handlers_are_complete_svelte_expressions(self) -> None:
-    about = self.app.split('{:else if settingsTab === "about"}', 1)[1].split('{/if}', 1)[0]
+    about = read_frontend_file(ROOT, "src/components/SettingsAbout.svelte")
     handlers = [line.strip() for line in about.splitlines() if 'onclick={() => openProjectLink(' in line]
     self.assertEqual(len(handlers), 9)
     for handler in handlers:
@@ -104,7 +108,7 @@ class SettingsUiReleaseTests(unittest.TestCase):
   def test_about_icon_is_bundled_with_frontend(self) -> None:
     icon = ROOT / "src/assets/tauridium.svg"
     self.assertTrue(icon.is_file())
-    self.assertIn('import tauridiumLogo from "./assets/tauridium.svg";', self.app)
+    self.assertIn('import tauridiumLogo from "../assets/tauridium.svg";', self.app)
 
   def test_legacy_settings_tab_css_is_removed(self) -> None:
     for selector in (".tabs {", ".tab {", ".tab.on {"):
@@ -113,8 +117,8 @@ class SettingsUiReleaseTests(unittest.TestCase):
   def test_backup_has_its_own_settings_tab(self) -> None:
     self.assertIn('["backup", "Backup"]', (ROOT / "src/lib/settingsSearch.ts").read_text(encoding="utf-8"))
     self.assertIn('{:else if settingsTab === "backup"}', self.app)
-    backup = self.app.split('{:else if settingsTab === "backup"}', 1)[1].split('{:else if settingsTab === "advanced"}', 1)[0]
-    advanced = self.app.split('{:else if settingsTab === "advanced"}', 1)[1].split('{:else if settingsTab === "updates"}', 1)[0]
+    backup = read_frontend_file(ROOT, "src/components/SettingsBackup.svelte")
+    advanced = read_frontend_file(ROOT, "src/components/SettingsAdvanced.svelte")
     self.assertIn('settings-backup-manual', backup)
     self.assertIn('settings-backup-automatic', backup)
     self.assertNotIn('Export backup…', advanced)
@@ -125,7 +129,7 @@ class SettingsUiReleaseTests(unittest.TestCase):
     self.assertIn('if (serviceSettingsReturnToSettings)', body)
     self.assertIn('settingsTab = "services"', body)
     self.assertIn('view = "appSettings"', body)
-    self.assertIn('onclick={closeServiceSettings}>✕ close</button>', self.app)
+    self.assertIn('onclick={serviceEditor.closeServiceSettings}>✕ close</button>', self.app)
 
   def test_deprecated_local_only_wording_is_absent(self) -> None:
     lowered = self.app.lower()

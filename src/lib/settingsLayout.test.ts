@@ -1,8 +1,8 @@
-import source from "../App.svelte?raw";
-import { parse, type AST } from "svelte/compiler";
+import { appAst, componentTemplate, sourceOf, type TemplateScope } from "./frontendTestSources";
+import { type AST } from "svelte/compiler";
 import { describe, expect, it } from "vitest";
 
-const ast = parse(source, { modern: true });
+
 
 function element(value: unknown): value is AST.RegularElement {
   return value !== null && typeof value === "object" && "type" in value && value.type === "RegularElement";
@@ -16,7 +16,9 @@ function classes(node: AST.RegularElement): string[] {
 
 const switches: { input: AST.RegularElement; parent: AST.RegularElement | undefined }[] = [];
 const elements: AST.RegularElement[] = [];
-function visit(value: unknown, parent?: AST.RegularElement): void {
+function visit(value: unknown, parent?: AST.RegularElement, scope: TemplateScope = new Map()): void {
+  const component = componentTemplate(value, scope);
+  if (component) { visit(component.fragment, parent, component.scope); return; }
   if (value === null || typeof value !== "object") return;
   if (element(value)) {
     elements.push(value);
@@ -24,11 +26,11 @@ function visit(value: unknown, parent?: AST.RegularElement): void {
     parent = value;
   }
   for (const child of Object.values(value)) {
-    if (Array.isArray(child)) child.forEach((item) => visit(item, parent));
-    else visit(child, parent);
+    if (Array.isArray(child)) child.forEach((item) => visit(item, parent, scope));
+    else visit(child, parent, scope);
   }
 }
-visit(ast.fragment);
+visit(appAst.fragment);
 
 describe("Settings switch layout contract", () => {
   it("anchors every absolute switch input and track to the positioned wrapper", () => {
@@ -37,10 +39,12 @@ describe("Settings switch layout contract", () => {
       expect(parent, `switch at source offset ${input.start}`).toBeDefined();
       expect(parent && classes(parent), `switch at source offset ${input.start}`).toContain("switch-control");
     }
-    const wrapper = source.match(/\.switch-control\s*\{([^}]+)\}/)?.[1];
-    expect(wrapper).toMatch(/position:\s*relative\s*;/);
-    expect(wrapper).toMatch(/width:\s*38px\s*;/);
-    expect(wrapper).toMatch(/height:\s*22px\s*;/);
+    for (const { input } of switches) {
+      const wrapper = sourceOf(input).match(/\.switch-control\s*\{([^}]+)\}/)?.[1];
+      expect(wrapper).toMatch(/position:\s*relative\s*;/);
+      expect(wrapper).toMatch(/width:\s*38px\s*;/);
+      expect(wrapper).toMatch(/height:\s*22px\s*;/);
+    }
   });
 
   it("keeps the decorative track and thumb inside the checkbox control", () => {
@@ -66,7 +70,7 @@ describe("Download notification form controls", () => {
       expect(classes(downloadControl(label))).toContain("select");
     }
     expect(classes(downloadControl("Download notification parent folders"))).toContain("num");
-    expect(source.match(/\.download-toast-options\s+\.select\s*\{([^}]+)\}/)?.[1]).toMatch(/appearance:\s*none\s*;/);
+    expect(sourceOf(downloadControl("Download notification display time")).match(/\.download-toast-options\s+\.select\s*\{([^}]+)\}/)?.[1]).toMatch(/appearance:\s*none\s*;/);
   });
 
   it("matches duration options to numeric persisted settings", () => {

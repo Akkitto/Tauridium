@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from frontend_source import read_frontend_source
+
 import unittest
 from pathlib import Path
 
@@ -12,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class Patch0408Tests(unittest.TestCase):
   @classmethod
   def setUpClass(cls) -> None:
-    cls.app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+    cls.app = read_frontend_source(ROOT)
 
   def test_native_menu_selection_narrows_optional_service_before_use(self) -> None:
     body = self.app.split('listen<string>("select-service-id"', 1)[1].split('listen("open-settings"', 1)[0]

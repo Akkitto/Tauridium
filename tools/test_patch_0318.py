@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
+from frontend_source import read_frontend_source
 from rust_sources import read_orchestration_sources
 
 import subprocess
@@ -22,7 +24,7 @@ def project_files() -> list[Path]:
 class Patch0318Tests(unittest.TestCase):
   @classmethod
   def setUpClass(cls) -> None:
-    cls.app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+    cls.app = read_frontend_source(ROOT)
     cls.api = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
     cls.ui = (ROOT / "src/lib/ui.ts").read_text(encoding="utf-8")
     cls.main = read_orchestration_sources(ROOT)

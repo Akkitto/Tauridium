@@ -7,6 +7,8 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig({
   plugins: [svelte()],
   clearScreen: false,
+  // Use Svelte client entry points for rune tests running under Vitest in Node.
+  resolve: process.env.VITEST ? { conditions: ["browser"] } : undefined,
   test: {
     include: ["src/**/*.test.ts"],
   },

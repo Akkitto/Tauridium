@@ -2,13 +2,15 @@
 """Regression coverage for Tauridium 0.6.2 sidebar spacing and save feedback."""
 
 from __future__ import annotations
+
+from frontend_source import read_frontend_file, read_frontend_source
 from rust_sources import read_orchestration_sources
 
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 API = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
 MAIN = read_orchestration_sources(ROOT)
 
@@ -28,7 +30,7 @@ class Patch0602Tests(unittest.TestCase):
     self.assertIn('(\"expandedServiceSpacing\", 2.0, 24.0)', MAIN)
 
   def test_appearance_has_independent_spacing_sliders_with_current_spacing_as_minimum(self) -> None:
-    appearance = APP.split('settingsTab === "appearance"', 1)[1].split('settingsTab === "keybindings"', 1)[0]
+    appearance = read_frontend_file(ROOT, "src/components/SettingsAppearance.svelte")
     self.assertIn("Collapsed icon spacing", appearance)
     self.assertIn("Expanded service spacing", appearance)
     self.assertIn('aria-label="Collapsed service icon spacing"', appearance)

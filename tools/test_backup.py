@@ -2,6 +2,8 @@
 """Regression coverage for versioned, integrity-checked Tauridium backups."""
 
 from __future__ import annotations
+
+from frontend_source import read_frontend_source
 from rust_sources import read_orchestration_sources
 
 import unittest
@@ -19,7 +21,7 @@ class BackupWorkflowTests(unittest.TestCase):
     cls.recipes = (ROOT / "src-tauri/src/recipes.rs").read_text(encoding="utf-8")
     cls.profile = (ROOT / "src-tauri/src/local_profile.rs").read_text(encoding="utf-8")
     cls.api = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
-    cls.app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+    cls.app = read_frontend_source(ROOT)
 
   def test_backup_commands_are_registered_and_exposed(self) -> None:
     handler = self.main.split("tauri::generate_handler![", 1)[1].split("]", 1)[0]

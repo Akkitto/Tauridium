@@ -1,16 +1,18 @@
 """Regression coverage for Tauridium 0.4.16 Service Settings workspace UX."""
+
+from frontend_source import read_frontend_file, read_frontend_source
 from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "src" / "App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 
 
 class Patch0416Tests(unittest.TestCase):
   def workspace_block(self) -> str:
-    return APP.split('<div class="set-title">Workspaces</div>', 1)[1].split(
-      '<div class="set-title">Appearance</div>', 1
-    )[0]
+    return read_frontend_file(ROOT, "src/components/ServiceSettingsPanel.svelte").split(\
+      '<div class="set-title">Workspaces</div>', 1\
+    )[1].split('<div class="set-title">Appearance</div>', 1)[0]
 
   def test_workspace_membership_uses_full_row_checkbox_targets(self) -> None:
     block = self.workspace_block()
@@ -19,7 +21,7 @@ class Patch0416Tests(unittest.TestCase):
     self.assertIn('class="service-workspace-checkbox"', block)
     self.assertIn('type="checkbox"', block)
     self.assertIn(
-      'onchange={(event) => toggleCurrentServiceWorkspace(workspace, event.currentTarget.checked)}',
+      'onchange={(event) => serviceEditor.toggleCurrentServiceWorkspace(workspace, event.currentTarget.checked)}',
       block,
     )
     self.assertNotIn('{joined ? "Remove" : "Add"}', block)
@@ -28,7 +30,7 @@ class Patch0416Tests(unittest.TestCase):
   def test_workspace_rows_have_stable_alignment_and_membership_state(self) -> None:
     block = self.workspace_block()
     self.assertIn('{joined ? "Included" : "Not included"}', block)
-    self.assertIn('{serviceWorkspaceJoinedCount} of {workspaces.length} included', block)
+    self.assertIn('{serviceEditor.serviceWorkspaceJoinedCount} of {workspaces.length} included', block)
     self.assertIn(
       'grid-template-columns: 20px 34px minmax(0, 1fr) auto',
       APP,
@@ -39,9 +41,9 @@ class Patch0416Tests(unittest.TestCase):
   def test_workspace_filter_is_large_segmented_control(self) -> None:
     block = self.workspace_block()
     self.assertIn('class="service-workspace-filters" role="group"', block)
-    self.assertIn('aria-pressed={serviceWorkspaceFilter === "all"}', block)
-    self.assertIn('aria-pressed={serviceWorkspaceFilter === "joined"}', block)
-    self.assertIn('aria-pressed={serviceWorkspaceFilter === "available"}', block)
+    self.assertIn('aria-pressed={serviceEditor.serviceWorkspaceFilter === "all"}', block)
+    self.assertIn('aria-pressed={serviceEditor.serviceWorkspaceFilter === "joined"}', block)
+    self.assertIn('aria-pressed={serviceEditor.serviceWorkspaceFilter === "available"}', block)
     self.assertIn('setServiceWorkspaceFilter("all")', block)
     self.assertIn('setServiceWorkspaceFilter("joined")', block)
     self.assertIn('setServiceWorkspaceFilter("available")', block)

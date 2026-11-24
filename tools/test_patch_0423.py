@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+from frontend_source import read_frontend_file, read_frontend_source
+
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 UI = (ROOT / "src/lib/ui.ts").read_text(encoding="utf-8")
 UI_TEST = (ROOT / "src/lib/ui.test.ts").read_text(encoding="utf-8")
 
@@ -25,12 +27,12 @@ class Patch0423Tests(unittest.TestCase):
 
   def test_shift_click_selects_range_for_drag_without_switching_active_service(self) -> None:
     click = APP.split("function onServiceRowClick", 1)[1].split("function retryActiveService", 1)[0]
-    row = APP.split("{#snippet row(s: Service)}", 1)[1].split("{/snippet}", 1)[0]
+    row = read_frontend_file(ROOT, "src/components/ServiceRow.svelte")
     self.assertIn("event.shiftKey", click)
     self.assertIn("contiguousIdRange(visibleIds, anchorId, service.id)", click)
     self.assertIn("serviceDragSelection = range", click)
     self.assertIn("return;", click)
-    self.assertIn("onclick={(e) => onServiceRowClick(e, s)}", row)
+    self.assertIn("onclick={(e) => onServiceRowClick(e, service)}", row)
     self.assertIn("class:drag-selected", row)
 
   def test_group_drag_preserves_order_and_filtered_slots(self) -> None:
@@ -52,7 +54,7 @@ class Patch0423Tests(unittest.TestCase):
     self.assertEqual(persist.count("persistServiceIds(nextIds, previousIds)"), 1)
 
   def test_service_settings_has_immediate_sandbox_assignment_list(self) -> None:
-    service_settings = APP.split('{:else if view === "svcSettings" && settingsSvc}', 1)[1].split('{:else if view === "add"}', 1)[0]
+    service_settings = read_frontend_file(ROOT, "src/components/ServiceSettingsPanel.svelte")
     self.assertIn('<div class="set-title">Sandbox</div>', service_settings)
     self.assertIn("Sandbox assignment", service_settings)
     self.assertIn('type="radio"', service_settings)
@@ -66,7 +68,7 @@ class Patch0423Tests(unittest.TestCase):
     self.assertIn("await closeService(serviceId)", assign)
     self.assertIn("Tauridium could not verify the saved sandbox assignment", assign)
     self.assertNotIn('view = "service"', assign)
-    sandbox_tab = APP.split('{:else if settingsTab === "sandbox"}', 1)[1].split('{:else if settingsTab === "privacy"}', 1)[0]
+    sandbox_tab = read_frontend_file(ROOT, "src/components/SettingsSandbox.svelte")
     self.assertIn("disabled={sandboxAssignmentBusy}", sandbox_tab)
 
 

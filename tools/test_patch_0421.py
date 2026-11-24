@@ -3,12 +3,14 @@
 
 from __future__ import annotations
 
+from frontend_source import read_frontend_file, read_frontend_source
+
 import json
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 TAURI_CONFIG = json.loads((ROOT / "src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
 
 
@@ -19,7 +21,7 @@ class Patch0421Tests(unittest.TestCase):
     self.assertIs(main.get("dragDropEnabled"), False)
 
   def test_sidebar_reorder_remains_html5_drag_drop_with_move_semantics(self) -> None:
-    row = APP.split("{#snippet row(s: Service)}", 1)[1].split("{/snippet}", 1)[0]
+    row = read_frontend_file(ROOT, "src/components/ServiceRow.svelte")
     start = APP.split("function onDragStart", 1)[1].split("function onDragOver", 1)[0]
     over = APP.split("function onDragOver", 1)[1].split("function onDragLeave", 1)[0]
     drop = APP.split("async function onDrop", 1)[1].split("function openServiceSettings", 1)[0]

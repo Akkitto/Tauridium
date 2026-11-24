@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 from rust_sources import read_orchestration_sources
+from frontend_source import read_frontend_file, read_frontend_source
 
 import json
 import re
@@ -563,7 +564,7 @@ def main() -> int:
     fail("native Services menu still uses fixed generic numbered slots")
   api_ts = read("src/lib/api.ts")
   api_test_ts = read("src/lib/api.test.ts")
-  app = read("src/App.svelte")
+  app = read_frontend_source(ROOT)
   local_profile = read("src-tauri/src/local_profile.rs")
   recipes_rs = read("src-tauri/src/recipes.rs")
   backup_rs = read("src-tauri/src/backup.rs")
@@ -613,7 +614,7 @@ def main() -> int:
       fail(f"Tauri handler is missing {command}")
 
   for marker in (
-    'oncontextmenu={(e) => openServiceContextMenu(e, s)}',
+    'oncontextmenu={(e) => openServiceContextMenu(e, service)}',
     'const menu = await Menu.new({',
     'text: "Settings"',
     'text: "Reload"',
@@ -724,7 +725,7 @@ def main() -> int:
 
   patch_0411_test = read("tools/test_patch_0411.py")
   for marker in (
-    '{@const settingsServiceId = settingsSvc.id}',
+    'const settingsServiceId = $derived(settingsSvc.id)',
     '{@const joined = workspace.services.includes(settingsServiceId)}',
     'toggleCurrentServiceWorkspace(workspace',
   ):
@@ -1011,9 +1012,9 @@ def main() -> int:
   for marker in (
     "saturation: saturation * 100",
     "lightness: lightness * 100",
-    "{Math.round(colorHue)}°",
-    "{Math.round(colorSaturation)}%",
-    "{Math.round(colorLightness)}%",
+    "{Math.round(appearance.colorHue)}°",
+    "{Math.round(appearance.colorSaturation)}%",
+    "{Math.round(appearance.colorLightness)}%",
   ):
     if marker not in app + read("src/lib/ui.ts"):
       fail(f"0.4.3 color-picker invariant is missing: {marker}")
@@ -1168,7 +1169,7 @@ def main() -> int:
       fail(f"0.4.15 regression coverage is missing: {test_marker}")
 
   patch_0416 = read("tools/test_patch_0416.py")
-  service_workspace_block = app.split('<div class="set-title">Workspaces</div>', 1)[1].split(
+  service_workspace_block = read_frontend_file(ROOT, "src/components/ServiceSettingsPanel.svelte").split('<div class="set-title">Workspaces</div>', 1)[1].split(
     '<div class="set-title">Appearance</div>', 1
   )[0]
   for marker in (
@@ -1405,7 +1406,7 @@ def main() -> int:
     "return preferredWebsiteIcon(service) ?? iconSrc(service);",
     "src={displayedServiceIcon(service)}",
     "serviceIconFailed(service)",
-    "previous?.useFavicon !== true || !preferredWebsiteIcon(s)",
+    "previous?.useFavicon !== true || !host.preferredWebsiteIcon(s)",
   ):
     if marker not in app:
       fail(f"0.4.22 configured-service icon invariant is missing: {marker}")
@@ -1510,7 +1511,7 @@ def main() -> int:
     'options.set_enable_tracking_prevention(!(is_remote_http && relax_tracking));',
     'else if cfg!(windows) {',
     'if let Some(ua) = ua.as_deref()',
-    's.isBadgeEnabled !== false && (ownValue(unreadMap, s.id) ?? 0) > 0',
+    'service.isBadgeEnabled !== false && (ownValue(unreadMap, service.id) ?? 0) > 0',
     'Enable custom URL placeholders for this service',
     'showToast("Saved", "success")',
     '.toast.success { background: #187a45;',

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parse, type AST } from "svelte/compiler";
-import app from "../App.svelte?raw";
+import { type AST } from "svelte/compiler";
+import { appAst, componentTemplate, staticText, resolveExpression, type TemplateScope } from "./frontendTestSources";
 import { DEFAULT_KEYBINDINGS } from "./ui";
 import { KEYBINDING_SETTINGS, SETTINGS_SEARCH_ENTRIES, SETTINGS_TABS, normalizeSettingsQuery, searchSettings, type SettingsSearchContext, type SettingsTab } from "./settingsSearch";
 
@@ -68,9 +68,7 @@ describe("Settings search", () => {
   });
 });
 
-// Resolve destinations from the real Svelte tree, including tab ownership. A
-// nearby card in another tab is not a valid destination even when its ID exists.
-const ast = parse(app, { modern: true });
+// Follow rendered component boundaries while preserving tab and card ownership.
 const targets = new Map<string, SettingsTab | undefined>();
 const toggles: { key: string; label: string; tab: SettingsTab | undefined }[] = [];
 const templates: { prefix: string; variable: string; tab: SettingsTab | undefined }[] = [];
@@ -81,30 +79,48 @@ function element(value: unknown): value is AST.RegularElement {
 function conditional(value: unknown): value is AST.IfBlock {
   return value !== null && typeof value === "object" && "type" in value && value.type === "IfBlock";
 }
-function rendered(value: unknown): value is AST.RenderTag {
-  return value !== null && typeof value === "object" && "type" in value && value.type === "RenderTag";
+function component(value: unknown): value is AST.Component {
+  return value !== null && typeof value === "object" && "type" in value && value.type === "Component";
 }
 function isTab(value: unknown): value is SettingsTab { return SETTINGS_TABS.some(([tab]) => tab === value); }
 function attributePart(attribute: AST.Attribute) {
   if (attribute.value === true) return undefined;
   return Array.isArray(attribute.value) ? attribute.value[0] : attribute.value;
 }
-function visit(value: unknown, tab?: SettingsTab, card?: string): void {
+function visit(value: unknown, tab?: SettingsTab, card?: string, scope: TemplateScope = new Map()): void {
   if (!value || typeof value !== "object") return;
   if (conditional(value) && value.test.type === "BinaryExpression" && value.test.operator === "==="
     && value.test.left.type === "Identifier" && value.test.left.name === "settingsTab"
     && value.test.right.type === "Literal" && isTab(value.test.right.value)) tab = value.test.right.value;
+  if (component(value)) {
+    if (value.name === "SettingsToggle") {
+      const text = (name: string) => {
+        const attribute = value.attributes.find((item) => item.type === "Attribute" && item.name === name);
+        const part = attribute?.type === "Attribute" ? attributePart(attribute) : null;
+        return part?.type === "ExpressionTag" ? staticText(part.expression, scope) : part?.type === "Text" ? part.data : undefined;
+      };
+      const key = text("settingKey"), label = text("label");
+      if (key && label) toggles.push({ key, label, tab });
+    }
+    const child = componentTemplate(value, scope);
+    if (child) visit(child.fragment, tab, card, child.scope);
+    return;
+  }
   if (element(value)) {
     let identifier: string | undefined;
     for (const attr of value.attributes) {
       if (attr.type !== "Attribute" || attr.name !== "id") continue;
       const part = attributePart(attr);
       if (part?.type === "Text") { identifier = part.data; targets.set(part.data, tab); }
-      if (part?.type === "ExpressionTag" && part.expression.type === "TemplateLiteral") {
-        const expression = part.expression;
-        if (expression.expressions.length === 1 && expression.expressions[0].type === "Identifier"
-          && expression.quasis[1]?.value.cooked === "") {
-          templates.push({ prefix: expression.quasis[0].value.cooked ?? "", variable: expression.expressions[0].name, tab });
+      if (part?.type === "ExpressionTag") {
+        const literal = staticText(part.expression, scope);
+        if (literal !== undefined) { identifier = literal; targets.set(literal, tab); }
+        else if (part.expression.type === "TemplateLiteral") {
+          const expression = part.expression;
+          if (expression.expressions.length === 1 && expression.expressions[0].type === "Identifier"
+            && expression.quasis[1]?.value.cooked === "") templates.push({
+              prefix: expression.quasis[0].value.cooked ?? "", variable: expression.expressions[0].name, tab,
+            });
         }
       }
     }
@@ -114,25 +130,22 @@ function visit(value: unknown, tab?: SettingsTab, card?: string): void {
     if (tab && ["input", "select", "textarea"].includes(value.name)) {
       for (const attr of value.attributes) {
         const part = attr.type === "Attribute" ? attributePart(attr) : null;
-        const expression = attr.type === "BindDirective" ? attr.expression : part?.type === "ExpressionTag" ? part.expression : null;
+        const raw = attr.type === "BindDirective" ? attr.expression : part?.type === "ExpressionTag" ? part.expression : null;
+        const resolved = raw ? resolveExpression(raw, scope) : null;
+        const expression = typeof resolved === "string" ? null : resolved;
         if (expression?.type === "MemberExpression" && expression.object.type === "Identifier" && expression.object.name === "appSettings"
           && expression.property.type === "Identifier") controls.push({ key: expression.property.name, target: card, tab });
       }
     }
   }
-  if (rendered(value) && value.expression.type === "CallExpression" && value.expression.callee.type === "Identifier" && value.expression.callee.name === "appToggle") {
-    const [label, , key] = value.expression.arguments;
-    if (key?.type === "Literal" && typeof key.value === "string" && label?.type === "Literal" && typeof label.value === "string") toggles.push({ key: key.value, label: label.value, tab });
-  }
   for (const child of Object.values(value)) {
-    if (Array.isArray(child)) child.forEach((item) => visit(item, tab, card)); else visit(child, tab, card);
+    if (Array.isArray(child)) child.forEach((item) => visit(item, tab, card, scope)); else visit(child, tab, card, scope);
   }
 }
-visit(ast.fragment);
+visit(appAst.fragment);
 for (const template of templates) {
-  if (template.variable === "key") for (const toggle of toggles) targets.set(`${template.prefix}${toggle.key}`, toggle.tab);
-  if (template.variable === "action") for (const [action] of KEYBINDING_SETTINGS) targets.set(`${template.prefix}${action}`, template.tab);
-  if (template.variable === "settingsTab") for (const [tab] of SETTINGS_TABS) targets.set(`${template.prefix}${tab}`, tab);
+  if (template.variable === "action") for (const [action] of KEYBINDING_SETTINGS) targets.set(template.prefix + action, template.tab);
+  if (template.variable === "settingsTab") for (const [tab] of SETTINGS_TABS) targets.set(template.prefix + tab, tab);
 }
 
 describe("Settings search destination coverage", () => {

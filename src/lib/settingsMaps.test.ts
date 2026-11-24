@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import source from "../App.svelte?raw";
+import { frontendSource as source } from "./frontendTestSources";
 import { ownValue, setOwnValue, copyOwnEntry, downloadOverride, downloadDirectoryLabel } from "./settingsMaps";
 
 const ids = ["__proto__", "constructor", "toString", "hasOwnProperty", "normal-id"];

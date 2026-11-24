@@ -2,13 +2,15 @@
 """Regression coverage for Tauridium 0.4.26 service compatibility and settings polish."""
 
 from __future__ import annotations
+
+from frontend_source import read_frontend_file, read_frontend_source
 from rust_sources import read_orchestration_sources
 
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 MAIN = read_orchestration_sources(ROOT)
 CARGO = (ROOT / "src-tauri/Cargo.toml").read_text(encoding="utf-8")
 CARGO_LOCK = (ROOT / "src-tauri/Cargo.lock").read_text(encoding="utf-8")
@@ -35,10 +37,10 @@ class Patch0426Tests(unittest.TestCase):
     self.assertIn('"rfd",', tauridium)
 
   def test_sidebar_unread_badge_respects_persisted_service_badge_preference(self) -> None:
-    row = APP.split("{#snippet row(s: Service)}", 1)[1].split("{/snippet}", 1)[0]
-    self.assertIn("s.isBadgeEnabled !== false", row)
-    self.assertIn('(ownValue(unreadMap, s.id) ?? 0) > 0', row)
-    self.assertIn('toggle("Unread badge"', APP)
+    row = read_frontend_file(ROOT, "src/components/ServiceRow.svelte")
+    self.assertIn("service.isBadgeEnabled !== false", row)
+    self.assertIn('(ownValue(unreadMap, service.id) ?? 0) > 0', row)
+    self.assertIn('label={"Unread badge"}', APP)
     self.assertIn("isBadgeEnabled: s.isBadgeEnabled", APP)
 
   def test_custom_url_placeholder_toggle_has_specific_customer_facing_label(self) -> None:

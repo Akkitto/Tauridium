@@ -2,13 +2,15 @@
 """Regression coverage for Tauridium 0.7.19 incremental Audit Log paging."""
 
 from __future__ import annotations
+
+from frontend_source import read_frontend_source
 from rust_sources import read_orchestration_sources
 
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "src" / "App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 API = (ROOT / "src" / "lib" / "api.ts").read_text(encoding="utf-8")
 AUDIT = (ROOT / "src-tauri" / "src" / "audit.rs").read_text(encoding="utf-8")
 MAIN = read_orchestration_sources(ROOT)
@@ -53,7 +55,7 @@ class Patch0719Tests(unittest.TestCase):
     for marker in (
       "new IntersectionObserver(",
       'rootMargin: "0px 0px 180px 0px"',
-      "use:auditLoadMoreObserver",
+      "use:observeMore",
       "Load older events",
       "if (auditBusy || !auditHasMore || !auditCursor) return;",
     ):
@@ -69,7 +71,7 @@ class Patch0719Tests(unittest.TestCase):
 
   def test_reenter_reuses_loaded_state_and_refresh_resets_cursor(self) -> None:
     self.assertIn(
-      'if (settingsTab === "audit" && !auditInitialized) void refreshAuditLog();',
+      'if (settingsTab === "audit" && !audit.auditInitialized) void audit.refreshAuditLog();',
       APP,
     )
     refresh = APP.split("async function refreshAuditLog()", 1)[1].split("async function loadOlderAuditLog()", 1)[0]

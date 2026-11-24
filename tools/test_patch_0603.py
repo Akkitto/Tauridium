@@ -2,13 +2,15 @@
 """Regression coverage for Tauridium 0.6.3 window restore and spacing-preview fixes."""
 
 from __future__ import annotations
+
+from frontend_source import read_frontend_file, read_frontend_source
 from rust_sources import read_orchestration_sources
 
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 MAIN = read_orchestration_sources(ROOT)
 
 
@@ -32,7 +34,7 @@ class Patch0603Tests(unittest.TestCase):
     self.assertIn("save_main_window_state(app);", toggle)
 
   def test_spacing_preview_switches_sidebar_to_the_mode_being_tuned(self) -> None:
-    appearance = APP.split('settingsTab === "appearance"', 1)[1].split('settingsTab === "keybindings"', 1)[0]
+    appearance = read_frontend_file(ROOT, "src/components/SettingsAppearance.svelte")
     self.assertIn('previewServiceSpacing("collapsedServiceSpacing", Number(event.currentTarget.value), true)', appearance)
     self.assertIn('previewServiceSpacing("expandedServiceSpacing", Number(event.currentTarget.value), false)', appearance)
     helper = APP.split("function previewServiceSpacing", 1)[1].split("async function saveServiceSpacing", 1)[0]

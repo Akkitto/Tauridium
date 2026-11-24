@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+from frontend_source import read_frontend_source
+
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "src" / "App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 
 
 class Patch0718Tests(unittest.TestCase):
@@ -38,11 +40,11 @@ class Patch0718Tests(unittest.TestCase):
   def test_workspace_search_and_existing_pagination_are_preserved(self) -> None:
     for marker in (
       'placeholder="Search configured workspaces…"',
-      'bind:value={managedWorkspaceQuery}',
-      'oninput={() => (managedWorkspacePage = 0)}',
+      'bind:value={workspaceEditor.managedWorkspaceQuery}',
+      'oninput={() => (workspaceEditor.managedWorkspacePage = 0)}',
       'const MANAGED_SERVICE_PAGE_SIZE = 100;',
-      'paged(managedWorkspaces, managedWorkspacePage, MANAGED_SERVICE_PAGE_SIZE)',
-      '{#if managedWorkspaces.length > MANAGED_SERVICE_PAGE_SIZE}',
+      'paged(managedWorkspaces, managedWorkspacePage, host.MANAGED_SERVICE_PAGE_SIZE)',
+      '{#if workspaceEditor.managedWorkspaces.length > MANAGED_SERVICE_PAGE_SIZE}',
       'aria-label="Configured workspace pages"',
     ):
       self.assertIn(marker, APP)

@@ -2,13 +2,15 @@
 """Regression coverage for Tauridium 0.4.20 sidebar drag ordering."""
 
 from __future__ import annotations
+
+from frontend_source import read_frontend_file, read_frontend_source
 from rust_sources import read_orchestration_sources
 
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 API = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
 UI = (ROOT / "src/lib/ui.ts").read_text(encoding="utf-8")
 UI_TEST = (ROOT / "src/lib/ui.test.ts").read_text(encoding="utf-8")
@@ -25,11 +27,12 @@ class Patch0420Tests(unittest.TestCase):
     self.assertIn("sidebar_service_drag_reorder_defaults_on_and_preserves_saved_opt_out", RUST)
 
   def test_advanced_toggle_controls_only_sidebar_dragging(self) -> None:
-    advanced = APP.split('{:else if settingsTab === "advanced"}', 1)[1].split('{:else if settingsTab === "updates"}', 1)[0]
+    advanced = read_frontend_file(ROOT, "src/components/SettingsAdvanced.svelte")
     self.assertIn("Sidebar service ordering", advanced)
     self.assertIn("Drag to reorder services", advanced)
-    self.assertIn('"sidebarServiceDragReorder", appSettings.sidebarServiceDragReorder', advanced)
-    row = APP.split("{#snippet row(s: Service)}", 1)[1].split("{/snippet}", 1)[0]
+    self.assertIn('settingKey={"sidebarServiceDragReorder"}', advanced)
+    self.assertIn('checked={appSettings.sidebarServiceDragReorder}', advanced)
+    row = read_frontend_file(ROOT, "src/components/ServiceRow.svelte")
     self.assertIn("draggable={appSettings.sidebarServiceDragReorder && !serviceOrderBusy}", row)
     self.assertNotIn('draggable="true"', row)
     self.assertIn("class:draggable={appSettings.sidebarServiceDragReorder && !serviceOrderBusy}", row)
@@ -65,10 +68,10 @@ class Patch0420Tests(unittest.TestCase):
     self.assertIn("treats stale or duplicate drag-order input as a safe no-op", UI_TEST)
 
   def test_drop_indicator_matches_before_after_placement(self) -> None:
-    row = APP.split("{#snippet row(s: Service)}", 1)[1].split("{/snippet}", 1)[0]
+    row = read_frontend_file(ROOT, "src/components/ServiceRow.svelte")
     self.assertIn('dragPlacement === "before"', row)
     self.assertIn('dragPlacement === "after"', row)
-    css = APP.split(".srow-wrap {", 1)[1].split("\n  .srow { width", 1)[0]
+    css = read_frontend_file(ROOT, "src/components/ServiceRow.svelte").split(".srow-wrap {", 1)[1].split("\n  .srow { width", 1)[0]
     self.assertIn(".srow-wrap.drag-before::before", css)
     self.assertIn(".srow-wrap.drag-after::after", css)
     self.assertIn("pointer-events: none", css)

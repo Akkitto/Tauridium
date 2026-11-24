@@ -2,6 +2,8 @@
 """Regression coverage for Tauridium 0.4.4 backup, audit, export, and layout hardening."""
 
 from __future__ import annotations
+
+from frontend_source import read_frontend_source
 from rust_sources import read_orchestration_sources
 
 import unittest
@@ -18,7 +20,7 @@ class Patch0404Tests(unittest.TestCase):
     cls.audit = (ROOT / "src-tauri/src/audit.rs").read_text(encoding="utf-8")
     cls.portable = (ROOT / "src-tauri/src/portable.rs").read_text(encoding="utf-8")
     cls.api = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
-    cls.app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+    cls.app = read_frontend_source(ROOT)
 
   def test_restore_does_not_roll_back_machine_autostart(self) -> None:
     body = self.main.split("fn perform_restore_backup", 1)[1].split("#[tauri::command]\nfn restore_backup", 1)[0]

@@ -1,4 +1,6 @@
 """Credential-vault persistence and explicit authentication transport policy."""
+
+from frontend_source import read_frontend_source
 from rust_sources import read_orchestration_sources
 import unittest
 from pathlib import Path
@@ -20,7 +22,7 @@ class CredentialTests(unittest.TestCase):
 
     def test_login_and_ui_expose_storage_and_transport_choices(self):
         main = read_orchestration_sources(ROOT)
-        app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+        app = read_frontend_source(ROOT)
         login = main.split("async fn login(", 1)[1].split("#[tauri::command]", 1)[0]
         self.assertLess(login.index("credentials::validate_server"), login.index(".basic_auth"))
         self.assertLess(login.index("credentials::save("), login.index("*state.token"))

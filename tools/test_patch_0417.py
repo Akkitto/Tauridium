@@ -1,9 +1,11 @@
 """Regression coverage for Tauridium 0.4.17 shortcut-priority layout."""
+
+from frontend_source import read_frontend_source
 from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "src" / "App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 
 
 class Patch0417Tests(unittest.TestCase):

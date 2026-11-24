@@ -2,13 +2,15 @@
 """Regression coverage for Tauridium 0.4.25 workspace icon URL and downloads."""
 
 from __future__ import annotations
+
+from frontend_source import read_frontend_source
 from rust_sources import read_orchestration_sources
 
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 API = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
 MAIN = read_orchestration_sources(ROOT)
 ICONS = (ROOT / "src-tauri/src/icons.rs").read_text(encoding="utf-8")
@@ -24,8 +26,8 @@ class Patch0425Tests(unittest.TestCase):
     self.assertIn('pub(crate) async fn fetch_workspace_icon_url', ICONS)
     self.assertIn('matches!(parsed.scheme(), "http" | "https")', ICONS)
     self.assertIn('The result is always a self-contained', ICONS)
-    self.assertIn('bind:value={managedWorkspaceIconUrlDraft}', APP)
-    self.assertIn('onclick={assignManagedWorkspaceIconFromUrl}', APP)
+    self.assertIn('bind:value={workspaceEditor.managedWorkspaceIconUrlDraft}', APP)
+    self.assertIn('onclick={workspaceEditor.assignManagedWorkspaceIconFromUrl}', APP)
     self.assertIn('const icon = await fetchWorkspaceIconUrl(url);', APP)
     self.assertIn('await persistManagedWorkspaceIcon(icon, true);', APP)
 
