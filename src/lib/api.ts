@@ -174,6 +174,15 @@ export function getAppMetadata(): Promise<AppMetadata> {
   return invoke("get_app_metadata");
 }
 
+/** An allowlisted native report; no renderer-supplied data or clipboard reads. */
+export function getSupportInformation(): Promise<string> {
+  return invoke("get_support_information");
+}
+
+export function copySupportInformation(): Promise<string> {
+  return invoke("copy_support_information");
+}
+
 export function openExternalUrl(url: string): Promise<void> {
   return invoke("open_external_url", { url });
 }

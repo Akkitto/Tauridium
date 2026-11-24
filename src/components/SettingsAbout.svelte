@@ -1,5 +1,6 @@
 <script lang="ts">
 
+  import SupportInformation from "./SupportInformation.svelte";
   import type { AppMetadata } from "../lib/api";
   import tauridiumLogo from "../assets/tauridium.svg";
 
@@ -29,6 +30,7 @@
                   <button class="secondary" onclick={() => openProjectLink(`${projectRepository}/releases`)}>Releases ↗</button>
                   <button class="secondary" onclick={() => openProjectLink(`${projectRepository}/issues/new`)}>Report an issue ↗</button>
                 </div>
+                <SupportInformation />
                 <section class="settings-section" aria-labelledby="about-project-heading">
                   <div class="section-heading"><h3 id="about-project-heading">Project</h3><p>Open-source project information and useful destinations.</p></div>
                   <div class="settings-list">

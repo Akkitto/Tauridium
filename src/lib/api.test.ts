@@ -316,3 +316,21 @@ describe("isolated title-bar commands", () => {
     expect(mocks.invoke).toHaveBeenCalledWith("focus_window_content");
   });
 });
+
+describe("Support information IPC boundary", () => {
+  beforeEach(() => mocks.invoke.mockReset());
+
+  it("requests only the native allowlisted report", async () => {
+    const { getSupportInformation } = await import("./api");
+    mocks.invoke.mockResolvedValue("synthetic support report");
+    await expect(getSupportInformation()).resolves.toBe("synthetic support report");
+    expect(mocks.invoke).toHaveBeenCalledExactlyOnceWith("get_support_information");
+  });
+
+  it("copies native-generated information without sending arbitrary text or reading the clipboard", async () => {
+    const { copySupportInformation } = await import("./api");
+    mocks.invoke.mockResolvedValue("synthetic copied report");
+    await expect(copySupportInformation()).resolves.toBe("synthetic copied report");
+    expect(mocks.invoke).toHaveBeenCalledExactlyOnceWith("copy_support_information");
+  });
+});
