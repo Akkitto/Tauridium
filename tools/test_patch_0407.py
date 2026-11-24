@@ -2,6 +2,8 @@
 """Regression coverage for Tauridium 0.4.7 service controls and URL/icon behavior."""
 
 from __future__ import annotations
+
+from frontend_source import read_frontend_file, read_frontend_source
 from rust_sources import read_orchestration_sources
 
 import unittest
@@ -13,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class Patch0407Tests(unittest.TestCase):
   @classmethod
   def setUpClass(cls) -> None:
-    cls.app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+    cls.app = read_frontend_source(ROOT)
     cls.api = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
     cls.main = read_orchestration_sources(ROOT)
     cls.recipes = (ROOT / "src-tauri/src/recipes.rs").read_text(encoding="utf-8")
@@ -22,12 +24,12 @@ class Patch0407Tests(unittest.TestCase):
     cls.cargo = (ROOT / "src-tauri/Cargo.toml").read_text(encoding="utf-8")
 
   def test_sidebar_uses_full_row_without_cogwheel_and_has_context_menu(self) -> None:
-    row = self.app.split("{#snippet row(s: Service)}", 1)[1].split("{/snippet}", 1)[0]
+    row = read_frontend_file(ROOT, "src/components/ServiceRow.svelte")
     self.assertNotIn('class="cog"', row)
-    self.assertIn('oncontextmenu={(e) => openServiceContextMenu(e, s)}', row)
-    self.assertIn('onkeydown={(e) => openServiceContextMenuFromKeyboard(e, s)}', row)
-    self.assertIn('aria-disabled={s.isEnabled === false}', row)
-    self.assertIn('class:disabled={s.isEnabled === false}', row)
+    self.assertIn('oncontextmenu={(e) => openServiceContextMenu(e, service)}', row)
+    self.assertIn('onkeydown={(e) => openServiceContextMenuFromKeyboard(e, service)}', row)
+    self.assertIn('aria-disabled={service.isEnabled === false}', row)
+    self.assertIn('class:disabled={service.isEnabled === false}', row)
     self.assertIn('.srow-wrap { display: flex; align-items: center; position: relative; width: 100%; }', self.app)
     self.assertIn('.srow { width: 100%;', self.app)
     self.assertIn('const menu = await Menu.new({', self.app)
@@ -49,8 +51,8 @@ class Patch0407Tests(unittest.TestCase):
     self.assertNotIn('sorted[0]', self.app.split('function backToService()', 1)[1].split('async function handleLogout', 1)[0])
 
   def test_service_settings_has_immediate_enable_disable_control_in_danger_zone(self) -> None:
-    service_settings = self.app.split('{:else if view === "svcSettings"', 1)[1].split('{:else if view === "add"}', 1)[0]
-    self.assertNotIn('@render toggle("Enabled"', service_settings)
+    service_settings = read_frontend_file(ROOT, "src/components/ServiceSettingsPanel.svelte")
+    self.assertNotIn('@render label="Enabled"', service_settings)
     clear_pos = service_settings.index('Clear cache & session')
     enable_pos = service_settings.index('settingsSvc.isEnabled === false ? "Enable service" : "Disable service"')
     delete_pos = service_settings.index('Delete service')
@@ -133,7 +135,7 @@ class Patch0407Tests(unittest.TestCase):
     self.assertIn('env!("CARGO_PKG_AUTHORS")', self.main)
     self.assertIn('authors = ["Daniel Braniewski"]', self.cargo)
     self.assertIn('repository = "https://github.com/Akkitto/Tauridium"', self.cargo)
-    about = self.app.split('{:else if settingsTab === "about"}', 1)[1].split('{/if}', 1)[0]
+    about = read_frontend_file(ROOT, "src/components/SettingsAbout.svelte")
     self.assertIn('appMetadata?.author', about)
     self.assertIn('appMetadata?.license', about)
     self.assertIn('projectRepository', about)

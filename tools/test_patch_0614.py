@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Regression coverage for captured service identity after menu dismissal."""
+
+from frontend_source import read_frontend_source
 from pathlib import Path
 import unittest
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 
 class Patch0614Tests(unittest.TestCase):
   def test_pretty_context_actions_capture_service_before_dispatch(self):

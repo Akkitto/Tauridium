@@ -1,4 +1,6 @@
 """Regression contracts for opt-in, privacy-safe download completion toasts."""
+
+from frontend_source import read_frontend_source
 from rust_sources import read_orchestration_sources
 from pathlib import Path
 import unittest
@@ -7,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MAIN = read_orchestration_sources(ROOT)
 NATIVE = (ROOT / "src-tauri/src/download_toast.rs").read_text(encoding="utf-8")
 DOMAIN = (ROOT / "src-tauri/src/download_notifications.rs").read_text(encoding="utf-8")
-APP = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 RENDERER = (ROOT / "src/DownloadToast.svelte").read_text(encoding="utf-8")
 
 

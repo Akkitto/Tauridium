@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Regression coverage for Tauridium 0.8.5 per-service page zoom."""
+
+from frontend_source import read_frontend_source
 from rust_sources import read_orchestration_sources
 
 from pathlib import Path
@@ -8,7 +10,7 @@ import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 API = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
 UI = (ROOT / "src/lib/ui.ts").read_text(encoding="utf-8")
 UI_TEST = (ROOT / "src/lib/ui.test.ts").read_text(encoding="utf-8")

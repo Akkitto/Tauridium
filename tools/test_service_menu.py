@@ -1,4 +1,6 @@
 """Preserve the service menu's presentation and native authority boundaries."""
+
+from frontend_source import read_frontend_source
 import json
 from pathlib import Path
 import unittest
@@ -8,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class ServiceMenuBoundaryTests(unittest.TestCase):
   def test_the_styled_menu_is_not_left_behind_the_native_service_in_the_shell(self):
-    app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+    app = read_frontend_source(ROOT)
     renderer = (ROOT / "src/ServiceMenu.svelte").read_text(encoding="utf-8")
     self.assertNotIn('class="service-context-menu"', app)
     self.assertIn('class="service-context-menu"', renderer)

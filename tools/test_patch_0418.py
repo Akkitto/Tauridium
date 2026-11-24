@@ -1,11 +1,13 @@
 """Regression coverage for Tauridium 0.4.18 integrations."""
+
+from frontend_source import read_frontend_source
 from rust_sources import read_orchestration_sources
 from pathlib import Path
 import json
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "src" / "App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 API = (ROOT / "src" / "lib" / "api.ts").read_text(encoding="utf-8")
 UI = (ROOT / "src" / "lib" / "ui.ts").read_text(encoding="utf-8")
 MAIN = read_orchestration_sources(ROOT)

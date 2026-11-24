@@ -2,6 +2,8 @@
 """Regression coverage for Tauridium 0.6.1 sidebar startup and collapsed geometry."""
 
 from __future__ import annotations
+
+from frontend_source import read_frontend_file, read_frontend_source
 from rust_sources import read_orchestration_sources
 
 import re
@@ -9,7 +11,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 API = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
 UI = (ROOT / "src/lib/ui.ts").read_text(encoding="utf-8")
 MAIN = read_orchestration_sources(ROOT)
@@ -27,7 +29,7 @@ class Patch0601Tests(unittest.TestCase):
     self.assertIn("resolve_startup_sidebar_collapsed(&settings)", MAIN)
 
   def test_appearance_exposes_default_and_restore_last_sidebar_startup_controls(self) -> None:
-    appearance = APP.split('settingsTab === "appearance"', 1)[1].split('settingsTab === "keybindings"', 1)[0]
+    appearance = read_frontend_file(ROOT, "src/components/SettingsAppearance.svelte")
     self.assertIn("Default sidebar state", appearance)
     self.assertIn('<option value="expanded">Expanded</option>', appearance)
     self.assertIn('<option value="collapsed">Collapsed</option>', appearance)

@@ -2,6 +2,8 @@
 """Static release regressions for Tauridium 0.4.0 feature work."""
 
 from __future__ import annotations
+
+from frontend_source import read_frontend_source
 from rust_sources import read_orchestration_sources
 
 import unittest
@@ -13,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class Feature0400Tests(unittest.TestCase):
   @classmethod
   def setUpClass(cls) -> None:
-    cls.app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+    cls.app = read_frontend_source(ROOT)
     cls.api = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
     cls.main = read_orchestration_sources(ROOT)
     cls.backup = (ROOT / "src-tauri/src/backup.rs").read_text(encoding="utf-8")

@@ -2,6 +2,8 @@
 """Regression coverage for scalable sidebar and canonical service/workspace order."""
 
 from __future__ import annotations
+
+from frontend_source import read_frontend_file, read_frontend_source
 from rust_sources import read_orchestration_sources
 
 import unittest
@@ -17,7 +19,7 @@ class OrderingAndSidebarTests(unittest.TestCase):
     cls.api = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
     cls.ui = (ROOT / "src/lib/ui.ts").read_text(encoding="utf-8")
     cls.ui_test = (ROOT / "src/lib/ui.test.ts").read_text(encoding="utf-8")
-    cls.app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+    cls.app = read_frontend_source(ROOT)
 
   def test_canonical_orders_are_typed_persisted_and_registered(self) -> None:
     for marker in (
@@ -81,7 +83,7 @@ class OrderingAndSidebarTests(unittest.TestCase):
     self.assertIn("treats stale or duplicate drag-order input as a safe no-op", self.ui_test)
 
   def test_services_settings_is_dynamic_named_and_empty_safe(self) -> None:
-    settings = self.app.split('{:else if settingsTab === "services"}', 1)[1].split('{:else if settingsTab === "appearance"}', 1)[0]
+    settings = read_frontend_file(ROOT, "src/components/SettingsServices.svelte")
     self.assertIn("Configured services", settings)
     self.assertIn("{services.length}", settings)
     self.assertIn("{#each managedServiceRows as service, index (service.id)}", settings)

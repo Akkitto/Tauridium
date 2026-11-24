@@ -1,10 +1,12 @@
 """Regression coverage for Tauridium 0.4.14 shortcut capture and workspace UX."""
+
+from frontend_source import read_frontend_source
 from rust_sources import read_orchestration_sources
 from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "src" / "App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 API = (ROOT / "src" / "lib" / "api.ts").read_text(encoding="utf-8")
 RUST = read_orchestration_sources(ROOT)
 
@@ -41,7 +43,7 @@ class Patch0414Tests(unittest.TestCase):
   def test_service_override_is_inheritance_aware_and_recreates_webview(self) -> None:
     self.assertIn('serviceShortcutCaptureMode(serviceId: string)', APP)
     self.assertIn('effectiveServiceShortcutCapture(serviceId: string)', APP)
-    self.assertIn('value={serviceShortcutCaptureMode(settingsServiceId)}', APP)
+    self.assertIn('value={serviceEditor.serviceShortcutCaptureMode(settingsServiceId)}', APP)
     self.assertIn('<option value="inherit">Use global setting', APP)
     self.assertIn('<option value="tauridium">Tauridium shortcuts first</option>', APP)
     self.assertIn('<option value="website">Website shortcuts first</option>', APP)
@@ -81,7 +83,7 @@ class Patch0414Tests(unittest.TestCase):
     self.assertIn('serviceWorkspaceJoinedCount', block)
     self.assertIn('serviceWorkspaceFilter === "joined"', block)
     self.assertIn('serviceWorkspaceFilter === "available"', block)
-    self.assertIn('{#each serviceWorkspaceRows as workspace', block)
+    self.assertIn('{#each serviceEditor.serviceWorkspaceRows as workspace', block)
     self.assertIn('toggleCurrentServiceWorkspace(workspace', block)
     self.assertIn('serviceWorkspacePageCount', block)
     self.assertIn('Create a workspace', block)

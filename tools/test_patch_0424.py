@@ -2,13 +2,15 @@
 """Regression coverage for Tauridium 0.4.24 workspace icons and settings UI polish."""
 
 from __future__ import annotations
+
+from frontend_source import read_frontend_file, read_frontend_source
 from rust_sources import read_orchestration_sources
 
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 API = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
 MAIN = read_orchestration_sources(ROOT)
 BACKUP = (ROOT / "src-tauri/src/backup.rs").read_text(encoding="utf-8")
@@ -32,11 +34,11 @@ class Patch0424Tests(unittest.TestCase):
     self.assertIn('workspace_icon_bytes > 16 * 1024 * 1024', MAIN)
 
   def test_workspace_settings_can_assign_existing_resolved_service_icons(self) -> None:
-    detail = APP.split('{:else if settingsTab === "workspaces"}', 1)[1].split('{:else if settingsTab === "appearance"}', 1)[0]
+    detail = read_frontend_file(ROOT, "src/components/SettingsWorkspaces.svelte")
     self.assertIn('class="setting-card setting-card-stack workspace-icon-card"', detail)
-    self.assertIn('assignManagedWorkspaceIconFromService(service)', detail)
+    self.assertIn('workspaceEditor.assignManagedWorkspaceIconFromService(service)', detail)
     self.assertIn('displayedServiceIcon(service)', APP)
-    self.assertIn('saveManagedWorkspaceIcon(null)', detail)
+    self.assertIn('workspaceEditor.saveManagedWorkspaceIcon(null)', detail)
     self.assertIn('Tauridium could not verify the saved workspace icon', APP)
 
   def test_workspace_icons_are_visible_in_workspace_surfaces_with_fallback(self) -> None:

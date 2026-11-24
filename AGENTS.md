@@ -13,6 +13,9 @@ tested. Do not make Unix shells, WSL, or Nushell prerequisites for Windows devel
 ## Architecture
 
 - `src/`: Svelte 5 + TypeScript shell UI. Keep UI state predictable and responsive.
+- `src/components/`: settings tabs and shell views with typed props, callbacks and owning scoped styles.
+- `src/lib/controllers/*.svelte.ts`: per-application rune state factories with live typed host accessors; no mutable singletons.
+- `src/lib/appSettingsDefaults.ts`: independent initial preference records; see `docs/FRONTEND-ARCHITECTURE.md` for lifecycle and test ownership.
 - `src/lib/api.ts`: typed frontend boundary to Tauri commands.
 - `src-tauri/src/main.rs`: application bootstrap, shared state, window integration and remaining native commands.
 - `src-tauri/src/app_settings/`: settings defaults/validation, persistence and settings commands.

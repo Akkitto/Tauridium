@@ -2,6 +2,8 @@
 """Regression coverage for Tauridium 0.4.2 quality fixes."""
 
 from __future__ import annotations
+
+from frontend_source import read_frontend_source
 from rust_sources import read_orchestration_sources
 
 import unittest
@@ -13,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class Patch0402Tests(unittest.TestCase):
   @classmethod
   def setUpClass(cls) -> None:
-    cls.app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+    cls.app = read_frontend_source(ROOT)
     cls.main = read_orchestration_sources(ROOT)
 
   def test_quick_switcher_uses_dialog_compatible_container(self) -> None:

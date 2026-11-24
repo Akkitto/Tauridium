@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+from frontend_source import read_frontend_source
+
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "src" / "App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 UI = (ROOT / "src" / "lib" / "ui.ts").read_text(encoding="utf-8")
 API = (ROOT / "src" / "lib" / "api.ts").read_text(encoding="utf-8")
 RECIPES = (ROOT / "src-tauri" / "src" / "recipes.rs").read_text(encoding="utf-8")

@@ -2,6 +2,8 @@
 """Regression coverage for Tauridium 0.4.9 context-menu and remote-service fixes."""
 
 from __future__ import annotations
+
+from frontend_source import read_frontend_source
 from rust_sources import read_orchestration_sources
 
 import json
@@ -14,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class Patch0409Tests(unittest.TestCase):
   @classmethod
   def setUpClass(cls) -> None:
-    cls.app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+    cls.app = read_frontend_source(ROOT)
     cls.ui = (ROOT / "src/lib/ui.ts").read_text(encoding="utf-8")
     cls.ui_test = (ROOT / "src/lib/ui.test.ts").read_text(encoding="utf-8")
     cls.main = read_orchestration_sources(ROOT)

@@ -1,4 +1,6 @@
 """Regression coverage for Tauridium 0.4.10 service settings and icon/shortcut fixes."""
+
+from frontend_source import read_frontend_file, read_frontend_source
 from rust_sources import read_orchestration_sources
 from pathlib import Path
 import unittest
@@ -9,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class Patch0410Tests(unittest.TestCase):
   @classmethod
   def setUpClass(cls) -> None:
-    cls.app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+    cls.app = read_frontend_source(ROOT)
     cls.api = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
     cls.main = read_orchestration_sources(ROOT)
     cls.icons = (ROOT / "src-tauri/src/icons.rs").read_text(encoding="utf-8")
@@ -74,27 +76,27 @@ class Patch0410Tests(unittest.TestCase):
     self.assertIn("selectService(restore)", save)
 
   def test_service_name_is_immediately_dirty_and_unsaved_close_confirms(self) -> None:
-    self.assertIn('value={settingsSvc.name} oninput={(e) => saveText("name", e.currentTarget.value)}', self.app)
+    self.assertIn('value={settingsSvc.name} oninput={(e) => serviceEditor.saveText("name", e.currentTarget.value)}', self.app)
     close = self.app.split("async function closeServiceSettings", 1)[1].split("async function persistService", 1)[0]
     self.assertIn("if (svcDirty || serviceTemplateDirty)", close)
     self.assertIn('confirmAsk("Discard unsaved service changes?")', close)
     self.assertIn("if (!discard) return;", close)
 
   def test_failed_service_save_keeps_dirty_state_and_does_not_optimistically_commit(self) -> None:
-    persist = self.app.split("async function persistService", 1)[1].split("// Handlers modify ONLY local state", 1)[0]
+    persist = read_frontend_file(ROOT, "src/lib/controllers/serviceEditor.svelte.ts").split("async function persistService(", 1)[1].split("// Handlers modify ONLY local state", 1)[0]
     save = self.app.split("async function saveServiceSettings", 1)[1].split("async function setServiceEnabled", 1)[0]
     self.assertIn("async function persistService(reload = false): Promise<boolean>", self.app)
     self.assertIn("return false;", persist)
-    self.assertLess(persist.index("await updateService"), persist.index("services = services.map"))
+    self.assertLess(persist.index("await updateService"), persist.index("host.services = host.services.map"))
     self.assertIn("if (!saved) return;", save)
     self.assertIn("svcDirty = false;", save)
     self.assertLess(save.index("if (!saved) return;"), save.index("svcDirty = false;"))
     self.assertIn("Unable to save custom URL placeholders", save)
 
   def test_only_favorites_follows_indirect_message_badge(self) -> None:
-    indirect = self.app.index('toggle("Indirect message badge"')
-    favorites = self.app.index('toggle("Only favorites in unread count"')
-    media = self.app.index('toggle("Media badge"')
+    indirect = self.app.index('label={"Indirect message badge"}')
+    favorites = self.app.index('label={"Only favorites in unread count"}')
+    media = self.app.index('label={"Media badge"}')
     self.assertLess(indirect, favorites)
     self.assertLess(favorites, media)
 

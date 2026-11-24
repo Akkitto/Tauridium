@@ -2,13 +2,15 @@
 """Regression coverage for Tauridium 0.6.0 collapsible sidebar."""
 
 from __future__ import annotations
+
+from frontend_source import read_frontend_file, read_frontend_source
 from rust_sources import read_orchestration_sources
 
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 API = (ROOT / "src/lib/api.ts").read_text(encoding="utf-8")
 UI = (ROOT / "src/lib/ui.ts").read_text(encoding="utf-8")
 MAIN = read_orchestration_sources(ROOT)
@@ -48,14 +50,14 @@ class Feature0600Tests(unittest.TestCase):
     self.assertIn('app.emit("shortcut-action", "toggleSidebar".to_string())', MAIN)
 
   def test_collapsed_rows_keep_names_accessible_without_rendering_labels(self) -> None:
-    row = APP.split("{#snippet row(s: Service)}", 1)[1].split("{/snippet}", 1)[0]
-    self.assertIn("title={`${serviceLabel(s)}", row)
-    self.assertIn("aria-label={`${serviceLabel(s)}", row)
+    row = read_frontend_file(ROOT, "src/components/ServiceRow.svelte")
+    self.assertIn("title={`${serviceLabel(service)}", row)
+    self.assertIn("aria-label={`${serviceLabel(service)}", row)
     self.assertIn("appSettings.showServiceName && !appSettings.sidebarCollapsed", row)
-    self.assertIn("hibernated.has(s.id) && !appSettings.sidebarCollapsed", row)
+    self.assertIn("hibernated.has(service.id) && !appSettings.sidebarCollapsed", row)
 
   def test_appearance_explains_collapsed_mode_and_preserves_icon_size_control(self) -> None:
-    appearance = APP.split('settingsTab === "appearance"', 1)[1].split('settingsTab === "keybindings"', 1)[0]
+    appearance = read_frontend_file(ROOT, "src/components/SettingsAppearance.svelte")
     self.assertIn("Collapse sidebar", appearance)
     self.assertIn("Collapsed mode uses a fixed", appearance)
     self.assertIn("Service icon size", appearance)

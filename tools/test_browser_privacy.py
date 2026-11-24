@@ -1,4 +1,6 @@
 """Preserve sign-in compatibility without blanket tracking/reputation exceptions."""
+
+from frontend_source import read_frontend_source
 from rust_sources import read_orchestration_sources
 from pathlib import Path
 import unittest
@@ -20,7 +22,7 @@ class BrowserPrivacyTests(unittest.TestCase):
     main = read_orchestration_sources(ROOT)
     self.assertEqual(main.count('*state.tracking_prevention_startup.lock().unwrap() ='), 1)
     self.assertIn('&state.tracking_prevention_startup.lock().unwrap()', main)
-    app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+    app = read_frontend_source(ROOT)
     setter = app.split("async function saveTrackingException", 1)[1].split("function workspaceIcon", 1)[0]
     self.assertIn('enabled && !(await confirmAsk', setter)
     self.assertIn('ownValue(persisted.trackingPreventionExceptions, namespace)', setter)

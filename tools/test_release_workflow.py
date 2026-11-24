@@ -2,6 +2,8 @@
 """Regression coverage for non-mutating local release orchestration."""
 
 from __future__ import annotations
+
+from frontend_source import read_frontend_source
 from rust_sources import read_orchestration_sources
 
 import importlib.util
@@ -263,7 +265,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
 
   def test_tauridium_menu_opens_settings_and_exposes_about_quick_links(self) -> None:
     main = read_orchestration_sources(ROOT)
-    app = (ROOT / "src/App.svelte").read_text(encoding="utf-8")
+    app = read_frontend_source(ROOT)
     menu_builder = main.split("fn build_native_application_menu", 1)[1].split("#[derive(Clone, Copy)]", 1)[0]
     native_menu = main.split("// Native application menu", 1)[1].split("// Request notification", 1)[0]
 

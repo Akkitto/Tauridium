@@ -1,11 +1,13 @@
 """Regression coverage for Tauridium 0.4.15 Rust settings defaults."""
+
+from frontend_source import read_frontend_source
 from rust_sources import read_orchestration_sources
 from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 RUST = read_orchestration_sources(ROOT)
-APP = (ROOT / "src" / "App.svelte").read_text(encoding="utf-8")
+APP = read_frontend_source(ROOT)
 
 
 class Patch0415Tests(unittest.TestCase):
