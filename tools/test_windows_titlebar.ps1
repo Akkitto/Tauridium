@@ -518,6 +518,8 @@ public static class SupportClipboardLock {
   public static extern bool OpenClipboard(IntPtr owner);
   [DllImport("user32.dll", SetLastError=true)]
   public static extern bool CloseClipboard();
+  [DllImport("user32.dll")]
+  public static extern IntPtr GetOpenClipboardWindow();
 }
 '@
   }
@@ -555,10 +557,13 @@ public static class SupportClipboardLock {
     Wait-For { [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Support information preview' } 'support preview keyboard focus'
     [Windows.Forms.SendKeys]::SendWait('^a^c')
     Wait-For { (Invoke-Support-Clipboard $Worker $false) -ceq $Report } 'manual support preview copy fallback'
-    if (-not [SupportClipboardLock]::OpenClipboard([IntPtr]::Zero)) {
+    # A NULL owner allows another NULL-owner opener on Windows. Associate the
+    # lock with our real fixture window so it actually blocks native copying.
+    if (-not [SupportClipboardLock]::OpenClipboard($script:Window)) {
       throw 'Could not establish the controlled clipboard-busy fixture.'
     }
     try {
+      Check ([SupportClipboardLock]::GetOpenClipboardWindow() -eq $script:Window) 'controlled fixture holds the named clipboard lock'
       Invoke-Control 'Copy support information'
       Wait-For { $null -ne (Find-Control 'Unable to copy support information. Open the preview and copy it manually, or try again.') } 'clipboard-busy manual fallback'
       Check ((Find-Control 'Copy support information').Current.IsEnabled) 'copy action recovers after a native clipboard failure'
