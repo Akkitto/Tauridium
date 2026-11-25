@@ -89,15 +89,23 @@ def main() -> int:
           if windows.returncode == 0 and windows.stdout.strip():
             window = windows.stdout.splitlines()[-1]
             subprocess.run(["magick", "import", "-window", window, str(output / "window.png")], env=env, check=True, timeout=10)
-            # Upscale small GTK text before recognition; preserve every required
-            # visible label rather than loosening the sign-in assertion.
-            enlarged = subprocess.run(["magick", str(output / "window.png"), "-resize", "300%", "png:-"],
-                                      env=env, capture_output=True, check=True, timeout=10)
+            # Preserve small GTK text without repeatedly compressing a large
+            # PNG inside software-emulated VMs. Single-threaded 2x PPM keeps the
+            # OCR input lossless and bounds work by the caller's overall budget.
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+              break
+            enlarged = subprocess.run(["magick", "-limit", "thread", "1", str(output / "window.png"),
+                                       "-resize", "200%", "-depth", "8", "ppm:-"],
+                                      env=env, capture_output=True, check=True, timeout=min(60, remaining))
             # Form and sparse-text segmentation differ across distro fonts.
             # Every required label must still appear in one complete OCR pass.
             for mode in ("3", "11"):
+              remaining = deadline - time.monotonic()
+              if remaining <= 0:
+                break
               ocr = subprocess.run(["tesseract", "stdin", "stdout", "--psm", mode], input=enlarged.stdout,
-                                   env=env, capture_output=True, check=True, timeout=60)
+                                   env=env, capture_output=True, check=True, timeout=min(60, remaining))
               ocr_text = ocr.stdout.decode("utf-8")
               (output / "window.txt").write_text(ocr_text, encoding="utf-8")
               if sign_in_screen_rendered(ocr_text):
