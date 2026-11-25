@@ -93,14 +93,17 @@ def main() -> int:
             # visible label rather than loosening the sign-in assertion.
             enlarged = subprocess.run(["magick", str(output / "window.png"), "-resize", "300%", "png:-"],
                                       env=env, capture_output=True, check=True, timeout=10)
-            ocr = subprocess.run(["tesseract", "stdin", "stdout", "--psm", "11"], input=enlarged.stdout,
-                                 env=env, capture_output=True, check=True, timeout=60)
-            ocr_text = ocr.stdout.decode("utf-8")
-            (output / "window.txt").write_text(ocr_text, encoding="utf-8")
-            if sign_in_screen_rendered(ocr_text):
-              (output / "result.json").write_text(json.dumps({"passed": True, "production": True, "distribution": args.distribution, "realWebKitUiRendered": True, "isolatedXdgProfile": True}, indent=2) + "\n", encoding="utf-8")
-              print(f"Nix wrapper and real WebKit UI smoke passed: {output}")
-              return 0
+            # Form and sparse-text segmentation differ across distro fonts.
+            # Every required label must still appear in one complete OCR pass.
+            for mode in ("3", "11"):
+              ocr = subprocess.run(["tesseract", "stdin", "stdout", "--psm", mode], input=enlarged.stdout,
+                                   env=env, capture_output=True, check=True, timeout=60)
+              ocr_text = ocr.stdout.decode("utf-8")
+              (output / "window.txt").write_text(ocr_text, encoding="utf-8")
+              if sign_in_screen_rendered(ocr_text):
+                (output / "result.json").write_text(json.dumps({"passed": True, "production": True, "distribution": args.distribution, "realWebKitUiRendered": True, "isolatedXdgProfile": True}, indent=2) + "\n", encoding="utf-8")
+                print(f"Nix wrapper and real WebKit UI smoke passed: {output}")
+                return 0
           time.sleep(1)
         raise RuntimeError(f"WebKit UI did not render the sign-in screen; see {output}")
       finally:
