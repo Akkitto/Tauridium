@@ -122,6 +122,7 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
   setting("keybindingDefaults", "keybindings", "Restore default keybindings", "Reset all keyboard shortcuts to their defaults.", { keywords: "hotkeys reset", focusContainer: true }),
   setting("automaticBackupNow", "backup", "Back up now", "Create a verified automatic backup immediately.", { keywords: "run backup now", focusContainer: true }),
   setting("currentVersion", "updates", "Current version and updates", "Review the installed version and check for signed updates.", { target: "settings-updates-version", focusContainer: true }),
+  setting("supportInformation", "about", "Support information", "Copy app, system and WebView details without private data.", { target: "settings-support-information", keywords: "copy diagnostics troubleshooting clipboard build platform runtime", focusContainer: true }),
   setting("projectSource", "about", "Repository", "Open the project's source code and repository.", { target: "about-project-heading", keywords: "github source code", focusContainer: true }),
   setting("projectIssues", "about", "Issues and feature requests", "Find where to report bugs or suggest improvements.", { target: "about-project-heading", keywords: "github feedback bug report", focusContainer: true }),
   setting("license", "about", "License", "Review Tauridium's licensing information.", { target: "about-legal-heading", focusContainer: true }),

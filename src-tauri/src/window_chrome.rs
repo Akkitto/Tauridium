@@ -37,6 +37,12 @@ pub(crate) fn requested(settings: &serde_json::Value) -> bool {
         .unwrap_or(true)
 }
 
+/// Expose only presentation state, without collecting titles or other private UI data.
+pub(crate) fn unified_title_bar_enabled(app: &AppHandle) -> Option<bool> {
+    app.try_state::<WindowChromeState>()
+        .map(|state| state.enabled.load(Ordering::Acquire))
+}
+
 pub(crate) fn snapshot(app: &AppHandle) -> Snapshot {
     let state = app.state::<WindowChromeState>();
     let settings = app

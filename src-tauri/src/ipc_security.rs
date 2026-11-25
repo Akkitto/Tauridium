@@ -71,6 +71,8 @@ mod tests {
         ] {
             for command in [
                 "get_app_metadata",
+                "get_support_information",
+                "copy_support_information",
                 "clear_service_cache",
                 "export_audit_log",
                 "get_download_toast",

@@ -12,12 +12,13 @@ service session or change its native bounds unexpectedly.
 | `src/components/Settings*.svelte` | One settings tab per component; shared accessible switch markup in `SettingsToggle` |
 | `ServiceSettingsPanel`, `ServiceToggle` | Selected-service controls and accessible boolean settings |
 | `ServicePicker`, `ServiceSidebar`, `ServiceRow`, `QuickSwitcher`, `SessionScreen` | Service creation, sidebar rendering, quick navigation and authentication views |
-| `src/lib/controllers/*.svelte.ts` | Per-application state and actions for appearance, authentication, backups, audit history, updates, service editing and workspace editing |
+| `src/lib/controllers/*.svelte.ts` | Per-owner state and actions for appearance, authentication, backups, audit history, updates, service editing, workspace editing and support information |
 | `src/lib/appSettingsDefaults.ts` | A fresh settings object, including independent nested records, for each application instance |
 | `src/lib/api.ts` | Typed native command boundary; privileged work remains in Rust |
 
-Controllers are factories instantiated once in the root component. They do not export
-mutable singleton state. Their typed host objects use getters and setters to read the
+Application-scoped controllers are factories instantiated once in the root component.
+The support-information controller is owned by its mounted panel because its preview,
+request and feedback state are temporary. Factories do not export mutable singleton state. Their typed host objects use getters and setters to read the
 latest shared state, including arrays and preferences replaced after persistence.
 Passing a snapshot into a controller would break that contract.
 
@@ -38,6 +39,16 @@ The root owns global listeners, native integration and recurring backup scheduli
 The authentication controller owns its retry interval; root destruction cancels it.
 Audit pagination exposes a cleanup-aware observer action in its panel. Mounting,
 switching or destroying a panel must preserve those boundaries.
+
+## Support information
+
+The reusable `SupportInformation` panel appears in About and before authentication.
+It sends no renderer text to the native clipboard command. Rust builds an explicit
+allowlist of report fields; neither command reads clipboard contents, accounts,
+service identities, URLs, paths or logs. Copying returns the exact report written by
+the native side. The panel announces success only after acknowledgement and keeps
+its read-only selectable preview when copying fails. Preview/refresh does not write
+the clipboard or preferences.
 
 ## Styles
 

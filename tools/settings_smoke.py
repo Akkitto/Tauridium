@@ -237,6 +237,47 @@ def main() -> int:
               opened_text, opened_rows, _ = search_capture(f"{suffix}-opened", lambda text: caption in text, f"search destination: {caption}")
               return opened_text, opened_rows
 
+            # This private X11 selection contains only a synthetic canary; never
+            # inspect the user's desktop clipboard.
+            clipboard_canary = "synthetic support clipboard canary"
+            enter_search_query("support information")
+            search_capture("support-results", lambda text: "matching setting" in text.lower(), "rendered support search results")
+            subprocess.run(["xclip", "-selection", "clipboard"], input=clipboard_canary, text=True, check=True, timeout=10)
+            xdo("key", "--clearmodifiers", "Return")
+            search_capture("support-opened", lambda text: "Copy support information" in text, "support search destination")
+            read_clipboard = lambda: subprocess.check_output(
+              ["xclip", "-selection", "clipboard", "-out"], text=True, timeout=10)
+            assert read_clipboard() == clipboard_canary, "Support navigation must not copy automatically"
+            for step in range(12):
+              text, rows, _ = capture(window, f"{name}-support-copy-{step}")
+              copy_control = control_phrase(rows, "Copy support information")
+              if copy_control is not None:
+                break
+              xdo("mousemove", "--sync", width - 25, height // 2)
+              xdo("click", "--repeat", 2, "--delay", 30, 5)
+              time.sleep(0.2)
+            else:
+              raise RuntimeError("Copy support information is not reachable")
+            # Search focuses the section heading; Tab reaches the copy button.
+            # Exercise its real keyboard activation as well as native readback.
+            xdo("key", "--clearmodifiers", "Tab", "Return")
+            search_capture("support-copied", lambda value: "Support information copied" in value, "native support clipboard acknowledgement")
+            copied_report = read_clipboard()
+            assert copied_report.startswith('```text\nTauridium support information\n'), "Native support report was not copied"
+            assert "Build mode: production" in copied_report, "Support report must identify the actual build"
+            assert "WebView engine: WebKitGTK" in copied_report
+            for private_value in (clipboard_canary, str(data), title, "https://example.invalid"):
+              assert private_value not in copied_report, "Support report included unrelated private data"
+            # Native keyboard navigation opens the disclosure and focuses the
+            # read-only preview without depending on OCR of a small disclosure.
+            xdo("key", "--clearmodifiers", "Tab", "space", "Tab")
+            capture(window, f"{name}-support-preview-open")
+            # The next focusable control is the read-only preview. Prove manual
+            # copying works by replacing the selection before the keyboard action.
+            subprocess.run(["xclip", "-selection", "clipboard"], input=clipboard_canary, text=True, check=True, timeout=10)
+            xdo("key", "--clearmodifiers", "ctrl+a", "ctrl+c")
+            wait_for(lambda: read_clipboard() == copied_report, "selectable support preview fallback")
+
             search_setting("show service names", "Show service names", "services")
             search_setting("parent folders", "Show download completion toasts", "prerequisite")
             assert saved("downloadToasts", False), "Search must not enable a prerequisite setting"
@@ -358,7 +399,7 @@ def main() -> int:
             assert "Service context menu" in text, text
             reports.append({"theme": theme, "size": [width, height], "navigation": True,
                             "closeAndReopen": True, "downloadControlsPersisted": True,
-                            "settingsSearch": True, "searchPreservesPreferences": True})
+                            "settingsSearch": True, "searchPreservesPreferences": True, "supportClipboardRoundTrip": True, "supportPreviewFallback": True})
           except Exception:
             (output / f"{name}-failure-settings.json").write_text((data / "app_settings.json").read_text(encoding="utf-8"), encoding="utf-8")
             if window is not None and process.poll() is None:

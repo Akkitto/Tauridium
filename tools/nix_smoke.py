@@ -89,12 +89,29 @@ def main() -> int:
           if windows.returncode == 0 and windows.stdout.strip():
             window = windows.stdout.splitlines()[-1]
             subprocess.run(["magick", "import", "-window", window, str(output / "window.png")], env=env, check=True, timeout=10)
-            ocr = subprocess.run(["tesseract", str(output / "window.png"), "stdout"], env=env, capture_output=True, text=True, check=True, timeout=60)
-            (output / "window.txt").write_text(ocr.stdout, encoding="utf-8")
-            if sign_in_screen_rendered(ocr.stdout):
-              (output / "result.json").write_text(json.dumps({"passed": True, "production": True, "distribution": args.distribution, "realWebKitUiRendered": True, "isolatedXdgProfile": True}, indent=2) + "\n", encoding="utf-8")
-              print(f"Nix wrapper and real WebKit UI smoke passed: {output}")
-              return 0
+            # Preserve small GTK text without repeatedly compressing a large
+            # PNG inside software-emulated VMs. Single-threaded 2x PPM keeps the
+            # OCR input lossless and bounds work by the caller's overall budget.
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+              break
+            enlarged = subprocess.run(["magick", "-limit", "thread", "1", str(output / "window.png"),
+                                       "-resize", "200%", "-depth", "8", "ppm:-"],
+                                      env=env, capture_output=True, check=True, timeout=min(60, remaining))
+            # Form and sparse-text segmentation differ across distro fonts.
+            # Every required label must still appear in one complete OCR pass.
+            for mode in ("3", "11"):
+              remaining = deadline - time.monotonic()
+              if remaining <= 0:
+                break
+              ocr = subprocess.run(["tesseract", "stdin", "stdout", "--psm", mode], input=enlarged.stdout,
+                                   env=env, capture_output=True, check=True, timeout=min(60, remaining))
+              ocr_text = ocr.stdout.decode("utf-8")
+              (output / "window.txt").write_text(ocr_text, encoding="utf-8")
+              if sign_in_screen_rendered(ocr_text):
+                (output / "result.json").write_text(json.dumps({"passed": True, "production": True, "distribution": args.distribution, "realWebKitUiRendered": True, "isolatedXdgProfile": True}, indent=2) + "\n", encoding="utf-8")
+                print(f"Nix wrapper and real WebKit UI smoke passed: {output}")
+                return 0
           time.sleep(1)
         raise RuntimeError(f"WebKit UI did not render the sign-in screen; see {output}")
       finally:

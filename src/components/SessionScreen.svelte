@@ -1,4 +1,6 @@
-<script lang="ts">  import type { AuthController } from "../lib/controllers/auth.svelte";
+<script lang="ts">
+  import SupportInformation from "./SupportInformation.svelte";
+  import type { AuthController } from "../lib/controllers/auth.svelte";
 
   import { DEFAULT_SERVER } from "../lib/api";
 
@@ -18,7 +20,7 @@
 
 {#if booting}
   <main class="login">
-    <div class="card"><p class="sub">Restoring session…</p></div>
+    <div class="card"><p class="sub">Restoring session…</p><SupportInformation compact /></div>
   </main>
 {:else if auth.reconnecting}
   <main class="login">
@@ -30,6 +32,7 @@
       <button class="link" onclick={auth.cancelReconnect}>
         {auth.hasPendingCredentials ? "Cancel" : "Sign in with a different account"}
       </button>
+      <SupportInformation compact />
     </div>
   </main>
 {:else}
@@ -77,6 +80,7 @@
         Use Tauridium without an account
       </button>
       <p class="local-note">Services and workspaces stay on this device. No Ferdium server is used.</p>
+      <SupportInformation compact />
     </form>
   </main>
 {/if}
@@ -84,11 +88,11 @@
 <style>
 
   button, input { font-family: inherit; }
-  .login { display: grid; place-items: center; height: 100vh; }
+  .login { display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; overflow-y: auto; padding: 20px 0; }
   .login-option { display: flex; align-items: flex-start; gap: 0.5rem; }
   .login-option input[type="checkbox"] { width: auto; margin: 0.2rem 0 0; flex: none; }
   .card {
-    background: var(--card); padding: 28px; border-radius: 14px; width: 320px;
+    margin: auto; flex: none; background: var(--card); padding: 28px; border-radius: 14px; width: 320px; max-width: calc(100vw - 88px);
     display: flex; flex-direction: column; gap: 12px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
   }

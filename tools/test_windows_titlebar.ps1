@@ -493,6 +493,94 @@ function Test-Settings-Search {
   Invoke-Control 'Clear settings search'
   Wait-For { (Search-Settings-Value) -eq '' } 'clear search clears its actual editable value'
 }
+function Invoke-Support-Clipboard($Worker, [bool]$Write, [string]$Value = '') {
+  $Worker.Commands.Clear()
+  $Worker.Streams.Error.Clear()
+  if ($Write) {
+    [void]$Worker.AddScript('param($Text) [Windows.Forms.Clipboard]::SetText($Text)').AddArgument($Value)
+  } else {
+    [void]$Worker.AddScript('[Windows.Forms.Clipboard]::GetText()')
+  }
+  $Values = @($Worker.Invoke())
+  if ($Worker.HadErrors) { throw 'The isolated support clipboard fixture failed.' }
+  if (-not $Write) {
+    if ($Values.Count -eq 0) { return '' }
+    return ([string]$Values[0]).Replace("`r`n", "`n")
+  }
+}
+function Test-Support-Information {
+  if (-not ('SupportClipboardLock' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class SupportClipboardLock {
+  [DllImport("user32.dll", SetLastError=true)]
+  public static extern bool OpenClipboard(IntPtr owner);
+  [DllImport("user32.dll", SetLastError=true)]
+  public static extern bool CloseClipboard();
+  [DllImport("user32.dll")]
+  public static extern IntPtr GetOpenClipboardWindow();
+}
+'@
+  }
+  # Use an explicit STA worker on both PowerShell 5.1 and 7. Every clipboard read
+  # follows a write of this fixture's own canary/report, never private user data.
+  $Space = [RunspaceFactory]::CreateRunspace()
+  $Space.ApartmentState = 'STA'
+  $Space.ThreadOptions = 'ReuseThread'
+  $Space.Open()
+  $Worker = [PowerShell]::Create()
+  $Worker.Runspace = $Space
+  try {
+    [void]$Worker.AddScript('Add-Type -AssemblyName System.Windows.Forms').Invoke()
+    if ($Worker.HadErrors) { throw 'Clipboard fixture initialization failed.' }
+    Invoke-Support-Clipboard $Worker $true 'synthetic support clipboard canary'
+    $Before = Read-Settings | ConvertTo-Json -Depth 20 -Compress
+    Search-Settings-For 'support information'
+    Wait-For { $null -ne (Find-Control 'Copy support information') } 'support report action'
+    Check ((Invoke-Support-Clipboard $Worker $false) -ceq 'synthetic support clipboard canary') 'support navigation does not copy automatically'
+    Invoke-Control 'Copy support information'
+    Wait-For { $null -ne (Find-Control 'Support information copied.') } 'native support copy acknowledgement'
+    $Report = Invoke-Support-Clipboard $Worker $false
+    Check ($Report.StartsWith("``````text`nTauridium support information`n")) 'native support report reaches the Windows clipboard'
+    Check ($Report.Contains('Build mode: production') -and $Report.Contains('WebView engine: WebView2')) 'support report identifies the real Windows production runtime'
+    Check (-not $Report.Contains($ProfileRoot) -and -not $Report.Contains('synthetic support clipboard canary')) 'support report excludes profile paths and previous clipboard data'
+    Invoke-Control 'Preview support information'
+    Wait-For { $null -ne (Find-Control 'Support information preview') } 'selectable support preview'
+    $Preview = Find-Control 'Support information preview'
+    $Pattern = $Preview.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
+    Check $Pattern.Current.IsReadOnly 'support preview is read only'
+    Check ($Pattern.Current.Value.Replace("`r`n", "`n") -ceq $Report) 'support preview exactly matches the copied report'
+    Invoke-Support-Clipboard $Worker $true 'synthetic manual-copy canary'
+    Activate-Tauridium
+    $Preview.SetFocus()
+    Wait-For { [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Support information preview' } 'support preview keyboard focus'
+    [Windows.Forms.SendKeys]::SendWait('^a^c')
+    Wait-For { (Invoke-Support-Clipboard $Worker $false) -ceq $Report } 'manual support preview copy fallback'
+    # A NULL owner allows another NULL-owner opener on Windows. Associate the
+    # lock with our real fixture window so it actually blocks native copying.
+    if (-not [SupportClipboardLock]::OpenClipboard($script:Window)) {
+      throw 'Could not establish the controlled clipboard-busy fixture.'
+    }
+    try {
+      Check ([SupportClipboardLock]::GetOpenClipboardWindow() -eq $script:Window) 'controlled fixture holds the named clipboard lock'
+      Invoke-Control 'Copy support information'
+      Wait-For { $null -ne (Find-Control 'Unable to copy support information. Open the preview and copy it manually, or try again.') } 'clipboard-busy manual fallback'
+      Check ((Find-Control 'Copy support information').Current.IsEnabled) 'copy action recovers after a native clipboard failure'
+      Check ($Pattern.Current.Value.Replace("`r`n", "`n") -ceq $Report) 'clipboard failure preserves the selectable preview'
+    } finally {
+      [void][SupportClipboardLock]::CloseClipboard()
+    }
+    Check ((Invoke-Support-Clipboard $Worker $false) -ceq $Report) 'a busy clipboard does not erase its previous report'
+    Invoke-Control 'Copy support information'
+    Wait-For { $null -ne (Find-Control 'Support information copied.') } 'native clipboard retry'
+    Check ((Read-Settings | ConvertTo-Json -Depth 20 -Compress) -ceq $Before) 'support report collection does not persist settings'
+    Search-Settings-For 'Advanced'
+  } finally {
+    $Worker.Dispose()
+    $Space.Dispose()
+  }
+}
 function Read-Settings([string]$Path = $Settings) {
   $Stream = [IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
   $Reader = New-Object IO.StreamReader($Stream)
@@ -686,6 +774,7 @@ try {
   Invoke-Control 'Use Tauridium without an account'
   Open-Advanced
   Test-Settings-Search
+  Test-Support-Information
   $Scale = [double][ChromeNative]::GetDpiForWindow($script:Window) / 96.0
   Check ($Scale -gt 0) 'native window DPI is available'
   Check ((Find-Control 'Unified title bar' ([Windows.Automation.ControlType]::CheckBox)).Current.BoundingRectangle.Width -le (48 * $Scale)) 'Advanced toggle has bounded switch geometry'

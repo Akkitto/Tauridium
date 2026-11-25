@@ -40,6 +40,7 @@ mod services;
 mod single_instance;
 mod startup_diagnostics;
 mod storage_security;
+mod support_information;
 mod window_chrome;
 use window_chrome::{focus_window_content, get_window_chrome, open_window_menu};
 #[cfg(windows)]
@@ -2860,6 +2861,8 @@ fn main() {
             clear_audit_log,
             open_external_url,
             get_app_metadata,
+            support_information::get_support_information,
+            support_information::copy_support_information,
             get_window_chrome,
             open_window_menu,
             focus_window_content,

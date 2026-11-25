@@ -106,6 +106,19 @@
   {
     "type": "archive",
     "archive-type": "tar-gzip",
+    "url": "https://static.crates.io/crates/arboard/arboard-3.7.0.crate",
+    "sha256": "aeb9553e62312c8756a5979254fc6d7da8bbeb5986a1e17037fab932f7037917",
+    "dest": "cargo/vendor/arboard-3.7.0"
+  },
+  {
+    "type": "inline",
+    "contents": "{\"package\":\"aeb9553e62312c8756a5979254fc6d7da8bbeb5986a1e17037fab932f7037917\",\"files\":{}}",
+    "dest": "cargo/vendor/arboard-3.7.0",
+    "dest-filename": ".cargo-checksum.json"
+  },
+  {
+    "type": "archive",
+    "archive-type": "tar-gzip",
     "url": "https://static.crates.io/crates/async-broadcast/async-broadcast-0.7.2.crate",
     "sha256": "435a87a52755b8f27fcf321ac4f04b2802e337c8c4872923137471ec39c37532",
     "dest": "cargo/vendor/async-broadcast-0.7.2"
@@ -751,6 +764,19 @@
     "type": "inline",
     "contents": "{\"package\":\"e8cf2a2c93cd704877c0858356ed03480ff301ee950b43f1cbe4573b088bfa6c\",\"files\":{}}",
     "dest": "cargo/vendor/cipher-0.5.2",
+    "dest-filename": ".cargo-checksum.json"
+  },
+  {
+    "type": "archive",
+    "archive-type": "tar-gzip",
+    "url": "https://static.crates.io/crates/clipboard-win/clipboard-win-5.4.3.crate",
+    "sha256": "052af7878466feccda12ba7a6a67d019d712f296809559b47c12c8cc196d3a9a",
+    "dest": "cargo/vendor/clipboard-win-5.4.3"
+  },
+  {
+    "type": "inline",
+    "contents": "{\"package\":\"052af7878466feccda12ba7a6a67d019d712f296809559b47c12c8cc196d3a9a\",\"files\":{}}",
+    "dest": "cargo/vendor/clipboard-win-5.4.3",
     "dest-filename": ".cargo-checksum.json"
   },
   {
@@ -1497,6 +1523,19 @@
   {
     "type": "archive",
     "archive-type": "tar-gzip",
+    "url": "https://static.crates.io/crates/error-code/error-code-3.4.0.crate",
+    "sha256": "0b5343afd4a8365a643ac588dab4cf234a190c7f6c88c9f6dd6ffe00837661b7",
+    "dest": "cargo/vendor/error-code-3.4.0"
+  },
+  {
+    "type": "inline",
+    "contents": "{\"package\":\"0b5343afd4a8365a643ac588dab4cf234a190c7f6c88c9f6dd6ffe00837661b7\",\"files\":{}}",
+    "dest": "cargo/vendor/error-code-3.4.0",
+    "dest-filename": ".cargo-checksum.json"
+  },
+  {
+    "type": "archive",
+    "archive-type": "tar-gzip",
     "url": "https://static.crates.io/crates/event-listener/event-listener-5.4.2.crate",
     "sha256": "5a23add41df1562121a9393cb065eab5146a1242410f23a644851e90cfd669d2",
     "dest": "cargo/vendor/event-listener-5.4.2"
@@ -1895,6 +1934,19 @@
     "type": "inline",
     "contents": "{\"package\":\"85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a\",\"files\":{}}",
     "dest": "cargo/vendor/generic-array-0.14.7",
+    "dest-filename": ".cargo-checksum.json"
+  },
+  {
+    "type": "archive",
+    "archive-type": "tar-gzip",
+    "url": "https://static.crates.io/crates/gethostname/gethostname-1.1.0.crate",
+    "sha256": "1bd49230192a3797a9a4d6abe9b3eed6f7fa4c8a8a4947977c6f80025f92cbd8",
+    "dest": "cargo/vendor/gethostname-1.1.0"
+  },
+  {
+    "type": "inline",
+    "contents": "{\"package\":\"1bd49230192a3797a9a4d6abe9b3eed6f7fa4c8a8a4947977c6f80025f92cbd8\",\"files\":{}}",
+    "dest": "cargo/vendor/gethostname-1.1.0",
     "dest-filename": ".cargo-checksum.json"
   },
   {
@@ -6900,6 +6952,32 @@
     "type": "inline",
     "contents": "{\"package\":\"38735924fedd5314a6e548792904ed8c6de6636285cb9fec04d5b1db85c1516f\",\"files\":{}}",
     "dest": "cargo/vendor/x11-dl-2.21.0",
+    "dest-filename": ".cargo-checksum.json"
+  },
+  {
+    "type": "archive",
+    "archive-type": "tar-gzip",
+    "url": "https://static.crates.io/crates/x11rb/x11rb-0.13.2.crate",
+    "sha256": "9993aa5be5a26815fe2c3eacfc1fde061fc1a1f094bf1ad2a18bf9c495dd7414",
+    "dest": "cargo/vendor/x11rb-0.13.2"
+  },
+  {
+    "type": "inline",
+    "contents": "{\"package\":\"9993aa5be5a26815fe2c3eacfc1fde061fc1a1f094bf1ad2a18bf9c495dd7414\",\"files\":{}}",
+    "dest": "cargo/vendor/x11rb-0.13.2",
+    "dest-filename": ".cargo-checksum.json"
+  },
+  {
+    "type": "archive",
+    "archive-type": "tar-gzip",
+    "url": "https://static.crates.io/crates/x11rb-protocol/x11rb-protocol-0.13.2.crate",
+    "sha256": "ea6fc2961e4ef194dcbfe56bb845534d0dc8098940c7e5c012a258bfec6701bd",
+    "dest": "cargo/vendor/x11rb-protocol-0.13.2"
+  },
+  {
+    "type": "inline",
+    "contents": "{\"package\":\"ea6fc2961e4ef194dcbfe56bb845534d0dc8098940c7e5c012a258bfec6701bd\",\"files\":{}}",
+    "dest": "cargo/vendor/x11rb-protocol-0.13.2",
     "dest-filename": ".cargo-checksum.json"
   },
   {

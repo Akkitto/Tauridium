@@ -58,6 +58,8 @@ commands.allow = [
   "clear_audit_log",
   "open_external_url",
   "get_app_metadata",
+  "get_support_information",
+  "copy_support_information",
   "get_window_chrome",
   "reload_active_service_command",
   "reload_app_command",

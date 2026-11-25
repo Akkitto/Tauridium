@@ -71,6 +71,23 @@ permission is transferred to the primary when the operating system permits it. T
 Windows' foreground API directly and respects refusal rather than using synthetic keyboard-input focus
 workarounds; Windows remains in control of final foreground policy.
 
+### Copy support information
+
+Open **Settings → About → Copy support information** when asking for help. The same
+action is available on sign-in, reconnect and session-restoration screens. Settings
+search also finds it under **Support information** or **diagnostics**.
+
+The report contains the application version, build mode/target, operating system and
+app architecture, display backend, WebView engine/version, distribution, the number
+of service webviews, and a small allowlist of interface flags. Unavailable metadata
+is labeled explicitly. It excludes account details, service names/URLs, file paths,
+logs, credentials and previous clipboard contents. It is not sent anywhere automatically.
+
+Expand **Preview support information** to inspect or manually select/copy the text.
+The copy button refreshes the report and confirms success only after the native
+clipboard operation completes. If copying is unavailable, the preview stays usable.
+Support reports are snapshots, not backup exports or raw diagnostic logs.
+
 ### Startup diagnostics
 
 Normal Tauridium launches remain silent. For startup, tray-restoration, or repeated-launch debugging, run:
