@@ -164,6 +164,7 @@
               minisign
               nodejs_24
               python3
+              dbus
               just
               pkg-config
               gst_all_1.gstreamer
