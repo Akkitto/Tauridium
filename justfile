@@ -141,7 +141,7 @@ test-service-menu-wayland:
 
 [unix]
 test-download-toast:
-  python3 tools/download_toast_smoke.py
+  nix --extra-experimental-features 'nix-command flakes' run .#download-toast-smoke
 
 [unix]
 audit: rust-supply-chain-host

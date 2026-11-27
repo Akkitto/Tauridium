@@ -80,14 +80,15 @@ Unix/Windows/UNC paths, Unicode, unknown destinations, queue bounds and stale
 callbacks, privacy changes, pauseable timer cleanup, native-only reveal identity,
 metadata-only portal descriptors, and private-bus selection/cancellation/error handling. The opt-in
 `just test-download-toast` additionally exercises real native downloads and
-visible notifications in an isolated X11 production-app session; it needs Xvfb,
-xdotool, ImageMagick, Tesseract, Thunar, xclip and GIO. The supplied Nix fixture
+visible notifications in an isolated X11 production-app session. This shortcut
+uses the locked Nix fixture, supplying Xvfb, xdotool, ImageMagick, Tesseract,
+Thunar, xclip and GIO. It
 also verifies that the actual downloaded file is selected in its parent folder
 and that moving it produces a recoverable error. It does not access real service accounts or
 the user's existing profile.
 
-For a fully supplied headless environment, including a private D-Bus session per
-temporary profile, run:
+The equivalent headless command, including a private D-Bus session per temporary
+profile, is:
 
 ```sh
 nix --extra-experimental-features 'nix-command flakes' run .#download-toast-smoke

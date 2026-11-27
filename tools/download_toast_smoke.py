@@ -33,6 +33,11 @@ def main() -> int:
   parser.add_argument("--dbus-config", type=Path, help="start a private bus inheriting each temporary profile")
   parser.add_argument("--file-manager", type=Path, help="isolated fixture file manager for the reveal case")
   args = parser.parse_args()
+  if args.case in (None, "reveal"):
+    if not args.file_manager or not args.dbus_config:
+      parser.error("reveal case requires --file-manager and --dbus-config; use just test-download-toast for the isolated environment")
+    if not args.file_manager.is_file() or not args.dbus_config.is_file():
+      parser.error("reveal fixture file manager and private bus configuration must exist")
   if not args.binary.is_file() or not os.environ.get("DISPLAY"):
     parser.error("requires a production executable and an isolated X11 DISPLAY")
   for command in ("xdotool", "magick", "tesseract"):
@@ -184,8 +189,6 @@ def main() -> int:
       cases = [case for case in cases if case[0] == args.case]
       if not cases:
         parser.error("unknown case")
-    if any(case[2] == "reveal" for case in cases) and not args.file_manager:
-      parser.error("reveal case requires --file-manager")
     for name, patch, mode in cases:
       print(f"Native download notification case: {name}", flush=True)
       with tempfile.TemporaryDirectory(prefix="tauridium-download-toast-") as temporary:
