@@ -1,3 +1,24 @@
+# A reveal is a desktop activation request; exercise genuine user input.
+function Click-Download-Reveal {
+  Activate-Tauridium
+  $Click=@{ Point=$null }
+  Wait-For {
+    $Button=Find-Control 'Show in folder' ([Windows.Automation.ControlType]::Button)
+    if (-not $Button -or $Button.Current.IsOffscreen -or -not $Button.Current.IsEnabled) { return $false }
+    $Bounds=$Button.Current.BoundingRectangle
+    if ($Bounds.IsEmpty -or $Bounds.Width -le 0 -or $Bounds.Height -le 0) { return $false }
+    foreach ($Value in @($Bounds.Left,$Bounds.Top,$Bounds.Width,$Bounds.Height)) {
+      if ([Double]::IsNaN($Value) -or [Double]::IsInfinity($Value)) { return $false }
+    }
+    $Point=New-Object ChromeNative+Point
+    $Point.X=[int]($Bounds.Left+$Bounds.Width/2); $Point.Y=[int]($Bounds.Top+$Bounds.Height/2)
+    if (-not [ChromeNative]::OwnsPoint($script:Window,$Point)) { return $false }
+    $Click.Point=$Point
+    return $true
+  } 'uncovered native download reveal button'
+  [ChromeNative]::ClickPoint($script:Window,$Click.Point.X,$Click.Point.Y,$false)
+}
+
 # Called only by the fresh-host Windows GUI gate; uses synthetic files only.
 function Test-Download-Reveal {
   $Fixture=Join-Path $Output 'synthetic-download'
@@ -30,7 +51,16 @@ function Test-Download-Reveal {
     Invoke-Control 'Download selection fixture file' ([Windows.Automation.ControlType]::Hyperlink)
     Wait-For { Test-Path -LiteralPath $Expected -PathType Leaf } 'actual native completed download'
     Check ([IO.File]::ReadAllText($Expected) -ceq $Payload) 'download payload is complete'
-    Invoke-Control 'Show in folder'
+    # Keep the intended download between decoys for name, size and date sorts.
+    # Opening a folder or selecting its first item cannot satisfy this check.
+    $Older=Join-Path $Destination '000-unselected.txt'
+    $Newer=Join-Path $Destination 'zzz-unselected.txt'
+    [IO.File]::WriteAllText($Older,'0',$Utf8)
+    [IO.File]::WriteAllText($Newer,('x'*4096),$Utf8)
+    $SavedAt=[IO.File]::GetLastWriteTimeUtc($Expected)
+    [IO.File]::SetLastWriteTimeUtc($Older,$SavedAt.AddHours(-1))
+    [IO.File]::SetLastWriteTimeUtc($Newer,$SavedAt.AddHours(1))
+    Click-Download-Reveal
     $FolderName=[IO.Path]::GetFileName($Destination)
     $ClassCondition=New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ClassNameProperty,'CabinetWClass')
     $Owned=@{ Window=$null }
@@ -42,6 +72,10 @@ function Test-Download-Reveal {
       return $false
     } 'fixture-owned Explorer folder window'
     $Handle=[long]$Owned.Window.Current.NativeWindowHandle
+    # Make the owned file-manager view observable without selecting any item.
+    [ChromeNative]::ShowWindow([IntPtr]$Handle,9) | Out-Null
+    [ChromeNative]::SetForegroundWindow([IntPtr]$Handle) | Out-Null
+    Wait-For { [ChromeNative]::GetForegroundWindow() -eq [IntPtr]$Handle } 'foreground fixture Explorer window'
     $Shell=New-Object -ComObject Shell.Application
     # Windows 11 can expose several tab documents for one Explorer HWND.
     # Bind the synthetic folder document as well as its window before reading
@@ -68,6 +102,27 @@ function Test-Download-Reveal {
         return $false
       } 'exact completed download selected in its parent'
     } finally {
+      # Read-only UIA cross-check if legacy Shell automation reports no selection.
+      # Restrict lookup to our unique fixture window and known synthetic filename.
+      $AccessibleSelected=$false
+      $AccessibleStatus='available'
+      try {
+        $FullName=New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty,$Filename)
+        $ShortName=New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty,([IO.Path]::GetFileNameWithoutExtension($Filename)))
+        $KnownName=New-Object Windows.Automation.OrCondition($FullName,$ShortName)
+        foreach ($Node in $Owned.Window.FindAll([Windows.Automation.TreeScope]::Descendants,$KnownName)) {
+          $Item=$Node
+          for ($Depth=0; $Depth -lt 5 -and $null -ne $Item; $Depth++) {
+            $Pattern=$null
+            if ($Item.TryGetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern,[ref]$Pattern)) {
+              if ($Pattern.Current.IsSelected -and -not $Item.Current.IsOffscreen) { $AccessibleSelected=$true }
+              break
+            }
+            $Item=[Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($Item)
+          }
+        }
+      } catch [Windows.Automation.ElementNotAvailableException] { $AccessibleStatus='unavailable' }
+      Write-Host ('Fixture accessibility metadata: knownFileSelected={0}; status={1}; foreground={2}' -f $AccessibleSelected,$AccessibleStatus,([ChromeNative]::GetForegroundWindow() -eq [IntPtr]$Handle))
       Write-Host ('Fixture selection metadata: documents={0}; matchingFolders={1}; selectedCount={2}; exactPathCase={3}' -f $Selection.Documents,$Selection.FolderMatches,$Selection.Count,$Selection.ExactCase)
       $Explorer=$Selection.Explorer
     }
@@ -78,7 +133,7 @@ function Test-Download-Reveal {
     Activate-Tauridium
     Wait-For { $null -ne (Find-Control 'File shown in folder.') } 'reveal acknowledgement without dismissing the notification'
     Move-Item -LiteralPath $Expected -Destination (Join-Path $Destination 'moved.txt')
-    Invoke-Control 'Show in folder'
+    Click-Download-Reveal
     Wait-For { $null -ne (Find-Control 'This download is no longer at its saved location. It may have been moved or deleted.') } 'moved-file explanation'
     Check ($null -ne (Find-Control 'Show in folder')) 'moved-file failure retains the retry action'
     Invoke-Control 'Dismiss download notification'
