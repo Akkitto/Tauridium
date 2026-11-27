@@ -29,7 +29,9 @@ invented if the engine reports a successful download without a path.
 Each individual completed download with a known destination offers **Show in folder**.
 It opens the system file manager at the containing folder and selects the file where
 supported. It never opens or executes the downloaded file. On Windows this uses the
-native Explorer selection API. Linux uses FileManager1; Flatpak uses the desktop
+native Explorer selection API and confirms selection when the folder view is ready.
+If Explorer opens the folder but selection cannot be confirmed, the notification
+says so. Linux uses FileManager1; Flatpak uses the desktop
 portal's file-descriptor-based OpenDirectory request without additional sandbox
 permissions. macOS uses Finder's reveal action.
 

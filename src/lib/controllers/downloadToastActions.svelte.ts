@@ -27,11 +27,16 @@ export function createDownloadToastActions(host: Host) {
       if (action === "dismiss") {
         await invoke("dismiss_download_toast", { id });
       } else {
-        const outcome = await invoke<"shown" | "cancelled">("show_download_in_folder", { id });
-        if (outcome !== "shown" && outcome !== "cancelled") throw new Error("Invalid reveal result");
-        if (host.current()?.id === id) {
-          status = outcome === "cancelled" ? "Show in folder cancelled." : "File shown in folder.";
-        }
+        const outcome = await invoke<"shown" | "cancelled" | "folderOpened">("show_download_in_folder", { id });
+        const message = outcome === "shown"
+          ? "File shown in folder."
+          : outcome === "cancelled"
+            ? "Show in folder cancelled."
+            : outcome === "folderOpened"
+              ? "Folder opened. The file may not be selected."
+              : null;
+        if (!message) throw new Error("Invalid reveal result");
+        if (host.current()?.id === id) status = message;
       }
     } catch (error) {
       if (host.current()?.id === id) {

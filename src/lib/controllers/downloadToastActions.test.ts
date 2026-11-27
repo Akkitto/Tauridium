@@ -84,6 +84,15 @@ describe("Download actions use native completion identity and preserve privacy",
     expect(f.actions.status).toBe("Show in folder cancelled.");
   });
 
+  it("distinguishes a folder opened without confirmed selection", async () => {
+    const f = fixture();
+    vi.mocked(invoke).mockResolvedValue("folderOpened");
+    await f.actions.show();
+    expect(f.actions.failure).toBe("");
+    expect(f.actions.status).toBe("Folder opened. The file may not be selected.");
+    expect(f.current?.id).toBe(10);
+  });
+
   it("rejects unexpected native responses without claiming success", async () => {
     const f = fixture();
     vi.mocked(invoke).mockResolvedValue("unexpected");
