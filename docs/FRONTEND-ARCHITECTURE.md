@@ -18,7 +18,10 @@ service session or change its native bounds unexpectedly.
 
 Application-scoped controllers are factories instantiated once in the root component.
 The support-information controller is owned by its mounted panel because its preview,
-request and feedback state are temporary. Factories do not export mutable singleton state. Their typed host objects use getters and setters to read the
+request and feedback state are temporary. The download-toast renderer similarly
+owns its action controller; completion IDs scope asynchronous feedback so a late
+response cannot label the next queued download. Native destinations never enter
+this controller. Factories do not export mutable singleton state. Their typed host objects use getters and setters to read the
 latest shared state, including arrays and preferences replaced after persistence.
 Passing a snapshot into a controller would break that contract.
 

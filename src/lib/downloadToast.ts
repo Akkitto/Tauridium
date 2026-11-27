@@ -6,6 +6,7 @@ export interface DownloadCompletion {
   location: string | null;
   locationLabel: string;
   count: number;
+  canShowInFolder: boolean;
 }
 
 export interface DownloadToastSnapshot {
