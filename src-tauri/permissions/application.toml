@@ -73,6 +73,7 @@ identifier = "download-toast"
 description = "Notification renderer can only access its own notification state"
 commands.allow = [
   "get_download_toast",
+  "show_download_in_folder",
   "dismiss_download_toast",
   "resize_download_toast"
 ]

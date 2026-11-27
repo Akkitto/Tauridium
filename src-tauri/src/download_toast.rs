@@ -450,7 +450,7 @@ pub(crate) fn completed(app: &AppHandle, path: Option<&Path>, fallback: &str) {
             .pending
             .lock()
             .unwrap()
-            .enqueue(completion);
+            .enqueue(completion, path);
     }
     crate::startup_diagnostics::log(
         "primary",
@@ -597,6 +597,26 @@ pub(crate) fn get_download_toast(app: AppHandle, webview: Webview) -> Result<Sna
         ),
     );
     Ok(value)
+}
+
+#[tauri::command]
+pub(crate) async fn show_download_in_folder(
+    app: AppHandle,
+    webview: Webview,
+    id: u64,
+) -> Result<crate::download_reveal::Outcome, crate::download_reveal::Failure> {
+    use crate::download_reveal::Failure;
+    require_overlay(&webview).map_err(|_| Failure::Unavailable)?;
+    let path = app
+        .state::<DownloadToastState>()
+        .pending
+        .lock()
+        .map_err(|_| Failure::Unavailable)?
+        .destination(id)
+        .ok_or(Failure::Stale)?;
+    tauri::async_runtime::spawn_blocking(move || crate::download_reveal::show(&path))
+        .await
+        .map_err(|_| Failure::Unavailable)?
 }
 
 #[tauri::command]
