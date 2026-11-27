@@ -43,16 +43,36 @@ function Test-Download-Reveal {
     } 'fixture-owned Explorer folder window'
     $Handle=[long]$Owned.Window.Current.NativeWindowHandle
     $Shell=New-Object -ComObject Shell.Application
-    foreach ($Candidate in $Shell.Windows()) {
-      # Inspect document/selection only after matching our synthetic folder HWND.
-      if ([long]$Candidate.HWND -eq $Handle) { $Explorer=$Candidate; break }
+    # Windows 11 can expose several tab documents for one Explorer HWND.
+    # Bind the synthetic folder document as well as its window before reading
+    # its selection. Windows filesystem paths compare without case sensitivity.
+    $Selection=@{ Explorer=$null; Documents=0; FolderMatches=0; Count=-1; ExactCase=$false }
+    try {
+      Wait-For {
+        $Selection.Documents=0; $Selection.FolderMatches=0; $Selection.Count=-1
+        foreach ($Candidate in $Shell.Windows()) {
+          if ([long]$Candidate.HWND -ne $Handle) { continue }
+          $Selection.Documents++
+          $Document=$Candidate.Document
+          if ($null -eq $Document -or $null -eq $Document.Folder) { continue }
+          if (-not [string]::Equals([string]$Document.Folder.Self.Path,$Destination,[StringComparison]::OrdinalIgnoreCase)) { continue }
+          $Selection.FolderMatches++
+          $Selection.Explorer=$Candidate
+          $Selected=$Document.SelectedItems()
+          $Selection.Count=$Selected.Count
+          if ($Selected.Count -ne 1) { continue }
+          $SelectedPath=[string]$Selected.Item(0).Path
+          $Selection.ExactCase=[string]::Equals($SelectedPath,$Expected,[StringComparison]::Ordinal)
+          if ([string]::Equals($SelectedPath,$Expected,[StringComparison]::OrdinalIgnoreCase)) { return $true }
+        }
+        return $false
+      } 'exact completed download selected in its parent'
+    } finally {
+      Write-Host ('Fixture selection metadata: documents={0}; matchingFolders={1}; selectedCount={2}; exactPathCase={3}' -f $Selection.Documents,$Selection.FolderMatches,$Selection.Count,$Selection.ExactCase)
+      $Explorer=$Selection.Explorer
     }
-    Check ($null -ne $Explorer) 'fixture Explorer HWND matches the opened folder'
-    Wait-For {
-      $Selected=$Explorer.Document.SelectedItems()
-      return $Selected.Count -eq 1 -and [string]$Selected.Item(0).Path -ceq $Expected
-    } 'exact completed download selected in its parent'
-    Check ([string]$Explorer.Document.Folder.Self.Path -ceq $Destination) 'Show in folder opens the parent directory'
+    Check ($null -ne $Explorer) 'fixture Explorer HWND and document match the opened folder'
+    Check ([string]::Equals([string]$Explorer.Document.Folder.Self.Path,$Destination,[StringComparison]::OrdinalIgnoreCase)) 'Show in folder opens the parent directory'
     Check ([IO.File]::ReadAllText($Expected) -ceq $Payload) 'Show in folder preserves the downloaded file'
     $Explorer.Quit(); $Explorer=$null
     Activate-Tauridium
