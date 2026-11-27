@@ -2,6 +2,7 @@ param([Parameter(Mandatory = $true)][string]$Binary, [string]$Output = "release/
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'windows_fixture_server.ps1')
+. (Join-Path $PSScriptRoot 'windows_download_reveal.ps1')
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'This GUI gate requires a fresh GitHub-hosted Windows CI user profile.' }
 $Binary = (Resolve-Path -LiteralPath $Binary).Path
 $ProfileRoot = Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'dev.brani.tauridium'
@@ -832,6 +833,7 @@ try {
   Check ($RestoredOuter[0] -eq $OriginalOuter[0] -and $RestoredOuter[1] -eq $OriginalOuter[1]) 'maximized restart preserves normal outside dimensions'
   Stop-Tauridium
   Test-Service-Menus
+  Test-Download-Reveal
   $Result = @{ passed=$true; checks=$script:Checks.ToArray(); privateAccountsUsed=$false; titleBarModes=@('unified-default','classic-restarted','unified-restarted') }
   [IO.File]::WriteAllText((Join-Path $Output 'result.json'),($Result | ConvertTo-Json -Depth 6),$Utf8)
   Write-Host 'Native production Windows title-bar and service-menu smoke passed.'
