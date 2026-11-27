@@ -2,8 +2,11 @@
 
 The application adds a direct Linux dependency edge to **libc 0.2.191**, already
 present in the exact lock. No package record, existing dependency edge, version,
-source or checksum changes. The Windows Shell/COM features use the already locked
-windows-sys bindings. Linux reuses existing GTK/GIO; no new D-Bus runtime is shipped.
+source or checksum changes. The Windows implementation adds a root edge to the existing locked windows
+0.62.2 bindings and uses typed Shell and COM interfaces. No dependency package is
+added. Explorer view identity is compared using native folder IDs. The app reads
+selection state only for the requested item in its matching folder, and never
+reads other folders' item names or selections. Linux reuses existing GTK/GIO; no new D-Bus runtime is shipped.
 The development-only zbus service fixture remains test-only.
 
 Linux portals receive an O_PATH | O_NOFOLLOW descriptor: it cannot read contents,
@@ -15,14 +18,18 @@ No file execution, generic shell/open API, service permission or Flatpak sandbox
 permission is introduced. Native selection necessarily tells the trusted desktop
 file manager the location requested by the user.
 
-Application lock SHA-256: `05ef281aaa312d95bbff4cd453c84c8312e8056f302af12c44a0eb683669c40c`.
+Application lock SHA-256: `73118ddeeadf3dcd28d63da064c22752f0f14a17ce8342764d58b717b0fa22ca`.
 Builder lock is unchanged. Existing exact-package/version/kind assessments and their deadlines, including
 the 30 November 2026 reviews, remain unchanged. The policy binding reflects only the
-reviewed root libc edge; unknown findings and unsoundness continue to fail closed.
+reviewed libc and Windows binding edges; unknown findings and unsoundness continue to fail closed.
 
-The current online whole-lock gate passed at `2026-11-26T10:30:04.564025+00:00` against
+The online whole-lock gate for the initial libc edge passed at `2026-11-26T10:30:04.564025+00:00` against
 official RustSec database `c9f6c91a44dbad9d71742329e9df061279f9c4be`. Both full locks
 were scanned without target/severity filters or advisory ignores. No new finding
 or assessment was introduced. Existing application maintenance assessments and
 the explicitly bounded, key-free SDK RSA assessment remain visible and enforced.
 The live npm backport checks also passed.
+
+The application lock with the Windows binding edge also passed a current online
+audit at `2026-11-27T22:29:40.276316+00:00` against RustSec database
+`c5279d0b0c9e8b70df666eb6d1edbabcfd1176bd`. No new advisory assessment was needed.

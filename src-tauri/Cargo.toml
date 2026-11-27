@@ -89,13 +89,20 @@ arboard = { version = "=3.7.0", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 windows-native-keyring-store = "=1.1.0"
+# Already locked by WebView2. Typed Explorer view interfaces repair cold selection.
+windows = { version = "=0.62.2", default-features = false, features = [
+  "Win32_System_Com",
+  "Win32_System_Ole",
+  "Win32_System_Variant",
+  "Win32_UI_Shell_Common",
+  "Win32_UI_WindowsAndMessaging",
+] }
 windows-sys = { version = ">=0.59, <=0.61", features = [
   "Win32_Foundation",
   "Win32_Security",
   "Win32_Security_Authorization",
   "Win32_Storage_FileSystem",
   "Win32_System_IO",
-  "Win32_System_Com",
   "Win32_System_Console",
   "Win32_System_Pipes",
   "Win32_System_RemoteDesktop",
@@ -104,7 +111,6 @@ windows-sys = { version = ">=0.59, <=0.61", features = [
   "Win32_UI_Controls",
   "Win32_UI_Accessibility",
   "Win32_UI_Shell",
-  "Win32_UI_Shell_Common",
   "Win32_UI_HiDpi",
   "Win32_Graphics_Dwm",
   "Win32_Graphics_Gdi",
