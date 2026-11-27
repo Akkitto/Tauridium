@@ -448,6 +448,25 @@ function Open-Advanced {
     $Control=Find-Control 'Collapse sidebar' ([Windows.Automation.ControlType]::Button)
     $Control -and $Control.Current.IsEnabled -and -not $Control.Current.IsOffscreen
   } 'ready local sidebar'
+  # UIA can report DOM focus while native input still targets the sibling
+  # title-bar controller. Click neutral main-shell text to route real input,
+  # then establish the same precise DOM focus and test the Settings shortcut.
+  $MainFocus=@{ Point=$null }
+  Wait-For {
+    $Label=Find-Control 'Local' ([Windows.Automation.ControlType]::Text)
+    if (-not $Label -or $Label.Current.IsOffscreen) { return $false }
+    $Bounds=$Label.Current.BoundingRectangle
+    if ($Bounds.IsEmpty -or $Bounds.Width -le 0 -or $Bounds.Height -le 0) { return $false }
+    foreach ($Value in @($Bounds.Left,$Bounds.Top,$Bounds.Width,$Bounds.Height)) {
+      if ([Double]::IsNaN($Value) -or [Double]::IsInfinity($Value)) { return $false }
+    }
+    $Point=New-Object ChromeNative+Point
+    $Point.X=[int]($Bounds.Left+$Bounds.Width/2); $Point.Y=[int]($Bounds.Top+$Bounds.Height/2)
+    if (-not [ChromeNative]::OwnsPoint($script:Window,$Point)) { return $false }
+    $MainFocus.Point=$Point
+    return $true
+  } 'uncovered neutral main-shell focus target'
+  [ChromeNative]::ClickPoint($script:Window,$MainFocus.Point.X,$MainFocus.Point.Y,$false)
   (Find-Control 'Collapse sidebar' ([Windows.Automation.ControlType]::Button)).SetFocus()
   Wait-For {
     $Control=Find-Control 'Collapse sidebar' ([Windows.Automation.ControlType]::Button)
