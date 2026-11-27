@@ -170,6 +170,29 @@ public static class ChromeNative {
     return WindowFromPoint(point)==h && Hit(h,point)==12;
   }
   public static bool OwnsPoint(IntPtr owner,Point point) { return GetAncestor(WindowFromPoint(point),2)==owner; }
+  public static void SettingsShortcut(IntPtr owner) {
+    if (GetForegroundWindow()!=owner) throw new InvalidOperationException("Refusing to type into a background test window.");
+    // One ordered native chord avoids SendKeys punctuation translation and
+    // cross-window timing differences, including with the classic menu bar.
+    Input controlDown=new Input(), commaDown=new Input(), commaUp=new Input(), controlUp=new Input();
+    controlDown.Type=commaDown.Type=commaUp.Type=controlUp.Type=1;
+    controlDown.Data.Keyboard.Key=controlUp.Data.Keyboard.Key=0x11;
+    commaDown.Data.Keyboard.Key=commaUp.Data.Keyboard.Key=0xbc;
+    commaUp.Data.Keyboard.Flags=controlUp.Data.Keyboard.Flags=2;
+    // This fresh-host fixture is the sole input owner. Clear its modifier
+    // state left by earlier SendKeys calls before pressing the exact chord.
+    Input shiftUp=new Input(), altUp=new Input(); shiftUp.Type=altUp.Type=1;
+    shiftUp.Data.Keyboard.Key=0x10; altUp.Data.Keyboard.Key=0x12;
+    shiftUp.Data.Keyboard.Flags=altUp.Data.Keyboard.Flags=2;
+    Input[] chord={shiftUp,altUp,controlUp,controlDown,commaDown,commaUp,controlUp};
+    LastInputCount=SendInput(7,chord,Marshal.SizeOf(typeof(Input)));
+    LastInputError=Marshal.GetLastWin32Error();
+    if (LastInputCount!=7) {
+      // Release only keys this fixture attempted to inject before failing.
+      SendInput(4,new Input[]{commaUp,controlUp,shiftUp,altUp},Marshal.SizeOf(typeof(Input)));
+      throw new InvalidOperationException("Native Settings shortcut input was blocked.");
+    }
+  }
   public static void ClickPoint(IntPtr owner,int x,int y,bool right) {
     Point p=new Point(); p.X=x; p.Y=y;
     if (GetAncestor(WindowFromPoint(p),2)!=owner) throw new InvalidOperationException("Refusing to click outside the test window.");
@@ -472,7 +495,7 @@ function Open-Advanced {
     $Control=Find-Control 'Collapse sidebar' ([Windows.Automation.ControlType]::Button)
     $Control -and $Control.Current.HasKeyboardFocus
   } 'main shell keyboard focus'
-  [Windows.Forms.SendKeys]::SendWait('^,')
+  [ChromeNative]::SettingsShortcut($script:Window)
   Invoke-Control 'Advanced'
   Wait-For { $null -ne (Find-Control 'Unified title bar' ([Windows.Automation.ControlType]::CheckBox)) } 'title-bar setting'
 }
