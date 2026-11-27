@@ -87,10 +87,28 @@ mod windows {
             CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_APARTMENTTHREADED,
             COINIT_DISABLE_OLE1DDE,
         },
-        UI::Shell::{Common::ITEMIDLIST, SHOpenFolderAndSelectItems, SHParseDisplayName},
+        UI::Shell::{
+            Common::ITEMIDLIST, ILFindLastID, SHOpenFolderAndSelectItems, SHParseDisplayName,
+        },
     };
 
     struct Apartment(bool);
+    impl Apartment {
+        fn new() -> Result<Self, Failure> {
+            // SAFETY: this worker's COM initialization is balanced by Drop.
+            let result = unsafe {
+                CoInitializeEx(
+                    ptr::null(),
+                    (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32,
+                )
+            };
+            // A pre-existing MTA is usable, but belongs to its original initializer.
+            if result < 0 && result != RPC_E_CHANGED_MODE {
+                return Err(Failure::Unavailable);
+            }
+            Ok(Self(result >= 0))
+        }
+    }
     impl Drop for Apartment {
         fn drop(&mut self) {
             if self.0 {
@@ -101,6 +119,31 @@ mod windows {
     }
 
     struct Item(*mut ITEMIDLIST);
+    impl Item {
+        fn parse(path: &Path) -> Result<Self, Failure> {
+            let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
+            if wide.contains(&0) {
+                return Err(Failure::Unavailable);
+            }
+            wide.push(0);
+            let mut item = Self(ptr::null_mut());
+            // SAFETY: NUL-terminated native path and writable PIDL out-parameter.
+            let result = unsafe {
+                SHParseDisplayName(
+                    wide.as_ptr(),
+                    ptr::null_mut(),
+                    &mut item.0,
+                    0,
+                    ptr::null_mut(),
+                )
+            };
+            if result != 0 || item.0.is_null() {
+                Err(Failure::Unavailable)
+            } else {
+                Ok(item)
+            }
+        }
+    }
     impl Drop for Item {
         fn drop(&mut self) {
             // SAFETY: SHParseDisplayName allocated this PIDL with the COM allocator.
@@ -109,45 +152,55 @@ mod windows {
     }
 
     pub(super) fn show(path: &Path) -> Result<Outcome, Failure> {
-        let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
-        if wide.contains(&0) {
+        let _apartment = Apartment::new()?;
+        let folder = Item::parse(path.parent().ok_or(Failure::Unavailable)?)?;
+        let item = Item::parse(path)?;
+        // SAFETY: the absolute file PIDL stays alive through the selection call.
+        // Its last ID is a relative child ID, borrowed rather than separately freed.
+        let child = unsafe { ILFindLastID(item.0) };
+        if child.is_null() {
             return Err(Failure::Unavailable);
         }
-        wide.push(0);
-        // SAFETY: called on a blocking worker; no UI-thread COM state is changed.
-        let result = unsafe {
-            CoInitializeEx(
-                ptr::null(),
-                (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32,
-            )
-        };
-        // RPC_E_CHANGED_MODE means the worker already has a valid COM apartment.
-        // Do not balance someone else's initialization in that case.
-        if result < 0 && result != RPC_E_CHANGED_MODE {
-            return Err(Failure::Unavailable);
-        }
-        let _apartment = Apartment(result >= 0);
-        let mut item = Item(ptr::null_mut());
-        // SAFETY: NUL-terminated native path and writable PIDL out-parameter.
-        let result = unsafe {
-            SHParseDisplayName(
-                wide.as_ptr(),
-                ptr::null_mut(),
-                &mut item.0,
-                0,
-                ptr::null_mut(),
-            )
-        };
-        if result < 0 || item.0.is_null() {
-            return Err(Failure::Unavailable);
-        }
-        // SAFETY: a live absolute PIDL; cidl=0 selects that file in its parent.
-        // Flags=0 explicitly avoids editing/renaming or activating the file.
-        let result = unsafe { SHOpenFolderAndSelectItems(item.0, 0, ptr::null(), 0) };
-        if result < 0 {
-            Err(Failure::Unavailable)
-        } else {
+        let children = [child.cast_const()];
+        // Use an explicit parent and one child, rather than cidl=0's convenience
+        // path: Windows x64 can open that folder without retaining the selection.
+        // SAFETY: live absolute parent PIDL and a live one-element child array.
+        // Flags=0 avoids editing/renaming or activating the downloaded file.
+        let result = unsafe { SHOpenFolderAndSelectItems(folder.0, 1, children.as_ptr(), 0) };
+        if result == 0 {
             Ok(Outcome::Shown)
+        } else {
+            Err(Failure::Unavailable)
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use windows_sys::Win32::UI::Shell::{ILGetSize, ILIsParent};
+
+        #[test]
+        fn selection_uses_the_actual_parent_and_a_relative_child_id() {
+            let _apartment = Apartment::new().unwrap();
+            let directory = tempfile::tempdir().unwrap();
+            let parent = Item::parse(directory.path()).unwrap();
+            for name in [
+                "file with spaces, % #.txt",
+                "-literal;[name].txt",
+                "Gr\u{fc}\u{df}e.txt",
+            ] {
+                let path = directory.path().join(name);
+                std::fs::write(&path, "synthetic metadata fixture").unwrap();
+                let item = Item::parse(&path).unwrap();
+                // SAFETY: all arguments are live Shell-allocated PIDLs; queries only.
+                unsafe {
+                    assert_ne!(ILIsParent(parent.0, item.0, 1), 0);
+                    let child = ILFindLastID(item.0);
+                    assert!(!child.is_null());
+                    assert!(ILGetSize(child) > 2);
+                    assert!(ILGetSize(child) < ILGetSize(item.0));
+                }
+            }
         }
     }
 }
