@@ -4,7 +4,7 @@
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::VecDeque;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub(crate) const MAX_PENDING: usize = 100;
 
@@ -116,6 +116,7 @@ pub(crate) struct Completion {
     pub(crate) location: Option<String>,
     pub(crate) location_label: &'static str,
     pub(crate) count: u64,
+    pub(crate) can_show_in_folder: bool,
 }
 
 pub(crate) fn completion(
@@ -151,45 +152,80 @@ pub(crate) fn completion(
             "Saved to"
         },
         count: 1,
+        can_show_in_folder: false,
     })
+}
+
+// This record is native-only. Paths are never added to the renderer DTO merely
+// to make the action available, including in filename-only display mode.
+struct PendingEntry {
+    display: Completion,
+    destination: Option<PathBuf>,
 }
 
 #[derive(Default)]
 pub(crate) struct Pending {
-    entries: VecDeque<Completion>,
+    entries: VecDeque<PendingEntry>,
     next_id: u64,
 }
 
 impl Pending {
-    pub(crate) fn enqueue(&mut self, mut completion: Completion) {
+    pub(crate) fn enqueue(&mut self, mut completion: Completion, path: Option<&Path>) {
         self.next_id += 1;
         completion.id = self.next_id;
         if self.entries.len() < MAX_PENDING {
-            self.entries.push_back(completion);
-        } else if let Some(summary) = self.entries.back_mut() {
+            self.entries.push_back(PendingEntry {
+                display: completion,
+                destination: path
+                    .filter(|path| path.is_absolute() && path.file_name().is_some())
+                    .map(Path::to_path_buf),
+            });
+        } else if let Some(entry) = self.entries.back_mut() {
+            let summary = &mut entry.display;
             // Retain every completion count without unbounded memory growth. Never
             // replace the currently displayed item or misattribute a summary path.
             summary.count += 1;
             summary.filename.clear();
             summary.location = None;
+            entry.destination = None;
         }
     }
 
     pub(crate) fn current(&self) -> Option<Completion> {
-        self.entries.front().cloned()
+        self.entries.front().map(|entry| {
+            let mut display = entry.display.clone();
+            display.can_show_in_folder = entry.destination.is_some() && display.count == 1;
+            display
+        })
     }
 
     pub(crate) fn waiting(&self) -> u64 {
-        self.entries.iter().skip(1).map(|entry| entry.count).sum()
+        self.entries
+            .iter()
+            .skip(1)
+            .map(|entry| entry.display.count)
+            .sum()
     }
 
     pub(crate) fn dismiss(&mut self, id: u64) -> bool {
-        if self.entries.front().is_some_and(|entry| entry.id == id) {
+        if self
+            .entries
+            .front()
+            .is_some_and(|entry| entry.display.id == id)
+        {
             self.entries.pop_front();
             true
         } else {
             false
         }
+    }
+
+    /// An opaque ID can resolve only the currently displayed single completion.
+    pub(crate) fn destination(&self, id: u64) -> Option<PathBuf> {
+        self.entries
+            .front()
+            .filter(|entry| entry.display.id == id && entry.display.count == 1)
+            .and_then(|entry| entry.destination.clone())
     }
 
     pub(crate) fn clear(&mut self) {
@@ -198,7 +234,7 @@ impl Pending {
 
     pub(crate) fn redact_locations(&mut self) {
         for entry in &mut self.entries {
-            entry.location = None;
+            entry.display.location = None;
         }
     }
 }
@@ -343,7 +379,7 @@ mod tests {
     fn concurrent_completions_queue_and_stale_dismissals_do_not_skip_files() {
         let mut queue = Pending::default();
         for filename in ["one.pdf", "two.pdf", "three.pdf"] {
-            queue.enqueue(completion(&settings(), None, filename).unwrap());
+            queue.enqueue(completion(&settings(), None, filename).unwrap(), None);
         }
         let first = queue.current().unwrap();
         assert_eq!(first.filename, "one.pdf");
@@ -360,14 +396,17 @@ mod tests {
     fn bursts_are_bounded_and_all_completion_counts_are_preserved() {
         let mut queue = Pending::default();
         for index in 0..150 {
-            queue.enqueue(completion(&settings(), None, &format!("file-{index}")).unwrap());
+            queue.enqueue(
+                completion(&settings(), None, &format!("file-{index}")).unwrap(),
+                None,
+            );
         }
         assert_eq!(queue.entries.len(), MAX_PENDING);
         assert_eq!(queue.current().unwrap().filename, "file-0");
         assert_eq!(queue.waiting(), 149);
-        assert_eq!(queue.entries.back().unwrap().count, 51);
-        assert!(queue.entries.back().unwrap().location.is_none());
-        assert!(queue.entries.back().unwrap().filename.is_empty());
+        assert_eq!(queue.entries.back().unwrap().display.count, 51);
+        assert!(queue.entries.back().unwrap().display.location.is_none());
+        assert!(queue.entries.back().unwrap().display.filename.is_empty());
     }
 
     #[test]
@@ -377,15 +416,88 @@ mod tests {
         let mut queue = Pending::default();
         queue.enqueue(
             completion(&value, Some(Path::new("/private/report.pdf")), "download").unwrap(),
+            Some(Path::new("/private/report.pdf")),
         );
         queue.enqueue(
             completion(&value, Some(Path::new("/private/second.pdf")), "download").unwrap(),
+            Some(Path::new("/private/second.pdf")),
         );
         let id = queue.current().unwrap().id;
         queue.redact_locations();
         assert_eq!(queue.current().unwrap().id, id);
         assert_eq!(queue.current().unwrap().filename, "report.pdf");
-        assert!(queue.entries.iter().all(|entry| entry.location.is_none()));
+        assert!(queue
+            .entries
+            .iter()
+            .all(|entry| entry.display.location.is_none()));
         assert_eq!(queue.waiting(), 1);
+    }
+    #[test]
+    fn reveal_destinations_are_native_id_bound_and_removed_on_dismissal() {
+        let root = tempfile::tempdir().unwrap();
+        let first_path = root
+            .path()
+            .join("PRIVATE_NATIVE_LOCATION")
+            .join("first.txt");
+        let second_path = root.path().join("second.txt");
+        let mut pending = Pending::default();
+        for path in [&first_path, &second_path] {
+            pending.enqueue(
+                completion(&settings(), Some(path), "download").unwrap(),
+                Some(path),
+            );
+        }
+        let first = pending.current().unwrap();
+        assert!(first.can_show_in_folder);
+        let json = serde_json::to_string(&first).unwrap();
+        assert!(!json.contains("PRIVATE_NATIVE_LOCATION"));
+        assert!(!json.contains(&root.path().to_string_lossy().to_string()));
+        assert_eq!(pending.destination(first.id), Some(first_path));
+        assert!(pending.destination(first.id + 1).is_none());
+        assert!(pending.destination(0).is_none());
+        pending.redact_locations();
+        assert!(pending.current().unwrap().location.is_none());
+        assert!(pending.current().unwrap().can_show_in_folder);
+        assert!(pending.dismiss(first.id));
+        assert!(pending.destination(first.id).is_none());
+        let second = pending.current().unwrap();
+        assert_eq!(pending.destination(second.id), Some(second_path));
+        pending.clear();
+        assert!(pending.destination(second.id).is_none());
+    }
+
+    #[test]
+    fn unknown_or_relative_destinations_never_offer_reveal() {
+        let mut pending = Pending::default();
+        for path in [None, Some(Path::new("relative.txt"))] {
+            pending.enqueue(completion(&settings(), path, "file.txt").unwrap(), path);
+        }
+        for _ in 0..2 {
+            let current = pending.current().unwrap();
+            assert!(!current.can_show_in_folder);
+            assert!(pending.destination(current.id).is_none());
+            pending.dismiss(current.id);
+        }
+    }
+
+    #[test]
+    fn overflow_summaries_never_reveal_a_misattributed_file() {
+        let root = tempfile::tempdir().unwrap();
+        let mut pending = Pending::default();
+        for index in 0..150 {
+            let path = root.path().join(format!("file-{index}"));
+            pending.enqueue(
+                completion(&settings(), Some(&path), "download").unwrap(),
+                Some(&path),
+            );
+        }
+        assert!(pending.entries.back().unwrap().destination.is_none());
+        for _ in 0..MAX_PENDING - 1 {
+            pending.dismiss(pending.current().unwrap().id);
+        }
+        let summary = pending.current().unwrap();
+        assert_eq!(summary.count, 51);
+        assert!(!summary.can_show_in_folder);
+        assert!(pending.destination(summary.id).is_none());
     }
 }

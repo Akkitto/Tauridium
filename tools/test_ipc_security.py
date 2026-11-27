@@ -27,7 +27,7 @@ class IpcSecurityTests(unittest.TestCase):
     self.assertEqual(menu, {"get_service_menu", "measure_service_menu", "dismiss_service_menu", "choose_service_menu"})
     self.assertFalse(menu & (main | toast | titlebar))
     self.assertFalse(main & toast)
-    self.assertEqual(toast, {"get_download_toast", "dismiss_download_toast", "resize_download_toast"})
+    self.assertEqual(toast, {"get_download_toast", "dismiss_download_toast", "resize_download_toast", "show_download_in_folder"})
     self.assertIn("ipc_security::command_allowed(", source)
     self.assertIn("invoke.message.webview_ref().label()", source)
 

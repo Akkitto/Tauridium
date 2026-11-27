@@ -2,6 +2,7 @@ param([Parameter(Mandatory = $true)][string]$Binary, [string]$Output = "release/
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'windows_fixture_server.ps1')
+. (Join-Path $PSScriptRoot 'windows_download_reveal.ps1')
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'This GUI gate requires a fresh GitHub-hosted Windows CI user profile.' }
 $Binary = (Resolve-Path -LiteralPath $Binary).Path
 $ProfileRoot = Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'dev.brani.tauridium'
@@ -169,6 +170,29 @@ public static class ChromeNative {
     return WindowFromPoint(point)==h && Hit(h,point)==12;
   }
   public static bool OwnsPoint(IntPtr owner,Point point) { return GetAncestor(WindowFromPoint(point),2)==owner; }
+  public static void SettingsShortcut(IntPtr owner) {
+    if (GetForegroundWindow()!=owner) throw new InvalidOperationException("Refusing to type into a background test window.");
+    // One ordered native chord avoids SendKeys punctuation translation and
+    // cross-window timing differences, including with the classic menu bar.
+    Input controlDown=new Input(), commaDown=new Input(), commaUp=new Input(), controlUp=new Input();
+    controlDown.Type=commaDown.Type=commaUp.Type=controlUp.Type=1;
+    controlDown.Data.Keyboard.Key=controlUp.Data.Keyboard.Key=0x11;
+    commaDown.Data.Keyboard.Key=commaUp.Data.Keyboard.Key=0xbc;
+    commaUp.Data.Keyboard.Flags=controlUp.Data.Keyboard.Flags=2;
+    // This fresh-host fixture is the sole input owner. Clear its modifier
+    // state left by earlier SendKeys calls before pressing the exact chord.
+    Input shiftUp=new Input(), altUp=new Input(); shiftUp.Type=altUp.Type=1;
+    shiftUp.Data.Keyboard.Key=0x10; altUp.Data.Keyboard.Key=0x12;
+    shiftUp.Data.Keyboard.Flags=altUp.Data.Keyboard.Flags=2;
+    Input[] chord={shiftUp,altUp,controlUp,controlDown,commaDown,commaUp,controlUp};
+    LastInputCount=SendInput(7,chord,Marshal.SizeOf(typeof(Input)));
+    LastInputError=Marshal.GetLastWin32Error();
+    if (LastInputCount!=7) {
+      // Release only keys this fixture attempted to inject before failing.
+      SendInput(4,new Input[]{commaUp,controlUp,shiftUp,altUp},Marshal.SizeOf(typeof(Input)));
+      throw new InvalidOperationException("Native Settings shortcut input was blocked.");
+    }
+  }
   public static void ClickPoint(IntPtr owner,int x,int y,bool right) {
     Point p=new Point(); p.X=x; p.Y=y;
     if (GetAncestor(WindowFromPoint(p),2)!=owner) throw new InvalidOperationException("Refusing to click outside the test window.");
@@ -447,12 +471,31 @@ function Open-Advanced {
     $Control=Find-Control 'Collapse sidebar' ([Windows.Automation.ControlType]::Button)
     $Control -and $Control.Current.IsEnabled -and -not $Control.Current.IsOffscreen
   } 'ready local sidebar'
+  # UIA can report DOM focus while native input still targets the sibling
+  # title-bar controller. Click neutral main-shell text to route real input,
+  # then establish the same precise DOM focus and test the Settings shortcut.
+  $MainFocus=@{ Point=$null }
+  Wait-For {
+    $Label=Find-Control 'Local' ([Windows.Automation.ControlType]::Text)
+    if (-not $Label -or $Label.Current.IsOffscreen) { return $false }
+    $Bounds=$Label.Current.BoundingRectangle
+    if ($Bounds.IsEmpty -or $Bounds.Width -le 0 -or $Bounds.Height -le 0) { return $false }
+    foreach ($Value in @($Bounds.Left,$Bounds.Top,$Bounds.Width,$Bounds.Height)) {
+      if ([Double]::IsNaN($Value) -or [Double]::IsInfinity($Value)) { return $false }
+    }
+    $Point=New-Object ChromeNative+Point
+    $Point.X=[int]($Bounds.Left+$Bounds.Width/2); $Point.Y=[int]($Bounds.Top+$Bounds.Height/2)
+    if (-not [ChromeNative]::OwnsPoint($script:Window,$Point)) { return $false }
+    $MainFocus.Point=$Point
+    return $true
+  } 'uncovered neutral main-shell focus target'
+  [ChromeNative]::ClickPoint($script:Window,$MainFocus.Point.X,$MainFocus.Point.Y,$false)
   (Find-Control 'Collapse sidebar' ([Windows.Automation.ControlType]::Button)).SetFocus()
   Wait-For {
     $Control=Find-Control 'Collapse sidebar' ([Windows.Automation.ControlType]::Button)
     $Control -and $Control.Current.HasKeyboardFocus
   } 'main shell keyboard focus'
-  [Windows.Forms.SendKeys]::SendWait('^,')
+  [ChromeNative]::SettingsShortcut($script:Window)
   Invoke-Control 'Advanced'
   Wait-For { $null -ne (Find-Control 'Unified title bar' ([Windows.Automation.ControlType]::CheckBox)) } 'title-bar setting'
 }
@@ -832,6 +875,7 @@ try {
   Check ($RestoredOuter[0] -eq $OriginalOuter[0] -and $RestoredOuter[1] -eq $OriginalOuter[1]) 'maximized restart preserves normal outside dimensions'
   Stop-Tauridium
   Test-Service-Menus
+  Test-Download-Reveal
   $Result = @{ passed=$true; checks=$script:Checks.ToArray(); privateAccountsUsed=$false; titleBarModes=@('unified-default','classic-restarted','unified-restarted') }
   [IO.File]::WriteAllText((Join-Path $Output 'result.json'),($Result | ConvertTo-Json -Depth 6),$Utf8)
   Write-Host 'Native production Windows title-bar and service-menu smoke passed.'

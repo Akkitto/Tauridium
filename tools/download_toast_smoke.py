@@ -31,7 +31,13 @@ def main() -> int:
   parser.add_argument("--output", type=Path, default=ROOT / "release/evidence/download-toast-smoke")
   parser.add_argument("--case", help="run one named case for diagnosis")
   parser.add_argument("--dbus-config", type=Path, help="start a private bus inheriting each temporary profile")
+  parser.add_argument("--file-manager", type=Path, help="isolated fixture file manager for the reveal case")
   args = parser.parse_args()
+  if args.case in (None, "reveal"):
+    if not args.file_manager or not args.dbus_config:
+      parser.error("reveal case requires --file-manager and --dbus-config; use just test-download-toast for the isolated environment")
+    if not args.file_manager.is_file() or not args.dbus_config.is_file():
+      parser.error("reveal fixture file manager and private bus configuration must exist")
   if not args.binary.is_file() or not os.environ.get("DISPLAY"):
     parser.error("requires a production executable and an isolated X11 DISPLAY")
   for command in ("xdotool", "magick", "tesseract"):
@@ -77,7 +83,9 @@ def main() -> int:
           <a href="/broken">Broken download</a>
           <script>
             fetch('/ready?service={service}');
-            window.__TAURI_INTERNALS__.invoke('get_download_toast').then(
+            Promise.all(['get_download_toast', 'show_download_in_folder'].map(command =>
+              window.__TAURI_INTERNALS__.invoke(command, {{id: 1}}).then(
+                () => false, () => true))).then(results => results.every(Boolean) ? Promise.reject() : undefined).then(
               () => fetch('/security?service={service}&denied=false'),
               () => fetch('/security?service={service}&denied=true'));
             new MutationObserver(() => {{
@@ -132,8 +140,12 @@ def main() -> int:
     # Upscale small native UI text for OCR without changing the captured evidence
     # or relaxing path/privacy assertions. Convert coordinates back for clicks.
     enlarged = subprocess.run(["magick", str(png), "-resize", "200%", "png:-"], capture_output=True, check=True, timeout=10)
-    result = subprocess.run(["tesseract", "stdin", "stdout", "--psm", "11", "tsv"], input=enlarged.stdout, capture_output=True, check=True, timeout=30)
-    rows = list(csv.DictReader(io.StringIO(result.stdout.decode()), delimiter="\t"))
+    # Sparse layout finds sidebar text; automatic segmentation also reads
+    # compact bordered action buttons. Preserve both sets of real OCR evidence.
+    rows = []
+    for mode in ("11", "3"):
+      result = subprocess.run(["tesseract", "stdin", "stdout", "--psm", mode, "tsv"], input=enlarged.stdout, capture_output=True, check=True, timeout=30)
+      rows.extend(csv.DictReader(io.StringIO(result.stdout.decode()), delimiter="\t"))
     for row in rows:
       for key in ("left", "top", "width", "height"):
         row[key] = str(round(int(row[key]) / 2))
@@ -161,6 +173,7 @@ def main() -> int:
 
   try:
     cases = [
+      ("reveal", {"downloadToasts": True}, "reveal"),
       ("default-off", {}, None),
       ("filename", {"downloadToasts": True}, "none"),
       ("folder", {"downloadToasts": True, "downloadToastLocation": "directory", "theme": "light"}, "directory"),
@@ -198,7 +211,7 @@ def main() -> int:
                                 ("local_profile.json", {"version": 1, "services": services, "workspaces": []}),
                                 ("app_settings.json", settings)):
           (data_dir / filename).write_text(json.dumps(value), encoding="utf-8")
-        env = dict(os.environ, XDG_DATA_HOME=str(root / "data"), XDG_CONFIG_HOME=str(root / "config"),
+        env = dict(os.environ, HOME=str(root), XDG_DATA_HOME=str(root / "data"), XDG_CONFIG_HOME=str(root / "config"),
                    XDG_DATA_DIRS=str(root / "data"),
                    XDG_CACHE_HOME=str(root / "cache"), XDG_STATE_HOME=str(root / "state"),
                    XDG_RUNTIME_DIR=str(root / "runtime"),
@@ -206,6 +219,9 @@ def main() -> int:
                    WEBKIT_DISABLE_DMABUF_RENDERER="1")
         with (output / f"{name}.log").open("w", encoding="utf-8") as log:
           command = [str(args.binary.resolve()), "--startup-diagnostics"]
+          if mode == "reveal":
+            command = ["python3", str(Path(__file__).with_name("download_file_manager_fixture.py")),
+                       "--file-manager", str(args.file_manager), "--", *command]
           if args.dbus_config:
             command = ["dbus-run-session", f"--config-file={args.dbus_config}", "--", *command]
           process = subprocess.Popen(command, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
@@ -265,6 +281,43 @@ def main() -> int:
                   raise RuntimeError("One-level path showed a second parent")
                 if mode == "partial-two" and "Downloads" not in text:
                   raise RuntimeError("Two-level path omitted a parent")
+              if mode == "reveal":
+                if "Show in folder" not in text:
+                  raise RuntimeError(f"Missing reveal action: {text}")
+                click_word(window, "Show", "reveal-click")
+                def manager_window():
+                  found = subprocess.run(["xdotool", "search", "--onlyvisible", "--class", "Thunar"],
+                                         text=True, capture_output=True, timeout=10)
+                  return found.stdout.strip().splitlines() if found.returncode == 0 else []
+                wait_for(manager_window, "real file manager window")
+                manager = manager_window()[0]
+                xdo("windowfocus", "--sync", manager)
+                xdo("key", "--clearmodifiers", "ctrl+c")
+                # This is a fresh Xvfb clipboard, never the user's desktop clipboard.
+                def selected_file():
+                  selected = subprocess.run(["xclip", "-selection", "clipboard", "-o", "-t", "text/uri-list"],
+                                            capture_output=True, text=True, timeout=3)
+                  return selected.returncode == 0 and selected.stdout.strip() == (destination / "alpha.txt").as_uri()
+                wait_for(selected_file, "exact downloaded file selected in its parent")
+                verify_file(destination / "alpha.txt")
+                xdo("windowraise", window)
+                xdo("windowfocus", "--sync", window)
+                time.sleep(0.5)
+                text, _ = screenshot(window, "reveal-success")
+                if "File shown in folder." not in text or "alpha.txt" not in text:
+                  raise RuntimeError(f"Reveal lost the notification or did not acknowledge success: {text}")
+                (destination / "alpha.txt").rename(destination / "moved-alpha.txt")
+                click_word(window, "Show", "reveal-missing-click")
+                deadline = time.monotonic() + 30
+                while time.monotonic() < deadline:
+                  text, _ = screenshot(window, "reveal-missing")
+                  if "moved or deleted" in text:
+                    break
+                  time.sleep(0.5)
+                else:
+                  raise RuntimeError(f"Moved download did not produce an actionable error: {text}")
+                if "alpha.txt" not in text or "Show in folder" not in text:
+                  raise RuntimeError("Missing-file failure removed the notification or retry action")
               if mode == "queue":
                 for filename in ("beta", "gamma"):
                   click_word(window, filename, f"{name}-{filename}-before")

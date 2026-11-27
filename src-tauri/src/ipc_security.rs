@@ -3,6 +3,7 @@ use tauri::Url;
 
 const TOAST_COMMANDS: &[&str] = &[
     "get_download_toast",
+    "show_download_in_folder",
     "dismiss_download_toast",
     "resize_download_toast",
 ];

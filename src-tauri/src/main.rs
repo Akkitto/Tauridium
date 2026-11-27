@@ -7,6 +7,7 @@ mod browser_privacy;
 mod credentials;
 mod distribution;
 mod download_notifications;
+mod download_reveal;
 mod download_toast;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 mod flatpak_portal;
@@ -2877,6 +2878,7 @@ fn main() {
             service_menu::dismiss_service_menu,
             service_menu::choose_service_menu,
             download_toast::get_download_toast,
+            download_toast::show_download_in_folder,
             download_toast::dismiss_download_toast,
             download_toast::resize_download_toast,
             app_settings::set_service_zoom,
