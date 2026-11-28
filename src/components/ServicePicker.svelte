@@ -136,15 +136,13 @@
               </div>
               <label class="block">Service URL<input bind:value={recipeDraft.serviceUrl} placeholder="https://example.com" /></label>
               <label class="block">Description (optional)<input bind:value={recipeDraft.description} placeholder="What this recipe opens" /></label>
-              <div class="creator-options">
-                <label class="row-toggle compact"><span>Allow a per-service custom URL</span><input type="checkbox" bind:checked={recipeDraft.hasCustomUrl} /></label>
-                <label class="row-toggle compact"><span>Use a teamId placeholder in the URL</span><input type="checkbox" bind:checked={recipeDraft.hasTeamId} /></label>
-              </div>
+              <label class="row-toggle compact"><span>Use a teamId placeholder in the URL</span><input type="checkbox" bind:checked={recipeDraft.hasTeamId} /></label>
               <button class="link" onclick={() => (recipeAdvanced = !recipeAdvanced)}>{recipeAdvanced ? "Hide advanced files" : "Advanced: icon.svg / webview.js"}</button>
               {#if recipeAdvanced}
                 <label class="block">icon.svg (optional)<textarea class="code-input" bind:value={recipeDraft.iconSvg} rows="5" placeholder="<svg …>…</svg>"></textarea></label>
                 <label class="block">webview.js (optional)<textarea class="code-input" bind:value={recipeDraft.webviewJs} rows="8" placeholder="Optional Ferdium-compatible recipe integration script"></textarea></label>
-                <p class="notice security-note">A recipe webview.js runs inside the loaded website and can access that page's DOM. Only import or write scripts you trust.</p>
+                <label class="row-toggle compact"><span>Run the recipe script on other origins</span><input type="checkbox" bind:checked={recipeDraft.hasCustomUrl} /></label>
+                <p class="notice security-note">A recipe webview.js runs inside the loaded website and can access that page's DOM. Only import or write scripts you trust. Enable other origins for recipes designed for custom deployments.</p>
               {/if}
               <label class="block">Service name after “Save & add” (optional)<input bind:value={newServiceName} placeholder="leave empty = recipe name" /></label>
               <div class="recipe-actions">
@@ -221,7 +219,6 @@
   .creator-card { display: flex; flex-direction: column; gap: 12px; }
   .creator-card h3 { margin: 0; font-size: 16px; }
   .creator-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .creator-options { display: flex; flex-direction: column; gap: 6px; }
   .row-toggle.compact { flex-direction: row; justify-content: space-between; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--input); }
   textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--border2); background: var(--input); color: var(--text); font-size: 13px; }
   .code-input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1.4; }
