@@ -95,9 +95,9 @@
           <div class="setrow">
             <label class="block">
               Custom URL
-              <input value={settingsSvc.customUrl ?? ""} placeholder="https://… (for services that support it)" onchange={(e) => serviceEditor.saveText("customUrl", e.currentTarget.value, true)} />
+              <input value={settingsSvc.customUrl ?? ""} placeholder="https://example.com" oninput={(e) => serviceEditor.saveText("customUrl", e.currentTarget.value, true)} />
             </label>
-            <p class="desc">Override the recipe URL. Supports <code>{"{teamId}"}</code> for recipes with website workspace IDs and, when enabled below, <code>{"{{custom_id_1}}"}</code> / <code>{"{{custom_id_2}}"}</code>. Reloads the service.</p>
+            <p class="desc">Set the starting URL for this service. Clear the field to restore the recipe URL. Supports <code>{"{teamId}"}</code> for recipes with website workspace IDs and, when enabled below, <code>{"{{custom_id_1}}"}</code> / <code>{"{{custom_id_2}}"}</code>. Reloads the service.</p>
           </div>
           <div class="setrow">
             <label class="block">

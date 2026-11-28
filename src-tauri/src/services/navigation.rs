@@ -2,11 +2,12 @@
 use crate::local_profile::validate_recipe_id;
 
 use crate::{
-    http_security, recipe_cache_directory, recipe_source, recipes, write_atomic, API_UA, HTTP,
+    http_security, ipc_security, recipe_cache_directory, recipe_source, recipes, write_atomic,
+    API_UA, HTTP,
 };
 use serde_json::Value;
 use std::path::Path;
-use tauri::AppHandle;
+use tauri::{AppHandle, Url};
 
 pub(crate) async fn recipe_config(
     app: &AppHandle,
@@ -61,7 +62,6 @@ pub(super) fn ensure_scheme(u: &str) -> String {
     }
 }
 
-// Replicate the `url` getter from ferdium-app's Service model.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct CustomUrlTemplateValues {
     enabled: bool,
@@ -139,25 +139,37 @@ pub(crate) fn resolve_url(
         .get("serviceURL")
         .and_then(Value::as_str)
         .unwrap_or("");
-    let has_custom = config
-        .get("hasCustomUrl")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
     let has_team = config
         .get("hasTeamId")
         .and_then(Value::as_bool)
         .unwrap_or(false);
 
-    if has_custom {
-        if let Some(u) = custom_url.map(str::trim).filter(|u| !u.is_empty()) {
-            let mut resolved = ensure_scheme(u);
-            if has_team {
-                if let Some(t) = team.map(str::trim).filter(|t| !t.is_empty()) {
-                    resolved = resolved.replace("{teamId}", t);
-                }
+    // An explicit instance setting wins over the recipe's default, even
+    // when the recipe does not advertise support for custom deployments.
+    if let Some(value) = custom_url.map(str::trim).filter(|value| !value.is_empty()) {
+        let has_explicit_scheme = value
+            .split_once("://")
+            .is_some_and(|(scheme, _)| !scheme.contains(['/', '?', '#']));
+        let mut resolved = if has_explicit_scheme {
+            value.to_owned()
+        } else {
+            ensure_scheme(value)
+        };
+        if has_team {
+            if let Some(team) = team.map(str::trim).filter(|team| !team.is_empty()) {
+                resolved = resolved.replace("{teamId}", team);
             }
-            return apply_custom_url_templates(&resolved, templates);
         }
+        let resolved = apply_custom_url_templates(&resolved, templates)?;
+        let url = Url::parse(&resolved).map_err(|error| format!("Invalid custom URL: {error}"))?;
+        if !matches!(url.scheme(), "http" | "https")
+            || !ipc_security::service_navigation_allowed(&url)
+        {
+            return Err(
+                "Custom URLs must use HTTP or HTTPS outside Tauridium's internal origins".into(),
+            );
+        }
+        return Ok(resolved);
     }
     if has_team {
         if let Some(t) = team.map(str::trim).filter(|t| !t.is_empty()) {
@@ -173,6 +185,19 @@ pub(crate) fn resolve_url(
         return Err("Recipe has no serviceURL".into());
     }
     Ok(service_url.to_string())
+}
+
+/// Fixed-origin recipes may contain redirects or DOM logic for their own site.
+/// A cross-origin override still opens as a normal service webview. Preserve
+/// recipe support for explicitly advertised custom deployments.
+pub(super) fn recipe_runtime_allowed(cfg: &Value, team: Option<&str>, destination: &Url) -> bool {
+    if cfg.pointer("/config/hasCustomUrl").and_then(Value::as_bool) == Some(true) {
+        return true;
+    }
+    resolve_url(cfg, None, team, &CustomUrlTemplateValues::default())
+        .ok()
+        .and_then(|default| Url::parse(&default).ok())
+        .is_some_and(|default| default.origin() == destination.origin())
 }
 
 #[cfg(test)]

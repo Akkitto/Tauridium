@@ -226,6 +226,10 @@ function Write-Test-Diagnostics {
   if ($script:Window -ne [IntPtr]::Zero) {
     Write-Host ('Main: {0}; menu={1}' -f [ChromeNative]::WindowMetadata($script:Window),[ChromeNative]::GetMenu($script:Window))
     Write-Host ('Foreground: '+[ChromeNative]::WindowMetadata([ChromeNative]::GetForegroundWindow()))
+    try {
+      $Focused = [Windows.Automation.AutomationElement]::FocusedElement.Current
+      Write-Host ('Focused control: {0}; {1}; pid={2}' -f $Focused.ControlType.ProgrammaticName,$Focused.Name,$Focused.ProcessId)
+    } catch { Write-Host 'Focused control was unavailable.' }
     if ([ChromeNative]::GetForegroundWindow() -eq $script:Window -and [ChromeNative]::CaptionReady($script:Window,$false)) {
       if ([ChromeNative]::IsZoomed($script:Window)) { Save-Caption-Preview 'maximized' } else { Save-Caption-Preview 'normal' }
     }
@@ -508,17 +512,52 @@ function Search-Settings-Value {
   }
   return $Pattern.Current.Value
 }
-function Search-Settings-For([string]$Query, [string]$SelectionKeys = '{ENTER}') {
+function Test-ControlFocus([Windows.Automation.AutomationElement]$Control) {
+  if ($null -eq $Control) { return $false }
+  try {
+    $Focused = [Windows.Automation.AutomationElement]::FocusedElement
+    $Walker = [Windows.Automation.TreeWalker]::RawViewWalker
+    # WebView2 can expose keyboard focus on an edit inside its combo box.
+    while ($null -ne $Focused) {
+      if ($Control.Equals($Focused)) { return $true }
+      $Focused = $Walker.GetParent($Focused)
+    }
+  } catch [Windows.Automation.ElementNotAvailableException] {
+    return $false
+  }
+  return $false
+}
+function Test-SettingsSearchFocus {
+  if (Test-ControlFocus (Find-Control 'Search settings')) { return $true }
+  # With aria-activedescendant, WebView2 reports the highlighted option as
+  # focused to UI Automation while the text input continues to receive keys.
+  $Results = Find-Control 'Matching settings' ([Windows.Automation.ControlType]::List)
+  return (Test-ControlFocus $Results)
+}
+function Search-Settings-For([string]$Query, [string]$SelectionKeys = '{ENTER}', [switch]$FromAdvancedShortcut) {
   Activate-Tauridium
-  [Windows.Forms.SendKeys]::SendWait('^f')
+  if ($FromAdvancedShortcut) {
+    # A foreground HWND alone does not establish keyboard focus in the shell.
+    $Tab = Find-Control 'Advanced' ([Windows.Automation.ControlType]::Button)
+    $Tab.SetFocus()
+    Wait-For { Test-ControlFocus $Tab } 'Advanced tab keyboard focus before Ctrl+F'
+    [Windows.Forms.SendKeys]::SendWait('^f')
+    Wait-For { Test-SettingsSearchFocus } 'scoped Ctrl+F focuses Settings search'
+  } else {
+    # Exercise search and navigation independently of the shortcut or the last
+    # native control to own focus (for example after a clipboard operation).
+    (Find-Control 'Search settings').SetFocus()
+    Wait-For { Test-SettingsSearchFocus } 'Settings search keyboard focus'
+    [Windows.Forms.SendKeys]::SendWait('^a')
+  }
   [Windows.Forms.SendKeys]::SendWait($Query)
-  Wait-For { (Search-Settings-Value) -eq $Query } 'scoped Ctrl+F focuses Settings search'
+  Wait-For { (Search-Settings-Value) -ceq $Query } "Settings search value for '$Query'"
   [Windows.Forms.SendKeys]::SendWait($SelectionKeys)
 }
 function Test-Settings-Search {
   # Navigation must not edit a setting, start an action, or persist the query.
   $Before = (Read-Settings | ConvertTo-Json -Depth 20 -Compress)
-  Search-Settings-For 'show service names'
+  Search-Settings-For 'show service names' -FromAdvancedShortcut
   Wait-For { [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Show service names' } 'search opens Services and focuses its exact control'
   Search-Settings-For 'theme'
   Wait-For { [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Theme' } 'search opens Appearance and focuses Theme'
@@ -532,7 +571,6 @@ function Test-Settings-Search {
     $null -ne $Control -and -not $Control.Current.IsOffscreen
   } 'whole-tab search opens the first Settings section'
   Check ((Read-Settings | ConvertTo-Json -Depth 20 -Compress) -eq $Before) 'Settings search navigation leaves persisted preferences unchanged'
-  [Windows.Forms.SendKeys]::SendWait('^f')
   Invoke-Control 'Clear settings search'
   Wait-For { (Search-Settings-Value) -eq '' } 'clear search clears its actual editable value'
 }

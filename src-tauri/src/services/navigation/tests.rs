@@ -25,36 +25,111 @@ fn resolve_url_uses_plain_service_url() {
     );
 }
 #[test]
-fn resolve_url_honours_custom_url_only_when_allowed() {
-    let cfg = json!({ "config": { "serviceURL": "https://default", "hasCustomUrl": true } });
+fn stock_gemini_uses_the_explicit_service_override() {
+    // Shape of pinned recipes/google-gemini/package.json: no hasCustomUrl flag.
+    let cfg = json!({ "config": { "serviceURL": "https://gemini.google.com" } });
     assert_eq!(
         resolve_url(
             &cfg,
-            Some("chat.example.fr"),
+            Some(" https://calendar.google.com/calendar/u/0/r "),
             None,
-            &CustomUrlTemplateValues::default()
+            &CustomUrlTemplateValues::default(),
         )
         .unwrap(),
-        "https://chat.example.fr"
-    );
-    // Empty custom URL falls back to serviceURL.
-    assert_eq!(
-        resolve_url(&cfg, Some(""), None, &CustomUrlTemplateValues::default()).unwrap(),
-        "https://default"
-    );
-    // A recipe without hasCustomUrl ignores the custom URL.
-    let cfg2 = json!({ "config": { "serviceURL": "https://default" } });
-    assert_eq!(
-        resolve_url(
-            &cfg2,
-            Some("chat.example.fr"),
-            None,
-            &CustomUrlTemplateValues::default()
-        )
-        .unwrap(),
-        "https://default"
+        "https://calendar.google.com/calendar/u/0/r"
     );
 }
+#[test]
+fn override_precedes_the_recipe_default_regardless_of_custom_deployment_support() {
+    for config in [
+        json!({ "serviceURL": "https://default.example" }),
+        json!({ "serviceURL": "https://default.example", "hasCustomUrl": false }),
+        json!({ "serviceURL": "https://default.example", "hasCustomUrl": true }),
+    ] {
+        let cfg = json!({ "config": config });
+        let templates = CustomUrlTemplateValues::default();
+        assert_eq!(
+            resolve_url(&cfg, Some("chat.example.fr"), None, &templates).unwrap(),
+            "https://chat.example.fr"
+        );
+        for (input, expected) in [
+            ("HTTPS://chat.example.fr", "HTTPS://chat.example.fr"),
+            (
+                "chat.example.fr:8443/go?next=https://example.test/",
+                "https://chat.example.fr:8443/go?next=https://example.test/",
+            ),
+        ] {
+            assert_eq!(
+                resolve_url(&cfg, Some(input), None, &templates).unwrap(),
+                expected
+            );
+        }
+        for empty in [None, Some(""), Some(" \t ")] {
+            assert_eq!(
+                resolve_url(&cfg, empty, None, &templates).unwrap(),
+                "https://default.example"
+            );
+        }
+    }
+}
+
+#[test]
+fn malformed_and_internal_overrides_never_fall_back_to_a_recipe() {
+    let cfg = json!({ "config": { "serviceURL": "https://gemini.google.com" } });
+    let templates = CustomUrlTemplateValues::default();
+    for invalid in [
+        "https://",
+        "file:///tmp/example",
+        "tauri://localhost/",
+        "https://tauri.localhost/",
+        "http://asset.localhost/",
+        "http://ipc.localhost/",
+        "about:blank",
+        "javascript:alert(1)",
+    ] {
+        assert!(
+            resolve_url(&cfg, Some(invalid), None, &templates).is_err(),
+            "{invalid}"
+        );
+    }
+}
+
+#[test]
+fn fixed_origin_recipe_runtime_stays_on_the_recipe_origin() {
+    let cfg = json!({ "config": { "serviceURL": "https://gemini.google.com" } });
+    assert!(recipe_runtime_allowed(
+        &cfg,
+        None,
+        &Url::parse("https://gemini.google.com/app").unwrap()
+    ));
+    for other in [
+        "https://calendar.google.com/",
+        "https://workspace.google.com/products/gemini/",
+        "http://gemini.google.com/",
+        "https://gemini.google.com:444/",
+    ] {
+        assert!(
+            !recipe_runtime_allowed(&cfg, None, &Url::parse(other).unwrap()),
+            "{other}"
+        );
+    }
+
+    let self_hosted =
+        json!({ "config": { "serviceURL": "https://hosted.example", "hasCustomUrl": true } });
+    assert!(recipe_runtime_allowed(
+        &self_hosted,
+        None,
+        &Url::parse("https://self-hosted.example").unwrap()
+    ));
+
+    let team = json!({ "config": { "serviceURL": "https://example.test", "teamURL": "https://{teamId}.example.test", "hasTeamId": true } });
+    assert!(recipe_runtime_allowed(
+        &team,
+        Some("acme"),
+        &Url::parse("https://acme.example.test/inbox").unwrap()
+    ));
+}
+
 #[test]
 fn resolve_url_substitutes_team_id() {
     let cfg =
@@ -76,8 +151,7 @@ fn resolve_url_uses_recipe_team_url_and_custom_placeholders() {
         "config": {
             "serviceURL": "https://opencode.ai/go",
             "teamURL": "https://opencode.ai/workspace/{teamId}/go",
-            "hasTeamId": true,
-            "hasCustomUrl": true
+            "hasTeamId": true
         }
     });
     assert_eq!(
