@@ -4648,6 +4648,7 @@ dependencies = [
  "tauri-plugin-window-state",
  "tempfile",
  "tokio",
+ "webview2-com",
  "windows",
  "windows-native-keyring-store",
  "windows-sys 0.61.2",

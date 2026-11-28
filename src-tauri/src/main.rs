@@ -2603,6 +2603,12 @@ fn main() {
 
             let handle = app.handle().clone();
             download_toast::install_layout_hook(app.handle())?;
+            #[cfg(windows)]
+            if let Some(owner) = app.get_webview("main") {
+                if let Err(error) = app_settings::search_windows::reserve_settings_search(&owner) {
+                    startup_diagnostics::log("primary", "settings_search.install_error", &error.to_string());
+                }
+            }
             #[cfg(target_os = "linux")]
             if let Some(owner) = app.get_webview("main") {
                 service_menu::watch_input(&owner)?;

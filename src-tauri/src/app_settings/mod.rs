@@ -9,6 +9,8 @@ use crate::flatpak_portal;
 ))]
 use crate::nix_autostart;
 
+#[cfg(windows)]
+pub(crate) mod search_windows;
 pub(crate) mod validation;
 
 use self::validation::{
