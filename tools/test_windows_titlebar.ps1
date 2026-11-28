@@ -527,6 +527,13 @@ function Test-ControlFocus([Windows.Automation.AutomationElement]$Control) {
   }
   return $false
 }
+function Test-SettingsSearchFocus {
+  if (Test-ControlFocus (Find-Control 'Search settings')) { return $true }
+  # With aria-activedescendant, WebView2 reports the highlighted option as
+  # focused to UI Automation while the text input continues to receive keys.
+  $Results = Find-Control 'Matching settings' ([Windows.Automation.ControlType]::List)
+  return (Test-ControlFocus $Results)
+}
 function Search-Settings-For([string]$Query, [string]$SelectionKeys = '{ENTER}', [switch]$FromAdvancedShortcut) {
   Activate-Tauridium
   if ($FromAdvancedShortcut) {
@@ -535,12 +542,12 @@ function Search-Settings-For([string]$Query, [string]$SelectionKeys = '{ENTER}',
     $Tab.SetFocus()
     Wait-For { Test-ControlFocus $Tab } 'Advanced tab keyboard focus before Ctrl+F'
     [Windows.Forms.SendKeys]::SendWait('^f')
-    Wait-For { Test-ControlFocus (Find-Control 'Search settings') } 'scoped Ctrl+F focuses Settings search'
+    Wait-For { Test-SettingsSearchFocus } 'scoped Ctrl+F focuses Settings search'
   } else {
     # Exercise search and navigation independently of the shortcut or the last
     # native control to own focus (for example after a clipboard operation).
     (Find-Control 'Search settings').SetFocus()
-    Wait-For { Test-ControlFocus (Find-Control 'Search settings') } 'Settings search keyboard focus'
+    Wait-For { Test-SettingsSearchFocus } 'Settings search keyboard focus'
     [Windows.Forms.SendKeys]::SendWait('^a')
   }
   [Windows.Forms.SendKeys]::SendWait($Query)
