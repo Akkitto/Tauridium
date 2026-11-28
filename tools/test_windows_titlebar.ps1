@@ -170,26 +170,27 @@ public static class ChromeNative {
     return WindowFromPoint(point)==h && Hit(h,point)==12;
   }
   public static bool OwnsPoint(IntPtr owner,Point point) { return GetAncestor(WindowFromPoint(point),2)==owner; }
-  public static void ControlShortcut(IntPtr owner,ushort key) {
+  public static void SettingsShortcut(IntPtr owner) {
     if (GetForegroundWindow()!=owner) throw new InvalidOperationException("Refusing to type into a background test window.");
-    // Submit the whole chord in order without SendKeys key translation.
-    Input controlDown=new Input(), keyDown=new Input(), keyUp=new Input(), controlUp=new Input();
-    controlDown.Type=keyDown.Type=keyUp.Type=controlUp.Type=1;
+    // One ordered native chord avoids SendKeys punctuation translation and
+    // cross-window timing differences, including with the classic menu bar.
+    Input controlDown=new Input(), commaDown=new Input(), commaUp=new Input(), controlUp=new Input();
+    controlDown.Type=commaDown.Type=commaUp.Type=controlUp.Type=1;
     controlDown.Data.Keyboard.Key=controlUp.Data.Keyboard.Key=0x11;
-    keyDown.Data.Keyboard.Key=keyUp.Data.Keyboard.Key=key;
-    keyUp.Data.Keyboard.Flags=controlUp.Data.Keyboard.Flags=2;
+    commaDown.Data.Keyboard.Key=commaUp.Data.Keyboard.Key=0xbc;
+    commaUp.Data.Keyboard.Flags=controlUp.Data.Keyboard.Flags=2;
     // This fresh-host fixture is the sole input owner. Clear its modifier
     // state left by earlier SendKeys calls before pressing the exact chord.
     Input shiftUp=new Input(), altUp=new Input(); shiftUp.Type=altUp.Type=1;
     shiftUp.Data.Keyboard.Key=0x10; altUp.Data.Keyboard.Key=0x12;
     shiftUp.Data.Keyboard.Flags=altUp.Data.Keyboard.Flags=2;
-    Input[] chord={shiftUp,altUp,controlUp,controlDown,keyDown,keyUp,controlUp};
+    Input[] chord={shiftUp,altUp,controlUp,controlDown,commaDown,commaUp,controlUp};
     LastInputCount=SendInput(7,chord,Marshal.SizeOf(typeof(Input)));
     LastInputError=Marshal.GetLastWin32Error();
     if (LastInputCount!=7) {
       // Release only keys this fixture attempted to inject before failing.
-      SendInput(4,new Input[]{keyUp,controlUp,shiftUp,altUp},Marshal.SizeOf(typeof(Input)));
-      throw new InvalidOperationException("Native Control shortcut input was blocked.");
+      SendInput(4,new Input[]{commaUp,controlUp,shiftUp,altUp},Marshal.SizeOf(typeof(Input)));
+      throw new InvalidOperationException("Native Settings shortcut input was blocked.");
     }
   }
   public static void ClickPoint(IntPtr owner,int x,int y,bool right) {
@@ -225,6 +226,10 @@ function Write-Test-Diagnostics {
   if ($script:Window -ne [IntPtr]::Zero) {
     Write-Host ('Main: {0}; menu={1}' -f [ChromeNative]::WindowMetadata($script:Window),[ChromeNative]::GetMenu($script:Window))
     Write-Host ('Foreground: '+[ChromeNative]::WindowMetadata([ChromeNative]::GetForegroundWindow()))
+    try {
+      $Focused = [Windows.Automation.AutomationElement]::FocusedElement.Current
+      Write-Host ('Focused control: {0}; {1}; pid={2}' -f $Focused.ControlType.ProgrammaticName,$Focused.Name,$Focused.ProcessId)
+    } catch { Write-Host 'Focused control was unavailable.' }
     if ([ChromeNative]::GetForegroundWindow() -eq $script:Window -and [ChromeNative]::CaptionReady($script:Window,$false)) {
       if ([ChromeNative]::IsZoomed($script:Window)) { Save-Caption-Preview 'maximized' } else { Save-Caption-Preview 'normal' }
     }
@@ -494,7 +499,7 @@ function Open-Advanced {
     $Control=Find-Control 'Collapse sidebar' ([Windows.Automation.ControlType]::Button)
     $Control -and $Control.Current.HasKeyboardFocus
   } 'main shell keyboard focus'
-  [ChromeNative]::ControlShortcut($script:Window,0xbc)
+  [ChromeNative]::SettingsShortcut($script:Window)
   Invoke-Control 'Advanced'
   Wait-For { $null -ne (Find-Control 'Unified title bar' ([Windows.Automation.ControlType]::CheckBox)) } 'title-bar setting'
 }
@@ -507,18 +512,37 @@ function Search-Settings-Value {
   }
   return $Pattern.Current.Value
 }
-function Focus-Settings-Search {
-  Activate-Tauridium
-  [ChromeNative]::ControlShortcut($script:Window,0x46)
-  Wait-For {
-    $Control = Find-Control 'Search settings'
-    [ChromeNative]::GetForegroundWindow() -eq $script:Window -and $Control -and $Control.Current.HasKeyboardFocus
-  } 'scoped Ctrl+F focuses Settings search'
+function Test-ControlFocus([Windows.Automation.AutomationElement]$Control) {
+  if ($null -eq $Control) { return $false }
+  try {
+    $Focused = [Windows.Automation.AutomationElement]::FocusedElement
+    $Walker = [Windows.Automation.TreeWalker]::RawViewWalker
+    # WebView2 can expose keyboard focus on an edit inside its combo box.
+    while ($null -ne $Focused) {
+      if ($Control.Equals($Focused)) { return $true }
+      $Focused = $Walker.GetParent($Focused)
+    }
+  } catch [Windows.Automation.ElementNotAvailableException] {
+    return $false
+  }
+  return $false
 }
-function Search-Settings-For([string]$Query, [string]$SelectionKeys = '{ENTER}') {
-  # On WebView2, SendWait can return before the renderer moves focus. Synchronize
-  # with the accessible edit control so the query reaches the intended field.
-  Focus-Settings-Search
+function Search-Settings-For([string]$Query, [string]$SelectionKeys = '{ENTER}', [switch]$FromAdvancedShortcut) {
+  Activate-Tauridium
+  if ($FromAdvancedShortcut) {
+    # A foreground HWND alone does not establish keyboard focus in the shell.
+    $Tab = Find-Control 'Advanced' ([Windows.Automation.ControlType]::Button)
+    $Tab.SetFocus()
+    Wait-For { Test-ControlFocus $Tab } 'Advanced tab keyboard focus before Ctrl+F'
+    [Windows.Forms.SendKeys]::SendWait('^f')
+    Wait-For { Test-ControlFocus (Find-Control 'Search settings') } 'scoped Ctrl+F focuses Settings search'
+  } else {
+    # Exercise search and navigation independently of the shortcut or the last
+    # native control to own focus (for example after a clipboard operation).
+    (Find-Control 'Search settings').SetFocus()
+    Wait-For { Test-ControlFocus (Find-Control 'Search settings') } 'Settings search keyboard focus'
+    [Windows.Forms.SendKeys]::SendWait('^a')
+  }
   [Windows.Forms.SendKeys]::SendWait($Query)
   Wait-For { (Search-Settings-Value) -ceq $Query } "Settings search value for '$Query'"
   [Windows.Forms.SendKeys]::SendWait($SelectionKeys)
@@ -526,7 +550,7 @@ function Search-Settings-For([string]$Query, [string]$SelectionKeys = '{ENTER}')
 function Test-Settings-Search {
   # Navigation must not edit a setting, start an action, or persist the query.
   $Before = (Read-Settings | ConvertTo-Json -Depth 20 -Compress)
-  Search-Settings-For 'show service names'
+  Search-Settings-For 'show service names' -FromAdvancedShortcut
   Wait-For { [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Show service names' } 'search opens Services and focuses its exact control'
   Search-Settings-For 'theme'
   Wait-For { [Windows.Automation.AutomationElement]::FocusedElement.Current.Name -eq 'Theme' } 'search opens Appearance and focuses Theme'
@@ -540,7 +564,6 @@ function Test-Settings-Search {
     $null -ne $Control -and -not $Control.Current.IsOffscreen
   } 'whole-tab search opens the first Settings section'
   Check ((Read-Settings | ConvertTo-Json -Depth 20 -Compress) -eq $Before) 'Settings search navigation leaves persisted preferences unchanged'
-  Focus-Settings-Search
   Invoke-Control 'Clear settings search'
   Wait-For { (Search-Settings-Value) -eq '' } 'clear search clears its actual editable value'
 }
