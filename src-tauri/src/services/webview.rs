@@ -11,7 +11,9 @@ use super::downloads::{
     effective_download_preferences, sanitize_download_filename, suggested_download_filename,
     unique_download_path,
 };
-use super::navigation::{recipe_config, resolve_url, service_custom_url_template_values};
+use super::navigation::{
+    recipe_config, recipe_runtime_allowed, resolve_url, service_custom_url_template_values,
+};
 use super::shortcuts::{
     next_service_shortcut_nonce, service_shortcut_action_from_url, service_shortcut_bridge_js,
 };
@@ -390,9 +392,13 @@ pub(super) async fn create_service_webview(
     let recipe_origin = url.origin().ascii_serialization();
     let host = url.host_str().unwrap_or("").to_ascii_lowercase();
     // Recipe runtime (DOM unread-count scraping -> __pakeUnread), best effort.
-    let runtime = recipe_webview_js(win.app_handle(), app_data, recipe_id)
-        .await
-        .map(|js| format!("{RECIPE_PREAMBLE}{js}{RECIPE_SUFFIX}"));
+    let runtime = if recipe_runtime_allowed(&cfg, team, &url) {
+        recipe_webview_js(win.app_handle(), app_data, recipe_id)
+            .await
+            .map(|js| format!("{RECIPE_PREAMBLE}{js}{RECIPE_SUFFIX}"))
+    } else {
+        None
+    };
     let label = format!("svc-{service_id}");
 
     // User agent precedence: per-service override, global setting, Google compatibility UA,
